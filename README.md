@@ -11,20 +11,22 @@ Chat with your coding agents from your phone and watch what they do, live. AI Co
 Requirements: Node 22+, Docker with Compose, and at least one harness on `PATH` (`claude`, `codex`, `cursor-agent`, or `opencode`).
 
 ```sh
-git clone https://github.com/bcmyguest/ai-collab && cd ai-collab && npm ci
-node scripts/ai-collab.mjs setup
+npx github:bcmyguest/ai-collab setup
 ```
+
+Pick the agents with `--agent`, for example `npx github:bcmyguest/ai-collab setup --agent claude,cursor,opencode`. Setup copies itself to `~/.local/share/ai-collab/app`, so plugins and the UI keep working after npm clears its cache. From a clone, run `npm ci && node scripts/ai-collab.mjs setup` instead.
 
 Setup does five things:
 
 1. Starts ntfy in Docker (`deploy/compose.yaml`) on `127.0.0.1:8794` with deny-all default access, and writes its token to `~/.config/ai-collab/ntfy-token`.
 2. Writes `~/.config/ai-collab/defaults.json`, so every git repo auto-joins under its folder name. An empty `.ai-collab-off` file keeps a repo out.
-3. Installs the plugin for each harness on `PATH`.
+3. Installs the plugin for each harness on `PATH`, or each one named with `--agent`.
 4. Installs the `ai-collab-ui` systemd user service on `127.0.0.1:8795`.
 5. Prints the Tailscale steps for your phone. It changes nothing on your network.
 
 | Flag | Effect |
 |---|---|
+| `--agent a,b` | Install only these agents: `claude`, `codex`, `cursor`, `opencode` (default: every one on `PATH`) |
 | `--port N` | Publish ntfy on `127.0.0.1:N` instead of 8794 |
 | `--no-ui` | Skip the UI service |
 

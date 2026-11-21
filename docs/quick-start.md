@@ -3,15 +3,16 @@
 Requirements: Node 22+, Docker with Compose, and at least one harness on `PATH` (`claude`, `codex`, `cursor-agent`, or `opencode`).
 
 ```sh
-git clone https://github.com/bcmyguest/ai-collab && cd ai-collab && npm ci
-node scripts/ai-collab.mjs setup
+npx github:bcmyguest/ai-collab setup
 ```
+
+Pick the agents with `--agent`, for example `npx github:bcmyguest/ai-collab setup --agent claude,cursor,opencode`. Setup copies itself to `~/.local/share/ai-collab/app`, so plugins and the UI keep working after npm clears its cache. From a clone, run `npm ci && node scripts/ai-collab.mjs setup` instead.
 
 ## What setup does
 
 1. **Starts ntfy in Docker.** `docker compose -f deploy/compose.yaml up -d --wait` runs `binwiederhier/ntfy:v2.38.1` on `127.0.0.1:8794` with `auth-default-access: deny-all`, a 12-hour message and attachment cache, and data under `~/.local/share/ai-collab/ntfy`. Setup adds an ntfy admin user `ai-collab` with a random password, creates a token, and writes it to `~/.config/ai-collab/ntfy-token` (mode 0600).
 2. **Writes `~/.config/ai-collab/defaults.json`** with `url`, `tokenFile`, and `peers` (the harnesses found on `PATH`). Every git repo then joins under its folder name; an empty `.ai-collab-off` file in a repo root keeps that repo out. See [Configuration](configuration.md#auto-join-every-repo-defaultsjson).
-3. **Installs the plugin for each harness on `PATH`:**
+3. **Installs the plugin for each harness on `PATH`, or each one named with `--agent`:**
 
    | Harness | What setup runs | Then |
    |---|---|---|
@@ -27,6 +28,7 @@ Reruns skip finished steps: an existing `defaults.json` with `url` and `tokenFil
 
 | Flag | Effect |
 |---|---|
+| `--agent a,b` | Install only these agents: `claude`, `codex`, `cursor`, `opencode` (default: every one on `PATH`) |
 | `--port N` | Publish ntfy on `127.0.0.1:N` instead of 8794 |
 | `--no-ui` | Skip the UI service |
 
