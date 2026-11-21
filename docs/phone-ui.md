@@ -106,7 +106,7 @@ The **AFK** switch in the header sets the operator mode to `on`, `off`, or `quie
 
 ## Start a session from the phone
 
-Each project in the sidebar has a **+** button (the **New session** panel): pick a harness, type the first prompt, and tap **Start**. The server accepts only a project name from `projects.json` and one of `claude`, `codex`, `cursor`, `opencode` that is in the project's peers and on `PATH` (plus Node's directory and `~/.local/bin`). It never takes a path from the client. It spawns the harness detached, with `shell: false`, in the project's `root`, at most once every 10 seconds:
+Each project in the sidebar has a **+** button (the **New session** panel), a chat whose composer starts the agent: type `@codex:gpt-5-codex fix the tests` (`@codex fix the tests` uses the default model) and send. The text after the tag is the prompt. The panel opens the session's chat once it reports. The server accepts only a project name from `projects.json` and one of `claude`, `codex`, `cursor`, `opencode` that is in the project's peers and on `PATH` (plus Node's directory and `~/.local/bin`). It never takes a path from the client. It spawns the harness detached, with `shell: false`, in the project's `root`, at most once every 10 seconds:
 
 | Harness | argv |
 |---|---|
@@ -115,7 +115,7 @@ Each project in the sidebar has a **+** button (the **New session** panel): pick
 | Cursor | `cursor-agent -p --output-format stream-json --workspace <root> [--model <m>] <prompt>` |
 | OpenCode 2 | `opencode run --format json [-m <provider/model>] <prompt>` (cwd is the root or worktree; the run uses OpenCode's background server, where the plugin runs) |
 
-The start request body is `{project, harness, prompt, model?, worktree?, openshell?}` (`worktree: true` and `openshell: true` choose the place; both at once is rejected). A `model` must be in the harness's allowlist, which the `models` action (`POST /api/models`, body `{}`) returns as `{claude:[...], codex:[...], cursor:[...], opencode:[...]}` (`opencode` is empty unless the project's peers list it, or list nothing). The panel shows a **Model** picker when that returns a list:
+The start request body is `{project, harness, prompt, model?, worktree?, openshell?}` (`worktree: true` and `openshell: true` choose the place; both at once is rejected). A `model` must be in the harness's allowlist, which the `models` action (`POST /api/models`, body `{}`) returns as `{claude:[...], codex:[...], cursor:[...], opencode:[...]}` (`opencode` is empty unless the project's peers list it, or list nothing). The panel's composer takes the model from the `@harness:model` tag, which the mention picker lists from that action:
 
 | Harness | Allowlist source |
 |---|---|
