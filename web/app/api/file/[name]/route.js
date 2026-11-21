@@ -4,5 +4,5 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request, { params }) {
-  return (await ui()).file((await params).name);
+  return (await ui()).file((await params).name, request);
 }
