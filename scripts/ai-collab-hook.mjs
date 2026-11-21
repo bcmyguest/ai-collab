@@ -10,6 +10,8 @@
  * --host opencode takes Claude-shaped input from the OpenCode plugin (lib/opencode-plugin.mjs) and answers in Claude's shapes.
  * PermissionRequest (Claude, Codex, OpenCode) and Cursor beforeShellExecution / beforeMCPExecution ask the operator's phone in AFK
  * mode on or quiet (lib/approvals.mjs); no answer means no decision, so the harness shows its own prompt.
+ * In mode off a Claude or Codex prompt becomes a view-only card; PostToolUse(Failure), Stop, StopFailure, UserPromptSubmit
+ * or SessionEnd of that session closes it.
  * Any failure prints {} and exits 0: the session continues unchanged. Transcripts are never read.
  * Every message handed to the agent gets a read receipt, published in the background like activity.
  */
@@ -26,7 +28,7 @@ import { harnessProcess } from "../lib/process.mjs";
 import { contextTokens, reportContext } from "../lib/usage.mjs";
 import { activityEvents, publishActivity } from "../lib/activity.mjs";
 import { sendReceipts, settleReceipts } from "../lib/receipts.mjs";
-import { decideApproval } from "../lib/approvals.mjs";
+import { closeTerminalCards, decideApproval } from "../lib/approvals.mjs";
 
 const HOSTS = new Set(["claude", "codex", "cursor", "opencode"]);
 const EVENTS = new Map([
@@ -149,6 +151,8 @@ async function main() {
   // Started first and awaited last, so delivery never waits on it.
   const events = activityEvents(host, key, msg);
   const activity = publishActivity(cfg, host, events).catch(() => 0);
+  // A view-only approval card (AFK off) closes once a later event shows the terminal prompt resolved.
+  const closing = closeTerminalCards(cfg, { host, key, input: msg }).catch(() => []);
   const event = EVENTS.get(key);
   let output = neutral(host, key);
   // A prompt the operator typed (not a wake run, agent hand-back or ai-collab's own text); recorded, AFK unchanged.
@@ -166,7 +170,7 @@ async function main() {
     }
   }
   emit(output);
-  await Promise.all([activity, settleReceipts()]);
+  await Promise.all([activity, closing, settleReceipts()]);
 }
 
 try {

@@ -10,7 +10,7 @@ The UI shows each question as a card with its answer, or an answer field while i
 
 ## Phone approvals
 
-In AFK mode `on` or `quiet`, a permission prompt becomes a card in the UI and a high-priority notification on the phone. In mode `off` the hook returns at once with no decision, so the terminal prompt shows as usual.
+In AFK mode `on` or `quiet`, a permission prompt becomes a card in the UI and a high-priority notification on the phone. In mode `off` the hook returns at once with no decision, so the terminal prompt shows as usual; on Claude Code and Codex it first publishes a [view-only card](#view-only-cards-afk-off).
 
 | Harness | Hook | Phone answer | No answer |
 |---|---|---|---|
@@ -22,9 +22,22 @@ In AFK mode `on` or `quiet`, a permission prompt becomes a card in the UI and a 
 
 OpenCode runs `evaluate` before it shows its prompt, so while the phone wait lasts (AFK `on` or `quiet` only) the terminal shows no prompt; after `AI_COLLAB_APPROVAL_S` it shows OpenCode's own.
 
-The hook publishes `{v:1, kind:"approval", from, session, harness, id, tool, summary, questions?, expiresAt, ts}` to the broadcast topic (titled with the session, tool, and summary; ntfy priority 4) and holds one streaming subscription. **Allow** or **Deny** in the UI posts `reply <id> allow|deny`; a choice posts `reply <id> {"<question>":"<answer>",…}`. From the ntfy app, post `reply <id> allow` (also `yes`, `ok`) or `reply <id> deny` (`no`); a single-question choice accepts a label or free text. The hook reads the first usable reply, publishes a read receipt for it, and closes the request with `{v:1, kind:"approval-end", id, reason}` (priority 1), where reason is `allowed`, `denied`, `answered`, `timeout`, `afk-off`, or `cancelled`.
+The hook publishes `{v:1, kind:"approval", from, session, harness, id, tool, summary, questions?, expiresAt, ts}` to the broadcast topic (titled with the session, tool, and summary; ntfy priority 4) and holds one streaming subscription. **Allow** or **Deny** in the UI posts `reply <id> allow|deny`; a choice posts `reply <id> {"<question>":"<answer>",…}`. From the ntfy app, post `reply <id> allow` (also `yes`, `ok`) or `reply <id> deny` (`no`); a single-question choice accepts a label or free text. The hook reads the first usable reply, publishes a read receipt for it, and closes the request with `{v:1, kind:"approval-end", id, reason}` (priority 1), where reason is `allowed`, `denied`, `answered`, `timeout`, `afk-off`, `cancelled`, or `terminal`.
 
 The wait ends with no decision when `AI_COLLAB_APPROVAL_S` (540 s) passes, when the operator turns AFK mode off, or when the harness kills the hook. The hook never allows or denies on its own; any failure is no decision. The UI shows closed requests as "Timed out: the terminal prompt took over" or "Closed: answered in the terminal or the agent stopped".
+
+### View-only cards (AFK off)
+
+An answer from the UI cannot reach a terminal prompt that is already showing, so in mode `off` the card only mirrors it. The Claude Code or Codex `PermissionRequest` hook publishes the approval fields, cleaned and size-capped as in mode `on`, as `{v:1, kind:"approval-view", mode:"terminal", …}` (ntfy priority 2, no web push), records the card in the session's `.terminal.json` state file, and returns `{}` at once; the publish is capped at 1.5 s. The UI shows the question and options without answer buttons, labelled "Answer in the terminal", and `POST /api/approve` answers 409. A separate kind keeps readers that answer `approval` envelopes from offering buttons that nothing reads.
+
+A later hook event of the same session publishes `approval-end` with reason `terminal` ("Answered in the terminal"):
+
+| Event | Closes |
+|---|---|
+| `PostToolUse`, `PostToolUseFailure` | the oldest open card with the same tool and summary |
+| `Stop`, `StopFailure`, `UserPromptSubmit`, `SessionEnd` | every open card of the session |
+
+`PreToolUse` and `Notification` close nothing: both can fire while the prompt still shows. A denied prompt whose tool reports no failure stays open until the turn ends. A card no event closes expires after `AI_COLLAB_APPROVAL_S`. Cursor and OpenCode publish no view-only card.
 
 **Trust.** Any client that can write the broadcast topic can approve, exactly as it can answer a question. Protect the topic with the ntfy token and ACLs. See [Security model](security.md).
 

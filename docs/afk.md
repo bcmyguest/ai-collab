@@ -8,7 +8,7 @@
 | `on` (operator away) | one line per milestone via `send_to_all` with `progress: true` | phone via `ask_question`; `important: true` when blocked | after `ask_question` or `wait_for_operator` in that turn, wait up to `AI_COLLAB_AFK_WAIT_S` (10 min) for operator messages or the answer; otherwise stop at once. Hold an important question until it is answered |
 | `quiet` | dropped: `send_to_all` refuses `progress: true` | blocking questions only, `important: true` | hold an important question until it is answered; no idle wait |
 
-In mode `on` or `quiet`, permission prompts also go to the phone; see [Approvals](approvals.md#phone-approvals).
+In mode `on` or `quiet`, permission prompts also go to the phone; see [Approvals](approvals.md#phone-approvals). In mode `off`, Claude Code and Codex prompts (`AskUserQuestion` included) show in the UI as view-only cards labelled "Answer in the terminal", while the terminal asks as usual; see [View-only cards](approvals.md#view-only-cards-afk-off).
 
 ## Entry points
 
