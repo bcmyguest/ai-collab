@@ -168,6 +168,17 @@ function outcomes(events) {
   return { ends, replies, senders };
 }
 
+const MENTION = /(^|[^\w#-])@([a-z0-9-]{1,24}(?:#[a-f0-9]{16})?)(?![\w-])/g;
+
+/** Session addresses and harness names tagged with @ in a post, limited to the project's peers. */
+export function mentionedNames(body, peers = []) {
+  const names = new Set([...String(body).matchAll(MENTION)].map(match => match[2]));
+  return [...names].filter(name => {
+    const peer = name.split("#")[0];
+    return peer !== "operator" && peer !== "all" && (!peers.length || peers.includes(peer));
+  });
+}
+
 const mentions = (body, name) => new RegExp(`(^|[^\\w#-])@${name}(?![\\w-])`).test(body);
 
 function reject(status, message) {
@@ -320,6 +331,36 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     if (name === undefined || name === null || name === "") return fallback;
     if (!projects.has(name)) reject(400, "Unknown project");
     return projects.get(name);
+  }
+
+  // An @session gets the post in its direct chat; an @harness reaches its running sessions, or starts one with the post as prompt.
+  async function routeMentions(project, body, target, by) {
+    const { cfg, operator } = project;
+    const sessions = listSessions(cfg);
+    const direct = to => sendMessage(operator, to, body, { operatorThread: true, ...(by ? { by } : {}) });
+    const notes = [];
+    for (const name of mentionedNames(body, cfg.peers)) {
+      if (name === target) continue;
+      if (name.includes("#")) {
+        if (sessions.some(item => item.id === name)) { await direct(name); notes.push("@" + name + " sent"); } else notes.push("@" + name + " unknown");
+        continue;
+      }
+      const running = sessions.filter(item => item.peer === name && item.online && item.id !== target);
+      if (running.length) {
+        for (const item of running) await direct(item.id);
+        notes.push("@" + name + " sent to " + running.length + (running.length === 1 ? " session" : " sessions"));
+        continue;
+      }
+      if (sessions.some(item => item.peer === name && item.id === target)) continue;
+      if (!startable(project).includes(name)) { notes.push("@" + name + " not available here"); continue; }
+      const checked = checkPrompt(body);
+      if (checked.error) { notes.push("@" + name + ": " + checked.error); continue; }
+      if (Date.now() - lastStartAt < START_GAP_MS) { notes.push("@" + name + ": wait 10 seconds between starts"); continue; }
+      lastStartAt = Date.now();
+      const result = await start(cfg, { harness: name, prompt: checked.text, env, place: "folder" });
+      notes.push("@" + name + " " + (result.status === "failed" ? "start failed: " + result.detail : "starting a new session"));
+    }
+    return notes.join(" · ");
   }
 
   function inboxOf(project, peer) {
@@ -762,8 +803,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (err.message.includes("-byte limit")) reject(400, `Message exceeds ${NTFY_MESSAGE_MAX_BYTES} encoded bytes`);
         throw err;
       }
-      if (direct) return json(201, { sent: true, wake: wakeAgent(project, target, listSessions(cfg).find(item => item.id === target)) });
-      return json(201, { sent: true });
+      const routed = action === "send" ? await routeMentions(project, body.trim(), target, by) : "";
+      const detail = routed ? { status: "Sent", detail: routed } : {};
+      if (direct) return json(201, { sent: true, ...detail, wake: wakeAgent(project, target, listSessions(cfg).find(item => item.id === target)) });
+      return json(201, { sent: true, ...detail });
     } catch (err) {
       const { status, message } = failure(err);
       return json(status, { error: message });

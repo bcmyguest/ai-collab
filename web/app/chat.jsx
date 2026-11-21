@@ -637,7 +637,7 @@ function Console({ account }) {
       const result = await api(path, { project, ...payload });
       if (at === route.current) {
         // A running session needs no wake note; its message's ticks tell the rest.
-        const outcome = (result.wake && !["online", "queued"].includes(result.wake.status) && result.wake) || result.compact || (result.wake ? {} : result);
+        const outcome = (result.wake && !["online", "queued"].includes(result.wake.status) && result.wake) || result.compact || (result.wake ? { status: result.status, detail: result.detail } : result);
         setNotice([outcome.status, outcome.detail || outcome.message || outcome.reason].filter(Boolean).join(" · ") || fallback);
       }
       return true;
@@ -684,6 +684,7 @@ function Console({ account }) {
           {/* Back one level: a session returns to its project chat, a project to Home. */}
           {!home && <Button variant="ghost" size="icon" aria-label={level === "session" ? "Back to " + project : "Home"} title={level === "session" ? "Back to the " + project + " chat" : "Home: every project's sessions"}
             onClick={() => navigate(level === "session" ? { project, level: "project" } : { level: "home" })}><ArrowLeft/></Button>}
+          {level === "session" && selected.session && <Avatar address={selected.session} className="size-8 shrink-0"/>}
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs text-muted-foreground">{home ? "All projects" : level === "project" ? (watching ? "Activity · all agents" : "Project") : project + " · session"}</p>
             <h1 className="truncate text-base font-semibold leading-tight" title={level === "session" ? selected.session : undefined}>{title}</h1>
