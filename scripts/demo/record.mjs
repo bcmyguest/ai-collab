@@ -26,6 +26,7 @@ const EASE_WAIT_MS = 850;
 const FAST = 3;
 const SPOT_ZOOM = 1;
 const SPOT_PAD = 6;
+const PING_MS = 4500;
 
 const { values: args } = parseArgs({ options: { out: { type: "string", default: join(ROOT, "docs/demo.gif") }, keep: { type: "boolean", default: false } } });
 
@@ -41,7 +42,7 @@ process.env.CODEX_HOME = join(home, ".codex");
 const { chromium } = await import("playwright-core");
 const { startFakeNtfy } = await import(join(ROOT, "test/helpers/fake-ntfy.mjs"));
 const { loadConfig, sessionLabel } = await import(join(ROOT, "lib/config.mjs"));
-const { sendMessage } = await import(join(ROOT, "lib/inbox.mjs"));
+const { claimInbox, replyToOperator, sendMessage } = await import(join(ROOT, "lib/inbox.mjs"));
 const { createUi, installUi } = await import(join(ROOT, "web/server/ui.mjs"));
 const { scenario } = await import("./scenario.mjs");
 const { encode, LAYOUT, VIEWPORT } = await import("./encode.mjs");
@@ -56,6 +57,32 @@ function chromePath() {
   const found = existsSync(cache) ? readdirSync(cache).filter((d) => /^chromium-\d+$/.test(d)).sort((a, b) => b.split("-")[1] - a.split("-")[1]) : [];
   for (const dir of found) for (const exe of ["chrome-linux64/chrome", "chrome-linux/chrome", "chrome-mac/Chromium.app/Contents/MacOS/Chromium"]) if (existsSync(join(cache, dir, exe))) return join(cache, dir, exe);
   throw new Error("No Chromium found: set DEMO_CHROME or run `npx playwright-core install chromium`");
+}
+
+// Slides a phone-style notification in from the top; a tap opens the item's thread like the service worker does.
+function banner({ payload, ms }) {
+  document.getElementById("demo-ping")?.remove();
+  const el = document.createElement("button");
+  el.id = "demo-ping";
+  el.setAttribute("aria-label", "Notification: " + payload.title);
+  el.style.cssText = "position:fixed;left:8px;right:8px;top:8px;z-index:2147483647;display:flex;gap:10px;align-items:flex-start;text-align:left;padding:11px 12px;border-radius:18px;border:1px solid #ffffff26;background:#27272aee;color:#fafafa;font:13px/1.35 system-ui,sans-serif;box-shadow:0 10px 30px #0009;transform:translateY(-130%);transition:transform .35s cubic-bezier(.2,.9,.3,1.2)";
+  const icon = document.createElement("img");
+  icon.src = "/icon.svg"; icon.alt = ""; icon.style.cssText = "width:34px;height:34px;border-radius:9px;flex:none;background:#4f46e5";
+  const text = document.createElement("div");
+  text.style.cssText = "min-width:0;flex:1";
+  const head = document.createElement("div");
+  head.style.cssText = "display:flex;justify-content:space-between;color:#a1a1aa;font-size:11px";
+  head.append(Object.assign(document.createElement("span"), { textContent: "AI Collab · " + payload.project }), Object.assign(document.createElement("span"), { textContent: "now" }));
+  const title = Object.assign(document.createElement("div"), { textContent: payload.title });
+  title.style.cssText = "font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+  const body = Object.assign(document.createElement("div"), { textContent: payload.body });
+  body.style.cssText = "display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:#e4e4e7";
+  text.append(head, title, body);
+  el.append(icon, text);
+  el.onclick = () => { location.hash = payload.url.slice(payload.url.indexOf("#")); el.remove(); };
+  document.body.append(el);
+  requestAnimationFrame(() => requestAnimationFrame(() => { el.style.transform = "translateY(0)"; }));
+  setTimeout(() => { el.style.transform = "translateY(-130%)"; setTimeout(() => el.remove(), 400); }, ms);
 }
 
 // A long-lived fake harness process for one session; run() spawns the real hook under it, say() posts chat.
@@ -74,6 +101,12 @@ function agent(env, host, sessionId) {
       proc.stdin.write(JSON.stringify({ n, ...request(input, activityOnly) }) + "\n");
     }),
     say: (body, opts) => sendMessage(cfg, "all", body, opts),
+    // Answers the operator's direct message containing match, as an agent's reply_to_operator call would.
+    reply: async (match, body, opts) => {
+      const message = (await claimInbox(cfg)).find((m) => m.body.includes(match));
+      if (!message) throw new Error("no operator message matching " + match);
+      return replyToOperator(cfg, message.id, body, opts);
+    },
     close: () => proc.kill(),
   };
 }
@@ -202,7 +235,10 @@ const env = { PATH: process.env.PATH, HOME: home, CODEX_HOME: join(home, ".codex
 Object.assign(process.env, env);
 const operator = loadConfig({ ...env, AI_COLLAB_PEER: "operator" });
 const refuse = async () => { throw new Error("disabled in the demo"); };
-const server = await startNext(createUi({ projects: [operator], env, control: refuse, start: refuse, setMode: refuse }));
+// The UI's real push payloads (web/server/push.mjs notice) drawn as a phone notification banner instead of sent.
+const pings = { show: async () => {}, shown: [] };
+const notifier = { notify: async (key, payload) => { pings.shown.push(payload); await pings.show(payload); }, publicKey: () => "", subscribe() {}, unsubscribe: () => false, subscriptions: () => [], send: refuse };
+const server = await startNext(createUi({ projects: [operator], env, control: refuse, start: refuse, setMode: refuse, push: notifier }));
 const browser = await chromium.launch({ executablePath: chromePath(), headless: true });
 const agents = { claude: agent(env, "claude", "calc-demo-claude"), codex: agent(env, "codex", "calc-demo-codex") };
 let exit = 0;
@@ -214,9 +250,10 @@ try {
   await page.goto(server.url + "/#project=" + PROJECT);
   await page.getByLabel("Message", { exact: true }).waitFor();
   await page.waitForLoadState("networkidle").catch(() => {});
+  pings.show = (payload) => page.evaluate(banner, { payload, ms: PING_MS }).catch(() => {});
   const rec = await recorder(page, frameDir);
   rec.t0 = Date.now();
-  const { skipped } = await scenario({ page, rec, agents, fake, screenshot, project: PROJECT });
+  const { skipped } = await scenario({ page, rec, agents, fake, screenshot, project: PROJECT, pings });
   await rec.stop();
   const cards = await renderCards(browser, frameDir, rec.captions);
   writeFileSync(join(frameDir, "timeline.json"), JSON.stringify({ t0: rec.t0, t1: Date.now(), frames: rec.frames, cameras: rec.cameras, captions: rec.captions, speeds: rec.speeds, ...cards, skipped }));

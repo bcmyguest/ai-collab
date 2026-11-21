@@ -11,10 +11,11 @@ const CALC_SOURCE = `<output aria-label="Display">0</output>
 <script>
   const apply = { "+": (a, b) => a + b, "×": (a, b) => a * b };
 </script>`;
+const PING_ASK = "ping me when it's done";
 const TESTS = "▶ calculator\n  ✔ adds 2 + 3 (0.4ms)\n  ✔ multiplies 12 × 7 (0.1ms)\n  ✔ divides by zero → ∞ (0.1ms)\n  ✔ chains 1 + 2 × 3 (0.1ms)\n  ✔ clears with C (0.1ms)\n  ✔ toggles sign ± (0.1ms)\nℹ tests 6\nℹ pass 6\nℹ fail 0";
 
 // Runs the scenario; rec records camera, caption and speed marks against the live screencast.
-export async function scenario({ page, rec, agents, fake, screenshot, project }) {
+export async function scenario({ page, rec, agents, fake, screenshot, project, pings }) {
   const { claude, codex } = agents;
   const log = page.getByRole("log");
   const composer = page.getByLabel("Message", { exact: true });
@@ -78,6 +79,16 @@ export async function scenario({ page, rec, agents, fake, screenshot, project })
   await rec.wide();
   await log.getByRole("button", { name: "Open " + claude.id, exact: true }).last().click();
   await composer.waitFor();
+  // A direct message in the session: Claude answers it later, and that answer pings the phone.
+  await rec.fast(async () => {
+    await composer.click();
+    await composer.pressSequentially(PING_ASK, { delay: 35 });
+    await page.keyboard.press("Enter");
+    await log.getByText(PING_ASK).last().waitFor();
+  });
+  await rec.wait(500);
+  await page.getByRole("tab", { name: "Activity" }).click();
+  await log.getByText(PING_ASK).last().waitFor();
   await rec.fast(async () => {
     await claude.run({ hook_event_name: "MessageDisplay", message_id: "m1", index: 0, final: true, delta: "I'll write the page, then run the tests." }, true);
     await claude.run({ hook_event_name: "PreToolUse", tool_name: "Write", tool_input: { file_path: "/work/calc-demo/calc.html", content: CALC_SOURCE }, tool_use_id: "t_write" }, true);
@@ -142,9 +153,22 @@ export async function scenario({ page, rec, agents, fake, screenshot, project })
   await rec.wait(1100);
   await rec.wide();
 
-  // 5. Image: Claude sends a real screenshot of the finished calculator through the attachment path.
+  // 5. Ping: Claude answers the direct message with a screenshot; the UI's push becomes a banner; a tap opens the thread.
+  rec.caption("Get pinged when it's done", "Push for replies, questions and approvals");
+  const before = pings.shown.length;
+  await claude.reply(PING_ASK, "Done ✨ calculator built, 6/6 tests pass. 12 × 7 = 84 on the live page:", { attachment: screenshot });
+  const ping = page.locator("#demo-ping");
+  await ping.waitFor({ timeout: 8000 });
+  await rec.wait(400);
+  await rec.spotlight([ping]);
+  await rec.wait(1500);
+  await rec.wide();
+  // Tap the banner; once it has slid away, open the same link the notification carries.
+  const url = pings.shown.at(-1)?.url;
+  if (!(await ping.click({ timeout: 1000 }).then(() => true, () => false)) && pings.shown.length > before && url) {
+    await page.evaluate((hash) => { location.hash = hash; }, url.slice(url.indexOf("#")));
+  }
   rec.caption("Screenshots, inline", "Agents attach images to their messages");
-  await claude.say("Done ✨ 12 × 7 = 84 on the live page:", { attachment: screenshot });
   const image = log.getByRole("img", { name: /calculator/i }).last();
   await image.waitFor();
   await image.evaluate((img) => img.complete || new Promise((resolve) => { img.onload = resolve; img.onerror = resolve; }));
@@ -180,6 +204,17 @@ async function approval({ page, rec, claude, fake, project }) {
   fake.inject(broadcastTopic(project), JSON.stringify({ v: 1, kind: "mode", from: "operator", mode: "on", ts: Date.now() }));
   const decision = claude.run({ hook_event_name: "PermissionRequest", tool_name: "Bash", tool_input: { command: "git commit -am \"feat: calculator\"", description: "Commit the calculator" } });
   const allow = page.getByRole("button", { name: "Allow", exact: true }).last();
+  // The approval's push arrives first; the banner shows it, then the card is answered in the project chat.
+  const ping = page.locator("#demo-ping");
+  if (await ping.waitFor({ timeout: 6000 }).then(() => true, () => false)) {
+    rec.caption("Approve from anywhere", "Allow or deny a tool call");
+    await rec.wait(300);
+    await rec.spotlight([ping]);
+    await rec.wait(1400);
+    await rec.wide();
+    await ping.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  }
+  await goProject(page, project);
   if (!(await allow.waitFor({ timeout: 8000 }).then(() => true, () => false))) return false;
   await allow.scrollIntoViewIfNeeded();
   await rec.wait(300);
