@@ -40,10 +40,10 @@ export function cleanSubscription(raw, { allowHttp = false } = {}) {
   return { endpoint, keys: { p256dh, auth } };
 }
 
-/** Hash route that opens the item's session (or harness) thread in the UI. */
+/** Hash route that opens the item's session thread, else the project's session list, in the UI. */
 export function itemUrl(project, sender) {
   const [peer, session] = String(sender || "").split("#");
-  const route = session ? { project, level: "session", harness: peer, session: sender } : peer ? { project, level: "harness", harness: peer } : { project };
+  const route = session ? { project, level: "session", harness: peer, session: sender } : peer ? { project, level: "session" } : { project };
   return "/#" + new URLSearchParams(route).toString();
 }
 
