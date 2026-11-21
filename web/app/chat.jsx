@@ -15,6 +15,7 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { fuzzyRank } from "@/lib/fuzzy";
+import { withMentions } from "@/lib/mentions";
 import { ActivityRow, GoToAgent, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
 import { NotifyToggle } from "./notify";
@@ -93,11 +94,6 @@ async function api(path, payload) {
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "Request failed");
   return result;
-}
-
-/** Marks @peer and @peer#session tags as "#mention" links so Markdown colours only the tag. */
-function withMentions(body) {
-  return String(body).replace(/(^|[\s(])@([a-z][\w-]*(?:#[a-f0-9]{16})?)(?![\w#])/g, "$1[@$2](#mention)");
 }
 
 /** "msg 3m ago · active just now"; activity comes from the agent's hooks. */
@@ -289,7 +285,7 @@ function ChatMessage({ message, operator, me, now, reply, open, act, answer, nud
   const openable = !outgoing && sender !== "ntfy" && sender !== "operator";
   const go = () => open(sender);
   return <Message className={cn("max-w-full", outgoing && "flex-row-reverse")}
-    onClick={event => { const tag = event.target.closest?.("[data-mention]"); if (tag) open(tag.textContent.replace(/^@/, "")); }}>
+    onClick={event => { const tag = event.target.closest?.("[data-mention]"); if (tag) open(tag.textContent.replace(/^@/, "").split(/[:/]/)[0]); }}>
     {openable ? <button type="button" aria-label={"Open avatar " + sender} tabIndex={-1} className="shrink-0 self-start rounded-full" onClick={go}><Avatar address={sender}/></button> : <Avatar address={sender} by={other}/>}
     <div className={cn("flex min-w-0 max-w-[82%] flex-col gap-1", outgoing ? "items-end" : "items-start")}>
       <div className="flex max-w-full flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
