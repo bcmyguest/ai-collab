@@ -773,7 +773,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
-      const { project: name, target, body, question, mode, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model } = await payload(request);
+      const { project: name, target, body, question, mode, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, replyTo } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -840,8 +840,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const direct = action === "send" && target.includes("#");
       try {
         if (urgent !== undefined && typeof urgent !== "boolean") reject(400, "urgent must be true or false");
+        if (replyTo !== undefined && (typeof replyTo !== "string" || !/^[a-zA-Z0-9-]{1,64}$/.test(replyTo))) reject(400, "Invalid reply ID");
         const sender = direct || action === "send" ? operator : cfg;
-        await sendMessage(sender, target, body.trim(), { operatorThread: direct, urgent: urgent === true, ...(by && sender.peer === "operator" ? { by } : {}) });
+        await sendMessage(sender, target, body.trim(), { operatorThread: direct, urgent: urgent === true, ...(replyTo !== undefined ? { replyTo } : {}), ...(by && sender.peer === "operator" ? { by } : {}) });
       } catch (err) {
         if (err.message.includes("-byte limit")) reject(400, `Message exceeds ${NTFY_MESSAGE_MAX_BYTES} encoded bytes`);
         throw err;

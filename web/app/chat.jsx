@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { HarnessLogo, hasLogo } from "./logos";
-import { Activity, ArrowLeft, ArrowUp, AtSign, Bell, BellOff, Bot, Check, CheckCheck, Coffee, CornerLeftUp, FolderGit2, Menu, Minimize2, Monitor, Moon, Plus, RotateCw, Sun, Zap } from "lucide-react";
+import { Activity, ArrowLeft, ArrowUp, AtSign, Bell, BellOff, Bot, Check, CheckCheck, Coffee, CornerLeftUp, FolderGit2, Menu, Minimize2, Monitor, Moon, Plus, Reply, RotateCw, Sun, X, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatContainerContent, ChatContainerRoot, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
@@ -274,7 +274,7 @@ function Ticks({ state }) {
     className={cn("inline-flex", state === "read" ? "text-primary" : "text-muted-foreground")}><Icon className="size-3.5"/></span>;
 }
 
-function ChatMessage({ message, operator, me, now, reply, open, act, answer, nudge, disabled }) {
+function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, answer, nudge, disabled }) {
   const sender = message.from || message.sender || "ntfy";
   const outgoing = sender === operator;
   // A signed-in family member's message names them; the viewer's own stays "You".
@@ -284,6 +284,8 @@ function ChatMessage({ message, operator, me, now, reply, open, act, answer, nud
   // An agent's avatar and name open its session (or harness) view; the operator's own and ntfy posts stay plain.
   const openable = !outgoing && sender !== "ntfy" && sender !== "operator";
   const go = () => open(sender);
+  // A reply to an agent prefills its address so the mention routes the reply to that session.
+  const prefill = openable ? "@" + sender + " " : "";
   return <Message className={cn("max-w-full", outgoing && "flex-row-reverse")}
     onClick={event => { const tag = event.target.closest?.("[data-mention]"); if (tag) open(tag.textContent.replace(/^@/, "").split(/[:/]/)[0]); }}>
     {openable ? <button type="button" aria-label={"Open avatar " + sender} tabIndex={-1} className="shrink-0 self-start rounded-full" onClick={go}><Avatar address={sender}/></button> : <Avatar address={sender} by={other}/>}
@@ -294,6 +296,8 @@ function ChatMessage({ message, operator, me, now, reply, open, act, answer, nud
           : <span className="font-medium text-foreground" title={message.by ? sender + " · " + message.by : sender}>{outgoing ? other || "You" : label}</span>}
         {message.to && message.to !== "all" && <span title={message.to}>→ {short(message.to)}</span>}
         {at > 0 && <time dateTime={new Date(at).toISOString()} title={clock.format(at)}>{ago(at, now)}</time>}
+        {replyFrom && message.kind !== "Approval" && <button type="button" aria-label={"Reply to " + sender} title="Reply" onClick={() => replyFrom({ id: message.id, sender, prefill })}
+          className="rounded-full p-0.5 hover:bg-muted hover:text-foreground"><Reply className="size-3.5"/></button>}
         {message.scope === "all" && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">to all</Badge>}
         {message.urgent && <span role="img" aria-label="Sent now" title="Sent now: delivered at the agent's next tool call" data-urgent className="text-amber-500"><Zap className="size-3.5"/></span>}
         {outgoing && <Ticks state={message.receipt}/>}
@@ -370,7 +374,7 @@ function NewSession({ project, harnesses = [], startable = [], places = ["folder
   </section>;
 }
 
-function Composer({ conversation, agents, harnesses, startable = [], models = {}, now, disabled, placeholder, onSend, question, cancel, urgentable }) {
+function Composer({ conversation, agents, harnesses, startable = [], models = {}, now, disabled, placeholder, onSend, question, cancel, urgentable, replying, cancelReply }) {
   const [draft, setDraftState] = useState(() => drafts.get(conversation, ""));
   const [urgent, setUrgent] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
@@ -394,6 +398,12 @@ function Composer({ conversation, agents, harnesses, startable = [], models = {}
   // Every edit is kept per conversation, so a tab or view switch that remounts the composer restores it.
   function setDraft(next) { drafts.set(conversation, next); setDraftState(next); }
   function focus() { document.getElementById("composer")?.focus(); }
+  // A Reply click prefills the agent's @tag ahead of whatever the operator has typed.
+  useEffect(() => {
+    if (!replying) return;
+    if (replying.prefill && !draft.startsWith(replying.prefill)) setDraft(replying.prefill + draft);
+    focus();
+  }, [replying]);
   // The @tag being typed: [tag text, first word, second word when the first names a startable harness].
   function mentionAt(text) {
     const found = /(?:^|\s)@([\w#:./-]*)(?: ([\w.:/-]+))?$/.exec(text);
@@ -417,6 +427,10 @@ function Composer({ conversation, agents, harnesses, startable = [], models = {}
     {question && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-sm">
       <span className="min-w-0 truncate">Replying to question {question}</span>
       <Button variant="ghost" size="sm" onClick={cancel}>Cancel</Button>
+    </div>}
+    {replying && !question && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border bg-muted px-3 py-1.5 text-sm">
+      <span className="min-w-0 truncate">Replying to {short(replying.sender)}</span>
+      <Button variant="ghost" size="icon" className="size-6" aria-label="Cancel reply" onClick={cancelReply}><X/></Button>
     </div>}
     {picking && <div role="listbox" aria-label="Mention an agent"
       className="absolute inset-x-3 bottom-full mb-1 max-h-64 overflow-y-auto rounded-2xl border bg-popover p-1 text-popover-foreground shadow-lg">
@@ -505,6 +519,7 @@ function Console({ account }) {
   const [notice, setNotice] = useState("");
   const [loadError, setLoadError] = useState("");
   const [question, setQuestion] = useState("");
+  const [replyTo, setReplyTo] = useState(null);
   const [creating, setCreating] = useState("");
   const [working, setWorking] = useState(false);
   const [revision, setRevision] = useState(0);
@@ -550,7 +565,7 @@ function Console({ account }) {
       route.current = nextStream;
       setSelected(next);
       if (same) return;
-      setActivity([]); setReady(false); setLoadError(""); setNotice(""); setQuestion(""); setNavOpen(false);
+      setActivity([]); setReady(false); setLoadError(""); setNotice(""); setQuestion(""); setReplyTo(null); setNavOpen(false);
     };
     window.addEventListener("hashchange", change);
     return () => window.removeEventListener("hashchange", change);
@@ -782,7 +797,8 @@ function Console({ account }) {
             : <ChatMessage key={message.id} message={message} operator={data.operator} me={account.user?.login} now={now} open={openAddress} disabled={!ready || working}
               act={payload => action("approve", payload, "Sent")} answer={(id, body) => action("reply", { question: id, body }, "Reply sent")}
               nudge={to => action("nudge", { target: to }, "Sending now")}
-              reply={id => { setQuestion(id); setNotice(""); document.getElementById("composer")?.focus(); }}/>)}
+              reply={id => { setQuestion(id); setNotice(""); document.getElementById("composer")?.focus(); }}
+              replyFrom={target => setReplyTo(target)}/>)}
           {ready && (watching || inline) && <Working rows={rows} now={now} overview={watching}/>}
           <ChatContainerScrollAnchor/>
         </ChatContainerContent>
@@ -796,10 +812,11 @@ function Console({ account }) {
       </ChatContainerRoot>
       <div role="status" hidden={!notice} className="mx-auto w-full max-w-3xl px-4 text-center text-xs text-muted-foreground">{notice}</div>
       {!home && !listing && <Composer key={requested} conversation={conversationKey(project, level === "session" ? selected.session : "")} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} startable={data.startable} models={models} now={now}
-        placeholder={placeholder} question={question} cancel={() => setQuestion("")} urgentable={!question}
+        placeholder={placeholder} question={question} cancel={() => setQuestion("")} urgentable={!question} replying={replyTo} cancelReply={() => setReplyTo(null)}
         onSend={async (body, urgent) => {
-          const sent = question ? await action("reply", { question, body }, "Reply sent") : await action("send", { target, body, ...(urgent ? { urgent: true } : {}) }, "Sent");
-          if (sent) { setQuestion(""); stick.current?.scrollToBottom(); }
+          const sent = question ? await action("reply", { question, body }, "Reply sent")
+            : await action("send", { target, body, ...(urgent ? { urgent: true } : {}), ...(replyTo?.id ? { replyTo: replyTo.id } : {}) }, "Sent");
+          if (sent) { setQuestion(""); setReplyTo(null); stick.current?.scrollToBottom(); }
           return sent;
         }}/>}
     </main>
