@@ -1,4 +1,4 @@
-import { publishMode as publishModeAll } from "../../lib/mode.mjs";
+import { operatorPrompt, publishMode as publishModeAll } from "../../lib/mode.mjs";
 import { mkdirSync, watch } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
 import { loadConfig, loadProjects, activityTopic, broadcastTopic, configDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.mjs";
@@ -39,6 +39,8 @@ const KEEPALIVE_MS = 25_000;
 const PUSH_DELAY_MS = 25;
 const questionPattern = /^Question from ([^\n]+)\n\n([\s\S]+)\n\nReply in this topic: reply ([a-f0-9]{12}) YOUR ANSWER$/;
 const MAX_MESSAGES = 100;
+// A typed prompt within this many seconds of a UI message with the same text is that message echoed back.
+const ECHO_WINDOW_S = 300;
 const IMPORTANT = /^IMPORTANT, the agent waits for this answer: /;
 // The hub keeps the newest 500 events per topic; 3 MB of cached history covers 500 full 4 KB activity envelopes.
 const ACTIVITY_TAIL_BYTES = 3 * 1024 * 1024;
@@ -598,7 +600,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     let list;
     if (session) {
       const thread = item => item.thread && ((item.from === "operator" && item.to === session) || (item.from === session && item.to === "operator"));
-      list = [...entries(project, inboxOf(project, peerOf(session)), thread),
+      const direct = entries(project, inboxOf(project, peerOf(session)), thread);
+      list = [...direct, ...terminalPrompts(project, session, direct),
         ...entries(project, project.topic, item => item.from === session).map(item => ({ ...item, scope: "all" }))];
     } else if (harness) {
       const related = item => peerOf(item.from) === harness || peerOf(item.to) === harness || mentions(item.body, harness);
@@ -617,8 +620,16 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           const by = senders.get(item.question)[0];
           return { ...item, answer: replies.get(item.question)[0], ...(by ? { answeredBy: by } : {}) };
         }
-        return item.from === "operator" && item.kind === "Message" && item.to ? { ...item, receipt: receiptOf(project, item, agentList) } : item;
+        return item.from === "operator" && item.kind === "Message" && item.to && !item.terminal ? { ...item, receipt: receiptOf(project, item, agentList) } : item;
       });
+  }
+
+  // Prompts the operator typed into one session's terminal, as operator messages; machine text and echoes of UI messages are skipped.
+  function terminalPrompts(project, session, direct) {
+    const sent = direct.filter(item => item.from === "operator");
+    return activityList(project, session)
+      .filter(item => item.type === "prompt" && operatorPrompt(item.input) && !sent.some(message => message.body.trim() === item.input.trim() && Math.abs(message.time - item.time) <= ECHO_WINDOW_S))
+      .map(item => ({ id: item.id, time: item.time, kind: "Message", sender: "operator", from: "operator", to: session, body: item.input, terminal: true }));
   }
 
   // pending, sent (answered, the hook has not read it yet), or the end reason; with the decision or answers that applied.
@@ -724,12 +735,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     try {
       const required = [project.status, project.topic];
       if (harness) required.push(inboxOf(project, harness));
-      // Activity is required only in an Activity view; it keeps the newest history when the cache exceeds the poll cap.
+      // Activity is required in an Activity view or a session chat (typed prompts); it keeps the newest history when the cache exceeds the poll cap.
       const activity = hub.open(project.activity, { tailBytes: ACTIVITY_TAIL_BYTES });
       if (!client.activity) activity.catch(() => {});
       // Other inboxes feed last-message times and receipts feed ticks; a failure is tolerated. Opening all at once lets the hub subscribe once.
       const optional = Promise.allSettled([project.receipts, ...project.inboxes.values()].filter(name => !required.includes(name)).map(name => hub.open(name)));
-      await Promise.all([...required.map(name => hub.open(name)), client.activity || client.scope ? activity : null]);
+      await Promise.all([...required.map(name => hub.open(name)), client.activity || client.scope || client.session ? activity : null]);
       await optional;
       // Home needs status, broadcast and activity of every other project; one that fails is listed as unavailable.
       if (client.scope === "home") {
