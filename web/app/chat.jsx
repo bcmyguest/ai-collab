@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { fuzzyRank } from "@/lib/fuzzy";
 import { ActivityRow, GoToAgent, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
 import { NotifyToggle } from "./notify";
@@ -315,24 +316,30 @@ function ChatMessage({ message, operator, me, now, reply, open, act, answer, nud
 }
 
 // Starts a headless agent session in the current project's registered folder; the result stays until closed.
-function NewSession({ project, harnesses, places = ["folder"], agents, disabled, start, close, open }) {
-  const [harness, setHarness] = useState(harnesses[0] || "");
-  const [place, setPlace] = useState("folder");
-  const [prompt, setPrompt] = useState("");
-  const [result, setResult] = useState(null);
-  const [busy, setBusy] = useState(false);
+// Model lists per harness from the models action; an empty object when it fails.
+function useModels(project) {
   const [models, setModels] = useState({});
-  const [model, setModel] = useState(DEFAULT_MODEL);
-  const joined = result?.session && agents.find(agent => agent.id === result.session);
-  const choices = Array.isArray(models[harness]) ? models[harness].filter(id => typeof id === "string" && id) : [];
   useEffect(() => {
-    // Model lists per harness from the models action; without them the picker stays hidden.
     let live = true;
     fetch("/api/models", { method: "POST", cache: "no-store", headers: { "content-type": "application/json" }, body: JSON.stringify({ project }) })
       .then(response => response.ok ? response.json() : {}).catch(() => ({}))
       .then(list => { if (live && list && typeof list === "object" && !Array.isArray(list)) setModels(list); });
     return () => { live = false; };
   }, [project]);
+  return models;
+}
+
+const modelsOf = (models, harness) => Array.isArray(models[harness]) ? models[harness].filter(id => typeof id === "string" && id) : [];
+
+function NewSession({ project, harnesses, places = ["folder"], agents, models, disabled, start, close, open }) {
+  const [harness, setHarness] = useState(harnesses[0] || "");
+  const [place, setPlace] = useState("folder");
+  const [prompt, setPrompt] = useState("");
+  const [result, setResult] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [model, setModel] = useState(DEFAULT_MODEL);
+  const joined = result?.session && agents.find(agent => agent.id === result.session);
+  const choices = modelsOf(models, harness);
   async function submit() {
     setBusy(true);
     const options = { ...(place === "worktree" ? { worktree: true } : place === "openshell" ? { openshell: true } : {}), ...(model !== DEFAULT_MODEL && choices.includes(model) ? { model } : {}) };
@@ -370,25 +377,33 @@ function NewSession({ project, harnesses, places = ["folder"], agents, disabled,
   </section>;
 }
 
-function Composer({ agents, harnesses, now, disabled, placeholder, onSend, question, cancel, urgentable }) {
+function Composer({ agents, harnesses, startable = [], models = {}, now, disabled, placeholder, onSend, question, cancel, urgentable }) {
   const [draft, setDraft] = useState("");
   const [urgent, setUrgent] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [posting, setPosting] = useState(false);
   const pending = useRef(false);
-  const mention = /(?:^|\s)@([\w#-]*)$/.exec(draft);
+  const mention = mentionAt(draft);
   const options = [...agents.map(agent => ({ id: agent.id, name: agent.name, lastMessageAt: agent.lastMessageAt, activeAt: agent.activeAt, online: agent.online })),
-    ...harnesses.map(harness => ({ id: harness.id, lastMessageAt: harness.lastMessageAt, activeAt: harness.activeAt, harness: true }))];
-  const matches = options.filter(option => option.id.startsWith(mention?.[1]?.toLowerCase() || ""));
+    ...harnesses.map(harness => ({ id: harness.id, lastMessageAt: harness.lastMessageAt, activeAt: harness.activeAt, harness: true })),
+    ...startable.flatMap(harness => modelsOf(models, harness).map(model => ({ id: harness + ":" + model, harness, model })))];
+  // "@codex g5" narrows to codex's models; "@gpt" ranks every option.
+  const matches = fuzzyRank(mention ? mention[1] + (mention[2] ?? "") : "", mention?.[2] !== undefined ? options.filter(option => option.model && option.harness === mention[1]) : options,
+    option => [option.id, option.name, HARNESS_NAMES[option.harness === true ? option.id : option.harness], option.model]);
   const picking = showPicker && matches.length > 0;
   const chosen = Math.min(activeIndex, matches.length - 1);
   const busy = disabled || posting;
 
   function focus() { document.getElementById("composer")?.focus(); }
-  function change(next) { setDraft(next); setShowPicker(/(?:^|\s)@[\w#-]*$/.test(next)); setActiveIndex(0); }
+  // The @tag being typed: [tag text, first word, second word when the first names a startable harness].
+  function mentionAt(text) {
+    const found = /(?:^|\s)@([\w#:./-]*)(?: ([\w.:/-]+))?$/.exec(text);
+    return found && (found[2] === undefined || startable.includes(found[1])) ? [found[0].replace(/^\s/, ""), found[1], found[2]] : null;
+  }
+  function change(next) { setDraft(next); setShowPicker(mentionAt(next) !== null); setActiveIndex(0); }
   function insert(option) {
-    const prefix = mention ? draft.slice(0, -mention[1].length - 1) : draft + (draft && !/\s$/.test(draft) ? " " : "");
+    const prefix = mention ? draft.slice(0, -mention[0].length) : draft + (draft && !/\s$/.test(draft) ? " " : "");
     setDraft(prefix + "@" + option.id + " ");
     setShowPicker(false);
     focus();
@@ -410,10 +425,11 @@ function Composer({ agents, harnesses, now, disabled, placeholder, onSend, quest
       {matches.map((option, i) => <button type="button" role="option" aria-selected={i === chosen} key={option.id}
         onMouseDown={event => event.preventDefault()} onClick={() => insert(option)}
         className={cn("flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm", i === chosen && "bg-accent text-accent-foreground")}>
-        <Avatar address={option.id} className="size-6 text-[9px]"/>
-        <span className="flex min-w-0 flex-1 flex-col"><span className="truncate font-mono text-xs">@{option.id}</span><SessionName agent={option}/></span>
+        <Avatar address={option.model ? option.harness : option.id} className="size-6 text-[9px]"/>
+        <span className="flex min-w-0 flex-1 flex-col"><span className="truncate font-mono text-xs">@{option.id}</span>
+          {option.model ? <span className="truncate text-xs text-foreground/80">{(HARNESS_NAMES[option.harness] || option.harness) + " · " + option.model}</span> : <SessionName agent={option}/>}</span>
         {!option.harness && <Dot online={option.online}/>}
-        <span className="shrink-0 text-xs text-muted-foreground">{option.harness ? "harness · " : ""}{seen(option, now)}</span>
+        <span className="shrink-0 text-xs text-muted-foreground">{option.model ? "new session" : (option.harness ? "harness · " : "") + seen(option, now)}</span>
       </button>)}
     </div>}
     <div onKeyDownCapture={event => {
@@ -621,6 +637,7 @@ function Console({ account }) {
     location.hash = params.toString();
   }
   const project = selected.project || data.project || "";
+  const models = useModels(project);
   const level = selected.level;
   const agent = level === "session" ? data.agents.find(item => item.id === selected.session) : undefined;
   const target = level === "session" ? selected.session : "all";
@@ -708,7 +725,7 @@ function Console({ account }) {
       </header>
       <div className="flex flex-col gap-2 px-3 empty:hidden">
         {creating && creating === project && ready && <NewSession key={project + ":" + (data.startable || []).join(",")} project={project} harnesses={data.startable || []} places={data.startPlaces}
-          agents={data.agents} disabled={!ready} start={startSession} close={() => setCreating("")} open={openAddress}/>}
+          agents={data.agents} models={models} disabled={!ready} start={startSession} close={() => setCreating("")} open={openAddress}/>}
         {agent?.wake?.status && <div className="mx-auto mt-2 flex w-full max-w-3xl flex-wrap items-center gap-2 rounded-xl border bg-muted/50 px-3 py-2 text-sm">
           Wake · {agent.wake.status}{agent.wake.detail && " · " + agent.wake.detail}
           {agent.wake.status === "failed" && !agent.online && <Button size="sm" variant="outline" disabled={working} onClick={() => action("wake", { target: selected.session }, "Wake requested")}>Retry wake</Button>}
@@ -751,7 +768,7 @@ function Console({ account }) {
         </div>
       </ChatContainerRoot>
       <div role="status" hidden={!notice} className="mx-auto w-full max-w-3xl px-4 text-center text-xs text-muted-foreground">{notice}</div>
-      {!home && !listing && <Composer key={requested} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} now={now}
+      {!home && !listing && <Composer key={requested} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} startable={data.startable} models={models} now={now}
         placeholder={placeholder} question={question} cancel={() => setQuestion("")} urgentable={!question}
         onSend={async (body, urgent) => {
           const sent = question ? await action("reply", { question, body }, "Reply sent") : await action("send", { target, body, ...(urgent ? { urgent: true } : {}) }, "Sent");

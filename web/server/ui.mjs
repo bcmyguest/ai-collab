@@ -168,13 +168,14 @@ function outcomes(events) {
   return { ends, replies, senders };
 }
 
-const MENTION = /(^|[^\w#-])@([a-z0-9-]{1,24}(?:#[a-f0-9]{16})?)(?![\w-])/g;
+const MENTION = /(^|[^\w#-])@([a-z0-9-]{1,24}(?:#[a-f0-9]{16}|:[A-Za-z0-9][A-Za-z0-9._/-]{0,119})?)(?![\w-])/g;
 
-/** Session addresses and harness names tagged with @ in a post, limited to the project's peers. */
+/** Session addresses, harness names and harness:model pairs tagged with @ in a post, limited to the project's peers. */
 export function mentionedNames(body, peers = []) {
-  const names = new Set([...String(body).matchAll(MENTION)].map(match => match[2]));
+  // A full stop after @harness:model ends the sentence, not the model name.
+  const names = new Set([...String(body).matchAll(MENTION)].map(match => match[2].replace(/\.+$/, "")));
   return [...names].filter(name => {
-    const peer = name.split("#")[0];
+    const peer = name.split(/[#:]/)[0];
     return peer !== "operator" && peer !== "all" && (!peers.length || peers.includes(peer));
   });
 }
@@ -341,6 +342,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const notes = [];
     for (const name of mentionedNames(body, cfg.peers)) {
       if (name === target) continue;
+      if (name.includes(":")) {
+        const [harness, model] = [name.slice(0, name.indexOf(":")), name.slice(name.indexOf(":") + 1)];
+        if (!startable(project).includes(harness)) notes.push("@" + name + " not available here");
+        else if (!(await models(cfg.stateDir, env, { peers: cfg.peers }))[harness]?.includes(model)) notes.push("@" + name + " unknown model");
+        else notes.push("@" + name + await startFor(cfg, body, { harness, model }));
+        continue;
+      }
       if (name.includes("#")) {
         if (sessions.some(item => item.id === name)) { await direct(name); notes.push("@" + name + " sent"); } else notes.push("@" + name + " unknown");
         continue;
@@ -353,14 +361,19 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }
       if (sessions.some(item => item.peer === name && item.id === target)) continue;
       if (!startable(project).includes(name)) { notes.push("@" + name + " not available here"); continue; }
-      const checked = checkPrompt(body);
-      if (checked.error) { notes.push("@" + name + ": " + checked.error); continue; }
-      if (Date.now() - lastStartAt < START_GAP_MS) { notes.push("@" + name + ": wait 10 seconds between starts"); continue; }
-      lastStartAt = Date.now();
-      const result = await start(cfg, { harness: name, prompt: checked.text, env, place: "folder" });
-      notes.push("@" + name + " " + (result.status === "failed" ? "start failed: " + result.detail : "starting a new session"));
+      notes.push("@" + name + await startFor(cfg, body, { harness: name }));
     }
     return notes.join(" · ");
+  }
+
+  // Starts a mention's session in the project folder, one start per START_GAP_MS; returns the note after the tag.
+  async function startFor(cfg, body, options) {
+    const checked = checkPrompt(body);
+    if (checked.error) return ": " + checked.error;
+    if (Date.now() - lastStartAt < START_GAP_MS) return ": wait 10 seconds between starts";
+    lastStartAt = Date.now();
+    const result = await start(cfg, { ...options, prompt: checked.text, env, place: "folder" });
+    return result.status === "failed" ? " start failed: " + result.detail : " starting a new session";
   }
 
   function inboxOf(project, peer) {
