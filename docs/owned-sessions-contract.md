@@ -273,4 +273,4 @@ Environment: `AI_COLLAB_RUNNER_SOCKET`, `AI_COLLAB_RUNNER_DB` (default `$AI_COLL
   - The operator can change a session's mode at runtime from the UI or CLI. An agent cannot raise its own mode; it can ask the operator.
 - **4 Approval expiry:** an unanswered owned approval is denied after `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (default 30).
 - **5 Who approves:** anyone who can post to the project topic, as today.
-- **6 Nested agents:** pending the operator; proposal below.
+- **6 Nested agents:** open; proposed: silence only the process the runner spawned, and let nested agents join as its children.
