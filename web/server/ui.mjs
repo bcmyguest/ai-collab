@@ -10,6 +10,7 @@ import { parsePhoneReply } from "../../lib/questions.mjs";
 import { disposeSession, listSessions, sessionPlace } from "../../lib/sessions.mjs";
 import { readReceipts } from "../../lib/receipts.mjs";
 import { controlSession } from "../../lib/controls.mjs";
+import { interruptSession } from "../../lib/interrupt.mjs";
 import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } from "../../lib/approvals.mjs";
 import { availableHarnesses, availablePlaces, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
 import { cleanName } from "../../lib/names.mjs";
@@ -22,9 +23,10 @@ import { fallbackName, visibleWake, waitingOn } from "../lib/session-state.js";
 import { createAuth } from "./auth.mjs";
 import { createHub } from "./hub.mjs";
 import { createPush, notice } from "./push.mjs";
+import { createDispatcher } from "./dispatch.mjs";
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "approve", "start", "models", "dispose", "team"];
+const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "approve", "start", "models", "dispose", "team", "interrupt"];
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
 const PARENT = /^[a-z0-9-]{1,24}#[a-f0-9]{16}$/;
@@ -243,7 +245,7 @@ export function assertSameOrigin(request, allowedOrigin) {
   if ((site && site !== "same-origin") || !fromUi) reject(403, "Same-origin request required");
 }
 
-export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, setMode = publishMode, env = process.env, start = startSession, models = listModels, push: notifier = null, auth = null }) {
+export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start = startSession, models = listModels, push: notifier = null, auth = null }) {
   if (!configs.length) throw new Error("No ai-collab project is configured");
   for (const item of configs) if (!item.enabled) throw new Error(item.reason);
   if (allowedOrigin && (!allowedOrigin.startsWith("https://") || new URL(allowedOrigin).origin !== allowedOrigin)) {
@@ -868,6 +870,11 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         disposeSession(cfg, target);
         return json(200, { status: "Disposed", detail: target });
       }
+      // Codex (app-server turn/interrupt) and OpenCode (its API); Claude and Cursor answer unsupported.
+      if (action === "interrupt") {
+        recipient(cfg, target, true);
+        return json(200, await interrupt(listSessions(cfg).find(item => item.id === target)));
+      }
       if (action === "compact" || action === "wake") {
         recipient(cfg, target, true);
         const session = listSessions(cfg).find(item => item.id === target);
@@ -997,6 +1004,11 @@ export function ui() {
     // Repos that auto-join after start-up appear within one refresh interval.
     setInterval(() => instance.refresh(loadProjects(process.env, { host: "operator" })), REFRESH_MS).unref();
     globalThis[INSTANCE] = instance;
+    // Pushes direct messages into Codex and OpenCode sessions; AI_COLLAB_DISPATCH=off turns it off.
+    if (process.env.AI_COLLAB_DISPATCH !== "off") {
+      const dispatcher = createDispatcher({ projects: () => loadProjects(process.env, { host: "operator" }).filter(item => item.enabled) });
+      dispatcher.start();
+    }
   }
   return globalThis[INSTANCE];
 }
