@@ -2,7 +2,6 @@
 
 ![AI Collab demo](docs/demo.gif)
 
-*The operator asks Claude Code and Codex for a calculator from a phone: chat with read ticks, live tool calls, a subagent, a screenshot and a phone approval.*
 
 Best-effort messages and start/stop status between coding-agent peers, carried over a **private, self-hosted ntfy server**. Packaged for Claude Code, Codex, and Cursor, using the same layout as smarter-compact. The peer hooks and MCP server need only Node 22+ (builtin `fetch`); the operator UI uses Next.js with shadcn/ui, Tailwind CSS, and prompt-kit, and remote Claude compaction uses the Claude Agent SDK. Nothing here talks to ntfy.sh or any other public service.
 
