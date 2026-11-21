@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Check, CircleHelp, ShieldQuestion, X } from "lucide-react";
+import { Check, CircleHelp, ShieldQuestion, SquareTerminal, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MessageContent } from "@/components/ui/message";
@@ -11,8 +11,9 @@ const CARD = "w-full max-w-full rounded-2xl border bg-card px-3.5 py-3 text-sm t
 const ENDED = {
   allowed: "Allowed from the phone", denied: "Denied from the phone", answered: "Answered from the phone",
   timeout: "Timed out: the terminal prompt took over", "afk-off": "AFK turned off: the terminal prompt took over",
-  cancelled: "Closed: answered in the terminal or the agent stopped",
+  cancelled: "Closed: answered in the terminal or the agent stopped", terminal: "Answered in the terminal",
 };
+const IN_TERMINAL = "Answer in the terminal";
 
 /** Outcome line for an approval: its end reason, "sent", or expiry; "" while it waits for an answer. */
 export function approvalOutcome(approval, now) {
@@ -72,18 +73,21 @@ export function ChoiceCard({ questions, answers, onSubmit, disabled, title }) {
 export function ApprovalCard({ approval, now, disabled, act }) {
   const outcome = approvalOutcome(approval, now);
   const open = !outcome;
+  // AFK off: the terminal prompt answers, so the card shows the request without answer buttons.
+  const terminal = approval.terminal === true;
   if (approval.questions) {
-    return <div className="flex w-full flex-col gap-1.5">
-      <ChoiceCard questions={approval.questions} answers={approval.answers} disabled={disabled || !open}
-        title={approval.harness + " asks · " + (open ? "answer to continue" : "closed")}
-        onSubmit={open ? answers => act({ id: approval.id, answers }) : undefined}/>
+    return <div className="flex w-full flex-col gap-1.5" data-terminal={terminal || undefined}>
+      <ChoiceCard questions={approval.questions} answers={approval.answers} disabled={disabled || !open || terminal}
+        title={approval.harness + " asks · " + (!open ? "closed" : terminal ? IN_TERMINAL : "answer to continue")}
+        onSubmit={open && !terminal ? answers => act({ id: approval.id, answers }) : undefined}/>
       {outcome && <p className="text-xs text-muted-foreground" data-outcome={approval.state}>{outcome}{approval.by && " · " + approval.by}</p>}
     </div>;
   }
-  return <div className={cn(CARD, "flex flex-col gap-2", open && "border-amber-500/50")} data-card="approval">
+  return <div className={cn(CARD, "flex flex-col gap-2", open && "border-amber-500/50")} data-card="approval" data-terminal={terminal || undefined}>
     <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><ShieldQuestion className="size-3.5"/>{approval.harness} asks permission · {approval.tool}</p>
     {approval.summary && <pre className="max-h-40 overflow-auto rounded-lg border bg-muted/50 px-2 py-1.5 font-mono text-xs whitespace-pre-wrap">{approval.summary}</pre>}
-    {open ? <div className="flex gap-2">
+    {open && terminal ? <p className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400"><SquareTerminal className="size-3.5"/>{IN_TERMINAL}</p>
+      : open ? <div className="flex gap-2">
       <Button size="sm" className="rounded-full" disabled={disabled} onClick={() => act({ id: approval.id, decision: "allow" })}><Check/>Allow</Button>
       <Button size="sm" variant="outline" className="rounded-full" disabled={disabled} onClick={() => act({ id: approval.id, decision: "deny" })}><X/>Deny</Button>
     </div> : <p className="text-xs text-muted-foreground" data-outcome={approval.state}>{outcome}{approval.by && " · " + approval.by}</p>}

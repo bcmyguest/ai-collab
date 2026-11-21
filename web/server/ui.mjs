@@ -120,7 +120,7 @@ function baseEntry(event) {
   const { message, id, time } = event;
   const envelope = parseEnvelope(message);
   if (envelope) {
-    if (envelope.kind === "approval") return approvalEntry(event, envelope);
+    if (envelope.kind === "approval" || envelope.kind === "approval-view") return approvalEntry(event, envelope);
     if (envelope.kind !== "msg" || typeof envelope.body !== "string") return null;
     const sender = envelope.session ? `${envelope.from}#${envelope.session}` : envelope.from;
     const to = envelope.toSession ? `${envelope.to}#${envelope.toSession}` : envelope.to;
@@ -144,7 +144,7 @@ function approvalEntry({ id, time }, e) {
   const approval = {
     id: e.id, harness: cleanText(e.harness, 10) || "other", tool: cleanText(e.tool, ACTIVITY_NAME_MAX) || "tool",
     summary: cleanText(e.summary, 300) || "", expiresAt: Number.isSafeInteger(e.expiresAt) ? e.expiresAt : 0,
-    ...(questions ? { questions } : {}),
+    ...(questions ? { questions } : {}), ...(e.kind === "approval-view" ? { terminal: true } : {}),
   };
   return { id, time, kind: "Approval", sender, from: sender, body: approval.summary, approval };
 }
@@ -311,8 +311,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       for (const event of fresh) {
         const item = baseEntry(event);
         if (item?.kind === "Approval") {
-          const { id, harness, tool, summary, questions, expiresAt } = item.approval;
-          if (ends.has(id) || replies.has(id) || (expiresAt && expiresAt < Date.now())) continue;
+          const { id, harness, tool, summary, questions, expiresAt, terminal } = item.approval;
+          // A view-only card (AFK off) is answered at the terminal, so it sends no push.
+          if (terminal || ends.has(id) || replies.has(id) || (expiresAt && expiresAt < Date.now())) continue;
           send(id, questions ? { kind: "choice", sender: item.sender, harness, text: questions[0].question, important: true }
             : { kind: "approval", sender: item.sender, harness, tool, text: summary, important: true });
         } else if (item?.kind === "Question" && !replies.has(item.question)) {
@@ -584,6 +585,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     if (typeof id !== "string" || !APPROVAL_ID.test(id)) reject(400, "Invalid approval");
     const item = project.hub.events(project.topic).map(entry).find(e => e?.kind === "Approval" && e.approval.id === id);
     if (!item) reject(404, "Unknown approval");
+    if (item.approval.terminal) reject(409, "Answer this in the terminal");
     const { ends } = outcomes(project.hub.events(project.topic));
     if (ends.has(id) || (item.approval.expiresAt && item.approval.expiresAt < Date.now())) reject(409, "This request has closed");
     return item.approval;
