@@ -81,8 +81,8 @@ jobs:
             git commit -m "chore(release): $TAG"
           fi
           git tag -a "$TAG" -m "ai-collab $TAG"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
-          git push origin "$TAG"
+          # One atomic push: a separate tag push right after the branch push was rejected with "missing necessary objects".
+          git push --atomic origin "HEAD:${GITHUB_REF_NAME}" "refs/tags/$TAG"
 
       - name: Dispatch release
         if: ${{ !inputs.dry_run }}
