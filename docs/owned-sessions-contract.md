@@ -265,7 +265,7 @@ Environment: `AI_COLLAB_RUNNER_SOCKET`, `AI_COLLAB_RUNNER_DB` (default `$AI_COLL
 ## Operator decisions (2026-11-21)
 
 - **DBOS:** keep the DBOS-shaped `node:sqlite` layer now; move to DBOS later.
-- **1 Broadcast delivery:** open; re-asked.
+- **1 Broadcast delivery:** owned sessions receive every project-chat broadcast and every @mention, like terminal sessions. Each delivery to an idle owned session starts a turn.
 - **2 Cut runs:** every cut run is marked interrupted, on every adapter. No adapter resumes a cut run.
 - **3 Default modes:** each harness's auto mode where it has one, else the mode a user's own session uses:
   - Claude `auto`; Codex `auto` (on-request plus auto review); OpenCode `supervised` (its default asks go to the phone); Cursor `supervised` in a worktree.
@@ -273,4 +273,4 @@ Environment: `AI_COLLAB_RUNNER_SOCKET`, `AI_COLLAB_RUNNER_DB` (default `$AI_COLL
   - The operator can change a session's mode at runtime from the UI or CLI. An agent cannot raise its own mode; it can ask the operator.
 - **4 Approval expiry:** an unanswered owned approval is denied after `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (default 30).
 - **5 Who approves:** anyone who can post to the project topic, as today.
-- **6 Nested agents:** open; proposed: silence only the process the runner spawned, and let nested agents join as its children.
+- **6 Nested agents:** only the process the runner spawned stands down; agents started inside it join AI Collab as its children.
