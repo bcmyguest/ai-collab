@@ -180,3 +180,36 @@ export function working(rows, now) {
   for (const row of rows) latest.set(row.agent, row);
   return [...latest.values()].filter(row => row.type === "tool_call" && !row.result && now - row.time * 1000 < WORKING_MS).map(row => row.agent);
 }
+
+// Harness wrappers that arrive as prompt text: Claude Code's background-task notices and subagent hand-backs, pasted blocks.
+const TASK_NOTICE = /^<task-notification>([\s\S]*?)(?:<\/task-notification>)?\s*$/;
+const AGENT_MESSAGE = /^<agent-message from="([^"]*)">([\s\S]*?)(?:<\/agent-message>)?\s*$/;
+const REPORT_START = /The report follows:\s*\n/;
+const PASTED = /<pasted_content[^>]*>\n?([\s\S]*?)\n?<\/pasted_content[^>]*>/g;
+const WRAPPED = /^<([a-z][\w-]*)(?:\s[^>]*)?>\n?([\s\S]*?)\n?<\/\1>\s*$/i;
+
+// Removes the indent every non-empty line shares.
+function dedent(text) {
+  const lines = text.split("\n");
+  const indent = Math.min(...lines.filter(line => line.trim()).map(line => /^ */.exec(line)[0].length));
+  return Number.isFinite(indent) && indent > 0 ? lines.map(line => line.slice(indent)).join("\n") : text;
+}
+
+/** Prompt or agent text made readable: harness XML wrappers become a label and plain markdown; other text is unchanged. */
+export function readableText(raw) {
+  const text = String(raw || "").trim();
+  const notice = TASK_NOTICE.exec(text);
+  if (notice) {
+    const pick = name => new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(notice[1])?.[1]?.trim() || "";
+    return { label: "Task notification", text: [pick("summary") || "A background task changed state", pick("result")].filter(Boolean).join("\n\n") };
+  }
+  const message = AGENT_MESSAGE.exec(text);
+  if (message) {
+    const body = message[2];
+    const start = REPORT_START.exec(body);
+    return { label: "Subagent report", text: dedent(start ? body.slice(start.index + start[0].length) : body).trim() };
+  }
+  if (text.includes("<pasted_content")) return { label: "", text: text.replace(PASTED, (_, inner) => "```text\n" + inner.replace(/```/g, "ˋˋˋ") + "\n```") };
+  const wrapped = WRAPPED.exec(text);
+  return wrapped ? { label: "", text: wrapped[2].trim() } : { label: "", text: String(raw || "") };
+}

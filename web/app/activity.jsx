@@ -4,7 +4,7 @@ import { useState } from "react";
 import { CodeBlockCode } from "@/components/ui/code-block";
 import { MessageContent } from "@/components/ui/message";
 import { cn } from "@/lib/utils";
-import { inputBlocks, resultLanguage, runState, subagentLabel, summarize, working } from "@/lib/activity-rows";
+import { inputBlocks, readableText, resultLanguage, runState, subagentLabel, summarize, working } from "@/lib/activity-rows";
 import { ChoiceCard, askedQuestions } from "./cards";
 
 const PREVIEW_LINES = 3;
@@ -94,10 +94,10 @@ function ToolCall({ item }) {
 function Body({ item }) {
   switch (item.type) {
     case "prompt":
-      return <MessageContent markdown className="bubble ml-auto max-w-[90%] rounded-2xl rounded-tr-md border border-primary/25 bg-primary/10 px-3 py-1.5 text-sm leading-relaxed text-foreground [overflow-wrap:anywhere]">{item.input || ""}</MessageContent>;
+      return <MessageContent markdown className="bubble ml-auto max-w-[90%] rounded-2xl rounded-tr-md border border-primary/25 bg-primary/10 px-3 py-1.5 text-sm leading-relaxed text-foreground [overflow-wrap:anywhere]">{readableText(item.input).text}</MessageContent>;
     case "text":
       // Lighter than a chat bubble: the agent's own narration, not a message to the operator.
-      return <MessageContent markdown className="bubble max-w-full rounded-2xl rounded-tl-md border border-dashed bg-muted/30 px-3 py-1.5 text-sm leading-relaxed text-foreground/90 [overflow-wrap:anywhere]">{item.output || ""}</MessageContent>;
+      return <MessageContent markdown className="bubble max-w-full rounded-2xl rounded-tl-md border border-dashed bg-muted/30 px-3 py-1.5 text-sm leading-relaxed text-foreground/90 [overflow-wrap:anywhere]">{readableText(item.output).text}</MessageContent>;
     case "tool_call":
       return <ToolCall item={item}/>;
     case "tool_result":
@@ -154,7 +154,7 @@ export function ActivityRow({ row, when, agent, now, goRun }) {
     <div className="flex max-w-full items-center gap-1.5 text-xs text-muted-foreground">
       {agent?.(row.agent, row.id)}
       {row.type === "prompt" && <span className="font-medium text-foreground">Prompt</span>}
-      {row.type === "text" && <span className="font-medium text-foreground">{row.tool || "Agent"}</span>}
+      {row.type === "text" && <span className="font-medium text-foreground">{readableText(row.output).label || row.tool || "Agent"}</span>}
       {row.time > 0 && <time dateTime={new Date(row.time * 1000).toISOString()}>{when(row.time * 1000)}</time>}
     </div>
     <Body item={row}/>
