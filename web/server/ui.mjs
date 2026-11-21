@@ -531,12 +531,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     }
     const online = project.recipients.get(item.id);
     const read = project.reads.get(item.id) || new Set();
-    const since = targets.filter(agent => online.has(agent.id) || agent.online || agent.seenAt >= at).map(agent => agent.id);
-    if (session) return read.has(item.to) ? "read" : since.length ? "delivered" : "sent";
+    // Only a hook's read receipt moves a tick: being online says nothing about whether the agent has the message.
+    if (session) return read.has(item.to) ? "read" : "sent";
     // A broadcast waits only for sessions online at send time; without any, for the sessions that read it.
     const waiting = online.size ? [...online] : [...read];
     if (waiting.length && waiting.every(id => read.has(id))) return "read";
-    return since.length || read.size ? "delivered" : "sent";
+    return read.size ? "delivered" : "sent";
   }
 
   function entries(project, name, keep) {

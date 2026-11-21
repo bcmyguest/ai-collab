@@ -46,7 +46,7 @@ const STALE_AFTER_MS = 20_000;
 const TICK_MS = 1000;
 const AFK_MODES = [["off", "Off", Bell], ["on", "On", Coffee], ["quiet", "Quiet", BellOff]];
 const HARNESS_NAMES = { claude: "Claude Code", codex: "Codex", cursor: "Cursor", opencode: "OpenCode" };
-const RECEIPTS = { sent: ["Sent", Check], delivered: ["Delivered", CheckCheck], read: ["Read", CheckCheck] };
+const RECEIPTS = { sent: ["Sent", Check], delivered: ["Read by some sessions", CheckCheck], read: ["Read", CheckCheck] };
 const clock = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 // Fired on a 401 or a closed stream; the sign-in gate asks /api/auth/me again.
 const AUTH_CHECK = "ai-collab:auth-check";
@@ -268,7 +268,7 @@ function ZoomControls({ data, selected, now, navigate, compact }) {
   </div>;
 }
 
-// WhatsApp-style ticks on the operator's own messages: ✓ sent, ✓✓ delivered, primary ✓✓ read.
+// WhatsApp-style ticks on the operator's own messages: ✓ sent, ✓✓ read by some (broadcast), primary ✓✓ read.
 function Ticks({ state }) {
   const [label, Icon] = RECEIPTS[state] || [];
   if (!Icon) return null;

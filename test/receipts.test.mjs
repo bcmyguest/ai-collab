@@ -98,7 +98,7 @@ test("the CLI inbox publishes a read receipt", async (t) => {
   assert.deepEqual(receipts(fake).map((r) => [r.from, r.ids]), [["alice", ["m00000001"]]]);
 });
 
-test("UI ticks go sent, delivered, read for a direct message and a broadcast", async (t) => {
+test("UI ticks: a direct message goes sent then read; a broadcast sent, delivered (some read), read", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
   const peer = (name, session) => ({ ...loadConfig(peerEnv(fake, { peer: name })), session });
@@ -130,13 +130,12 @@ test("UI ticks go sent, delivered, read for a direct message and a broadcast", a
   assert.equal((await post({ target: `carol#${carol.session}`, body: "dm" })).status, 201);
   await states(direct, "dm", "sent");
   await publishStatus(carol, { event: "start", harness: "claude" });
-  await states(direct, "dm", "delivered");
   await deliver(carol);
   await states(direct, "dm", "read");
 
   const all = sse(ui.events(new Request(`${base}/api/events`, { signal: ctrl.signal })));
   assert.equal((await post({ target: "all", body: "everyone" })).status, 201);
-  await states(all, "everyone", "delivered");
+  await states(all, "everyone", "sent");
   await deliver(bob);
   await new Promise((resolve) => setTimeout(resolve, 200));
   const fresh = (await sse(ui.events(new Request(`${base}/api/events`, { signal: ctrl.signal }))).next()).value;
