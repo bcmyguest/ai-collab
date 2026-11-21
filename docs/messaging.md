@@ -74,7 +74,7 @@ Six MCP tools (plus the options below) follow the agent-messaging interface of t
 | `history` | Lists the last `limit` (default 30, max 100) project-channel messages, oldest first; read-only, no cursor or receipts. | `channelHistory` | `ai-collab history [--limit N]` |
 | `set_identity` | Stores `name`, `activity` (one line, at most 200 characters) and `tags` (at most 10, e.g. `pr:12`, `role:reviewer`) in this session's registry entry. | session registry | `ai-collab identity [--name N] [--activity T] [--tag T]...` |
 
-A `respond` answer is a msg envelope with `replyTo` and an optional `state` field; clients that predate it show it as an ordinary message. Tool results label each message with `answer_with`. The tools and the hooks share one inbox cursor per session, so a message read through `wait` or `inbox` is not delivered again by a hook. The 45-second cap keeps a call under Codex's default MCP tool timeout; call `wait` again to keep listening.
+A `respond` answer is a msg envelope with `replyTo` and an optional `state` field; clients that predate it show it as an ordinary message. Tool results label each message with `answer_with`. The tools and the hooks share one inbox cursor per session, so a message read through `wait` or `inbox` is not delivered again by a hook. The 45-second cap keeps a call under Codex's default MCP tool timeout; call `wait` again to keep listening. `ai-collab wait reply:<id> [N]` reads the inbox history for a reply, done or declined, to that message id. It neither claims nor marks messages, so a reply a hook already claimed is still found; it exits 1 when none arrives.
 
 ## Waking idle sessions
 
@@ -92,12 +92,27 @@ The dispatcher polls every 5 s, only for online Claude (with an open gate), Code
 
 ### Claude messaging socket
 
-For a direct message to a Claude session, the dispatcher writes the message to the session's messaging socket, so it appears in the session's transcript as a user turn and lands mid-turn when urgent. The path works only when all of these hold:
+For a direct message to a Claude session, the dispatcher writes the message to the session's messaging socket and then confirms it in the transcript. A confirmed message appears as a user turn, and an urgent one lands mid-turn. The socket is used only when every check below passes; otherwise the message stays unread for the hooks and the waiter.
 
-- `~/.claude/sessions/<pid>.json` (under `CLAUDE_CONFIG_DIR` when set) has a `sessionId` equal to the registry entry's, and a `messagingSocketPath` that is an absolute path to an existing unix socket. Claude writes that field only while its cross-session messaging gate is on.
-- `settings.json` in the same config dir sets `crossSessionInbound` to `"accept"`. `hold` and a missing key keep messages on the hooks. Managed or repo settings that force `hold` are not read: the write succeeds, Claude holds the message for review, and the message is marked delivered without reaching the transcript. The gate reads only the user's settings file.
+Checks before the write (`claudeTarget` in `lib/claude-socket.mjs`):
 
-The send writes newline-delimited JSON: an `auth` frame with the token from `<pid>.<hash>.key` (when that file exists), then a `user` frame whose content is the `<cross-session-message from-name="…">` envelope. `urgent` sets `priority: "next"` (lands after the current step); other messages use `"later"` (queued behind the current turn). The body is the same text the hooks print (`formatInbox`): sender, message id, the `respond` hint and the untrusted-body warning. The socket is written with a 5 s timeout; a successful write marks the message delivered, so the session's hooks skip it. Claude's protocol is undocumented, and Pulsar's dist uses the same frames (`~/.local/share/pulsar/current/dist/cli-sqgan6a2.js`, `deliver` and `claudeEnvelope`). A write does not prove Claude displayed the message. Claude's own handling of the frames has not been observed against a live session.
+- The registry entry is `claude` with a `pid` and `pidStart`, and `/proc/<pid>/stat` still shows that start tick (no PID reuse).
+- `<config dir>/sessions/<pid>.json` (config dir: `CLAUDE_CONFIG_DIR`, else `~/.claude`) is a regular file owned by this user, not a symlink, with the same `sessionId` and, when present, `pid`. Its `messagingSocketPath` is an absolute path to a unix socket owned by this user, not a symlink.
+- Exactly one `<pid>.*.key` token file exists and is owned by this user. Zero or several key files, or a read error, leave the message for the hooks: the write never goes unauthenticated.
+- The gate is open. The user's `settings.json` must set `crossSessionInbound` to `"accept"`. A project `.claude/settings.json` or `settings.local.json` in the session's cwd, and `/etc/claude-code/managed-settings.json` or any `managed-settings.d/*.json`, must not set it to anything else (`hold`, `refuse`, another value, or an unparsable file). A closed or unknown gate leaves the message for the hooks. Server-managed settings and a `--settings` flag cannot be read from disk, so a session that uses either is not covered by this check.
+- The cwd is absolute and at most 200 characters, so the transcript path is known.
+
+The write: newline-delimited JSON with an `auth` frame (the token), then a `user` frame whose content is the `<cross-session-message from-name="…">` envelope. `urgent` sets `priority: "next"` (lands after the current step); other messages use `"later"` (queued behind the current turn). The body is the text the hooks print (`formatInbox`): sender, message id, the `respond` hint and the untrusted-body warning. The socket write has a 5 s timeout.
+
+The confirmation: the dispatcher polls the last 4 MB of `<config dir>/projects/<cwd with non-alphanumerics as "-">/<sessionId>.jsonl` for up to 5 s (`AI_COLLAB_CLAUDE_CONFIRM_MS` overrides it) until a line holds `cross-session-message` and `id=<message id> ` for every message in the batch. Only then is the message marked delivered, so the hooks skip it. Unconfirmed messages are released and stay unread for the hooks.
+
+What Claude does with a frame, from its binary (`claude.exe` 2.1.330 `strings`): a message can be held (`crossSessionInbound` is `hold`, or a managed or repo setting holds it), refused for a permission-mode mismatch (`mode-mismatch`, `no-mode-asserted`: this session bypasses prompts and the sender sends no mode attestation, so these messages are held), rate-limited ("Too many messages to this session just now"), or dropped when the queue is full. Each of these leaves no confirmed line in the transcript, so the message stays with the hooks. A message that is confirmed but later dropped from a queue is not detected.
+
+Claude's socket protocol is undocumented. Pulsar's dist sends the same frames (`~/.local/share/pulsar/current/dist/cli-sqgan6a2.js`, `claudeEnvelope` and the `deliver` method). The transcript line format and the envelope were read from the binary, not observed in a live session.
+
+Delivery is one owner per message: the dispatcher reserves each message under the inbox lock before the push, and the waiter's claim skips reserved ids. A reservation expires after 60 s if the process dies. A failed push or confirmation releases the reservation.
+
+A socket delivery with `expect_reply` is redelivered like any other push (see below). A held or unconfirmed copy is never recorded as pushed, so it is not redelivered from the dispatcher's ledger.
 
 ### Priority
 
