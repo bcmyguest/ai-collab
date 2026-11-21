@@ -261,3 +261,16 @@ Environment: `AI_COLLAB_RUNNER_SOCKET`, `AI_COLLAB_RUNNER_DB` (default `$AI_COLL
 4. **Approval expiry.** Owned approvals wait without a deadline (`expiresAt` = 12 h, for display only). The alternative denies after N minutes.
 5. **Same-harness children** of an owned session stay silent (see Hook stand-down). The alternative sets `AI_COLLAB_OWNED` to the address and lets hooks without a session match report.
 6. **Runner trust.** Anyone who can write the broadcast topic can answer an owned approval, as today. Requiring Allow / Deny through the authenticated control socket would close that.
+
+## Operator decisions (2026-11-21)
+
+- **DBOS:** keep the DBOS-shaped `node:sqlite` layer now; move to DBOS later.
+- **1 Broadcast delivery:** open; re-asked.
+- **2 Cut runs:** every cut run is marked interrupted, on every adapter. No adapter resumes a cut run.
+- **3 Default modes:** each harness's auto mode where it has one, else the mode a user's own session uses:
+  - Claude `auto`; Codex `auto` (on-request plus auto review); OpenCode `supervised` (its default asks go to the phone); Cursor `supervised` in a worktree.
+  - Inside OpenShell, `full-access` is the default for every harness.
+  - The operator can change a session's mode at runtime from the UI or CLI. An agent cannot raise its own mode; it can ask the operator.
+- **4 Approval expiry:** an unanswered owned approval is denied after `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (default 30).
+- **5 Who approves:** anyone who can post to the project topic, as today.
+- **6 Nested agents:** pending the operator; proposal below.
