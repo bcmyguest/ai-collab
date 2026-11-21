@@ -61,12 +61,12 @@ The hook announces the current mode at session start and whenever it changes.
 | Mode | Progress posts | Questions | At Stop |
 |---|---|---|---|
 | `off` (default) | none | as needed | deliver waiting messages, then stop |
-| `on` | one line per milestone: `send_to_all` with `progress: true` | `ask_question`; `important: true` when blocked | wait up to 10 min for operator messages; hold an important question until answered |
+| `on` | one line per milestone: `send_to_all` with `progress: true` | `ask_question`; `important: true` when blocked | after `ask_question` or `wait_for_operator`, wait up to 10 min for operator messages; otherwise stop at once. Hold an important question until answered |
 | `quiet` | none (dropped) | blocking questions only, `important: true` | hold an important question until answered |
 
 In mode `on` or `quiet`, a permission prompt (and Claude's `AskUserQuestion`) is sent to the operator's phone first; without an answer in 9 minutes the normal terminal prompt takes over. Any client that can write the ntfy topic can approve, the same trust as answers.
 
-When the Stop hook says a question is still unanswered, call `wait_for_answer` once, then end your turn; the hook keeps waiting.
+To wait for the operator's next instruction in mode `on`, call the MCP `wait_for_operator` tool, then end your turn. When the Stop hook says a question is still unanswered, call `wait_for_answer` once, then end your turn; the hook keeps waiting.
 
 ## Rules
 

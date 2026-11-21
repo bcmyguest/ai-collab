@@ -5,7 +5,7 @@ import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig } from "../lib/config.mjs";
 import { claimInbox, sendMessage } from "../lib/inbox.mjs";
 import { decideStop } from "../lib/stop.mjs";
-import { askQuestion, openQuestions } from "../lib/questions.mjs";
+import { askQuestion, openQuestions, requestWait, waitRequestedAt } from "../lib/questions.mjs";
 
 const SESSION = "aabbccddeeff0123";
 const ALL = "ai-collab-demo--to--all";
@@ -64,9 +64,10 @@ test("loop guard: at most stopCap consecutive message continuations, then a forc
   assert.match(next.text, /body="three"/);
 });
 
-test("afk on: Stop waits for an operator message and continues when one arrives", async (t) => {
+test("afk on: after wait_for_operator, Stop waits for an operator message and continues when one arrives", async (t) => {
   const { fake, cfg, operator, clock, deps } = await setup(t);
   await setMode(fake, cfg, "on");
+  await requestWait(cfg);
   clock.events.push({ at: clock.t + 180_000, run: () => sendMessage(operator, "all", "Next: run the migration") });
   const r = await decideStop(cfg, { host: "claude", input: { stop_hook_active: false }, ...deps });
   assert.equal(r.why, "messages");
@@ -77,6 +78,7 @@ test("afk on: Stop waits for an operator message and continues when one arrives"
 test("afk on: the wait is bounded by the configured time, then the agent stops", async (t) => {
   const { fake, cfg, clock, deps } = await setup(t, { AI_COLLAB_AFK_WAIT_S: "120" });
   await setMode(fake, cfg, "on");
+  await requestWait(cfg);
   assert.deepEqual(await decideStop(cfg, { host: "cursor", input: { status: "completed", loop_count: 0 }, ...deps }), { action: "stop" });
   assert.equal(clock.slept, 120_000);
 });
@@ -84,12 +86,42 @@ test("afk on: the wait is bounded by the configured time, then the agent stops",
 test("afk on: a wait longer than one hook slice continues the turn and resumes the same deadline", async (t) => {
   const { fake, cfg, clock, deps } = await setup(t, { AI_COLLAB_AFK_WAIT_S: "900" });
   await setMode(fake, cfg, "on");
+  await requestWait(cfg);
   const first = await decideStop(cfg, { host: "claude", input: { stop_hook_active: false }, ...deps, sliceMaxS: 600 });
   assert.equal(first.why, "afk-wait");
   assert.match(first.text, /End your turn now/);
   assert.equal(clock.slept, 600_000);
   assert.deepEqual(await decideStop(cfg, { host: "claude", input: { stop_hook_active: true }, ...deps, sliceMaxS: 600 }), { action: "stop" });
   assert.equal(clock.slept, 900_000, "the second call waits only the remaining 300 s");
+});
+
+test("afk on: a Stop the agent did not ask to wait ends at once", async (t) => {
+  const { fake, cfg, clock, deps } = await setup(t);
+  await setMode(fake, cfg, "on");
+  assert.deepEqual(await decideStop(cfg, { host: "claude", input: { stop_hook_active: false }, ...deps }), { action: "stop" });
+  assert.equal(clock.slept, 0);
+});
+
+test("afk on: the stop consumes the wait request, so the next Stop ends at once", async (t) => {
+  const { fake, cfg, clock, deps } = await setup(t, { AI_COLLAB_AFK_WAIT_S: "60" });
+  await setMode(fake, cfg, "on");
+  await requestWait(cfg);
+  assert.deepEqual(await decideStop(cfg, { host: "claude", input: { stop_hook_active: false }, ...deps }), { action: "stop" });
+  assert.equal(clock.slept, 60_000);
+  assert.equal(waitRequestedAt(cfg), 0);
+  assert.deepEqual(await decideStop(cfg, { host: "claude", input: { stop_hook_active: false }, ...deps }), { action: "stop" });
+  assert.equal(clock.slept, 60_000, "no second wait");
+});
+
+test("afk on: a plain ask_question arms the wait and its answer continues the agent", async (t) => {
+  const { fake, cfg, clock, deps } = await setup(t);
+  await setMode(fake, cfg, "on");
+  const q = await askQuestion(cfg, "Which colour?", { seconds: 0 });
+  clock.events.push({ at: clock.t + 90_000, run: () => fake.inject(ALL, `reply ${q.id} blue`) });
+  const r = await decideStop(cfg, { host: "claude", input: { stop_hook_active: false }, ...deps });
+  assert.equal(r.why, "answer");
+  assert.match(r.text, /answer="blue"/);
+  assert.equal(waitRequestedAt(cfg), 0);
 });
 
 test("afk on: an important question holds the session past the AFK wait until it is answered", async (t) => {
@@ -126,6 +158,7 @@ test("quiet: no idle wait, but an important question still holds; off ignores it
 test("the real wait holds one streaming subscription and wakes on the first event instead of polling", { timeout: 10000 }, async (t) => {
   const { fake, cfg, operator } = await setup(t, { AI_COLLAB_AFK_WAIT_S: "30" });
   await setMode(fake, cfg, "on");
+  await requestWait(cfg);
   const polls = fake.state.polls.length;
   const started = Date.now();
   setTimeout(() => sendMessage(operator, "all", "wake up"), 300);

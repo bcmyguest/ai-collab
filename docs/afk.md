@@ -5,7 +5,7 @@
 | Mode | Progress | Questions | At Stop |
 |---|---|---|---|
 | `off` (default) | none | as needed | deliver waiting messages, then stop |
-| `on` (operator away) | one line per milestone via `send_to_all` with `progress: true` | phone via `ask_question`; `important: true` when blocked | wait up to `AI_COLLAB_AFK_WAIT_S` (10 min) for operator messages; hold an important question until it is answered |
+| `on` (operator away) | one line per milestone via `send_to_all` with `progress: true` | phone via `ask_question`; `important: true` when blocked | after `ask_question` or `wait_for_operator` in that turn, wait up to `AI_COLLAB_AFK_WAIT_S` (10 min) for operator messages or the answer; otherwise stop at once. Hold an important question until it is answered |
 | `quiet` | dropped: `send_to_all` refuses `progress: true` | blocking questions only, `important: true` | hold an important question until it is answered; no idle wait |
 
 In mode `on` or `quiet`, permission prompts also go to the phone; see [Approvals](approvals.md#phone-approvals).
@@ -30,6 +30,8 @@ The mode travels as an envelope on each project's broadcast topic:
 ```
 
 The highest `ts` wins; no envelope means `off`. Agents never see it as chat. Each session records the mode when it reads its inbox, and its next hook injects a one-time note with the new rules. SessionStart fetches the last 12 hours of the broadcast topic (the ntfy cache duration) and injects the current mode. A mode set more than 12 hours ago is gone from the cache; new sessions then start in `off`. `lib/mode.mjs` exports `publishMode(cfgs, mode)`, `currentMode(cfg)`, and `operatorConfigs(env)` for the UI server.
+
+The agent asks for the AFK wait: `ask_question` (any question) or the `wait_for_operator` MCP tool records a wait request for the session, and the next Stop waits. The Stop clears the request when it ends or delivers a message or answer, so each wait needs a new request.
 
 An important question survives hook and tool timeouts: the Stop hook waits one 600-second slice for the answer, then continues the agent with an instruction to call `wait_for_answer` once and end its turn, and waits again. That costs one model turn per slice. An AFK wait longer than one slice costs one turn per extra slice; on Claude Code, raise `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` for more than 8 slices in a row.
 

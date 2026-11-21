@@ -50,7 +50,7 @@ Cursor shell commands use the conversation identity exported by Cursor, so `ai-c
 | `AI_COLLAB_TIMEOUT_MS` | `2000` | Per-request timeout (200-15000). |
 | `AI_COLLAB_POLL_INTERVAL_MS` | `10000` | Minimum gap between inbox reads for the throttled events. |
 | `AI_COLLAB_STATE_DIR` | `$XDG_STATE_HOME/ai-collab` or `~/.local/state/ai-collab` | Cursors, dedup ids, and the lock directory. |
-| `AI_COLLAB_AFK_WAIT_S` | `600` (or `afkWaitSeconds` in `projects.json`) | How long the Stop hook waits for operator messages in AFK mode `on` (0-86400). |
+| `AI_COLLAB_AFK_WAIT_S` | `600` (or `afkWaitSeconds` in `projects.json`) | How long the Stop hook waits for operator messages in AFK mode `on`, after the agent asks with `ask_question` or `wait_for_operator` (0-86400). |
 | `AI_COLLAB_STOP_CAP` | `5` | Consecutive Stop continuations for messages before the agent is let stop (0-50). |
 | `AI_COLLAB_STOP_POLL_MS` | `5000` | First retry delay when the Stop hook's ntfy stream fails; doubles to 60 s. |
 | `AI_COLLAB_IMPORTANT_MAX_S` | `86400` | Oldest important question the Stop hook still holds for. |

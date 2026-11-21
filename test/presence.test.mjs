@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, NTFY_MESSAGE_MAX_BYTES, sendMessage } from "../lib/inbox.mjs";
 import { operatorPrompt, WAKE_PROMPT } from "../lib/mode.mjs";
-import { askQuestion } from "../lib/questions.mjs";
+import { askQuestion, requestWait } from "../lib/questions.mjs";
 import { lastOperatorPromptAt, recordSession } from "../lib/sessions.mjs";
 import { decideStop } from "../lib/stop.mjs";
 import { peerEnv } from "./helpers/env.mjs";
@@ -149,6 +149,7 @@ test("AFK on holds the Stop hook even right after the operator typed in that ses
   const cfg = loadConfig(peerEnv(fake, { peer: "alice", AI_COLLAB_SESSION: sessionLabel(id) }));
   setMode(fake, "on");
   await claimInbox(cfg);
+  await requestWait(cfg);
   await recordSession(cfg, { id, cwd: "/tmp", harness: "claude", event: "UserPromptSubmit", operatorPromptAt: Date.now() - 1000 });
   assert.ok(lastOperatorPromptAt(cfg) > 0);
   const { clock, deps } = clockFor();
@@ -163,6 +164,7 @@ test("a session waiting in AFK releases when the mode turns off elsewhere", asyn
   const cfg = loadConfig(peerEnv(fake, { peer: "alice", AI_COLLAB_SESSION: "aabbccddeeff0999" }));
   setMode(fake, "on");
   await claimInbox(cfg);
+  await requestWait(cfg);
   const { clock, deps } = clockFor();
   clock.events.push({ at: clock.t + 60_000, run: async () => setMode(fake, "off") });
   assert.deepEqual(await decideStop(cfg, { host: "claude", input: { stop_hook_active: false }, ...deps }), { action: "stop" });
