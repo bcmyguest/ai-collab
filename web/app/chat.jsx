@@ -235,7 +235,7 @@ function Sidebar({ data, selected, now, navigate, newSession }) {
       <ul className="flex flex-col gap-1">
         {!home && data.agents.map(agent => <li key={agent.id}>
           <button type="button" aria-label={agent.waiting ? agent.id + ", waiting on you" : agent.id} title={agent.parent ? agent.id + " · started by " + agent.parent : agent.id} aria-current={selected.level === "session" && selected.session === agent.id ? "page" : undefined}
-            onClick={() => navigate({ project: current, level: "session", harness: agent.peer, session: agent.id })}
+            onClick={() => navigate({ project: current, level: "session", harness: agent.peer, session: agent.id, ...(selected.level === "session" && selected.session ? { tab: selected.tab } : {}) })}
             className={cn("flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-sm transition-colors hover:bg-sidebar-accent",
               selected.level === "session" && selected.session === agent.id && "bg-sidebar-accent")}>
             <Avatar address={agent.id} className="size-6 text-[9px]"/>
