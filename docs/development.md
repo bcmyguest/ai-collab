@@ -16,7 +16,7 @@ Tests use an in-process fake ntfy server (`test/helpers/fake-ntfy.mjs`) and need
 
 ### Schedules
 
-The runner runs the commands in `~/.config/ai-collab/schedules.json` on a timer: a JSON array of `{name, everyMinutes, cwd, command, timeoutSec}`. Each tick is a durable workflow that runs at most once; a start after downtime runs only the latest due tick. Keys, the skip and cut rules, and the control routes are in [Scheduled workflows](owned-sessions-contract.md#scheduled-workflows). `GET /v1/schedules` and `POST /v1/schedules/:name/run` on the control socket show and trigger them.
+The runner runs the commands in `~/.config/ai-collab/schedules.json` on a timer: a JSON array of `{name, everyMinutes, cwd, command, timeoutSec}`. Each tick is a durable workflow whose id starts at most once while `runner.db` is intact; a start after downtime runs only the latest due tick. An invalid entry is reported in `configError` and skipped. Keys, the skip and cut rules, and the control routes are in [Scheduled workflows](owned-sessions-contract.md#scheduled-workflows). `GET /v1/schedules` and `POST /v1/schedules/:name/run` on the control socket show and trigger them.
 
 Migrate the feature-request PM tick from the `ai-collab-pm.timer` systemd user timer. The runner must run first: its unit is a template and not installed.
 
@@ -24,8 +24,8 @@ Migrate the feature-request PM tick from the `ai-collab-pm.timer` systemd user t
 2. Write `~/.config/ai-collab/schedules.json` with one entry named `pm`. Set `everyMinutes` to the timer's interval, and copy `cwd` and `command` from the service's `WorkingDirectory` and `ExecStart`. Set `timeoutSec` to at least the service's `TimeoutStartSec`.
 3. Disable the timer before the schedule runs, so the PM tick does not run twice: `systemctl --user disable --now ai-collab-pm.timer`.
 4. Restart the runner to load the file: `systemctl --user restart ai-collab-runner.service`.
-5. Check the schedule: `curl --unix-socket "$XDG_RUNTIME_DIR/ai-collab/runner.sock" http://runner/v1/schedules`.
-6. Run a tick now: `curl -X POST --unix-socket "$XDG_RUNTIME_DIR/ai-collab/runner.sock" http://runner/v1/schedules/pm/run`. Check that `last.status` is `SUCCESS` and `last.output.ok` is `true`.
+5. Check the schedule: `curl --unix-socket "$XDG_RUNTIME_DIR/ai-collab/runner.sock" http://runner/v1/schedules`. `configError` must be empty.
+6. Run a tick now: `curl -X POST --unix-socket "$XDG_RUNTIME_DIR/ai-collab/runner.sock" "http://runner/v1/schedules/pm/run?caller=migration"`. Check that `last.status` is `SUCCESS` and `last.output.ok` is `true`.
 7. After a clean tick, remove the timer and service units and run `systemctl --user daemon-reload`.
 
 Rollback: remove the `pm` entry, then re-enable the timer with `systemctl --user enable --now ai-collab-pm.timer`.

@@ -1,14 +1,18 @@
 // DBOS-shaped durable execution on node:sqlite: workflows replay checkpointed steps and messages after a restart.
+import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
-export const WORKFLOW_STATUSES = ["PENDING", "SUCCESS", "ERROR", "CANCELLED"];
+export const WORKFLOW_STATUSES = ["PENDING", "SUCCESS", "ERROR", "CANCELLED", "SKIPPED"];
 const MAX_TIMER_MS = 2 ** 31 - 1;
+// A missed tick this close to the next boundary waits for that boundary.
+const GRACE_MS = 60_000;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS workflows (id TEXT PRIMARY KEY, name TEXT NOT NULL, input TEXT NOT NULL, status TEXT NOT NULL,
   output TEXT, error TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS workflows_name ON workflows (name, created_at);
 CREATE TABLE IF NOT EXISTS steps (workflow_id TEXT NOT NULL, seq INTEGER NOT NULL, name TEXT NOT NULL, status TEXT NOT NULL,
   output TEXT, error TEXT, started_at INTEGER NOT NULL, finished_at INTEGER, PRIMARY KEY (workflow_id, seq));
 CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, workflow_id TEXT NOT NULL, topic TEXT NOT NULL,
@@ -30,13 +34,16 @@ export function openDurable(file, { now = Date.now } = {}) {
   db.exec(SCHEMA);
   const q = {
     wfInsert: db.prepare("INSERT INTO workflows (id, name, input, status, created_at, updated_at) VALUES (?, ?, ?, 'PENDING', ?, ?)"),
-    wfRecord: db.prepare("INSERT INTO workflows (id, name, input, status, output, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"),
+    wfInsertIgnore: db.prepare("INSERT OR IGNORE INTO workflows (id, name, input, status, created_at, updated_at) VALUES (?, ?, ?, 'PENDING', ?, ?)"),
+    wfRecord: db.prepare("INSERT OR IGNORE INTO workflows (id, name, input, status, output, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"),
     wfGet: db.prepare("SELECT * FROM workflows WHERE id = ?"),
     wfLatestNamed: db.prepare("SELECT * FROM workflows WHERE name = ? ORDER BY created_at DESC, id DESC LIMIT 1"),
+    wfLastActual: db.prepare("SELECT input FROM workflows WHERE name = ? AND status != 'SKIPPED' AND id NOT LIKE '%@manual@%' ORDER BY created_at DESC LIMIT 1"),
     wfPending: db.prepare("SELECT id, name, input FROM workflows WHERE status = 'PENDING' ORDER BY created_at"),
     wfEnd: db.prepare("UPDATE workflows SET status = ?, output = ?, error = ?, updated_at = ? WHERE id = ?"),
     stepGet: db.prepare("SELECT * FROM steps WHERE workflow_id = ? AND seq = ?"),
     stepStart: db.prepare("INSERT INTO steps (workflow_id, seq, name, status, started_at) VALUES (?, ?, ?, 'started', ?)"),
+    stepStartIgnore: db.prepare("INSERT OR IGNORE INTO steps (workflow_id, seq, name, status, started_at) VALUES (?, ?, ?, 'started', ?)"),
     stepEnd: db.prepare("UPDATE steps SET status = ?, output = ?, error = ?, finished_at = ? WHERE workflow_id = ? AND seq = ?"),
     stepDone: db.prepare("INSERT INTO steps (workflow_id, seq, name, status, output, started_at, finished_at) VALUES (?, ?, ?, 'done', ?, ?, ?)"),
     msgInsert: db.prepare("INSERT OR IGNORE INTO messages (workflow_id, topic, value, dedupe, created_at) VALUES (?, ?, ?, ?, ?)"),
@@ -81,8 +88,10 @@ export function openDurable(file, { now = Date.now } = {}) {
   }
 
   // The context a workflow function receives; seq numbers its steps and receives in call order.
-  function context(id, input, ctrl) {
+  // ownStep: the first step's row was written with this run, so it is not a cut.
+  function context(id, input, ctrl, ownStep = false) {
     let seq = 0;
+    let own = ownStep;
     const signal = AbortSignal.any([closing.signal, ctrl.signal]);
     const recorded = (n) => q.stepGet.get(id, n);
     return {
@@ -91,10 +100,12 @@ export function openDurable(file, { now = Date.now } = {}) {
       async step(name, fn, { onCut } = {}) {
         const n = seq++;
         const row = recorded(n);
+        const adopted = own && row?.status === "started";
+        own = false;
         if (row && row.name !== name) throw new NonDeterminismError(`step ${n} of ${id} was ${row.name}, now ${name}`);
         if (row?.status === "done") return parse(row.output);
         if (row?.status === "error") throw new Error(row.error);
-        if (row && onCut) {
+        if (row && onCut && !adopted) {
           const value = await onCut();
           q.stepEnd.run("done", json(value), null, now(), id, n);
           return value;
@@ -134,13 +145,13 @@ export function openDurable(file, { now = Date.now } = {}) {
     };
   }
 
-  function run(id, name, input) {
+  function run(id, name, input, { ownStep = false } = {}) {
     const fn = registry.get(name);
     if (!fn) throw new Error(`no workflow named ${name}`);
     const ctrl = new AbortController();
     const promise = (async () => {
       try {
-        const output = await fn(context(id, input, ctrl), input);
+        const output = await fn(context(id, input, ctrl, ownStep), input);
         q.wfEnd.run(ctrl.signal.reason === "cancel" ? "CANCELLED" : "SUCCESS", json(output), null, now(), id);
         return output;
       } catch (error) {
@@ -160,26 +171,44 @@ export function openDurable(file, { now = Date.now } = {}) {
   const tickId = (name, at) => `${name}@${new Date(at).toISOString()}`;
   // Interval ticks align to the epoch, so a tick's id is the same on every boot.
   const dueAt = (everyMs, at) => Math.floor(at / everyMs) * everyMs;
+  const overlapping = (name) => [...running.values()].some((r) => r.name === tickName(name));
 
-  // Starts the tick for scheduledTime once; a tick whose predecessor still runs is recorded as skipped.
-  function fire(s, scheduledTime, actualTime) {
-    if (closing.signal.aborted) return "closed";
+  // Why a scheduled tick at scheduledTime is skipped for an edited interval, or null.
+  function intervalReason(s, scheduledTime) {
+    const last = q.wfLastActual.get(tickName(s.name));
+    if (!last) return null;
+    const previous = parse(last.input).scheduledTime;
+    if (scheduledTime - previous >= s.everyMs) return null;
+    return `interval changed: previous tick ${new Date(previous).toISOString()} is under ${s.everyMs} ms earlier`;
+  }
+
+  // Starts a tick once and returns {id, status}; a tick that cannot start is recorded SKIPPED with its reason.
+  function fire(s, scheduledTime, actualTime, { manual = false } = {}) {
+    if (closing.signal.aborted) return { id: null, status: "closed" };
     const name = tickName(s.name);
-    const id = tickId(s.name, scheduledTime);
-    if (q.wfGet.get(id)) return "recorded";
-    const input = { scheduledTime, actualTime };
-    if ([...running.values()].some((r) => r.name === name)) {
-      q.wfRecord.run(id, name, json(input), "SUCCESS", json({ skipped: "previous run still going" }), now(), now());
-      return "skipped";
+    const id = manual ? `${s.name}@manual@${randomUUID()}` : tickId(s.name, scheduledTime);
+    if (!manual && q.wfGet.get(id)) return { id, status: "recorded" };
+    const input = { scheduledTime, actualTime, ...(manual ? { manual: true } : {}) };
+    const reason = (!manual && intervalReason(s, scheduledTime)) || (overlapping(s.name) && "previous run still going");
+    if (reason) {
+      q.wfRecord.run(id, name, json(input), "SKIPPED", json({ skipped: reason }), now(), now());
+      return { id, status: "skipped" };
     }
-    q.wfInsert.run(id, name, json(input), now(), now());
-    run(id, name, input).catch(() => {});
-    return "started";
+    // The workflow row and its first step commit together, so a crash leaves either nothing or a started step.
+    const inserted = tx(() => {
+      if (!q.wfInsertIgnore.run(id, name, json(input), now(), now()).changes) return false;
+      if (s.firstStep) q.stepStartIgnore.run(id, 0, s.firstStep, now());
+      return true;
+    });
+    if (!inserted) return { id, status: "recorded" };
+    run(id, name, input, { ownStep: Boolean(s.firstStep) }).catch(() => {});
+    return { id, status: "started" };
   }
 
   // Sleeps until the next tick boundary, then fires the latest due tick and re-arms.
   function arm(s) {
     if (closing.signal.aborted) return;
+    clearTimeout(s.timer);
     const at = now();
     const wait = dueAt(s.everyMs, at) + s.everyMs - at;
     s.timer = setTimeout(() => {
@@ -194,29 +223,31 @@ export function openDurable(file, { now = Date.now } = {}) {
     register(name, fn) { registry.set(name, fn); },
     /**
      * DBOS-style scheduled workflow: fn(scheduledTime, actualTime, wf) runs once per everyMs tick as workflow
-     * `<name>@<scheduledTime ISO>`. A start after downtime runs only the latest due tick, never the missed ones.
+     * `<name>@<scheduledTime ISO>`. firstStep names a step the tick records with its row, before fn runs.
      */
-    scheduled(name, { everyMs } = {}, fn) {
+    scheduled(name, { everyMs, firstStep = null } = {}, fn) {
       if (!Number.isSafeInteger(everyMs) || everyMs < 1) throw new Error(`schedule ${name}: everyMs must be a positive integer`);
       if (typeof fn !== "function") throw new Error(`schedule ${name}: fn must be a function`);
       if (schedules.has(name)) throw new Error(`schedule ${name} is already registered`);
       registry.set(tickName(name), (wf, input) => fn(new Date(input.scheduledTime), new Date(input.actualTime), wf));
-      schedules.set(name, { name, everyMs, timer: null });
+      schedules.set(name, { name, everyMs, firstStep, timer: null });
     },
-    /** Fires each schedule's latest due tick, then arms its timer. */
+    /** Fires each schedule's latest due tick unless it is within grace of the next boundary, then arms its timer. */
     startSchedules() {
       for (const s of schedules.values()) {
-        fire(s, dueAt(s.everyMs, now()), now());
+        const at = now();
+        const due = dueAt(s.everyMs, at);
+        if (due + s.everyMs - at >= Math.min(GRACE_MS, Math.floor(s.everyMs / 2))) fire(s, due, at);
         arm(s);
       }
     },
     hasSchedule: (name) => schedules.has(name),
-    /** Starts a tick now, outside the timer; resolves {id, status: "started" | "skipped"}. */
+    /** Starts a manual tick now under <name>@manual@<uuid>; resolves {id, status: "started" | "skipped"}. */
     runScheduled(name) {
       const s = schedules.get(name);
       if (!s) throw new Error(`no schedule named ${name}`);
       const at = now();
-      return { id: tickId(name, at), status: fire(s, at, at) };
+      return fire(s, at, at, { manual: true });
     },
     /** Each schedule with its next tick (ISO) and its latest tick row. */
     schedules() {
