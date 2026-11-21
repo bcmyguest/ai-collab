@@ -437,7 +437,8 @@ function Composer({ agents, harnesses, startable = [], models = {}, now, disable
       if (event.key === "Escape") setShowPicker(false);
       else if (event.key === "ArrowDown") setActiveIndex((chosen + 1) % matches.length);
       else if (event.key === "ArrowUp") setActiveIndex((chosen + matches.length - 1) % matches.length);
-      else if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") insert(matches[chosen]);
+      // In "@codex fix…" the second word may be prose: Enter sends, Tab or a click picks a model.
+      else if ((event.key === "Enter" && !event.shiftKey && mention?.[2] === undefined) || event.key === "Tab") insert(matches[chosen]);
       else return;
       event.preventDefault(); event.stopPropagation();
     }}>
