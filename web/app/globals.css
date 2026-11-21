@@ -32,6 +32,7 @@
   --color-claude: var(--claude);
   --color-codex: var(--codex);
   --color-cursor: var(--cursor);
+  --color-opencode: var(--opencode);
   --color-agent: var(--agent);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -69,6 +70,7 @@
   --claude: oklch(0.62 0.15 45);
   --codex: oklch(0.58 0.13 160);
   --cursor: oklch(0.56 0.16 250);
+  --opencode: oklch(0.5 0.02 260);
   --agent: oklch(0.55 0.12 320);
 }
 
@@ -98,6 +100,7 @@
   --claude: oklch(0.72 0.14 50);
   --codex: oklch(0.72 0.13 160);
   --cursor: oklch(0.7 0.13 250);
+  --opencode: oklch(0.75 0.02 260);
   --agent: oklch(0.7 0.12 320);
 }
 
