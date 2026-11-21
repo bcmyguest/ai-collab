@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EVENT_TYPES, PERMISSION_TABLE, DEFAULT_PERMISSION, HARNESSES, eventProblem, permissionSettings } from "../runner/contract.mjs";
+import { EVENT_TYPES, PERMISSION_TABLE, DEFAULT_PERMISSION, HARNESSES, approvalTimeoutMs, defaultPermission, eventProblem, permissionSettings } from "../runner/contract.mjs";
 import { activityFor, ownedApprovalMessage } from "../runner/publish.mjs";
 
 test("every harness has a default permission mode present in its table", () => {
@@ -52,6 +52,22 @@ test("an owned approval card is the hook approval envelope plus owned:true", () 
   const card = JSON.parse(ownedApprovalMessage(cfg, "codex", { id: "abcdefabcdef", tool: "Bash", summary: "ls" }, { now: 0 }));
   assert.deepEqual(card, {
     v: 1, kind: "approval", from: "codex", session: "0123456789abcdef", harness: "codex", id: "abcdefabcdef", tool: "Bash", summary: "ls",
-    expiresAt: 12 * 3600 * 1000, ts: new Date(0).toISOString(), owned: true,
+    expiresAt: 30 * 60 * 1000, ts: new Date(0).toISOString(), owned: true,
   });
+});
+
+test("default modes follow the operator decisions; OpenShell defaults every harness to full-access", () => {
+  assert.deepEqual(DEFAULT_PERMISSION, { claude: "auto", codex: "auto", cursor: "supervised", opencode: "supervised" });
+  for (const harness of HARNESSES) {
+    assert.equal(defaultPermission(harness, "worktree"), DEFAULT_PERMISSION[harness]);
+    assert.equal(defaultPermission(harness, "openshell"), "full-access");
+  }
+});
+
+test("the approval timeout is AI_COLLAB_APPROVAL_TIMEOUT_MIN minutes, default 30, at most 12 h", () => {
+  assert.equal(approvalTimeoutMs({}), 30 * 60_000);
+  assert.equal(approvalTimeoutMs({ AI_COLLAB_APPROVAL_TIMEOUT_MIN: "5" }), 5 * 60_000);
+  assert.equal(approvalTimeoutMs({ AI_COLLAB_APPROVAL_TIMEOUT_MIN: "0" }), 30 * 60_000);
+  assert.equal(approvalTimeoutMs({ AI_COLLAB_APPROVAL_TIMEOUT_MIN: "x" }), 30 * 60_000);
+  assert.equal(approvalTimeoutMs({ AI_COLLAB_APPROVAL_TIMEOUT_MIN: "9999" }), 720 * 60_000);
 });

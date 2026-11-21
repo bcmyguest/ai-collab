@@ -39,6 +39,7 @@ export const runnerClient = (options = {}) => ({
   get: (address) => runnerRequest("GET", sessionPath(address), undefined, options),
   send: (address, text, { steer = false } = {}) => runnerRequest("POST", `${sessionPath(address)}/send`, { text, steer }, options),
   interrupt: (address) => runnerRequest("POST", `${sessionPath(address)}/interrupt`, {}, options),
+  setMode: (address, mode) => runnerRequest("POST", `${sessionPath(address)}/mode`, { mode }, options),
   approve: (address, id, decision) => runnerRequest("POST", `${sessionPath(address)}/approvals/${encodeURIComponent(id)}`, decision, options),
   context: (address) => runnerRequest("GET", `${sessionPath(address)}/context`, undefined, options),
   close: (address) => runnerRequest("DELETE", sessionPath(address), undefined, options),

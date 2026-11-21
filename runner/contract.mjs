@@ -40,7 +40,19 @@ export const PERMISSION_TABLE = {
   },
 };
 
-export const DEFAULT_PERMISSION = { claude: "accept-edits", codex: "auto", cursor: "supervised", opencode: "accept-edits" };
+export const DEFAULT_PERMISSION = { claude: "auto", codex: "auto", cursor: "supervised", opencode: "supervised" };
+export const OPENSHELL_PERMISSION = "full-access";
+export const APPROVAL_TIMEOUT_MIN = 30;
+const APPROVAL_TIMEOUT_MAX_MIN = 12 * 60;
+
+/** The mode a session starts in when the caller names none: full-access in OpenShell, else the harness default. */
+export const defaultPermission = (harness, place = "folder") => (place === "openshell" ? OPENSHELL_PERMISSION : DEFAULT_PERMISSION[harness]);
+
+/** Milliseconds an owned approval waits before the runner denies it: AI_COLLAB_APPROVAL_TIMEOUT_MIN (default 30, at most 12 h, the ntfy cache window). */
+export function approvalTimeoutMs(env = process.env) {
+  const minutes = Number(env.AI_COLLAB_APPROVAL_TIMEOUT_MIN);
+  return (Number.isFinite(minutes) && minutes > 0 ? Math.min(minutes, APPROVAL_TIMEOUT_MAX_MIN) : APPROVAL_TIMEOUT_MIN) * 60_000;
+}
 
 /** The settings a harness gets for a mode, or an error string when the pair is not allowed. */
 export function permissionSettings(harness, mode, place = "folder") {

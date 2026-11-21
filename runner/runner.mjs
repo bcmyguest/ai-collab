@@ -6,14 +6,14 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, sessionLabel } from "../lib/config.mjs";
 import { parseEnvelope } from "../lib/inbox.mjs";
-import { parsePhoneReply } from "../lib/questions.mjs";
+import { parsePhoneReply, parseQuestionText } from "../lib/questions.mjs";
 import { replyDecision, APPROVAL_ID } from "../lib/approvals.mjs";
 import { formatInbox } from "../lib/format.mjs";
 import { streamEvents } from "../lib/ntfy.mjs";
 import { recordSession } from "../lib/sessions.mjs";
 import { childEnv, checkPrompt, findExecutable, projectRoot, worktreeNames } from "../lib/start.mjs";
-import { OWNED_ENV, readOwned, writeOwned } from "../lib/owned.mjs";
-import { DEFAULT_PERMISSION, PERMISSION_MODES, PLACES, eventProblem, permissionSettings } from "./contract.mjs";
+import { readOwned, writeOwned } from "../lib/owned.mjs";
+import { PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, permissionSettings } from "./contract.mjs";
 import { publishApproval, publishApprovalEnd, publishEnded, publishEvent, publishReceipts } from "./publish.mjs";
 
 export const START_TIMEOUT_MS = 60_000;
@@ -53,7 +53,7 @@ function view(s) {
 }
 
 /** Creates the runner over project configs, a Map harness → Adapter and a durable log (runner/durable.mjs). */
-export function createRunner({ projects, adapters, durable, env = process.env, git = runGit, now = Date.now, startGapMs = START_GAP_MS, watch = true, log = () => {} }) {
+export function createRunner({ projects, adapters, durable, env = process.env, git = runGit, now = Date.now, startGapMs = START_GAP_MS, approvalMs = approvalTimeoutMs(env), watch = true, log = () => {} }) {
   const configs = new Map(projects.map((cfg) => [cfg.project, cfg]));
   const sessions = new Map();
   const claims = new Map();
@@ -63,7 +63,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
 
   const sessionCfg = (project, harness, label) => ({ ...configs.get(project), peer: harness, session: label });
   const adapterOf = (harness) => adapters.get(harness) || fail(400, `No ${harness} adapter is loaded`);
-  const ownedEnv = (harness) => ({ ...childEnv(env), [OWNED_ENV]: harness });
+  const ownedEnv = () => childEnv(env);
   const find = (address) => sessions.get(address) || fail(404, "Unknown owned session");
 
   function save(s) {
@@ -102,7 +102,11 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         r.approvals.push(card);
         s.pending.set(id, { ...card, questions: e.questions });
         save(s);
-        enqueuePublish(s, () => publishApproval(s.cfg, r.harness, { ...card, questions: e.questions }).catch((error) => log(`approval publish failed: ${error.message}`)));
+        // An unanswered card is denied after approvalMs.
+        const timer = setTimeout(() => respond(r.address, id, { decision: "deny" }).catch((error) => log(`approval timeout failed: ${error.message}`)), approvalMs);
+        timer.unref();
+        s.timers.set(id, timer);
+        enqueuePublish(s, () => publishApproval(s.cfg, r.harness, { ...card, questions: e.questions }, approvalMs).catch((error) => log(`approval publish failed: ${error.message}`)));
         return;
       }
       case "INTERRUPT_RESOLVED": {
@@ -118,6 +122,8 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     if (!s.record.approvals.some((a) => a.id === id)) return;
     s.record.approvals = s.record.approvals.filter((a) => a.id !== id);
     s.pending.delete(id);
+    clearTimeout(s.timers.get(id));
+    s.timers.delete(id);
     save(s);
     enqueuePublish(s, () => publishApprovalEnd(s.cfg, id, reason).catch(() => {}));
   }
@@ -135,7 +141,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   function runtime(wf, record, holder) {
     let wakeAll = () => {};
     const s = {
-      record, cfg: sessionCfg(record.project, record.harness, record.label), live: holder.live || null, pending: new Map(),
+      record, cfg: sessionCfg(record.project, record.harness, record.label), live: holder.live || null, pending: new Map(), timers: new Map(),
       publishing: Promise.resolve(), finished: new Map(), signal: wf.signal,
       wake: () => wakeAll(),
       changed: () => new Promise((resolve) => { wakeAll = resolve; }),
@@ -146,22 +152,21 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     return s;
   }
 
-  // The live handle, resuming the native session when this execution has none (after a restart).
+  // The live handle, resuming the native session for the next input when this execution has none (after a restart).
   async function liveHandle(s) {
     if (s.live) return s.live;
     if (s.record.status === "ended") fail(409, "The owned session has ended");
     const adapter = adapterOf(s.record.harness);
     if (adapter.capabilities.resume === "none") fail(409, `${s.record.harness} sessions cannot resume`);
-    s.live = await adapter.resume(s.record, contextFor({ s }, s.record.harness, s.signal), ownedEnv(s.record.harness));
+    s.live = await adapter.resume(s.record, contextFor({ s }, s.record.harness, s.signal), ownedEnv());
     save(s);
     return s.live;
   }
 
-  // Resolves when runId ends; a live handle that reports another or no active run counts as ended.
+  // Resolves when runId ends.
   async function waitRun(s, runId) {
     for (;;) {
       if (s.finished.has(runId)) return s.finished.get(runId);
-      if (s.live?.activeRun && s.live.activeRun() !== runId) return { outcome: "success", recovered: true };
       if (s.signal.aborted) throw s.signal.reason;
       await Promise.race([s.changed(), new Promise((_, reject) => s.signal.addEventListener("abort", () => reject(s.signal.reason), { once: true }))]);
     }
@@ -209,11 +214,10 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   async function sessionWorkflow(wf, input) {
     const { project, harness, place, permissionMode, model } = input;
     const adapter = adapterOf(harness);
-    const live = adapter.capabilities.resume === "live";
     const holder = { s: null, live: null };
     const cwd = await wf.step("place", () => placeCwd(project, harness, place));
     const opened = await wf.step("open", async () => {
-      const options = { project, cwd, place, permissionMode, permission: permissionSettings(harness, permissionMode, place).settings, env: ownedEnv(harness), ...(model ? { model } : {}) };
+      const options = { project, cwd, place, permissionMode, permission: permissionSettings(harness, permissionMode, place).settings, env: ownedEnv(), ...(model ? { model } : {}) };
       holder.live = await adapter.open(options, contextFor(holder, harness, wf.signal));
       return { nativeId: holder.live.nativeId };
     }, { onCut: () => ({ failed: "the runner stopped while the session opened" }) });
@@ -258,10 +262,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         }
       }, { onCut: () => cutRun(s, null, "runner restarted before the harness accepted the input") });
       if (!sent.runId) continue;
-      await wf.step("run.wait", async () => {
-        if (live) await liveHandle(s);
-        return waitRun(s, sent.runId);
-      }, live ? {} : { onCut: () => cutRun(s, sent.runId, "runner restarted") });
+      await wf.step("run.wait", () => waitRun(s, sent.runId), { onCut: () => cutRun(s, sent.runId, "runner restarted") });
     }
     return wf.step("close", () => endSession(s, "closed by the operator"));
   }
@@ -273,7 +274,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     if (!configs.has(project)) fail(400, "Unknown project");
     const adapter = adapterOf(harness);
     if (!PLACES.includes(place)) fail(400, "Unknown start place");
-    const mode = permissionMode ?? DEFAULT_PERMISSION[harness];
+    const mode = permissionMode ?? defaultPermission(harness, place);
     if (!PERMISSION_MODES.includes(mode) || !adapter.capabilities.permissionModes.includes(mode)) fail(400, `${harness} does not support permission mode ${mode}`);
     const permission = permissionSettings(harness, mode, place);
     if (permission.error) fail(400, permission.error);
@@ -327,6 +328,24 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     if (s.record.status !== "running") return { status: "idle" };
     await (await liveHandle(s)).interrupt();
     return { status: "interrupting" };
+  }
+
+  /** Changes an owned session's permission mode; reached only through the control socket, never through ntfy or MCP. */
+  async function setMode(address, mode) {
+    const s = find(address);
+    const r = s.record;
+    if (r.status === "ended") fail(409, "The owned session has ended");
+    if (!PERMISSION_MODES.includes(mode) || !adapterOf(r.harness).capabilities.permissionModes.includes(mode)) fail(400, `${r.harness} does not support permission mode ${mode}`);
+    const permission = permissionSettings(r.harness, mode, r.place);
+    if (permission.error) fail(400, permission.error);
+    const handle = await liveHandle(s);
+    if (!handle.setPermissionMode) fail(409, `${r.harness} cannot change its permission mode while open`);
+    await handle.setPermissionMode(mode);
+    const was = r.permissionMode;
+    r.permissionMode = mode;
+    save(s);
+    await enqueuePublish(s, () => publishEvent(s.cfg, r.harness, { type: "CUSTOM", name: "notice", value: `permission mode ${was} → ${mode}` }));
+    return { status: "changed", permissionMode: mode };
   }
 
   /** Answers an approval card: decision allow|deny, or answers for a choice. */
@@ -383,16 +402,44 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       }
       return;
     }
+    const broadcast = topic === broadcastTopic(cfg.project);
     const m = parseEnvelope(ev.message || "");
-    if (m?.kind !== "msg" || typeof m.body !== "string" || !isValidName(m.from) || typeof m.toSession !== "string" || !SESSION_LABEL.test(m.toSession)) return;
-    const s = sessions.get(`${m.to}#${m.toSession}`);
-    if (!s || s.record.project !== cfg.project || s.record.status === "ended" || m.session === s.record.label) return;
-    const from = typeof m.session === "string" && SESSION_LABEL.test(m.session) ? `${m.from}#${m.session}` : m.from;
-    const text = formatInbox([{
-      id: ev.id, from, to: s.record.address, ts: typeof m.ts === "string" ? m.ts : "", body: m.body,
-      ...(m.operatorThread === true && m.from === "operator" ? { operatorThread: true } : {}), ...(m.urgent === true ? { urgent: true } : {}),
-    }], { session: s.record.label });
-    await send(s.record.address, { text, steer: m.urgent === true, messageIds: [ev.id], dedupe: `ntfy:${ev.id}` }).catch((error) => log(`delivery failed: ${error.message}`));
+    if (!m && broadcast) return deliverPlain(cfg, ev);
+    if (m?.kind !== "msg" || typeof m.body !== "string" || !isValidName(m.from)) return;
+    const sender = typeof m.session === "string" && SESSION_LABEL.test(m.session) ? m.session : "";
+    const item = (s) => ({
+      id: ev.id, from: sender ? `${m.from}#${sender}` : m.from, to: s.record.address, ts: typeof m.ts === "string" ? m.ts : "", body: m.body,
+      ...(m.operatorThread === true && m.from === "operator" ? { operatorThread: true } : {}),
+      ...(m.from === "operator" && broadcast ? { operatorBroadcast: true } : {}),
+      ...(m.urgent === true ? { urgent: true } : {}),
+      ...(m.from === "operator" && typeof m.mentionedIn === "string" ? { mentionedIn: m.mentionedIn } : {}),
+    });
+    if (typeof m.toSession === "string") {
+      // A direct message or @mention for one owned session.
+      if (!SESSION_LABEL.test(m.toSession)) return;
+      const s = sessions.get(`${m.to}#${m.toSession}`);
+      if (s) await deliver(cfg, s, item(s), m.urgent === true, m.from, sender);
+    } else if (broadcast && m.to === "all") {
+      // A project-chat broadcast reaches every owned session of the project.
+      for (const s of sessions.values()) await deliver(cfg, s, item(s), m.urgent === true, m.from, sender);
+    }
+  }
+
+  // Raw text the operator typed in the project chat (not a phone reply, not a question) reaches every owned session.
+  async function deliverPlain(cfg, ev) {
+    const text = (ev.message || "").trim();
+    if (!text || parseQuestionText(text)) return;
+    for (const s of sessions.values()) {
+      await deliver(cfg, s, { id: ev.id, from: "ntfy", to: "all", ts: "", body: text.slice(0, TEXT_MAX), operatorBroadcast: true }, false, "ntfy", "");
+    }
+  }
+
+  // Queues one inbox item as the session's next input; skips other projects, ended sessions and the session's own messages.
+  async function deliver(cfg, s, message, urgent, from, sender) {
+    if (s.record.project !== cfg.project || s.record.status === "ended") return;
+    if (from === s.record.harness && (!sender || sender === s.record.label)) return;
+    const text = formatInbox([message], { session: s.record.label });
+    await send(s.record.address, { text, steer: urgent, messageIds: [message.id], dedupe: `ntfy:${message.id}:${s.record.label}` }).catch((error) => log(`delivery failed: ${error.message}`));
   }
 
   // Streams the broadcast topic and each loaded harness's inbox from the stored cursor, reconnecting with backoff.
@@ -415,11 +462,13 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     }
   }
 
-  /** Stops watching, aborts workflows where they wait (open steps resume or cut at the next boot), closes handles. */
+  /** Stops watching, aborts workflows where they wait (open steps are cut at the next boot), closes handles. */
   async function stop() {
     watchers.abort();
     await durable.close();
     for (const s of sessions.values()) {
+      for (const timer of s.timers.values()) clearTimeout(timer);
+      s.timers.clear();
       await s.live?.close().catch(() => {});
       s.live = null;
       await s.publishing;
@@ -432,7 +481,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   }
 
   return {
-    start, send, interrupt, respond, close, boot, stop, harnesses,
+    start, send, interrupt, respond, setMode, close, boot, stop, harnesses,
     list: () => [...sessions.values()].map(view),
     get: (address) => view(find(address)),
     models: (harness) => adapterOf(harness).listModels(env),

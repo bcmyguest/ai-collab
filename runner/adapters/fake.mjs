@@ -7,8 +7,8 @@ export function createFakeAdapter({ harness = "codex", capabilities = {}, openEr
   const calls = [];
   let runs = 0;
 
-  function makeHandle(nativeId, ctx, active = null) {
-    let running = active;
+  function makeHandle(nativeId, ctx) {
+    let running = null;
     const steered = [];
 
     async function run(runId, input, settled) {
@@ -57,7 +57,7 @@ export function createFakeAdapter({ harness = "codex", capabilities = {}, openEr
         calls.push({ op: "respond", nativeId, interruptId, decision });
         if (running?.interruptId === interruptId) running.release(decision);
       },
-      activeRun: () => running?.runId ?? null,
+      async setPermissionMode(mode) { calls.push({ op: "setPermissionMode", nativeId, mode }); },
       async contextUsage() { return { tokens: 1234, window: 200000 }; },
       resumeData: () => ({ fake: true }),
       async close() {
@@ -70,8 +70,6 @@ export function createFakeAdapter({ harness = "codex", capabilities = {}, openEr
   const adapter = {
     harness,
     calls,
-    // Run ids a live fake keeps "running" across a restart, by native id.
-    survivors: new Map(),
     capabilities: { steer: true, images: false, resume: "transcript", permissionModes: PERMISSION_MODES, ...capabilities },
     async available() { return { ok: true }; },
     async open(options, ctx) {
@@ -81,11 +79,7 @@ export function createFakeAdapter({ harness = "codex", capabilities = {}, openEr
     },
     async resume(record, ctx) {
       calls.push({ op: "resume", nativeId: record.nativeId, resume: record.resume });
-      const runId = adapter.survivors.get(record.nativeId);
-      const handle = makeHandle(record.nativeId, ctx, runId ? { runId, release: () => {} } : null);
-      // A surviving run finishes shortly after the runner reattaches.
-      if (runId) setImmediate(() => { ctx.emit({ type: "TEXT_MESSAGE_END", messageId: `m-${runId}`, text: "finished while the runner was away" }); ctx.emit({ type: "RUN_FINISHED", runId, outcome: "success" }); });
-      return handle;
+      return makeHandle(record.nativeId, ctx);
     },
     async listModels() { return [{ id: "fake-1", default: true }]; },
     async listCommands(cwd) { return [{ name: "/fake", description: `in ${cwd}` }]; },

@@ -79,7 +79,7 @@ test("start opens a session, claims the registry, and publishes prompt, text and
     assert.equal(record.status, "idle");
     assert.equal(record.permissionMode, "auto");
     assert.equal(adapter.calls[0].options.permission.approvalsReviewer, "auto_review");
-    assert.equal(adapter.calls[0].options.env.AI_COLLAB_OWNED, "codex");
+    assert.equal(adapter.calls[0].options.env.AI_COLLAB_OWNED, undefined);
     const listed = listSessions({ ...ctx.cfg, peers: [] }).find((s) => s.id === started.session);
     assert.equal(listed.online, true);
     const status = envelopes(fake, "ai-collab-demo--status").filter((e) => e.session === label).map((e) => e.event);
@@ -90,7 +90,7 @@ test("start opens a session, claims the registry, and publishes prompt, text and
   }
 });
 
-test("hooks stand down for an owned session and for a runner-spawned process", async () => {
+test("hooks stand down for the owned session only; an agent started inside it reports as its child", async () => {
   const fake = await startFakeNtfy();
   const ctx = setup(fake);
   const runner = makeRunner(ctx, createFakeAdapter({ harness: "codex" }));
@@ -110,11 +110,13 @@ test("hooks stand down for an owned session and for a runner-spawned process", a
     const before = rows(fake).length;
     assert.equal(await hook(nativeId), "{}");
     assert.equal(rows(fake).length, before);
-    assert.equal(await hook("terminal-x", { AI_COLLAB_OWNED: "codex" }), "{}");
-    assert.equal(rows(fake).length, before);
+    await hook("nested-x", { AI_COLLAB_PARENT: `codex#${sessionLabel(nativeId)}` });
+    const afterNested = rows(fake).length;
+    assert.ok(afterNested > before, "a same-harness agent inside the owned session publishes");
     await hook("terminal-y");
-    assert.ok(rows(fake).length > before, "a terminal session still publishes");
-    assert.equal(standsDown(ctx.cfg, { host: "claude", label: sessionLabel("terminal-y"), env: { AI_COLLAB_OWNED: "codex" } }), false);
+    assert.ok(rows(fake).length > afterNested, "a terminal session still publishes");
+    assert.equal(standsDown(ctx.cfg, { label: sessionLabel("terminal-y") }), false);
+    assert.equal(standsDown(ctx.cfg, { label: sessionLabel(nativeId) }), true);
   } finally {
     await runner.stop();
     await fake.close();
@@ -141,7 +143,7 @@ test("an approval becomes an owned card; a phone reply allows it and closes the 
     assert.deepEqual([end.id, end.reason], [card.id, "allowed"]);
     await until(() => rows(fake).some((r) => r.type === "tool_result" && r.output === "ran rm -rf build"), "tool result");
     assert.equal(adapter.calls.find((c) => c.op === "respond").decision.behavior, "allow");
-    assert.equal(readOwned(ctx.cfg, sessionLabel(nativeId)).permissionMode, "accept-edits");
+    assert.equal(readOwned(ctx.cfg, sessionLabel(nativeId)).permissionMode, "auto");
   } finally {
     await runner.stop();
     await fake.close();
@@ -167,14 +169,14 @@ test("input during a run queues durably; interrupt ends the run and the queue ru
     assert.deepEqual(await runner.close(session), { status: "ended" });
     await runner.settle();
     assert.ok(rows(fake).some((r) => r.type === "stop" && r.input === "session ended · closed by the operator"));
-    assert.equal(standsDown(ctx.cfg, { host: "codex", label: session.split("#")[1], env: {} }), false);
+    assert.equal(standsDown(ctx.cfg, { label: session.split("#")[1] }), false);
   } finally {
     await runner.stop();
     await fake.close();
   }
 });
 
-test("a restart cuts a transcript adapter's run as interrupted, never resends it, and resumes on the next input", async () => {
+test("a restart cuts a run as interrupted, never resends it, and resumes the session on the next input", async () => {
   const fake = await startFakeNtfy();
   const ctx = setup(fake);
   const first = makeRunner(ctx, createFakeAdapter({ harness: "claude" }));
@@ -202,29 +204,6 @@ test("a restart cuts a transcript adapter's run as interrupted, never resends it
   }
 });
 
-test("a restart reattaches a live adapter's run and waits for it to finish", async () => {
-  const fake = await startFakeNtfy();
-  const ctx = setup(fake);
-  const first = makeRunner(ctx, createFakeAdapter({ harness: "codex", capabilities: { resume: "live" } }));
-  await first.boot();
-  const { session, nativeId } = await first.start({ project: "demo", harness: "codex", prompt: "hang on" });
-  const runId = await until(() => first.get(session).run?.id, "run id").finally(() => first.stop());
-
-  const adapter = createFakeAdapter({ harness: "codex", capabilities: { resume: "live" } });
-  adapter.survivors.set(nativeId, runId);
-  const second = makeRunner(ctx, adapter);
-  try {
-    await second.boot();
-    await until(() => rows(fake).some((r) => r.output === "finished while the runner was away"), "reattached run");
-    await until(() => second.get(session).status === "idle", "idle");
-    assert.equal(second.get(session).cut, undefined);
-    assert.deepEqual(adapter.calls.map((c) => c.op), ["resume"]);
-  } finally {
-    await second.stop();
-    await fake.close();
-  }
-});
-
 test("an operator message to an owned session becomes its next run and gets a read receipt", async () => {
   const fake = await startFakeNtfy();
   const ctx = setup(fake);
@@ -245,6 +224,78 @@ test("an operator message to an owned session becomes its next run and gets a re
     const receipt = await until(() => envelopes(fake, "ai-collab-demo--receipts").find((e) => e.ids.includes(ev.id)), "receipt");
     assert.equal(receipt.session, label);
   } finally {
+    await runner.stop();
+    await fake.close();
+  }
+});
+
+test("project-chat broadcasts reach every owned session; a session's own broadcast does not", async () => {
+  const fake = await startFakeNtfy();
+  const ctx = setup(fake);
+  const adapter = createFakeAdapter({ harness: "codex" });
+  const runner = makeRunner(ctx, adapter, { watch: true });
+  await runner.boot();
+  try {
+    await new Promise((r) => setTimeout(r, 50));
+    const a = await runner.start({ project: "demo", harness: "codex", prompt: "first a" });
+    const b = await runner.start({ project: "demo", harness: "codex", prompt: "first b" });
+    await until(() => runner.get(a.session).status === "idle" && runner.get(b.session).status === "idle", "both idle");
+    const sends = () => adapter.calls.filter((c) => c.op === "send");
+    fake.inject(BROADCAST, JSON.stringify({ v: 1, kind: "msg", from: "claude", session: "0123456789abcdef", to: "all", ts: new Date().toISOString(), body: "team update" }));
+    await until(() => sends().filter((c) => /team update/.test(c.text)).length === 2, "envelope broadcast to both");
+    fake.inject(BROADCAST, "operator typed this");
+    await until(() => sends().filter((c) => /operator typed this/.test(c.text)).length === 2, "plain broadcast to both");
+    fake.inject(BROADCAST, JSON.stringify({ v: 1, kind: "msg", from: "codex", session: sessionLabel(a.nativeId), to: "all", ts: new Date().toISOString(), body: "from a" }));
+    await until(() => sends().filter((c) => /from a/.test(c.text)).length === 1, "own broadcast reaches the other session only");
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(sends().filter((c) => /from a/.test(c.text)).length, 1);
+  } finally {
+    await runner.stop();
+    await fake.close();
+  }
+});
+
+test("an unanswered owned approval is denied after the timeout", async () => {
+  const fake = await startFakeNtfy();
+  const ctx = setup(fake);
+  const adapter = createFakeAdapter({ harness: "claude" });
+  const runner = createRunner({ projects: [ctx.cfg], adapters: new Map([["claude", adapter]]), durable: openDurable(ctx.db), env: ctx.env, startGapMs: 0, watch: false, approvalMs: 100 });
+  await runner.boot();
+  try {
+    await runner.start({ project: "demo", harness: "claude", prompt: "approve: rm -rf build" });
+    const card = await until(() => envelopes(fake, BROADCAST).find((e) => e.kind === "approval"), "approval card");
+    assert.ok(card.expiresAt - Date.parse(card.ts) <= 100);
+    const end = await until(() => envelopes(fake, BROADCAST).find((e) => e.kind === "approval-end"), "approval-end");
+    assert.deepEqual([end.id, end.reason], [card.id, "denied"]);
+    assert.equal(adapter.calls.find((c) => c.op === "respond").decision.behavior, "deny");
+  } finally {
+    await runner.stop();
+    await fake.close();
+  }
+});
+
+test("the operator changes a session's mode over the control socket; defaults follow place", async () => {
+  const fake = await startFakeNtfy();
+  const ctx = setup(fake);
+  const adapter = createFakeAdapter({ harness: "opencode" });
+  const runner = makeRunner(ctx, adapter);
+  await runner.boot();
+  const socket = path.join(ctx.home, "run", "runner.sock");
+  const control = await listenControl(runner, socket);
+  const client = runnerClient({ socket });
+  try {
+    const { session, nativeId } = await runner.start({ project: "demo", harness: "opencode", prompt: "hi" });
+    assert.equal(runner.get(session).permissionMode, "supervised");
+    const changed = await client.setMode(session, "accept-edits");
+    assert.deepEqual([changed.status, changed.body], [200, { status: "changed", permissionMode: "accept-edits" }]);
+    assert.deepEqual(adapter.calls.find((c) => c.op === "setPermissionMode"), { op: "setPermissionMode", nativeId, mode: "accept-edits" });
+    assert.equal(readOwned(ctx.cfg, sessionLabel(nativeId)).permissionMode, "accept-edits");
+    assert.equal((await client.setMode(session, "auto")).status, 400);
+    assert.equal((await client.setMode(session, "bogus")).status, 400);
+    assert.equal((await client.setMode("opencode#0000000000000000", "supervised")).status, 404);
+    await assert.rejects(runner.start({ project: "demo", harness: "opencode", prompt: "x", place: "openshell" }), /openshell/);
+  } finally {
+    await control.close();
     await runner.stop();
     await fake.close();
   }
