@@ -1,11 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
+import { transcriptPath } from "./helpers/fake-claude.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, sendMessage } from "../lib/inbox.mjs";
 import { processStart } from "../lib/process.mjs";
@@ -34,6 +35,8 @@ async function setup(t, { gate = "accept", listen = true } = {}) {
   const frames = [];
   const socketPath = join(mkdtempSync(join(tmpdir(), "dc-sock-")), "s.sock");
   t.after(() => rmSync(socketPath, { force: true }));
+  // The registry cwd is /tmp; Claude's transcript for it is projects/-tmp/<session>.jsonl under this home.
+  const transcript = transcriptPath(home, "/tmp", CLAUDE_ID);
   let server = null;
   if (listen) {
     let buffer = "";
@@ -41,8 +44,14 @@ async function setup(t, { gate = "accept", listen = true } = {}) {
       buffer += chunk.toString("utf8");
       let i;
       while ((i = buffer.indexOf("\n")) >= 0) {
-        frames.push(JSON.parse(buffer.slice(0, i)));
+        const frame = JSON.parse(buffer.slice(0, i));
+        frames.push(frame);
         buffer = buffer.slice(i + 1);
+        // Claude records a delivered user frame in the transcript; a gate that holds it would not.
+        if (frame.type === "user" && gate === "accept") {
+          mkdirSync(join(transcript, ".."), { recursive: true });
+          appendFileSync(transcript, `${JSON.stringify({ type: "user", message: frame.message })}\n`);
+        }
       }
     }));
     await new Promise((resolve) => server.listen(socketPath, resolve));

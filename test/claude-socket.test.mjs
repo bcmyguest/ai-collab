@@ -5,9 +5,12 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { claudeEnvelope, claudeFrames, claudeTarget, sendToClaude } from "../lib/claude-socket.mjs";
+import { processStart } from "../lib/process.mjs";
 
 const SESSION_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
-const PID = 424242;
+// The start-tick check needs a live process, so the fake record uses this test's own pid.
+const PID = process.pid;
+const CWD = mkdtempSync(join(tmpdir(), "cs-cwd-"));
 
 // A fake Claude home: sessions/<pid>.json, an optional peer token, and settings.json.
 function fakeHome(t, { accept = "accept", socket = null, sessionId = SESSION_ID, token = "tok-123" } = {}) {
@@ -44,12 +47,14 @@ async function fakeSocket(t) {
   return { path, frames };
 }
 
-const session = { harness: "claude", sessionId: SESSION_ID, pid: PID };
+const session = { harness: "claude", sessionId: SESSION_ID, pid: PID, pidStart: processStart(PID), cwd: CWD };
 
 test("a Claude session with an open gate and a live socket is a target with its token", async (t) => {
   const sock = await fakeSocket(t);
   const home = fakeHome(t, { socket: sock.path });
-  assert.deepEqual(claudeTarget(session, { env: { CLAUDE_CONFIG_DIR: join(home) } }), { socket: sock.path, token: "tok-123" });
+  const target = claudeTarget(session, { env: { CLAUDE_CONFIG_DIR: join(home) } });
+  assert.deepEqual({ socket: target.socket, token: target.token }, { socket: sock.path, token: "tok-123" });
+  assert.equal(target.transcript, join(home, "projects", CWD.replace(/[^a-zA-Z0-9]/g, "-"), `${SESSION_ID}.jsonl`));
 });
 
 test("no target while crossSessionInbound is not accept, or missing", async (t) => {
