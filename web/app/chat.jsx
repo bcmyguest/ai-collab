@@ -504,6 +504,8 @@ function Console({ account }) {
   const hiddenAt = useRef(0);
   const { home, watching, subagents, inline, listing, requested } = streamOf(selected);
   route.current = requested;
+  // A new view opens at its newest message and follows new ones, even if the last view was scrolled up.
+  useEffect(() => { if (ready) stick.current?.scrollToBottom("instant"); }, [ready, requested]);
   useEffect(() => {
     const change = () => {
       const next = selection();
