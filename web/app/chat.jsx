@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { HarnessLogo, hasLogo } from "./logos";
-import { Activity, ArrowUp, AtSign, Bell, BellOff, Bot, Check, CheckCheck, Coffee, CornerLeftUp, FolderGit2, House, Menu, Minimize2, Monitor, Moon, Plus, RotateCw, Sun, Zap } from "lucide-react";
+import { Activity, ArrowLeft, ArrowUp, AtSign, Bell, BellOff, Bot, Check, CheckCheck, Coffee, CornerLeftUp, FolderGit2, Menu, Minimize2, Monitor, Moon, Plus, RotateCw, Sun, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatContainerContent, ChatContainerRoot, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
@@ -217,7 +217,11 @@ function Sidebar({ data, selected, now, navigate, newSession }) {
       </button>
     </section>
     <section>
-      <h2 className="px-2 pb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Sessions</h2>
+      <div className="flex items-center justify-between px-2 pb-2">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Sessions</h2>
+        <button type="button" onClick={() => navigate({ project: current, level: "session" })} aria-current={selected.level === "session" && !selected.session ? "page" : undefined}
+          className="rounded-full px-2 py-0.5 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">All sessions</button>
+      </div>
       {data.agents.length === 0 && <p className="px-2 text-sm text-muted-foreground">No sessions seen yet.</p>}
       <ul className="flex flex-col gap-1">
         {data.agents.map(agent => <li key={agent.id}>
@@ -241,14 +245,15 @@ function ZoomControls({ data, selected, now, navigate, compact }) {
   const pick = level => navigate(level === "session" ? { project, level } : { project, level, tab: selected.tab });
   const sessions = data.agents;
   return <div className="flex flex-wrap items-center gap-2">
-    <Tabs value={selected.level} onValueChange={pick}>
+    {/* On a phone the menu holds projects and sessions; the header keeps only the view tabs. */}
+    <Tabs value={selected.level} onValueChange={pick} className="hidden md:flex">
       <TabsList aria-label="Level of detail" className="h-9">
         {LEVELS.map(([id, label]) => <TabsTrigger key={id} value={id} className="px-3">{label}</TabsTrigger>)}
       </TabsList>
     </Tabs>
     {selected.level === "session" && sessions.length > 0 && <Select value={selected.session}
       onValueChange={session => navigate({ project, level: "session", harness: peerOf(session), session })}>
-      <SelectTrigger aria-label="Session" className="h-9 w-full min-w-0 sm:w-auto sm:flex-1 sm:max-w-80"><SelectValue placeholder="Pick a session"/></SelectTrigger>
+      <SelectTrigger aria-label="Session" className="hidden h-9 min-w-0 md:flex md:w-auto md:flex-1 md:max-w-80"><SelectValue placeholder="Pick a session"/></SelectTrigger>
       <SelectContent position="popper">
         {sessions.map(agent => <SelectItem key={agent.id} value={agent.id}>
           <Dot online={agent.online}/>
@@ -549,7 +554,8 @@ function Console({ account }) {
       if (!checked) { checked = true; checkBuild(); }
       clearTimeout(bannerTimer);
       setData(JSON.parse(event.data)); setReady(true); setLoadError(""); setNow(Date.now());
-      if (retrying.current || shown.current) toast.success("Reconnected", { id: CONNECTION_TOAST, description: null });
+      // A healthy stream needs no toast; clear a "Reconnect failed" one.
+      toast.dismiss(CONNECTION_TOAST);
       retrying.current = false; shown.current = false; autoRetry.current = true;
     });
     source.addEventListener("activity", event => {
@@ -612,7 +618,6 @@ function Console({ account }) {
   function pullTo(px) { pullRef.current = px; setPull(px); }
   function retry() {
     retrying.current = true;
-    toast.loading("Reconnecting…", { id: CONNECTION_TOAST, description: null });
     setRevision(n => n + 1);
   }
 
@@ -686,7 +691,9 @@ function Console({ account }) {
       <header className="sticky top-0 z-10 flex flex-col gap-2 border-b bg-background/85 px-3 py-2 backdrop-blur supports-backdrop-filter:bg-background/70">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" className="md:hidden" aria-label="Projects" aria-expanded={navOpen} onClick={() => setNavOpen(true)}><Menu/></Button>
-          {!home && <Button variant="ghost" size="icon" aria-label="Home" title="Home: every project's sessions" onClick={() => navigate({ level: "home" })}><House/></Button>}
+          {/* Back one level: a session returns to its project chat, a project to Home. */}
+          {!home && <Button variant="ghost" size="icon" aria-label={level === "session" ? "Back to " + project : "Home"} title={level === "session" ? "Back to the " + project + " chat" : "Home: every project's sessions"}
+            onClick={() => navigate(level === "session" ? { project, level: "project" } : { level: "home" })}><ArrowLeft/></Button>}
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs text-muted-foreground">{home ? "All projects" : level === "project" ? (watching ? "Activity · all agents" : "Project") : project + " · session"}</p>
             <h1 className="truncate text-base font-semibold leading-tight" title={level === "session" ? selected.session : undefined}>{title}</h1>
