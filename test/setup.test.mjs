@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { setup } from "../lib/setup.mjs";
@@ -51,4 +51,28 @@ test("without Docker or defaults.json setup stops with a fix", async () => {
   const h = harness([]);
   assert.equal(await setup(["--no-ui"], h.opts), 1);
   assert.match(h.text(), /Docker not found/);
+});
+
+test("--agent picks the harnesses; claude without its CLI is skipped with a note; unknown names fail", async () => {
+  const h = harness(["docker", "codex"]);
+  assert.equal(await setup(["--no-ui", "--agent", "claude,opencode"], h.opts), 0);
+  assert.ok(!h.calls.some(c => c.startsWith("codex ")), "codex not picked");
+  assert.match(h.text(), /claude: claude not found on PATH/);
+  assert.match(h.text(), /opencode: installed/);
+  const bad = harness(["docker"]);
+  assert.equal(await setup(["--agent", "vim"], bad.opts), 2);
+  assert.match(bad.text(), /unknown --agent vim/);
+});
+
+test("run from the npx cache, setup copies itself to a stable folder and reruns from there", async () => {
+  const h = harness(["docker"]);
+  const cache = path.join(h.home, ".npm", "_npx", "abc", "node_modules", "ai-collab");
+  mkdirSync(path.join(cache, "scripts"), { recursive: true });
+  mkdirSync(path.join(cache, "node_modules", "next"), { recursive: true });
+  writeFileSync(path.join(cache, "package.json"), "{}");
+  assert.equal(await setup(["--agent", "cursor"], { ...h.opts, root: cache }), 0);
+  const app = path.join(h.home, ".local", "share", "ai-collab", "app");
+  assert.ok(existsSync(path.join(app, "package.json")));
+  assert.ok(!existsSync(path.join(app, "node_modules")), "dependencies are installed fresh, not copied");
+  assert.deepEqual(h.calls.map(c => c.replace(process.execPath, "node")), ["npm install --omit=dev --no-audit --no-fund", `node ${path.join(app, "scripts", "ai-collab.mjs")} setup --agent cursor`]);
 });

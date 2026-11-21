@@ -11,6 +11,28 @@
   "bin": {
     "ai-collab": "scripts/ai-collab.mjs"
   },
+  "files": [
+    ".claude-plugin",
+    ".codex-plugin",
+    ".cursor-plugin",
+    ".mcp.json",
+    "commands",
+    "deploy",
+    "hooks",
+    "lib",
+    "scripts/*.mjs",
+    "scripts/ai-collab",
+    "scripts/ai-collab-hook",
+    "skills",
+    "web/app",
+    "web/components",
+    "web/lib",
+    "web/public",
+    "web/server",
+    "web/*.js",
+    "web/*.mjs",
+    "web/*.json"
+  ],
   "scripts": {
     "test": "node --test",
     "build": "next build web",
