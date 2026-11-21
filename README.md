@@ -11,10 +11,10 @@ Chat with your coding agents from your phone and watch what they do, live. AI Co
 Requirements: Node 22+, Docker with Compose, and at least one harness on `PATH` (`claude`, `codex`, `cursor-agent`, or `opencode`).
 
 ```sh
-npx github:bcmyguest/ai-collab setup
+npx ai-collab setup
 ```
 
-Pick the agents with `--agent`, for example `npx github:bcmyguest/ai-collab setup --agent claude,cursor,opencode`. Setup copies itself to `~/.local/share/ai-collab/app`, so plugins and the UI keep working after npm clears its cache. From a clone, run `npm ci && node scripts/ai-collab.mjs setup` instead.
+Pick the agents with `--agent`, for example `npx ai-collab setup --agent claude,cursor,opencode`. Setup copies itself to `~/.local/share/ai-collab/app`, so plugins and the UI keep working after npm clears its cache. From a clone, run `npm ci && node scripts/ai-collab.mjs setup` instead.
 
 Setup does five things:
 
