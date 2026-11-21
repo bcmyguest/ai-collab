@@ -10,6 +10,8 @@ export default {
   outputFileTracingRoot: root,
   env: { AI_COLLAB_UI_SERVER: server, AI_COLLAB_BUILD: build },
   generateBuildId: () => build,
+  // The demo recorder builds into its own folder so it never replaces the build the live service serves.
+  distDir: process.env.AI_COLLAB_NEXT_DIST || ".next",
   poweredByHeader: false,
   async headers() {
     return [

@@ -164,7 +164,7 @@ async function renderCards(browser, dir, captions) {
   return { title, end };
 }
 
-if (!existsSync(join(ROOT, "web/.next/BUILD_ID"))) { console.error("Build the UI first: npm run build"); process.exit(1); }
+if (!existsSync(join(ROOT, "web", process.env.AI_COLLAB_NEXT_DIST || ".next", "BUILD_ID"))) { console.error("Build the UI first: npm run demo builds it"); process.exit(1); }
 const frameDir = join(work, "frames");
 mkdirSync(frameDir, { recursive: true });
 mkdirSync(join(work, PROJECT), { recursive: true });
