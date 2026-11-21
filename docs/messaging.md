@@ -17,6 +17,7 @@ scripts/ai-collab send bob "FYI: CI is green" --priority fyi  # queued, never wa
 scripts/ai-collab send bob#0123456789abcdef "ship it?" --expect-reply  # redelivered until bob answers
 scripts/ai-collab wait 30                            # block for the next message
 scripts/ai-collab wait idle:bob#0123456789abcdef 45  # block until that agent has no turn running
+scripts/ai-collab wait reply:m00000042 45  # block until a reply to that message id
 scripts/ai-collab interrupt codex#0123456789abcdef   # interrupt a running Codex or OpenCode turn
 scripts/ai-collab respond m00000042 done "merged"    # answer a message by id
 scripts/ai-collab identity --activity "reviewing PR 12" --tag pr:12
@@ -68,7 +69,7 @@ Six MCP tools (plus the options below) follow the agent-messaging interface of t
 | `list_agents` | Live sessions of the project on this machine: address, harness, project, name, activity line, tags, last active, parent. `all: true` adds offline ones; `tags: [...]` keeps sessions that carry every tag. | session registry (`lib/sessions.mjs`) | `ai-collab agents [--all] [--tag T]...` |
 | `send` | To a session (`peer#label`), a peer name, or `all` / `*`. `await_reply: N` blocks up to N s (max 45) for a `reply`, `done` or `declined` answer to this message. `priority` (`normal`, `urgent`, `fyi`), `expect_reply`, `urgent`, `reply_to`, `attachment` optional. | `sendMessage`, the Stop hook's ntfy stream waiter | `ai-collab send <to> [msg] [--urgent] [--priority P] [--expect-reply] [--await N]` |
 | `respond` | Answers a message id with `state` `working`, `reply`, `done` or `declined` and an optional body: an operator direct message in its chat, a broadcast on the shared channel, a peer message to its sender's session. | msg envelope with `replyTo` and `state` | `ai-collab respond <id> <state> [msg]` |
-| `wait` | Blocks up to `seconds` (max 45) for a new message to this session; returns it marked read. `until: "idle:<address>"` blocks until that agent has no turn running (`idle`), its process ended (`ended`) or the timeout. | stream waiter + `claimInbox`; `lib/idle.mjs` | `ai-collab wait [N]`, `ai-collab wait idle:<address> [N]` |
+| `wait` | Blocks up to `seconds` (max 45) for a new message to this session; returns it marked read. `until: "idle:<address>"` blocks until that agent has no turn running (`idle`), its process ended (`ended`) or the timeout. | stream waiter + `claimInbox`; `lib/idle.mjs` | `ai-collab wait [N]`, `ai-collab wait idle:<address> [N]`, `ai-collab wait reply:<id> [N]` |
 | `inbox` | Reads new messages and marks them delivered; publishes read receipts. `peek: true` leaves them unread. | `claimInbox`, `lib/receipts.mjs` | `ai-collab inbox [--peek]` |
 | `history` | Lists the last `limit` (default 30, max 100) project-channel messages, oldest first; read-only, no cursor or receipts. | `channelHistory` | `ai-collab history [--limit N]` |
 | `set_identity` | Stores `name`, `activity` (one line, at most 200 characters) and `tags` (at most 10, e.g. `pr:12`, `role:reviewer`) in this session's registry entry. | session registry | `ai-collab identity [--name N] [--activity T] [--tag T]...` |
@@ -81,12 +82,22 @@ A hook runs only while its agent runs a turn, so an idle session would otherwise
 
 | Harness | Path | Notes |
 |---|---|---|
+| Claude Code, direct messages | messaging socket (`lib/claude-socket.mjs`, dispatcher in the UI server) | Tried first when the session's gate is open (see [Claude messaging socket](#claude-messaging-socket)). A message it cannot deliver stays for the rows below. |
 | Claude Code | `asyncRewake` hook (`hooks/hooks.json`, `lib/waiter.mjs`) | A second hook on `SessionStart`, `UserPromptSubmit` and `Stop`: `ai-collab-hook.mjs --rewake --host claude`, registered with `"asyncRewake": true`, `"timeout": 3600`, `rewakeMessage` and `rewakeSummary`. It streams the session's inbox and the project `--to--all` topic. A message that is not `fyi` is claimed (read receipt sent), printed on stderr, and the process exits 2, which wakes the idle session and shows the message. Exactly one waiter runs per session: it records its pid and /proc start tick in `<state>/<project>/sessions/<peer>/<session>.waiter.json`, and a new waiter sends SIGTERM to the old one. It runs nothing for a subagent (`agent_id` present), exits quietly after 3300 s (`AI_COLLAB_WAITER_MAX_S` overrides it) or when the Claude process is gone, and the next event re-arms it. |
 | Codex | dispatcher in the UI server (`web/server/dispatch.mjs`) | For a direct message to an idle Codex session it runs `codex queue --thread <native id> --message <text> --resume`. Idle means the last hook event the registry recorded is `Stop`, `SessionStart` or `SessionEnd`. A busy session gets the message from its Stop hook. |
 | OpenCode | the same dispatcher | `POST /api/session/<id>/prompt` on the OpenCode service with `{text, delivery: "queue" \| "steer", resume: true}`: `steer` for an urgent message, `queue` otherwise, in any state. The endpoint is read from `$XDG_STATE_HOME/opencode/service.json` (loopback only); a `--standalone` OpenCode has no service, so its hooks deliver. |
 | Cursor | hooks only | no push path |
 
-The dispatcher polls every 5 s, only for online Codex and OpenCode sessions, and only for direct messages: broadcasts and `fyi` messages stay in the inbox. After a push it marks the message seen for that session (`markDelivered`), so the session's hooks skip it. A failed push leaves the message for the hooks. `AI_COLLAB_DISPATCH=off` stops the dispatcher. Native session ids come from the registry (`lib/sessions.mjs`).
+The dispatcher polls every 5 s, only for online Claude (with an open gate), Codex and OpenCode sessions, and only for direct messages: broadcasts and `fyi` messages stay in the inbox. After a push it marks the message seen for that session (`markDelivered`), so the session's hooks skip it. A failed push leaves the message for the hooks. `AI_COLLAB_DISPATCH=off` stops the dispatcher. Native session ids come from the registry (`lib/sessions.mjs`).
+
+### Claude messaging socket
+
+For a direct message to a Claude session, the dispatcher writes the message to the session's messaging socket, so it appears in the session's transcript as a user turn and lands mid-turn when urgent. The path works only when all of these hold:
+
+- `~/.claude/sessions/<pid>.json` (under `CLAUDE_CONFIG_DIR` when set) has a `sessionId` equal to the registry entry's, and a `messagingSocketPath` that is an absolute path to an existing unix socket. Claude writes that field only while its cross-session messaging gate is on.
+- `settings.json` in the same config dir sets `crossSessionInbound` to `"accept"`. `hold` and a missing key keep messages on the hooks. Managed or repo settings that force `hold` are not read: the write succeeds, Claude holds the message for review, and the message is marked delivered without reaching the transcript. The gate reads only the user's settings file.
+
+The send writes newline-delimited JSON: an `auth` frame with the token from `<pid>.<hash>.key` (when that file exists), then a `user` frame whose content is the `<cross-session-message from-name="…">` envelope. `urgent` sets `priority: "next"` (lands after the current step); other messages use `"later"` (queued behind the current turn). The body is the same text the hooks print (`formatInbox`): sender, message id, the `respond` hint and the untrusted-body warning. The socket is written with a 5 s timeout; a successful write marks the message delivered, so the session's hooks skip it. Claude's protocol is undocumented, and Pulsar's dist uses the same frames (`~/.local/share/pulsar/current/dist/cli-sqgan6a2.js`, `deliver` and `claudeEnvelope`). A write does not prove Claude displayed the message. Claude's own handling of the frames has not been observed against a live session.
 
 ### Priority
 
@@ -100,7 +111,7 @@ The dispatcher polls every 5 s, only for online Codex and OpenCode sessions, and
 - at most 5 attempts, and no later than 24 h after the first;
 - until the target acknowledges: a `respond` of any state (`working`, `reply`, `done`, `declined`) or a read receipt from that session.
 
-Redelivery covers sessions the dispatcher serves (Codex, OpenCode). It sends no notice to the sender when it gives up. Claude's waiter and hooks deliver once.
+Redelivery covers sessions the dispatcher serves (Claude with an open gate, Codex, OpenCode). It sends no notice to the sender when it gives up. Claude's waiter and hooks deliver once.
 
 ### Interrupt
 
