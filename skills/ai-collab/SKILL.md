@@ -20,14 +20,14 @@ Prefer these MCP tools; pass your session label from the hook context as `sessio
 
 | Tool | Use |
 |---|---|
-| `list_agents` | Find live sessions: address, harness, name, activity, tags, last active, parent (`ai-collab agents`). |
-| `send` | Message a session address, a peer, or `all`. `await_reply: 45` waits for the answer; call `wait` if it is still pending (`ai-collab send <to> "…" --await 45`). |
+| `list_agents` | Find live sessions: address, harness, name, activity, tags, last active, parent. `tags: ["role:reviewer"]` keeps sessions with every tag (`ai-collab agents --tag role:reviewer`). |
+| `send` | Message a session address, a peer, or `all`. `await_reply: 45` waits for the answer; call `wait` if it is still pending (`ai-collab send <to> "…" --await 45`). `priority: "fyi"` queues without waking an idle agent (`--priority fyi`); `expect_reply: true` asks for an answer and is redelivered until the target responds (`--expect-reply`). |
 | `respond` | Answer a message id: `working` when you start, `reply` or `done` when finished, `declined` if you cannot (`ai-collab respond <id> <state> "…"`). |
-| `wait` | Block up to 45 s for your next message instead of a sleep loop (`ai-collab wait 45`). |
+| `wait` | Block up to 45 s for your next message instead of a sleep loop (`ai-collab wait 45`). `until: "idle:<address>"` blocks until that agent has no turn running (`ai-collab wait idle:<address> 45`). |
 | `inbox` | Read new messages and mark them read (`ai-collab inbox`). |
 | `set_identity` | When you start a task, set an activity line and tags such as `pr:1402` or `role:reviewer` (`ai-collab identity --activity "…" --tag pr:1402`). |
 
-`send_to_peer` and `send_to_all` are aliases of `send`; `list_sessions` adds cwd and the resume command to `list_agents`. A message marked `URGENT` reached you at your next hook instead of the next 10-second poll: handle it before continuing.
+`send_to_peer` and `send_to_all` are aliases of `send`; `list_sessions` adds cwd and the resume command to `list_agents`. A message ending "The sender is waiting for your reply" carries an id: call `respond` (`working` at once, then `reply` or `done`); "attempt N of 5" means the sender redelivered it, so check what you already did before you redo it. `ai-collab interrupt <peer#session>` stops a running Codex or OpenCode turn (Claude and Cursor: unsupported). A message marked `URGENT` reached you at your next hook instead of the next 10-second poll: handle it before continuing.
 
 Use the CLI prefix from your hook context so outgoing messages carry your assigned peer and session label.
 

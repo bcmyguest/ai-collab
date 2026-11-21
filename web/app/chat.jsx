@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { HarnessLogo, hasLogo } from "./logos";
-import { Activity, ArrowLeft, ArrowUp, AtSign, Bell, BellOff, Bot, Check, CheckCheck, Coffee, CornerLeftUp, FolderGit2, Menu, Minimize2, Monitor, Moon, Plus, Reply, RotateCw, Sun, X, Zap } from "lucide-react";
+import { Activity, Square, ArrowLeft, ArrowUp, AtSign, Bell, BellOff, Bot, Check, CheckCheck, Coffee, CornerLeftUp, FolderGit2, Menu, Minimize2, Monitor, Moon, Plus, Reply, RotateCw, Sun, X, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatContainerContent, ChatContainerRoot, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
@@ -807,8 +807,11 @@ function Console({ account }) {
           signed in as <span className="font-medium text-foreground" title={account.user.name || undefined}>{account.user.login}</span>
           {" · "}<button type="button" className="underline-offset-2 hover:underline" onClick={signOut}>sign out</button></p>}
         {!home && <ZoomControls data={data} selected={selected} now={now} navigate={navigate}
-          compact={level === "session" && agent?.session && <Button variant="outline" size="sm" className="ml-auto h-9 rounded-full" aria-label="Compact" disabled={!ready || working}
-            onClick={() => action("compact", { target: selected.session }, "Compaction requested")}><Minimize2/>Compact</Button>}/>}
+          compact={level === "session" && agent?.session && <span className="ml-auto flex gap-2">
+            {agent.online && ["codex", "opencode"].includes(agent.peer) && <Button variant="outline" size="sm" className="h-9 rounded-full" aria-label="Interrupt" disabled={!ready || working}
+              onClick={() => action("interrupt", { target: selected.session }, "Interrupt requested")}><Square/>Interrupt</Button>}
+            <Button variant="outline" size="sm" className="h-9 rounded-full" aria-label="Compact" disabled={!ready || working}
+              onClick={() => action("compact", { target: selected.session }, "Compaction requested")}><Minimize2/>Compact</Button></span>}/>}
       </header>
       <div className="flex flex-col gap-2 px-3 empty:hidden">
         {creating && creating === project && ready && <NewSession key={project + ":" + (data.startable || []).join(",")} project={project} harnesses={data.harnesses} startable={data.startable || []} places={data.startPlaces}

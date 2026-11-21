@@ -13,10 +13,14 @@ scripts/ai-collab inbox                              # show and mark read
 scripts/ai-collab inbox --peek                       # show without marking read
 scripts/ai-collab send bob "stop: main is broken" --urgent  # delivered at bob's next hook
 scripts/ai-collab send bob#0123456789abcdef "review?" --await 45  # wait for the answer
+scripts/ai-collab send bob "FYI: CI is green" --priority fyi  # queued, never wakes an idle agent
+scripts/ai-collab send bob#0123456789abcdef "ship it?" --expect-reply  # redelivered until bob answers
 scripts/ai-collab wait 30                            # block for the next message
+scripts/ai-collab wait idle:bob#0123456789abcdef 45  # block until that agent has no turn running
+scripts/ai-collab interrupt codex#0123456789abcdef   # interrupt a running Codex or OpenCode turn
 scripts/ai-collab respond m00000042 done "merged"    # answer a message by id
 scripts/ai-collab identity --activity "reviewing PR 12" --tag pr:12
-scripts/ai-collab agents                             # live sessions with their identity
+scripts/ai-collab agents [--tag role:reviewer]       # live sessions with their identity, optionally by tag
 scripts/ai-collab sessions                           # sessions on this machine, with parent and resume command
 scripts/ai-collab afk on                             # operator away, in every project in projects.json
 ```
@@ -57,19 +61,50 @@ Each Stop hook call waits at most 600 seconds. The Stop hooks are registered wit
 
 ## Agent messaging tools
 
-Six MCP tools follow the agent-messaging interface of the Pulsar MCP server, mapped onto ai-collab's topics, inbox cursor and session registry. The older tools ([`ask_question` and friends](approvals.md#ask-from-an-agent-reply-from-the-phone)) stay; their descriptions name the new tool they duplicate.
+Six MCP tools (plus the options below) follow the agent-messaging interface of the Pulsar MCP server, mapped onto ai-collab's topics, inbox cursor and session registry. The older tools ([`ask_question` and friends](approvals.md#ask-from-an-agent-reply-from-the-phone)) stay; their descriptions name the new tool they duplicate.
 
 | Tool | Does | Built on | CLI |
 |---|---|---|---|
-| `list_agents` | Live sessions of the project on this machine: address, harness, project, name, activity line, tags, last active, parent. `all: true` adds offline ones. | session registry (`lib/sessions.mjs`) | `ai-collab agents [--all]` |
-| `send` | To a session (`peer#label`), a peer name, or `all` / `*`. `await_reply: N` blocks up to N s (max 45) for a `reply`, `done` or `declined` answer to this message. `urgent`, `reply_to`, `attachment` optional. | `sendMessage`, the Stop hook's ntfy stream waiter | `ai-collab send <to> [msg] [--urgent] [--await N]` |
+| `list_agents` | Live sessions of the project on this machine: address, harness, project, name, activity line, tags, last active, parent. `all: true` adds offline ones; `tags: [...]` keeps sessions that carry every tag. | session registry (`lib/sessions.mjs`) | `ai-collab agents [--all] [--tag T]...` |
+| `send` | To a session (`peer#label`), a peer name, or `all` / `*`. `await_reply: N` blocks up to N s (max 45) for a `reply`, `done` or `declined` answer to this message. `priority` (`normal`, `urgent`, `fyi`), `expect_reply`, `urgent`, `reply_to`, `attachment` optional. | `sendMessage`, the Stop hook's ntfy stream waiter | `ai-collab send <to> [msg] [--urgent] [--priority P] [--expect-reply] [--await N]` |
 | `respond` | Answers a message id with `state` `working`, `reply`, `done` or `declined` and an optional body: an operator direct message in its chat, a broadcast on the shared channel, a peer message to its sender's session. | msg envelope with `replyTo` and `state` | `ai-collab respond <id> <state> [msg]` |
-| `wait` | Blocks up to `seconds` (max 45) for a new message to this session; returns it marked read. | stream waiter + `claimInbox` | `ai-collab wait [N]` |
+| `wait` | Blocks up to `seconds` (max 45) for a new message to this session; returns it marked read. `until: "idle:<address>"` blocks until that agent has no turn running (`idle`), its process ended (`ended`) or the timeout. | stream waiter + `claimInbox`; `lib/idle.mjs` | `ai-collab wait [N]`, `ai-collab wait idle:<address> [N]` |
 | `inbox` | Reads new messages and marks them delivered; publishes read receipts. `peek: true` leaves them unread. | `claimInbox`, `lib/receipts.mjs` | `ai-collab inbox [--peek]` |
 | `history` | Lists the last `limit` (default 30, max 100) project-channel messages, oldest first; read-only, no cursor or receipts. | `channelHistory` | `ai-collab history [--limit N]` |
 | `set_identity` | Stores `name`, `activity` (one line, at most 200 characters) and `tags` (at most 10, e.g. `pr:12`, `role:reviewer`) in this session's registry entry. | session registry | `ai-collab identity [--name N] [--activity T] [--tag T]...` |
 
 A `respond` answer is a msg envelope with `replyTo` and an optional `state` field; clients that predate it show it as an ordinary message. Tool results label each message with `answer_with`. The tools and the hooks share one inbox cursor per session, so a message read through `wait` or `inbox` is not delivered again by a hook. The 45-second cap keeps a call under Codex's default MCP tool timeout; call `wait` again to keep listening.
+
+## Waking idle sessions
+
+A hook runs only while its agent runs a turn, so an idle session would otherwise see a message at its next prompt. Each harness gets a delivery path for idle sessions.
+
+| Harness | Path | Notes |
+|---|---|---|
+| Claude Code | `asyncRewake` hook (`hooks/hooks.json`, `lib/waiter.mjs`) | A second hook on `SessionStart`, `UserPromptSubmit` and `Stop`: `ai-collab-hook.mjs --rewake --host claude`, registered with `"asyncRewake": true`, `"timeout": 3600`, `rewakeMessage` and `rewakeSummary`. It streams the session's inbox and the project `--to--all` topic. A message that is not `fyi` is claimed (read receipt sent), printed on stderr, and the process exits 2, which wakes the idle session and shows the message. Exactly one waiter runs per session: it records its pid and /proc start tick in `<state>/<project>/sessions/<peer>/<session>.waiter.json`, and a new waiter sends SIGTERM to the old one. It runs nothing for a subagent (`agent_id` present), exits quietly after 3300 s (`AI_COLLAB_WAITER_MAX_S` overrides it) or when the Claude process is gone, and the next event re-arms it. |
+| Codex | dispatcher in the UI server (`web/server/dispatch.mjs`) | For a direct message to an idle Codex session it runs `codex queue --thread <native id> --message <text> --resume`. Idle means the last hook event the registry recorded is `Stop`, `SessionStart` or `SessionEnd`. A busy session gets the message from its Stop hook. |
+| OpenCode | the same dispatcher | `POST /api/session/<id>/prompt` on the OpenCode service with `{text, delivery: "queue" \| "steer", resume: true}`: `steer` for an urgent message, `queue` otherwise, in any state. The endpoint is read from `$XDG_STATE_HOME/opencode/service.json` (loopback only); a `--standalone` OpenCode has no service, so its hooks deliver. |
+| Cursor | hooks only | no push path |
+
+The dispatcher polls every 5 s, only for online Codex and OpenCode sessions, and only for direct messages: broadcasts and `fyi` messages stay in the inbox. After a push it marks the message seen for that session (`markDelivered`), so the session's hooks skip it. A failed push leaves the message for the hooks. `AI_COLLAB_DISPATCH=off` stops the dispatcher. Native session ids come from the registry (`lib/sessions.mjs`).
+
+### Priority
+
+`priority` is `normal` (wakes an idle session), `urgent` (same as `urgent: true`) or `fyi` (queued; no waiter or dispatcher wakes the session for it). A hook still delivers an `fyi` message at the next hook event, including a Stop that already runs.
+
+### Redelivery with `expect_reply`
+
+`sendMessage(..., { expectReply: true })` (CLI `--expect-reply`, MCP `expect_reply`) marks a direct, non-`fyi` message that needs an answer. The receiver's text ends with "The sender is waiting for your reply: answer with respond message_id=...". When the dispatcher pushes it, it records the message in `<state>/<project>/dispatch.json` and redelivers it:
+
+- after 10 min without an acknowledgement, with the text "This is attempt N of 5";
+- at most 5 attempts, and no later than 24 h after the first;
+- until the target acknowledges: a `respond` of any state (`working`, `reply`, `done`, `declined`) or a read receipt from that session.
+
+Redelivery covers sessions the dispatcher serves (Codex, OpenCode). It sends no notice to the sender when it gives up. Claude's waiter and hooks deliver once.
+
+### Interrupt
+
+The UI action `interrupt` (POST `/api/interrupt` with `{project, target}`; an **Interrupt** button on Codex and OpenCode session pages) and `ai-collab interrupt <peer#session>` stop a running turn. OpenCode: `POST /api/session/<id>/interrupt`. Codex: `turn/interrupt` on the in-progress turn of a thread loaded in the app-server daemon (`codex app-server proxy`; `codex queue` has no interrupt). A Codex session outside the daemon reports `unsupported`. Claude and Cursor report `unsupported`. There is no MCP interrupt tool yet, because `test/mcp.test.mjs` pins the exact tool list.
 
 ## Urgent messages ("send now")
 

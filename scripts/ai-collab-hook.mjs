@@ -5,6 +5,7 @@
  * Stop (deliver waiting messages, AFK wait, important-question hold; see lib/stop.mjs), SessionEnd (status stop).
  * Every event also publishes activity (prompts, tool calls and results, assistant text; never thinking) to the
  * project's activity topic unless AI_COLLAB_ACTIVITY=off; that publish runs alongside delivery under a 1.5 s cap.
+ * --rewake marks the Claude asyncRewake registration (lib/waiter.mjs): it prints no JSON; it exits 2 with the messages on stderr.
  * --activity marks a registration that only publishes activity and returns the neutral output.
  * A prompt the operator typed records operatorPromptAt for this session; AFK mode changes only when the operator sets it.
  * --host opencode takes Claude-shaped input from the OpenCode plugin (lib/opencode-plugin.mjs) and answers in Claude's shapes.
@@ -24,7 +25,8 @@ import { currentMode, operatorPrompt, takeModeNote } from "../lib/mode.mjs";
 import { decideStop } from "../lib/stop.mjs";
 import { recordSession } from "../lib/sessions.mjs";
 import { sessionName } from "../lib/names.mjs";
-import { harnessProcess } from "../lib/process.mjs";
+import { harnessProcess, isRunning } from "../lib/process.mjs";
+import { WAITER_MAX_S, runWaiter, takeWaiterSlot } from "../lib/waiter.mjs";
 import { contextTokens, reportContext } from "../lib/usage.mjs";
 import { activityEvents, publishActivity } from "../lib/activity.mjs";
 import { sendReceipts, settleReceipts } from "../lib/receipts.mjs";
@@ -121,6 +123,26 @@ async function deliver(cfg, host, event, msg, key) {
   return hookOutput(host, event, text);
 }
 
+// Claude asyncRewake registration: waits for a peer message and exits 2 with it, which wakes an idle session.
+async function rewake(cfg, host, msg) {
+  if (host !== "claude" || !cfg.session || (typeof msg.agent_id === "string" && msg.agent_id)) return;
+  const release = await takeWaiterSlot(cfg);
+  const ctrl = new AbortController();
+  for (const name of ["SIGTERM", "SIGINT", "SIGHUP"]) process.once(name, () => ctrl.abort());
+  const harness = harnessProcess(host);
+  let result = { code: 0 };
+  try {
+    result = await runWaiter(cfg, {
+      maxMs: (Number(process.env.AI_COLLAB_WAITER_MAX_S) || WAITER_MAX_S) * 1000, signal: ctrl.signal,
+      alive: () => !harness || isRunning(harness),
+    });
+  } finally {
+    release();
+  }
+  if (result.code !== 2) process.exit(0);
+  process.stderr.write(`${result.text}\n`, () => process.exit(2));
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const host = hostArg(argv);
@@ -149,6 +171,7 @@ async function main() {
     .replace(/[^a-z]/g, "");
   const cfg = loadConfig(env, { cwd, host, session });
   if (!cfg.enabled) return emit(neutral(host, key));
+  if (argv.includes("--rewake")) return rewake(cfg, host, msg);
 
   // Started first and awaited last, so delivery never waits on it.
   const events = activityEvents(host, key, msg);
