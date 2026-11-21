@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { fuzzyRank } from "@/lib/fuzzy";
 import { agentDetail } from "@/lib/agent-detail";
 import { withMentions } from "@/lib/mentions";
+import { chatThread } from "@/lib/chat-turns";
 import { ActivityRow, GoToAgent, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
 import { NotifyToggle } from "./notify";
@@ -760,7 +761,7 @@ function Console({ account }) {
   const goRun = row => navigate({ project, level: "session", harness: peerOf(row.agent), session: row.agent, tab: "subagents", run: row.run });
   const newest = new Map(rows.map(row => [row.agent, row.id]));
   // The overview interleaves only the operator's own messages with every agent's activity.
-  const thread = interleave(watching ? data.messages.filter(item => item.from === data.operator || item.kind === "Approval") : data.messages, rows);
+  const thread = inline ? chatThread(data.messages, rows, selected.session) : interleave(watching ? data.messages.filter(item => item.from === data.operator || item.kind === "Approval") : data.messages, rows);
   const newSession = id => { setCreating(id); if (id !== project || level !== "project") navigate({ project: id, level: "project" }); else setNavOpen(false); };
   async function startSession(payload) {
     try { return await api("start", { project, ...payload }); } catch (err) { return { status: "failed", detail: err.message }; }
