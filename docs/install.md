@@ -26,18 +26,11 @@ The hook file is `hooks/hooks.json`, and it uses `${CLAUDE_PLUGIN_ROOT}`.
 ## Codex
 
 ```sh
-codex plugin marketplace add /path/to/ai-collab
+codex plugin marketplace add https://github.com/bcmyguest/ai-collab
 codex plugin add ai-collab@ai-collab
 ```
 
-Codex copies the whole marketplace folder and hashes it before every hook, so a working checkout with `node_modules` or worktrees makes each hook time out. Install from a clean copy of the package instead:
-
-```sh
-mkdir -p ~/.local/share/ai-collab/codex-plugin
-npm pack --pack-destination /tmp ai-collab   # or `npm pack` inside a checkout
-tar -xzf /tmp/ai-collab-*.tgz -C ~/.local/share/ai-collab/codex-plugin --strip-components=1
-codex plugin marketplace add ~/.local/share/ai-collab/codex-plugin
-```
+Update with `codex plugin marketplace upgrade`. Codex copies the marketplace folder and hashes all of it before every hook, so a local checkout with `node_modules` or worktrees makes each hook time out. The Git source clones only tracked files. For a local checkout, install a clean copy: `npm pack`, then extract it into its own folder and add that folder as the marketplace.
 
 Restart Codex and check `/hooks` to trust the enabled plugin hooks; trust again after each update. The manifest is `.codex-plugin/plugin.json` and points to `hooks/codex-hooks.json`.
 

@@ -17,7 +17,7 @@ Pick the agents with `--agent`, for example `npx ai-collab setup --agent claude,
    | Harness | What setup runs | Then |
    |---|---|---|
    | Claude Code | `claude plugin marketplace add <checkout>`, `claude plugin install ai-collab@ai-collab` | |
-   | Codex | `codex plugin marketplace add <checkout>`, `codex plugin add ai-collab@ai-collab` | restart Codex and trust the hooks in `/hooks` |
+   | Codex | `codex plugin marketplace add https://github.com/bcmyguest/ai-collab`, `codex plugin add ai-collab@ai-collab` | restart Codex and trust the hooks in `/hooks` |
    | Cursor | the [Cursor installer](install.md#cursor) with `--copy` | restart running Cursor sessions |
    | OpenCode | the [OpenCode installer](install.md#opencode) | restart OpenCode |
 
