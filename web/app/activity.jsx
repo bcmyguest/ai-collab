@@ -30,7 +30,7 @@ function Code({ code, language, className }) {
   return <CodeBlockCode code={code} language={language} className={cn(CODE, "text-xs [&>pre]:px-2.5 [&>pre]:py-1.5", className)}/>;
 }
 
-function Result({ item, input, header }) {
+function Result({ item, input, header, summary }) {
   const [open, setOpen] = useState(false);
   const text = item.output || "";
   const lines = text.split("\n");
@@ -39,7 +39,7 @@ function Result({ item, input, header }) {
   const error = item.type === "error";
   const language = error ? "" : resultLanguage(item.tool, input, text);
   return <div className={cn("min-w-0 rounded-lg border bg-muted/40 text-xs", error && "border-destructive/50 bg-destructive/10")}>
-    {header && <ToolName tool={item.tool} error={error} className="border-b px-2.5 py-1.5"/>}
+    {header && <ToolName tool={item.tool} error={error} summary={summary} className="border-b px-2.5 py-1.5"/>}
     {more ? <details className="group" onToggle={event => setOpen(event.currentTarget.open)}>
       <summary aria-label={error ? "Error details" : "Tool result"} className="flex cursor-pointer list-none items-start gap-1.5 px-2.5 py-1.5 [&::-webkit-details-marker]:hidden">
         <ChevronRight className="mt-0.5 size-3.5 shrink-0 transition-transform group-open:rotate-90"/>
@@ -55,11 +55,13 @@ function Result({ item, input, header }) {
   </div>;
 }
 
-function ToolName({ tool, error, className }) {
+// One line: the tool name, then its summary (the command or path) truncated to the row width.
+function ToolName({ tool, error, summary, className }) {
   const Icon = error ? TriangleAlert : iconOf(tool);
   return <div className={cn("flex min-w-0 items-center gap-2 text-sm", className)}>
     <Icon className={cn("size-4 shrink-0", error ? "text-destructive" : "text-muted-foreground")}/>
-    <span className="truncate font-medium">{tool}</span>
+    <span className="shrink-0 font-medium">{tool}</span>
+    {summary && <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">{summary}</span>}
   </div>;
 }
 
@@ -102,8 +104,8 @@ function Body({ item }) {
       return <ToolCall item={item}/>;
     case "tool_result":
     case "error":
-      // A result without its call names the tool inside its own box.
-      return <Result item={item} header={Boolean(item.tool)}/>;
+      // A result without its call names the tool and its command inside its own box.
+      return <Result item={item} input={item.input} header={Boolean(item.tool)} summary={summarize(item.input)}/>;
     default: {
       const Icon = item.type === "start" ? CirclePlay : item.type === "compact" ? Minimize2 : CircleStop;
       return <>
