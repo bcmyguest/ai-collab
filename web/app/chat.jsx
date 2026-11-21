@@ -242,27 +242,8 @@ function Sidebar({ data, selected, now, navigate, newSession }) {
 
 function ZoomControls({ data, selected, now, navigate, compact }) {
   const project = selected.project || data.project;
-  const pick = level => navigate(level === "session" ? { project, level } : { project, level, tab: selected.tab });
-  const sessions = data.agents;
   return <div className="flex flex-wrap items-center gap-2">
-    {/* On a phone the menu holds projects and sessions; the header keeps only the view tabs. */}
-    <Tabs value={selected.level} onValueChange={pick} className="hidden md:flex">
-      <TabsList aria-label="Level of detail" className="h-9">
-        {LEVELS.map(([id, label]) => <TabsTrigger key={id} value={id} className="px-3">{label}</TabsTrigger>)}
-      </TabsList>
-    </Tabs>
-    {selected.level === "session" && sessions.length > 0 && <Select value={selected.session}
-      onValueChange={session => navigate({ project, level: "session", harness: peerOf(session), session })}>
-      <SelectTrigger aria-label="Session" className="hidden h-9 min-w-0 md:flex md:w-auto md:flex-1 md:max-w-80"><SelectValue placeholder="Pick a session"/></SelectTrigger>
-      <SelectContent position="popper">
-        {sessions.map(agent => <SelectItem key={agent.id} value={agent.id}>
-          <Dot online={agent.online}/>
-          <span className="font-mono text-xs">{agent.id}</span>
-          <SessionName agent={agent}/>
-          <span className="text-xs text-muted-foreground">{seen(agent, now)}</span>
-        </SelectItem>)}
-      </SelectContent>
-    </Select>}
+    {/* Projects and sessions live in the sidebar (the menu on a phone); the header keeps only the view tabs. */}
     {selected.level === "session" && selected.session && <Tabs value={selected.tab} onValueChange={tab => navigate({ ...selected, project, tab, run: "" })}>
       <TabsList aria-label="Session view" className="h-9">
         <TabsTrigger value="chat" className="px-3">Chat</TabsTrigger>
@@ -288,7 +269,7 @@ function Ticks({ state }) {
     className={cn("inline-flex", state === "read" ? "text-primary" : "text-muted-foreground")}><Icon className="size-3.5"/></span>;
 }
 
-function ChatMessage({ message, operator, me, now, reply, open, act, answer, disabled }) {
+function ChatMessage({ message, operator, me, now, reply, open, act, answer, nudge, disabled }) {
   const sender = message.from || message.sender || "ntfy";
   const outgoing = sender === operator;
   // A signed-in family member's message names them; the viewer's own stays "You".
@@ -311,6 +292,13 @@ function ChatMessage({ message, operator, me, now, reply, open, act, answer, dis
         {message.scope === "all" && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">to all</Badge>}
         {message.urgent && <span role="img" aria-label="Sent now" title="Sent now: delivered at the agent's next tool call" data-urgent className="text-amber-500"><Zap className="size-3.5"/></span>}
         {outgoing && <Ticks state={message.receipt}/>}
+        {/* Unread by its session: queued for the agent's next poll; Send now delivers it at the next tool call. */}
+        {outgoing && message.to?.includes("#") && message.receipt && message.receipt !== "read" && <span data-queued className="flex items-center gap-1">
+          <Badge variant="outline" className="h-4 px-1.5 text-[10px]">queued</Badge>
+          {!message.urgent && nudge && <button type="button" disabled={disabled} onClick={() => nudge(message.to)}
+            title="Deliver at the agent's next tool call" className="flex items-center gap-0.5 rounded-full px-1 text-amber-600 hover:bg-muted disabled:opacity-50 dark:text-amber-400">
+            <Zap className="size-3"/>Send now</button>}
+        </span>}
         {openable && sender.includes("#") && <GoToAgent onClick={go} className="size-6"/>}
       </div>
       {message.kind === "Approval" ? <ApprovalCard approval={message.approval} now={now} disabled={disabled} act={act}/>
@@ -444,13 +432,15 @@ function Composer({ agents, harnesses, now, disabled, placeholder, onSend, quest
             <Button type="button" variant="ghost" size="sm" className="rounded-full" aria-expanded={picking} disabled={busy}
               onClick={() => { setShowPicker(!showPicker); setActiveIndex(0); focus(); }}><AtSign/>Mention</Button>
           </PromptInputAction>
-          {urgentable && <PromptInputAction tooltip="Deliver at the agent's next tool call instead of its next turn">
-            <Button type="button" variant={urgent ? "secondary" : "ghost"} size="sm" className={cn("rounded-full", urgent && "text-amber-500")} aria-pressed={urgent} disabled={busy}
-              onClick={() => setUrgent(!urgent)}><Zap/>Send now</Button>
-          </PromptInputAction>}
-          <PromptInputAction tooltip="Send">
-            <Button type="button" size="icon" className="rounded-full" aria-label="Send" disabled={busy || !draft.trim()} onClick={send}><ArrowUp/></Button>
-          </PromptInputAction>
+          <div className="flex items-center gap-1">
+            {urgentable && <PromptInputAction tooltip="Deliver at the agent's next tool call instead of its next turn">
+              <Button type="button" variant={urgent ? "secondary" : "ghost"} size="sm" className={cn("rounded-full", urgent && "text-amber-500")} aria-pressed={urgent} disabled={busy}
+                onClick={() => setUrgent(!urgent)}><Zap/>Send now</Button>
+            </PromptInputAction>}
+            <PromptInputAction tooltip="Send">
+              <Button type="button" size="icon" className="rounded-full" aria-label="Send" disabled={busy || !draft.trim()} onClick={send}><ArrowUp/></Button>
+            </PromptInputAction>
+          </div>
         </PromptInputActions>
       </PromptInput>
     </div>
@@ -746,6 +736,7 @@ function Console({ account }) {
             ? <ActivityRow key={row.id} row={row} when={at => ago(at, now)} agent={watching ? agentLink : undefined} now={now} goRun={goRun}/>
             : <ChatMessage key={message.id} message={message} operator={data.operator} me={account.user?.login} now={now} open={openAddress} disabled={!ready || working}
               act={payload => action("approve", payload, "Sent")} answer={(id, body) => action("reply", { question: id, body }, "Reply sent")}
+              nudge={to => action("nudge", { target: to }, "Sending now")}
               reply={id => { setQuestion(id); setNotice(""); document.getElementById("composer")?.focus(); }}/>)}
           {ready && (watching || inline) && <Working rows={rows} now={now} overview={watching}/>}
           <ChatContainerScrollAnchor/>

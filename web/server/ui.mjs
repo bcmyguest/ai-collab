@@ -4,7 +4,7 @@ import { basename, isAbsolute, join } from "node:path";
 import { loadConfig, loadProjects, activityTopic, broadcastTopic, configDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.mjs";
 import { ACTIVITY_TYPES } from "../../lib/activity.mjs";
 import { stripControl } from "../../lib/format.mjs";
-import { NTFY_MESSAGE_MAX_BYTES, latestStatuses, parseEnvelope, sendMessage } from "../../lib/inbox.mjs";
+import { NTFY_MESSAGE_MAX_BYTES, latestStatuses, markUrgent, parseEnvelope, sendMessage } from "../../lib/inbox.mjs";
 import { publish } from "../../lib/ntfy.mjs";
 import { parsePhoneReply } from "../../lib/questions.mjs";
 import { listSessions } from "../../lib/sessions.mjs";
@@ -21,7 +21,7 @@ import { createHub } from "./hub.mjs";
 import { createPush, notice } from "./push.mjs";
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["messages", "send", "reply", "compact", "wake", "afk", "approve", "start", "models"];
+const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "approve", "start", "models"];
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
 const PARENT = /^[a-z0-9-]{1,24}#[a-f0-9]{16}$/;
@@ -731,6 +731,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (Date.now() - lastStartAt < START_GAP_MS) reject(429, "Wait 10 seconds between starts");
         lastStartAt = Date.now();
         return json(201, await start(cfg, { harness, prompt: checked.text, env, place: where || "folder", ...(chosen !== undefined ? { model: chosen } : {}) }));
+      }
+      // A queued message is already on ntfy: the urgent marker makes the recipient's next hook poll at once.
+      if (action === "nudge") {
+        recipient(cfg, target, true);
+        markUrgent(operator, target);
+        return json(200, { status: "Sending at the agent's next tool call" });
       }
       if (action === "compact" || action === "wake") {
         recipient(cfg, target, true);
