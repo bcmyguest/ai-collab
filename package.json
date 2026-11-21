@@ -19,6 +19,7 @@
     "deploy",
     "hooks",
     "lib",
+    "runner",
     "scripts/*.mjs",
     "scripts/ai-collab",
     "scripts/ai-collab-hook",
@@ -35,6 +36,7 @@
   "scripts": {
     "test": "node --test",
     "build": "next build web",
+    "runner": "node runner/main.mjs",
     "ui": "next start web -H 127.0.0.1 -p ${AI_COLLAB_UI_PORT:-8795}",
     "demo": "AI_COLLAB_NEXT_DIST=.next-demo next build web && AI_COLLAB_NEXT_DIST=.next-demo node scripts/demo/record.mjs"
   },
