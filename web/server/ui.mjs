@@ -339,7 +339,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   async function routeMentions(project, body, target, by) {
     const { cfg, operator } = project;
     const sessions = listSessions(cfg);
-    const direct = to => sendMessage(operator, to, body, { operatorThread: true, ...(by ? { by } : {}) });
+    const direct = to => sendMessage(operator, to, body, { operatorThread: true, mentionedIn: target, ...(by ? { by } : {}) });
     const notes = [];
     for (const name of mentionedNames(body, cfg.peers)) {
       if (name === target) continue;
