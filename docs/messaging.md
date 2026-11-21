@@ -100,7 +100,7 @@ The operator's own messages show ticks:
 | Tick | Label | Direct message | Broadcast or harness message |
 |---|---|---|---|
 | ✓ | Sent | ntfy accepted it | ntfy accepted it |
-| ✓✓ | Delivered | the session was online when sent, or has been active since | at least one recipient session was online when sent, or active since |
+| ✓✓ | Read by some sessions | not used: a direct message stays ✓ until its session reads it | at least one recipient session sent a receipt |
 | ✓✓ in the primary colour | Read | that session sent a receipt | every session online when the UI first saw the message sent a receipt; with none online then, the first receipt |
 
 "Online when sent" is the set of online sessions when the UI server first saw the message, so history loaded after a UI restart, older than 30 minutes, has no such set and turns read on its first receipt.
