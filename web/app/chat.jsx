@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "next-themes";
-import { Activity, ArrowUp, AtSign, Bell, BellOff, Bot, Check, CheckCheck, Coffee, CornerLeftUp, FolderGit2, House, Menu, Minimize2, Monitor, Moon, Plus, RotateCw, Sun, Users, Zap } from "lucide-react";
+import { Activity, ArrowUp, AtSign, Bell, BellOff, Bot, Check, CheckCheck, Coffee, CornerLeftUp, FolderGit2, House, Menu, Minimize2, Monitor, Moon, Plus, RotateCw, Sun, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatContainerContent, ChatContainerRoot, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
@@ -23,12 +23,11 @@ import { toast } from "sonner";
 
 const initial = { projects: [], harnesses: [], agents: [], messages: [] };
 const ACTIVITY_MAX = 500;
-const SHOW_ACTIVITY_KEY = "ai-collab.showActivity";
 const PULL_THRESHOLD_PX = 70;
 const PULL_MAX_PX = 110;
-const LEVELS = [["project", "Project"], ["harness", "Harness"], ["session", "Session"]];
+const LEVELS = [["project", "Project"], ["session", "Sessions"]];
 // Tabs other than chat each level accepts in the hash.
-const TABS = { project: ["activity", "sessions"], session: ["subagents"] };
+const TABS = { project: ["activity"], session: ["activity", "subagents"] };
 const DEFAULT_MODEL = "default";
 const PLACES = { folder: "In the project folder", worktree: "In a new git worktree", openshell: "In the openshell sandbox" };
 const HARNESS_COLORS = {
@@ -67,17 +66,18 @@ function selection() {
 }
 
 /** The /api/events query for a selection, and which view it shows. */
-function streamOf(selected, showActivity) {
+function streamOf(selected) {
   const stream = new URLSearchParams();
   const home = selected.level === "home";
+  const session = selected.level === "session" && Boolean(selected.session);
   if (selected.project && !home) stream.set("project", selected.project);
-  if (selected.level === "harness" && selected.harness) stream.set("harness", selected.harness);
-  if (selected.level === "session" && selected.session) stream.set("session", selected.session);
-  // The overview is the project's Activity tab; a session thread interleaves its activity unless switched off.
+  if (session) stream.set("session", selected.session);
+  // The project's Activity tab is the overview; a session's Activity tab interleaves its rows with its chat.
   const watching = selected.tab === "activity" && selected.level === "project";
-  const subagents = selected.level === "session" && Boolean(selected.session) && selected.tab === "subagents";
-  const inline = selected.level === "session" && Boolean(selected.session) && showActivity && !subagents;
-  const listing = selected.level === "project" && selected.tab === "sessions";
+  const subagents = session && selected.tab === "subagents";
+  const inline = session && selected.tab === "activity";
+  // Sessions with none picked lists the project's sessions under the selector.
+  const listing = selected.level === "session" && !selected.session;
   if (watching || inline || subagents) stream.set("view", "activity");
   else if (home) stream.set("view", "home");
   else if (listing) stream.set("view", "sessions");
@@ -234,17 +234,9 @@ function Sidebar({ data, selected, now, navigate, newSession }) {
   </nav>;
 }
 
-function ZoomControls({ data, selected, now, navigate, showActivity, setShowActivity, compact }) {
+function ZoomControls({ data, selected, now, navigate, compact }) {
   const project = selected.project || data.project;
-  const pick = level => {
-    if (level === "harness") {
-      const harness = selected.harness || [...data.harnesses].sort((a, b) => b.lastMessageAt - a.lastMessageAt)[0]?.id || "";
-      navigate({ project, level, harness });
-    } else if (level === "session") {
-      const session = selected.session || data.agents.find(agent => !selected.harness || agent.peer === selected.harness)?.id || data.agents[0]?.id || "";
-      navigate({ project, level, harness: peerOf(session), session });
-    } else navigate({ project, level, tab: selected.tab });
-  };
+  const pick = level => navigate(level === "session" ? { project, level } : { project, level, tab: selected.tab });
   const sessions = data.agents;
   return <div className="flex flex-wrap items-center gap-2">
     <Tabs value={selected.level} onValueChange={pick}>
@@ -252,16 +244,6 @@ function ZoomControls({ data, selected, now, navigate, showActivity, setShowActi
         {LEVELS.map(([id, label]) => <TabsTrigger key={id} value={id} className="px-3">{label}</TabsTrigger>)}
       </TabsList>
     </Tabs>
-    {selected.level === "harness" && <Select value={selected.harness} onValueChange={harness => navigate({ project, level: "harness", harness })}>
-      <SelectTrigger aria-label="Harness" className="h-9 w-full min-w-0 sm:w-auto sm:flex-1 sm:max-w-64"><SelectValue placeholder="Pick a harness"/></SelectTrigger>
-      <SelectContent position="popper">
-        {data.harnesses.map(harness => <SelectItem key={harness.id} value={harness.id}>
-          <Avatar address={harness.id} className="size-5 text-[8px]"/>
-          <span>{harness.id}</span>
-          <span className="text-xs text-muted-foreground">{harness.sessions} · {seen(harness, now)}</span>
-        </SelectItem>)}
-      </SelectContent>
-    </Select>}
     {selected.level === "session" && sessions.length > 0 && <Select value={selected.session}
       onValueChange={session => navigate({ project, level: "session", harness: peerOf(session), session })}>
       <SelectTrigger aria-label="Session" className="h-9 w-full min-w-0 sm:w-auto sm:flex-1 sm:max-w-80"><SelectValue placeholder="Pick a session"/></SelectTrigger>
@@ -276,19 +258,16 @@ function ZoomControls({ data, selected, now, navigate, showActivity, setShowActi
     </Select>}
     {selected.level === "session" && selected.session && <Tabs value={selected.tab} onValueChange={tab => navigate({ ...selected, project, tab, run: "" })}>
       <TabsList aria-label="Session view" className="h-9">
-        <TabsTrigger value="chat" className="px-3">Thread</TabsTrigger>
+        <TabsTrigger value="chat" className="px-3">Chat</TabsTrigger>
+        <TabsTrigger value="activity" className="px-3"><Activity/>Activity</TabsTrigger>
         <TabsTrigger value="subagents" className="px-3"><Bot/>Subagents</TabsTrigger>
       </TabsList>
     </Tabs>}
-    {selected.level === "session" && selected.tab !== "subagents" && <Button type="button" variant={showActivity ? "secondary" : "ghost"} size="sm" className="h-9 rounded-full"
-      aria-pressed={showActivity} aria-label="Show activity" title="Show this agent's tool calls, prompts and text in the thread"
-      onClick={() => setShowActivity(!showActivity)}><Activity/>Activity {showActivity ? "on" : "off"}</Button>}
     {compact}
     {selected.level === "project" && <Tabs value={selected.tab} onValueChange={tab => navigate({ ...selected, project, tab })}>
       <TabsList aria-label="View" className="h-9">
         <TabsTrigger value="chat" className="px-3">Chat</TabsTrigger>
         <TabsTrigger value="activity" className="px-3"><Activity/>Activity</TabsTrigger>
-        <TabsTrigger value="sessions" className="px-3"><Users/>Sessions</TabsTrigger>
       </TabsList>
     </Tabs>}
   </div>;
@@ -509,8 +488,6 @@ function Console({ account }) {
   const pullRef = useRef(0);
   const [pullSide, setPullSide] = useState("top");
   const stick = useRef(null);
-  const [showActivity, setShowActivityState] = useState(() => localStorage.getItem(SHOW_ACTIVITY_KEY) !== "off");
-  const setShowActivity = on => { localStorage.setItem(SHOW_ACTIVITY_KEY, on ? "on" : "off"); setActivity([]); setShowActivityState(on); };
   const [ready, setReady] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [notice, setNotice] = useState("");
@@ -525,13 +502,13 @@ function Console({ account }) {
   const shown = useRef(false);
   const autoRetry = useRef(true);
   const hiddenAt = useRef(0);
-  const { home, watching, subagents, inline, listing, requested } = streamOf(selected, showActivity);
+  const { home, watching, subagents, inline, listing, requested } = streamOf(selected);
   route.current = requested;
   useEffect(() => {
     const change = () => {
       const next = selection();
       // A hash change that keeps the same stream (a tab or subagent run over rows already loaded) keeps its state.
-      const nextStream = streamOf(next, localStorage.getItem(SHOW_ACTIVITY_KEY) !== "off").requested;
+      const nextStream = streamOf(next).requested;
       const same = nextStream === route.current;
       // Set now so the old stream's events, until its effect closes it, are dropped.
       route.current = nextStream;
@@ -553,9 +530,11 @@ function Console({ account }) {
     let retryTimer = 0;
     // Error banners wait for one quiet reconnect; a manual Retry or a visible error ends in one toast.
     const show = error => { clearTimeout(bannerTimer); shown.current = true; setLoadError(error); };
+    // A failure that heals within RECONNECT_GRACE_MS (a phone waking up) shows nothing, so no "Reconnected" follows.
     const fail = error => {
+      if (!retrying.current) { clearTimeout(bannerTimer); bannerTimer = setTimeout(() => show(error), RECONNECT_GRACE_MS); return; }
       show(error);
-      if (retrying.current) { retrying.current = false; toast.error("Reconnect failed", { id: CONNECTION_TOAST, description: error }); }
+      retrying.current = false; toast.error("Reconnect failed", { id: CONNECTION_TOAST, description: error });
     };
     const reconnect = () => { autoRetry.current = true; setRevision(n => n + 1); };
     // EventSource reopens itself after a server restart; each opening checks the build once.
@@ -645,13 +624,13 @@ function Console({ account }) {
   const project = selected.project || data.project || "";
   const level = selected.level;
   const agent = level === "session" ? data.agents.find(item => item.id === selected.session) : undefined;
-  const target = level === "session" ? selected.session : level === "harness" ? selected.harness : "all";
-  const missing = level !== "project" && level !== "home" && !target;
-  const title = home ? "Home" : level === "session" ? short(selected.session) || "No session" : level === "harness" ? selected.harness || "No harness" : project;
+  const target = level === "session" ? selected.session : "all";
+  const missing = level === "session" && !target;
+  const title = home ? "Home" : level === "session" ? short(selected.session) || "Sessions" : project;
   // A home or Sessions card opens its session, or one of its subagent runs.
   const openCard = (node, run = "") => navigate({ project: node.project, level: "session", harness: node.harness || peerOf(node.id), session: node.id, ...(run ? { tab: "subagents", run } : {}) });
-  const placeholder = missing ? "Pick a " + level + " first" : level === "session" ? "Message " + short(selected.session) + " directly…"
-    : level === "harness" ? "Message every " + selected.harness + " session…" : "Message everyone in " + (project || "the project") + "…";
+  const placeholder = missing ? "Pick a session first" : level === "session" ? "Message " + short(selected.session) + " directly…"
+    : "Message everyone in " + (project || "the project") + "…";
   async function action(path, payload, fallback) {
     const at = requested;
     setWorking(true);
@@ -668,16 +647,16 @@ function Console({ account }) {
   }
   // Overview rows name their agent (tap opens its session thread); its newest row shows a badge counting running subagents.
   const agentLink = (address, id) => <><button type="button" aria-label={"Open activity for " + address} title={address}
-    onClick={() => navigate({ project, level: "session", harness: peerOf(address), session: address })}
+    onClick={() => navigate({ project, level: "session", harness: peerOf(address), session: address, tab: "activity" })}
     className="flex min-w-0 items-center gap-1.5 rounded-full py-0.5 pr-2 font-mono text-foreground hover:bg-accent">
     <Avatar address={address} className="size-5 text-[8px]"/>{short(address)}</button>
-    <GoToAgent onClick={() => navigate({ project, level: "session", harness: peerOf(address), session: address })} className="size-6"/>
+    <GoToAgent onClick={() => navigate({ project, level: "session", harness: peerOf(address), session: address, tab: "activity" })} className="size-6"/>
     {running.get(address) > 0 && newest.get(address) === id && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]" title="Running subagents">{running.get(address)} subagent{running.get(address) === 1 ? "" : "s"}</Badge>}</>;
-  // A tapped sender or @tag: a session address opens its thread, a bare harness name its harness view.
+  // A tapped sender or @tag: a session address opens its thread, a bare harness name the session list.
   function openAddress(address) {
     const [peer, session] = String(address).split("#");
     if (!peer || peer === "all" || peer === "operator" || peer === "ntfy") return;
-    navigate(session ? { project, level: "session", harness: peer, session: address } : { project, level: "harness", harness: peer });
+    navigate(session ? { project, level: "session", harness: peer, session: address } : { project, level: "session" });
   }
   const rows = useMemo(() => watching || inline || subagents ? groupSubagents(activityRows(activity)) : [], [activity, watching, inline, subagents]);
   const running = runningSubagents(rows, now);
@@ -705,7 +684,7 @@ function Console({ account }) {
           <Button variant="ghost" size="icon" className="md:hidden" aria-label="Projects" aria-expanded={navOpen} onClick={() => setNavOpen(true)}><Menu/></Button>
           {!home && <Button variant="ghost" size="icon" aria-label="Home" title="Home: every project's sessions" onClick={() => navigate({ level: "home" })}><House/></Button>}
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xs text-muted-foreground">{home ? "All projects" : level === "project" ? (watching ? "Activity · all agents" : "Project") : project + " · " + level}</p>
+            <p className="truncate text-xs text-muted-foreground">{home ? "All projects" : level === "project" ? (watching ? "Activity · all agents" : "Project") : project + " · session"}</p>
             <h1 className="truncate text-base font-semibold leading-tight" title={level === "session" ? selected.session : undefined}>{title}</h1>
             {level === "session" && agent?.name && <p className="line-clamp-2 break-words text-xs text-muted-foreground" title={agent.name}>{agent.name}</p>}
             {level === "session" && agent?.parent && <button type="button" onClick={() => openAddress(agent.parent)} title={"Started by " + agent.parent}
@@ -721,7 +700,7 @@ function Console({ account }) {
         {account.user && <p className="-mt-1 truncate text-right text-[11px] text-muted-foreground" data-account={account.user.login}>
           signed in as <span className="font-medium text-foreground" title={account.user.name || undefined}>{account.user.login}</span>
           {" · "}<button type="button" className="underline-offset-2 hover:underline" onClick={signOut}>sign out</button></p>}
-        {!home && <ZoomControls data={data} selected={selected} now={now} navigate={navigate} showActivity={showActivity} setShowActivity={setShowActivity}
+        {!home && <ZoomControls data={data} selected={selected} now={now} navigate={navigate}
           compact={level === "session" && agent?.session && <Button variant="outline" size="sm" className="ml-auto h-9 rounded-full" aria-label="Compact" disabled={!ready || working}
             onClick={() => action("compact", { target: selected.session }, "Compaction requested")}><Minimize2/>Compact</Button>}/>}
       </header>
@@ -751,7 +730,7 @@ function Console({ account }) {
             back={() => navigate({ ...selected, project, tab: "chat", run: "" })}
             pick={run => navigate({ ...selected, project, tab: "subagents", run })}/>}
           {!home && !listing && !subagents && (!ready || thread.length === 0) && <p className="py-16 text-center text-sm text-muted-foreground">
-            {ready ? (watching ? "No activity yet." : missing ? "No " + level + " to show yet." : "No messages yet.") : loadError ? "" : watching ? "Loading activity…" : "Loading conversation…"}</p>}
+            {ready ? (watching ? "No activity yet." : "No messages yet.") : loadError ? "" : watching ? "Loading activity…" : "Loading conversation…"}</p>}
           {ready && !home && !listing && !subagents && thread.map(({ message, activity: row }) => row
             ? <ActivityRow key={row.id} row={row} when={at => ago(at, now)} agent={watching ? agentLink : undefined} now={now} goRun={goRun}/>
             : <ChatMessage key={message.id} message={message} operator={data.operator} me={account.user?.login} now={now} open={openAddress} disabled={!ready || working}
@@ -769,7 +748,7 @@ function Console({ account }) {
         </div>
       </ChatContainerRoot>
       <div role="status" hidden={!notice} className="mx-auto w-full max-w-3xl px-4 text-center text-xs text-muted-foreground">{notice}</div>
-      {!home && <Composer key={requested} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} now={now}
+      {!home && !listing && <Composer key={requested} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} now={now}
         placeholder={placeholder} question={question} cancel={() => setQuestion("")} urgentable={!question}
         onSend={async (body, urgent) => {
           const sent = question ? await action("reply", { question, body }, "Reply sent") : await action("send", { target, body, ...(urgent ? { urgent: true } : {}) }, "Sent");
