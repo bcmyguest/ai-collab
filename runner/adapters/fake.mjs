@@ -1,0 +1,95 @@
+// Scripted in-process adapter for tests: "approve: <cmd>" asks for approval, "hang" runs until interrupted, else it echoes.
+import { randomUUID } from "node:crypto";
+import { PERMISSION_MODES } from "../contract.mjs";
+
+/** A fake Adapter; calls records every adapter call for assertions. */
+export function createFakeAdapter({ harness = "codex", capabilities = {}, openError = null } = {}) {
+  const calls = [];
+  let runs = 0;
+
+  function makeHandle(nativeId, ctx, active = null) {
+    let running = active;
+    const steered = [];
+
+    async function run(runId, input, settled) {
+      ctx.emit({ type: "RUN_STARTED", runId, prompt: input.text });
+      await new Promise((resolve) => setImmediate(resolve));
+      const approve = /approve: (.+)/.exec(input.text);
+      let outcome = "success";
+      if (approve) {
+        const toolCallId = `c-${runId}`;
+        ctx.emit({ type: "TOOL_CALL_START", toolCallId, toolCallName: "Bash", args: { command: approve[1] } });
+        running.interruptId = `i-${runId}`;
+        ctx.emit({ type: "INTERRUPT_REQUESTED", interruptId: running.interruptId, reason: "tool_approval", toolCallId, toolCallName: "Bash", summary: approve[1] });
+        const answer = await settled;
+        if (answer.interrupted) outcome = "cancelled";
+        else ctx.emit({ type: "TOOL_CALL_RESULT", toolCallId, toolCallName: "Bash", ok: answer.behavior === "allow", content: answer.behavior === "allow" ? `ran ${approve[1]}` : "denied by the operator" });
+      } else if (/\bhang\b/.test(input.text)) {
+        if ((await settled).interrupted) outcome = "cancelled";
+      }
+      if (outcome === "success") ctx.emit({ type: "TEXT_MESSAGE_END", messageId: `m-${runId}`, text: `echo: ${input.text.slice(0, 200)}` });
+      running = null;
+      ctx.emit({ type: "RUN_FINISHED", runId, outcome });
+    }
+
+    return {
+      nativeId,
+      steered,
+      async send(input) {
+        calls.push({ op: "send", nativeId, text: input.text });
+        if (running) throw new Error("fake: a run is already running");
+        const runId = `r${++runs}`;
+        let release;
+        const settled = new Promise((resolve) => { release = resolve; });
+        running = { runId, release };
+        setImmediate(() => run(runId, input, settled));
+        return { runId };
+      },
+      async steer(input) {
+        calls.push({ op: "steer", nativeId, text: input.text });
+        steered.push(input.text);
+      },
+      async interrupt() {
+        calls.push({ op: "interrupt", nativeId });
+        running?.release({ interrupted: true });
+      },
+      async respond(interruptId, decision) {
+        calls.push({ op: "respond", nativeId, interruptId, decision });
+        if (running?.interruptId === interruptId) running.release(decision);
+      },
+      activeRun: () => running?.runId ?? null,
+      async contextUsage() { return { tokens: 1234, window: 200000 }; },
+      resumeData: () => ({ fake: true }),
+      async close() {
+        calls.push({ op: "close", nativeId });
+        running?.release({ interrupted: true });
+      },
+    };
+  }
+
+  const adapter = {
+    harness,
+    calls,
+    // Run ids a live fake keeps "running" across a restart, by native id.
+    survivors: new Map(),
+    capabilities: { steer: true, images: false, resume: "transcript", permissionModes: PERMISSION_MODES, ...capabilities },
+    async available() { return { ok: true }; },
+    async open(options, ctx) {
+      calls.push({ op: "open", options });
+      if (openError) throw new Error(openError);
+      return makeHandle(`fake-${randomUUID()}`, ctx);
+    },
+    async resume(record, ctx) {
+      calls.push({ op: "resume", nativeId: record.nativeId, resume: record.resume });
+      const runId = adapter.survivors.get(record.nativeId);
+      const handle = makeHandle(record.nativeId, ctx, runId ? { runId, release: () => {} } : null);
+      // A surviving run finishes shortly after the runner reattaches.
+      if (runId) setImmediate(() => { ctx.emit({ type: "TEXT_MESSAGE_END", messageId: `m-${runId}`, text: "finished while the runner was away" }); ctx.emit({ type: "RUN_FINISHED", runId, outcome: "success" }); });
+      return handle;
+    },
+    async listModels() { return [{ id: "fake-1", default: true }]; },
+    async listCommands(cwd) { return [{ name: "/fake", description: `in ${cwd}` }]; },
+    async shutdown() { calls.push({ op: "shutdown" }); },
+  };
+  return adapter;
+}

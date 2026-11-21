@@ -1,0 +1,23 @@
+# Owned-session runner (docs/owned-sessions-contract.md); copy to ~/.config/systemd/user/ and set the node path.
+[Unit]
+Description=AI Collab owned-session runner
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/ai-collab
+Environment=NODE_ENV=production
+# Harness CLIs (codex, claude, cursor-agent, opencode) must be on this PATH.
+Environment=PATH=%h/.local/bin:%h/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin
+# Replace with the output of `command -v node` (Node 22.13 or later, for node:sqlite).
+ExecStart=/usr/bin/node %h/ai-collab/runner/main.mjs
+Restart=on-failure
+RestartSec=2
+# Adapter children live in this unit's cgroup, so a UI restart never touches them; runner stops cut transcript runs.
+KillMode=control-group
+KillSignal=SIGTERM
+TimeoutStopSec=15
+UMask=0077
+
+[Install]
+WantedBy=default.target

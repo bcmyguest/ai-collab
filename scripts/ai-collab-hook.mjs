@@ -31,6 +31,7 @@ import { contextTokens, reportContext } from "../lib/usage.mjs";
 import { activityEvents, publishActivity } from "../lib/activity.mjs";
 import { sendReceipts, settleReceipts } from "../lib/receipts.mjs";
 import { closeTerminalCards, decideApproval } from "../lib/approvals.mjs";
+import { standsDown } from "../lib/owned.mjs";
 
 const HOSTS = new Set(["claude", "codex", "cursor", "opencode"]);
 const EVENTS = new Map([
@@ -171,6 +172,8 @@ async function main() {
     .replace(/[^a-z]/g, "");
   const cfg = loadConfig(env, { cwd, host, session });
   if (!cfg.enabled) return emit(neutral(host, key));
+  // The runner drives an owned session and publishes everything itself (docs/owned-sessions-contract.md).
+  if (standsDown(cfg, { host, label: session, env: process.env })) return emit(neutral(host, key));
   if (argv.includes("--rewake")) return rewake(cfg, host, msg);
 
   // Started first and awaited last, so delivery never waits on it.
