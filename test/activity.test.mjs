@@ -93,7 +93,7 @@ test("each harness's documented hook input maps to activity events; thinking is 
   assert.deepEqual(activityEvents("claude", "posttooluse", {
     tool_name: "Bash", tool_input: { command: "ls" }, tool_use_id: "toolu_1",
     tool_response: { stdout: "a\nb", stderr: "", interrupted: false },
-  }), [{ type: "tool_result", tool: "Bash", callId: "toolu_1", output: "a\nb" }]);
+  }), [{ type: "tool_result", tool: "Bash", callId: "toolu_1", output: "a\nb", input: { command: "ls" } }]);
   assert.deepEqual(activityEvents("claude", "posttoolusefailure", { tool_name: "Bash", tool_use_id: "toolu_2", error: "Exit code 1" }),
     [{ type: "error", tool: "Bash", callId: "toolu_2", output: "Exit code 1" }]);
   assert.deepEqual(activityEvents("claude", "userpromptsubmit", { prompt: "fix it" }), [{ type: "prompt", input: "fix it" }]);
@@ -109,7 +109,7 @@ test("each harness's documented hook input maps to activity events; thinking is 
 
   // Codex: https://learn.chatgpt.com/docs/hooks
   assert.deepEqual(activityEvents("codex", "posttooluse", { turn_id: "t", tool_name: "Bash", tool_use_id: "call_1", tool_input: { command: "ls" }, tool_response: "a\nb" }),
-    [{ type: "tool_result", tool: "Bash", callId: "call_1", output: "a\nb" }]);
+    [{ type: "tool_result", tool: "Bash", callId: "call_1", output: "a\nb", input: { command: "ls" } }]);
   assert.deepEqual(activityEvents("codex", "stop", { turn_id: "t", stop_hook_active: false, last_assistant_message: "Done." }),
     [{ type: "text", output: "Done." }, { type: "stop", input: "turn ended" }]);
 
