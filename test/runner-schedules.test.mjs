@@ -1,0 +1,200 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { openDurable } from "../runner/durable.mjs";
+import { listenControl, route } from "../runner/control.mjs";
+import { runnerRequest, runnerClient } from "../runner/client.mjs";
+import { loadSchedules, registerSchedules, runCommand, schedulesPath } from "../runner/schedules.mjs";
+
+const tmp = () => mkdtempSync(path.join(os.tmpdir(), "ai-collab-sched-"));
+const dbFile = () => path.join(tmp(), "runner.db");
+const iso = (ms) => new Date(ms).toISOString();
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const node = (code) => [process.execPath, "-e", code];
+
+async function waitFor(check, ms = 3000) {
+  const end = Date.now() + ms;
+  while (!check()) {
+    if (Date.now() > end) throw new Error("condition not met in time");
+    await sleep(10);
+  }
+}
+
+test("a start after downtime runs only the latest due tick, and each tick once", async () => {
+  const file = dbFile();
+  let clock = 10_000;
+  const calls = [];
+  const register = (log) => log.scheduled("beat", { everyMs: 1000 }, async (scheduled, actual) => {
+    calls.push([scheduled.getTime(), actual.getTime()]);
+  });
+
+  const first = openDurable(file, { now: () => clock });
+  register(first);
+  first.startSchedules();
+  await first.result(`beat@${iso(10_000)}`);
+  await first.close();
+
+  clock = 15_500; // down 5.5 s: the ticks at 11 s to 14 s were missed
+  const second = openDurable(file, { now: () => clock });
+  register(second);
+  second.startSchedules();
+  await second.result(`beat@${iso(15_000)}`);
+  assert.deepEqual(calls, [[10_000, 10_000], [15_000, 15_500]]);
+  assert.equal(second.status(`beat@${iso(11_000)}`), null);
+  await second.close();
+
+  const third = openDurable(file, { now: () => clock });
+  register(third);
+  third.startSchedules();
+  await sleep(20);
+  assert.equal(calls.length, 2);
+  await third.close();
+});
+
+test("a tick that finds the previous run still going is recorded as skipped", async () => {
+  const log = openDurable(":memory:");
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  let runs = 0;
+  log.scheduled("slow", { everyMs: 100 }, async () => {
+    runs += 1;
+    await gate;
+    return "done";
+  });
+  log.startSchedules();
+  await waitFor(() => log.schedules()[0].last?.output?.skipped);
+  assert.equal(runs, 1);
+  assert.equal(log.schedules()[0].last.status, "SUCCESS");
+  release();
+  await waitFor(() => runs >= 2);
+  await log.close();
+});
+
+test("runScheduled starts a tick now under its own id", async () => {
+  const log = openDurable(":memory:");
+  log.scheduled("now", { everyMs: 60_000 }, async () => "ran");
+  const { id, status } = log.runScheduled("now");
+  assert.equal(status, "started");
+  assert.equal(await log.result(id), "ran");
+  assert.equal(log.schedules()[0].last.id, id);
+  await log.close();
+});
+
+test("scheduled rejects a cron option, a non-integer interval and a duplicate name", async () => {
+  const log = openDurable(":memory:");
+  assert.throws(() => log.scheduled("a", { cron: "* * * * *" }, () => {}), /everyMs must be a positive integer/);
+  log.scheduled("a", { everyMs: 1000 }, () => {});
+  assert.throws(() => log.scheduled("a", { everyMs: 1000 }, () => {}), /already registered/);
+  await log.close();
+});
+
+test("a scheduled command records its exit code and output tail", async () => {
+  const log = openDurable(":memory:");
+  registerSchedules(log, [{ name: "pm", everyMs: 60_000, cwd: tmp(), command: node("console.log('tick ran')"), timeoutMs: 10_000 }]);
+  const { id, status } = log.runScheduled("pm");
+  assert.equal(status, "started");
+  const out = await log.result(id);
+  assert.deepEqual([out.ok, out.exitCode, out.timedOut], [true, 0, false]);
+  assert.match(out.tail, /tick ran/);
+  assert.equal(log.status(id).status, "SUCCESS");
+  await log.close();
+});
+
+test("a tick cut by a stop kills its command and is recorded as cut at recovery, not re-run", async () => {
+  const file = dbFile();
+  const entry = { name: "pm", everyMs: 60_000, cwd: tmp(), command: node("setTimeout(() => {}, 60000)"), timeoutMs: 60_000 };
+  const first = openDurable(file);
+  registerSchedules(first, [entry]);
+  const { id } = first.runScheduled("pm");
+  await waitFor(() => first.steps(id).some((step) => step.name === "command"));
+  await first.close();
+
+  const second = openDurable(file);
+  registerSchedules(second, [entry]);
+  assert.deepEqual(second.recover(), [id]);
+  const out = await second.result(id);
+  assert.equal(out.ok, false);
+  assert.match(out.cut, /not re-run/);
+  assert.equal(second.status(id).status, "SUCCESS");
+  await second.close();
+});
+
+test("runCommand keeps the output tail, reports exit codes, timeouts and missing binaries", async () => {
+  const cwd = tmp();
+  const ok = await runCommand(node("console.log('x'.repeat(3000) + 'END')"), { cwd, timeoutMs: 10_000 });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.tail.length, 2000);
+  assert.ok(ok.tail.endsWith("END\n"));
+
+  const failed = await runCommand(node("process.exit(3)"), { cwd, timeoutMs: 10_000 });
+  assert.deepEqual([failed.ok, failed.exitCode], [false, 3]);
+
+  const slow = await runCommand(node("setTimeout(() => {}, 60000)"), { cwd, timeoutMs: 200 });
+  assert.deepEqual([slow.ok, slow.timedOut], [false, true]);
+
+  const missing = await runCommand(["/nonexistent/ai-collab-binary"], { cwd, timeoutMs: 1000 });
+  assert.equal(missing.ok, false);
+  assert.match(missing.tail, /ENOENT/);
+});
+
+test("loadSchedules reads AI_COLLAB_SCHEDULES, treats a missing file as none, and rejects bad entries", () => {
+  const dir = tmp();
+  const file = path.join(dir, "schedules.json");
+  assert.deepEqual(loadSchedules({ AI_COLLAB_SCHEDULES: file }), []);
+
+  writeFileSync(file, JSON.stringify([{ name: "pm", everyMinutes: 30, cwd: dir, command: ["cursor-agent", "-p"], timeoutSec: 900 }]));
+  assert.deepEqual(loadSchedules({ AI_COLLAB_SCHEDULES: file }), [{ name: "pm", everyMs: 1_800_000, cwd: dir, command: ["cursor-agent", "-p"], timeoutMs: 900_000 }]);
+
+  const bad = [
+    { name: "pm", everyMinutes: 30, cwd: "relative", command: ["x"] },
+    { name: "pm", everyMinutes: 30, cwd: dir, command: [] },
+    { name: "pm", cron: "*/5 * * * *", cwd: dir, command: ["x"] },
+    { name: "Bad Name", everyMinutes: 30, cwd: dir, command: ["x"] },
+    { name: "pm", everyMinutes: 0, cwd: dir, command: ["x"] },
+    { name: "pm", everyMinutes: 30, cwd: dir, command: ["x"], extra: 1 },
+  ];
+  for (const entry of bad) {
+    writeFileSync(file, JSON.stringify([entry]));
+    assert.throws(() => loadSchedules({ AI_COLLAB_SCHEDULES: file }), /schedules\.json entry 0/);
+  }
+  const twice = { name: "pm", everyMinutes: 30, cwd: dir, command: ["x"] };
+  writeFileSync(file, JSON.stringify([twice, twice]));
+  assert.throws(() => loadSchedules({ AI_COLLAB_SCHEDULES: file }), /appears twice/);
+});
+
+test("schedulesPath defaults to the ai-collab config directory", () => {
+  const home = tmp();
+  assert.equal(schedulesPath({ HOME: home }), path.join(home, ".config", "ai-collab", "schedules.json"));
+  assert.equal(schedulesPath({ AI_COLLAB_SCHEDULES: "/x/s.json", HOME: home }), "/x/s.json");
+});
+
+test("GET /v1/schedules lists schedules and POST run starts one over the control socket", async () => {
+  const runner = {
+    schedules: () => [{ name: "pm", nextRun: "2026-11-21T10:30:00.000Z", last: null }],
+    runSchedule: (name) => {
+      if (name !== "pm") throw Object.assign(new Error("Unknown schedule"), { status: 404 });
+      return { id: "pm@2026-11-21T10:00:00.000Z", status: "started" };
+    },
+  };
+  const socket = path.join(tmp(), "runner.sock");
+  const control = await listenControl(runner, socket);
+  try {
+    const client = runnerClient({ socket });
+    const listed = await client.schedules();
+    assert.equal(listed.status, 200);
+    assert.equal(listed.body.schedules[0].name, "pm");
+    const started = await client.runSchedule("pm");
+    assert.deepEqual([started.status, started.body.status], [202, "started"]);
+    assert.equal((await client.runSchedule("nope")).status, 404);
+    assert.equal((await runnerRequest("GET", "/v1/schedules/pm/run", undefined, { socket })).status, 405);
+  } finally {
+    await control.close();
+  }
+});
+
+test("route rejects a GET on the run path", async () => {
+  const runner = { schedules: () => [], runSchedule: () => ({}) };
+  await assert.rejects(route(runner, "GET", new URL("http://runner.invalid/v1/schedules/pm/run"), {}), { status: 405 });
+});

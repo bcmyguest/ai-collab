@@ -97,6 +97,40 @@ The first prompt is the first input; the loop starts with it, not with `recv`.
 
 `runner.stop()` (SIGTERM) aborts workflows where they wait and leaves open steps `started`, so the rules above apply at the next boot. The cut row is published at that boot, not at stop, so it appears exactly once.
 
+### Scheduled workflows
+
+`scheduled(name, {everyMs}, fn)` in `runner/durable.mjs` registers a DBOS-style scheduled workflow (DBOS `@DBOS.scheduled`). Each tick is a workflow named `scheduled:<name>` with id `<name>@<scheduledTime ISO>`, and `fn(scheduledTime, actualTime, wf)` runs in it. Ticks align to the Unix epoch: a 30-minute schedule fires at :00 and :30 UTC. Cron is not supported.
+
+| Case | Result |
+|---|---|
+| Tick due, id unused | Runs; the id stays in the log, so a tick never runs twice, even across restarts |
+| Runner down across one or more ticks, then started | Runs the latest due tick once. Earlier missed ticks never run: no backlog |
+| Tick due while the previous tick still runs | Recorded as `SUCCESS` with output `{"skipped":"previous run still going"}`; not retried |
+| Runner stops during a run | Its command gets SIGTERM and the step stays `started`; at the next boot the step records `cut` and the command is not re-run |
+| `POST /v1/schedules/:name/run` | Starts a tick at the current time under its own id, with the same overlap rule; returns 202 without waiting |
+
+The command step runs `execFile` with argv (no shell), `cwd` and `timeoutSec` from the entry. Its result is `{ok, exitCode, timedOut, durationMs, tail, scheduledTime, actualTime}`, where `tail` is the last 2000 characters of stdout and stderr. Ticks publish no ntfy rows: a schedule has no session to publish under.
+
+Config: `$XDG_CONFIG_HOME/ai-collab/schedules.json` (default `~/.config/ai-collab/schedules.json`), or the path in `AI_COLLAB_SCHEDULES`. A JSON array; the runner reads it at start and refuses to start on an invalid entry. A missing file means no schedules. Code: `runner/schedules.mjs`.
+
+```json
+[
+  { "name": "pm", "everyMinutes": 30, "cwd": "/home/b/ai-collab",
+    "command": ["cursor-agent", "-p", "--trust", "--model", "composer-2.5", "--resume", "<id>", "PM tick: follow the goal from your first message (steps 1-5)."],
+    "timeoutSec": 900 }
+]
+```
+
+| Key | Type | Required |
+|---|---|---|
+| `name` | 1–40 chars of `a-z`, `0-9`, `-`; unique | yes |
+| `everyMinutes` | positive integer | yes |
+| `cwd` | absolute path | yes |
+| `command` | non-empty array of strings: argv, no shell | yes |
+| `timeoutSec` | positive integer, default 900 | no |
+
+Control socket only (operator): `GET /v1/schedules` returns `{schedules: [{name, everyMs, nextRun, last: {id, status, scheduledTime, output, error}}]}`; `POST /v1/schedules/:name/run` runs a tick now. Neither route is on MCP or ntfy.
+
 ## Adapter interface
 
 The native calls below come from the research doc; each adapter agent verifies its own column against the harness before relying on it.
@@ -205,6 +239,8 @@ HTTP/1.1 JSON over a unix socket: `AI_COLLAB_RUNNER_SOCKET`, else `$XDG_RUNTIME_
 | `POST /v1/sessions/:harness/:label/approvals/:id` | `{decision: "allow"\|"deny"}` or `{answers}` | `{status:"answered"}` |
 | `GET /v1/sessions/:harness/:label/context` | | `{context: {tokens, window?} \| null}` |
 | `DELETE /v1/sessions/:harness/:label` | | `{status: "ended"\|"closing"}` |
+| `GET /v1/schedules` | | `{schedules: [{name, everyMs, nextRun, last}]}`; see [Scheduled workflows](#scheduled-workflows) |
+| `POST /v1/schedules/:name/run` | | 202 `{id, status: "started"\|"skipped"}`; 404 for an unknown schedule |
 
 How a UI start reaches the runner (the UI change comes with the first adapter, not in this skeleton):
 
@@ -245,7 +281,8 @@ Cursor's `full-access` needs OpenShell. OpenCode replies are always `once`, neve
 |---|---|
 | `runner/types.d.ts` | Adapter interface, events, records |
 | `runner/contract.mjs` | Harness, mode and event constants; `PERMISSION_TABLE`; `eventProblem` |
-| `runner/durable.mjs` | SQLite workflow/step/message log |
+| `runner/durable.mjs` | SQLite workflow/step/message log; `scheduled` ticks |
+| `runner/schedules.mjs` | `schedules.json` loader and the scheduled command step |
 | `runner/runner.mjs` | Session workflow, control operations, ntfy input |
 | `runner/publish.mjs` | Event → envelope mapping |
 | `runner/control.mjs`, `runner/client.mjs` | Control socket server and client |
@@ -256,7 +293,7 @@ Cursor's `full-access` needs OpenShell. OpenCode replies are always `once`, neve
 | `deploy/ai-collab-runner.service` | User unit template; not installed |
 | `test/runner*.test.mjs` | Tests with the fake adapter and fake ntfy |
 
-Environment: `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (minutes before an unanswered owned approval is denied; default 30), `AI_COLLAB_RUNNER_SOCKET`, `AI_COLLAB_RUNNER_DB` (default `$AI_COLLAB_STATE_DIR/runner.db`), `AI_COLLAB_RUNNER_HARNESSES` (comma list), and the usual `AI_COLLAB_*` project settings, read through `loadProjects`.
+Environment: `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (minutes before an unanswered owned approval is denied; default 30), `AI_COLLAB_RUNNER_SOCKET`, `AI_COLLAB_RUNNER_DB` (default `$AI_COLLAB_STATE_DIR/runner.db`), `AI_COLLAB_RUNNER_HARNESSES` (comma list), `AI_COLLAB_SCHEDULES` (path of `schedules.json`), and the usual `AI_COLLAB_*` project settings, read through `loadProjects`.
 
 ## Operator decisions (2026-11-21)
 

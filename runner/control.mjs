@@ -45,6 +45,14 @@ export async function route(runner, method, url, input) {
   if (parts[0] !== "v1") fail(404, "Not found");
   const [, area, a, b, action, id] = parts;
   if (area === "health" && method === "GET") return [200, { ok: true, version: VERSION, harnesses: (await runner.harnesses()).map((h) => h.harness) }];
+  if (area === "schedules") {
+    if (!a && method === "GET") return [200, { schedules: runner.schedules() }];
+    if (a && b === "run" && !action) {
+      if (method !== "POST") fail(405, "Method not allowed");
+      return [202, runner.runSchedule(a)];
+    }
+    fail(404, "Not found");
+  }
   if (area === "harnesses") {
     if (method !== "GET") fail(405, "Method not allowed");
     if (!a) return [200, { harnesses: await runner.harnesses() }];

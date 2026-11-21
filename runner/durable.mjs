@@ -4,6 +4,7 @@ import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 export const WORKFLOW_STATUSES = ["PENDING", "SUCCESS", "ERROR", "CANCELLED"];
+const MAX_TIMER_MS = 2 ** 31 - 1;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS workflows (id TEXT PRIMARY KEY, name TEXT NOT NULL, input TEXT NOT NULL, status TEXT NOT NULL,
@@ -29,7 +30,9 @@ export function openDurable(file, { now = Date.now } = {}) {
   db.exec(SCHEMA);
   const q = {
     wfInsert: db.prepare("INSERT INTO workflows (id, name, input, status, created_at, updated_at) VALUES (?, ?, ?, 'PENDING', ?, ?)"),
+    wfRecord: db.prepare("INSERT INTO workflows (id, name, input, status, output, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"),
     wfGet: db.prepare("SELECT * FROM workflows WHERE id = ?"),
+    wfLatestNamed: db.prepare("SELECT * FROM workflows WHERE name = ? ORDER BY created_at DESC, id DESC LIMIT 1"),
     wfPending: db.prepare("SELECT id, name, input FROM workflows WHERE status = 'PENDING' ORDER BY created_at"),
     wfEnd: db.prepare("UPDATE workflows SET status = ?, output = ?, error = ?, updated_at = ? WHERE id = ?"),
     stepGet: db.prepare("SELECT * FROM steps WHERE workflow_id = ? AND seq = ?"),
@@ -46,6 +49,7 @@ export function openDurable(file, { now = Date.now } = {}) {
   const registry = new Map();
   const running = new Map();
   const waiters = new Map();
+  const schedules = new Map();
   const closing = new AbortController();
 
   function tx(fn) {
@@ -147,13 +151,84 @@ export function openDurable(file, { now = Date.now } = {}) {
         running.delete(id);
       }
     })();
-    running.set(id, { promise, ctrl });
+    running.set(id, { promise, ctrl, name });
     promise.catch(() => {});
     return promise;
   }
 
+  const tickName = (name) => `scheduled:${name}`;
+  const tickId = (name, at) => `${name}@${new Date(at).toISOString()}`;
+  // Interval ticks align to the epoch, so a tick's id is the same on every boot.
+  const dueAt = (everyMs, at) => Math.floor(at / everyMs) * everyMs;
+
+  // Starts the tick for scheduledTime once; a tick whose predecessor still runs is recorded as skipped.
+  function fire(s, scheduledTime, actualTime) {
+    if (closing.signal.aborted) return "closed";
+    const name = tickName(s.name);
+    const id = tickId(s.name, scheduledTime);
+    if (q.wfGet.get(id)) return "recorded";
+    const input = { scheduledTime, actualTime };
+    if ([...running.values()].some((r) => r.name === name)) {
+      q.wfRecord.run(id, name, json(input), "SUCCESS", json({ skipped: "previous run still going" }), now(), now());
+      return "skipped";
+    }
+    q.wfInsert.run(id, name, json(input), now(), now());
+    run(id, name, input).catch(() => {});
+    return "started";
+  }
+
+  // Sleeps until the next tick boundary, then fires the latest due tick and re-arms.
+  function arm(s) {
+    if (closing.signal.aborted) return;
+    const at = now();
+    const wait = dueAt(s.everyMs, at) + s.everyMs - at;
+    s.timer = setTimeout(() => {
+      s.timer = null;
+      fire(s, dueAt(s.everyMs, now()), now());
+      arm(s);
+    }, Math.min(wait, MAX_TIMER_MS));
+    s.timer.unref();
+  }
+
   return {
     register(name, fn) { registry.set(name, fn); },
+    /**
+     * DBOS-style scheduled workflow: fn(scheduledTime, actualTime, wf) runs once per everyMs tick as workflow
+     * `<name>@<scheduledTime ISO>`. A start after downtime runs only the latest due tick, never the missed ones.
+     */
+    scheduled(name, { everyMs } = {}, fn) {
+      if (!Number.isSafeInteger(everyMs) || everyMs < 1) throw new Error(`schedule ${name}: everyMs must be a positive integer`);
+      if (typeof fn !== "function") throw new Error(`schedule ${name}: fn must be a function`);
+      if (schedules.has(name)) throw new Error(`schedule ${name} is already registered`);
+      registry.set(tickName(name), (wf, input) => fn(new Date(input.scheduledTime), new Date(input.actualTime), wf));
+      schedules.set(name, { name, everyMs, timer: null });
+    },
+    /** Fires each schedule's latest due tick, then arms its timer. */
+    startSchedules() {
+      for (const s of schedules.values()) {
+        fire(s, dueAt(s.everyMs, now()), now());
+        arm(s);
+      }
+    },
+    hasSchedule: (name) => schedules.has(name),
+    /** Starts a tick now, outside the timer; resolves {id, status: "started" | "skipped"}. */
+    runScheduled(name) {
+      const s = schedules.get(name);
+      if (!s) throw new Error(`no schedule named ${name}`);
+      const at = now();
+      return { id: tickId(name, at), status: fire(s, at, at) };
+    },
+    /** Each schedule with its next tick (ISO) and its latest tick row. */
+    schedules() {
+      const at = now();
+      return [...schedules.values()].map((s) => {
+        const last = q.wfLatestNamed.get(tickName(s.name));
+        return {
+          name: s.name, everyMs: s.everyMs, nextRun: new Date(dueAt(s.everyMs, at) + s.everyMs).toISOString(),
+          last: last ? { id: last.id, status: last.status, scheduledTime: new Date(parse(last.input).scheduledTime).toISOString(), output: parse(last.output), error: last.error } : null,
+        };
+      });
+    },
     /** Starts a new workflow; the id must be unused. Resolves with its output. */
     startWorkflow(name, id, input) {
       q.wfInsert.run(id, name, json(input), now(), now());
@@ -185,6 +260,7 @@ export function openDurable(file, { now = Date.now } = {}) {
     setKv: (key, value) => q.kvSet.run(key, json(value)),
     /** Aborts running workflows where they wait, leaving unfinished steps as started (cut), then closes the file. */
     async close() {
+      for (const s of schedules.values()) clearTimeout(s.timer);
       closing.abort(new Error("durable log closed"));
       await Promise.all([...running.values()].map((r) => r.promise.catch(() => {})));
       db.close();

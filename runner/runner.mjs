@@ -379,15 +379,24 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
 
   /** Re-runs PENDING session workflows from the durable log (restart rules), then watches ntfy. */
   async function boot() {
-    const claimed = durable.pending().map((id) => new Promise((resolve) => claims.set(id, resolve)));
+    // Scheduled ticks recover too, but only session workflows hold the boot until they claim.
+    const isSession = (id) => durable.status(id)?.name === "session";
+    const sessionIds = durable.pending().filter(isSession);
+    const claimed = sessionIds.map((id) => new Promise((resolve) => claims.set(id, resolve)));
     const ids = durable.recover();
-    const waits = ids.map((id, i) => Promise.race([claimed[i], durable.result(id).catch(() => {})]));
+    const waits = sessionIds.map((id, i) => Promise.race([claimed[i], durable.result(id).catch(() => {})]));
     const timer = new AbortController();
     await Promise.race([Promise.all(waits), delay(START_TIMEOUT_MS, null, { signal: timer.signal }).catch(() => {})]);
     timer.abort();
-    for (const id of ids) claims.delete(id);
+    for (const id of sessionIds) claims.delete(id);
     if (watch) for (const cfg of configs.values()) watchProject(cfg);
-    return ids;
+    return ids.filter(isSession);
+  }
+
+  /** Runs a schedule's tick now; fails 404 for an unknown schedule. */
+  function runSchedule(name) {
+    if (!durable.hasSchedule(name)) fail(404, "Unknown schedule");
+    return durable.runScheduled(name);
   }
 
   // An ntfy event: a phone reply to an owned approval, or a message for an owned session.
@@ -483,6 +492,8 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   return {
     start, send, interrupt, respond, setMode, close, boot, stop, harnesses,
     list: () => [...sessions.values()].map(view),
+    schedules: () => durable.schedules(),
+    runSchedule,
     get: (address) => view(find(address)),
     models: (harness) => adapterOf(harness).listModels(env),
     commands: (harness, project) => {

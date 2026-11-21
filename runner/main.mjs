@@ -7,6 +7,7 @@ import { HARNESSES } from "./contract.mjs";
 import { openDurable } from "./durable.mjs";
 import { createRunner } from "./runner.mjs";
 import { listenControl, runnerSocket } from "./control.mjs";
+import { loadSchedules, registerSchedules } from "./schedules.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -41,10 +42,13 @@ export async function main(env = process.env) {
   const names = String(env.AI_COLLAB_RUNNER_HARNESSES || HARNESSES.join(",")).split(",").map((s) => s.trim()).filter(Boolean);
   const adapters = await loadAdapters(names, { env, log });
   const durable = openDurable(runnerDb(env));
+  // Registered before boot so PENDING ticks recover with the sessions.
+  const schedules = registerSchedules(durable, loadSchedules(env), { env, log });
   const runner = createRunner({ projects, adapters, durable, env, log });
   const recovered = await runner.boot();
+  durable.startSchedules();
   const control = await listenControl(runner, runnerSocket(env));
-  log(`listening on ${control.path}; adapters ${[...adapters.keys()].join(", ") || "none"}; recovered ${recovered.length} session(s)`);
+  log(`listening on ${control.path}; adapters ${[...adapters.keys()].join(", ") || "none"}; recovered ${recovered.length} session(s); schedules ${schedules.join(", ") || "none"}`);
   let stopping = false;
   const shutdown = async () => {
     if (stopping) return;

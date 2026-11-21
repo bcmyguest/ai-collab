@@ -35,6 +35,8 @@ export const runnerClient = (options = {}) => ({
   models: (harness) => runnerRequest("GET", `/v1/harnesses/${encodeURIComponent(harness)}/models`, undefined, options),
   commands: (harness, project) => runnerRequest("GET", `/v1/harnesses/${encodeURIComponent(harness)}/commands?project=${encodeURIComponent(project)}`, undefined, options),
   sessions: () => runnerRequest("GET", "/v1/sessions", undefined, options),
+  schedules: () => runnerRequest("GET", "/v1/schedules", undefined, options),
+  runSchedule: (name) => runnerRequest("POST", `/v1/schedules/${encodeURIComponent(name)}/run`, {}, options),
   start: (input) => runnerRequest("POST", "/v1/sessions", input, options),
   get: (address) => runnerRequest("GET", sessionPath(address), undefined, options),
   send: (address, text, { steer = false } = {}) => runnerRequest("POST", `${sessionPath(address)}/send`, { text, steer }, options),
