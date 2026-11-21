@@ -715,7 +715,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         await publish(cfg, topic, `reply ${id} ${answer}`, { title: replyTitle(cfg, by) });
         return json(201, { sent: true, status: approval.questions ? "Answer sent" : decision === "allow" ? "Allow sent" : "Deny sent" });
       }
-      if (action === "models") return json(200, await models(cfg.stateDir, env));
+      if (action === "models") return json(200, await models(cfg.stateDir, env, { peers: cfg.peers }));
       if (action === "start") {
         if (!startable(project).includes(harness)) reject(400, "That harness is not available for this project");
         // The UI sends worktree / openshell booleans; place is the same choice by name.
@@ -725,7 +725,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         const checked = checkPrompt(prompt);
         if (checked.error) reject(400, checked.error);
         const chosen = model === undefined || model === null || model === "" ? undefined : model;
-        if (chosen !== undefined && (typeof chosen !== "string" || !(await models(cfg.stateDir, env))[harness]?.includes(chosen))) {
+        if (chosen !== undefined && (typeof chosen !== "string" || !(await models(cfg.stateDir, env, { peers: cfg.peers }))[harness]?.includes(chosen))) {
           reject(400, "That model is not available for this harness");
         }
         if (Date.now() - lastStartAt < START_GAP_MS) reject(429, "Wait 10 seconds between starts");

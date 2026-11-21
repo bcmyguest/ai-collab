@@ -2,19 +2,19 @@
 
 ![AI Collab demo](docs/demo.gif)
 
-Best-effort messages and start/stop status between coding-agent peers, carried over a **private, self-hosted ntfy server**. Packaged for Claude Code, Codex, and Cursor, using the same layout as smarter-compact. The peer hooks and MCP server need only Node 22+ (builtin `fetch`); the operator UI uses Next.js with shadcn/ui, Tailwind CSS, and prompt-kit, and remote Claude compaction uses the Claude Agent SDK. Nothing here talks to ntfy.sh or any other public service.
+Best-effort messages and start/stop status between coding-agent peers, carried over a **private, self-hosted ntfy server**. Packaged for Claude Code, Codex, Cursor, and OpenCode 2, using the same layout as smarter-compact. The peer hooks and MCP server need only Node 22+ (builtin `fetch`); the operator UI uses Next.js with shadcn/ui, Tailwind CSS, and prompt-kit, and remote Claude compaction uses the Claude Agent SDK. Nothing here talks to ntfy.sh or any other public service.
 
 ## What it does
 
-| Event | Claude Code | Codex | Cursor | Action |
-|---|---|---|---|---|
-| Session start | yes | yes | yes | Publish `start` status. Fetch the current AFK mode. Inject the mode, reply instructions, and new inbox messages. |
-| Prompt submit | yes | yes | not registered | Read inbox (throttled). Inject new messages and a changed AFK mode. |
-| After tool use | yes | not registered | yes | Sample current context (Claude). Read inbox (throttled). Inject new messages and a changed AFK mode. |
-| Top-level stop | yes | yes | yes | Sample current context. Read inbox. If messages wait, keep the agent going with them (see [Stop](#stop-continuation)). In AFK mode, wait for operator messages first. Otherwise publish `stop` status. |
-| Before compaction | activity only (`PreCompact`, async) | activity only (`PreCompact`) | yes | Publish a `compact` activity row (Cursor also samples `context_tokens`). Output `{}`. |
-| Permission prompt (see [Phone approvals](#phone-approvals)) | `PermissionRequest` (also `AskUserQuestion`) | `PermissionRequest` | not registered (see below) | In AFK mode `on` or `quiet`, ask the operator's phone and wait up to `AI_COLLAB_APPROVAL_S`; otherwise, or without an answer, no decision. |
-| Activity (see [Activity](#activity)) | `PreToolUse`, `PostToolUseFailure`, `MessageDisplay`, `Notification`, `SubagentStart`, `SubagentStop`, `StopFailure` (async), `SessionEnd` | `PreToolUse`, `PostToolUse`, `SubagentStart`, `SubagentStop`, `SessionEnd` | `beforeSubmitPrompt`, `afterAgentResponse`, `postToolUseFailure`, `sessionEnd` | Publish activity only and output the neutral answer (`{}`; Cursor `beforeSubmitPrompt` gets `{"continue":true}`). Every hook above also publishes its activity. |
+| Event | Claude Code | Codex | Cursor | OpenCode 2 ([plugin](#opencode)) | Action |
+|---|---|---|---|---|---|
+| Session start | yes | yes | yes | first `prompt` hook of a session | Publish `start` status. Fetch the current AFK mode. Inject the mode, reply instructions, and new inbox messages. |
+| Prompt submit | yes | yes | not registered | session `prompt` hook (context appended to the prompt text) | Read inbox (throttled). Inject new messages and a changed AFK mode. |
+| After tool use | yes | not registered | yes | tool `execute.after` (context appended to the tool result) | Sample current context (Claude, OpenCode). Read inbox (throttled). Inject new messages and a changed AFK mode. |
+| Top-level stop | yes | yes | yes | session `experimental.idle` hook; a continuation is a `session.synthetic` input | Sample current context. Read inbox. If messages wait, keep the agent going with them (see [Stop](#stop-continuation)). In AFK mode, wait for operator messages first. Otherwise publish `stop` status. |
+| Before compaction | activity only (`PreCompact`, async) | activity only (`PreCompact`) | yes | activity only (`session.compaction.started` event) | Publish a `compact` activity row (Cursor also samples `context_tokens`). Output `{}`. |
+| Permission prompt (see [Phone approvals](#phone-approvals)) | `PermissionRequest` (also `AskUserQuestion`) | `PermissionRequest` | not registered (see below) | permission `evaluate` hook, `ask` decisions only | In AFK mode `on` or `quiet`, ask the operator's phone and wait up to `AI_COLLAB_APPROVAL_S`; otherwise, or without an answer, no decision. |
+| Activity (see [Activity](#activity)) | `PreToolUse`, `PostToolUseFailure`, `MessageDisplay`, `Notification`, `SubagentStart`, `SubagentStop`, `StopFailure` (async), `SessionEnd` | `PreToolUse`, `PostToolUse`, `SubagentStart`, `SubagentStop`, `SessionEnd` | `beforeSubmitPrompt`, `afterAgentResponse`, `postToolUseFailure`, `sessionEnd` | tool `execute.before`, failed `execute.after`, events `session.text.ended`, `session.deleted`; child sessions as subagents | Publish activity only and output the neutral answer (`{}`; Cursor `beforeSubmitPrompt` gets `{"continue":true}`). Every hook above also publishes its activity. |
 
 - **No idle wake-up.** The plugin only runs when the host fires one of the hooks above. An agent idle at its prompt hears a message at its next hook; in AFK mode `on`, the Stop hook keeps the agent listening for up to 10 minutes after it finishes. There is no background process.
 - **Fail open.** A timeout, outage, bad config, or malformed input prints `{}` and exits 0. The session continues unchanged.
@@ -146,17 +146,17 @@ hours (`cache-duration`) and attachments for 12 hours
 keeps the newest 500 events per project in memory. Phone subscriptions never
 include the activity topic unless you add it.
 
-| Event | Claude Code | Codex | Cursor |
-|---|---|---|---|
-| Prompt | `UserPromptSubmit` | `UserPromptSubmit` | `beforeSubmitPrompt` |
-| Assistant text | `MessageDisplay` (streamed batches) | `Stop` `last_assistant_message` (final message only) | `afterAgentResponse` |
-| Tool call | `PreToolUse` | `PreToolUse` | `postToolUse` (sent with the result) |
-| Tool result | `PostToolUse` `tool_response` | `PostToolUse` `tool_response` | `postToolUse` `tool_output` |
-| Error | `PostToolUseFailure`, `StopFailure` | none (no failure hook) | `postToolUseFailure` |
-| Start / stop | `SessionStart`, `Stop`, `SessionEnd` | `SessionStart`, `Stop`, `SessionEnd` | `sessionStart`, `stop`, `sessionEnd` |
-| Notification | `Notification` (as text) | none | none |
-| Subagent | `SubagentStart`, `SubagentStop`; `agent_id` on its hooks | `SubagentStart`, `SubagentStop`; `agent_id` on its hooks (schemas in the Codex 0.171 binary) | unsupported: `subagentStart` and `subagentStop` exist (cursor-agent 2026.11.19), but its tool hooks carry only an unverified `parent_tool_call_id`, and which conversation a subagent's hooks report is unclear |
-| Compaction | `PreCompact` (`trigger`, short `custom_instructions`) | `PreCompact` (`trigger`) | `preCompact` (`trigger`) |
+| Event | Claude Code | Codex | Cursor | OpenCode 2 |
+|---|---|---|---|---|
+| Prompt | `UserPromptSubmit` | `UserPromptSubmit` | `beforeSubmitPrompt` | session `prompt` hook `prompt.text` |
+| Assistant text | `MessageDisplay` (streamed batches) | `Stop` `last_assistant_message` (final message only) | `afterAgentResponse` | `session.text.ended` event `text` (one row per text part) |
+| Tool call | `PreToolUse` | `PreToolUse` | `postToolUse` (sent with the result) | tool `execute.before` (`tool`, `input`, `id`) |
+| Tool result | `PostToolUse` `tool_response` | `PostToolUse` `tool_response` | `postToolUse` `tool_output` | tool `execute.after` `result.output` (else its text parts) |
+| Error | `PostToolUseFailure`, `StopFailure` | none (no failure hook) | `postToolUseFailure` | `execute.after` with `status: "error"` |
+| Start / stop | `SessionStart`, `Stop`, `SessionEnd` | `SessionStart`, `Stop`, `SessionEnd` | `sessionStart`, `stop`, `sessionEnd` | first `prompt`, `experimental.idle`, `session.deleted` |
+| Notification | `Notification` (as text) | none | none | none |
+| Subagent | `SubagentStart`, `SubagentStop`; `agent_id` on its hooks | `SubagentStart`, `SubagentStop`; `agent_id` on its hooks (schemas in the Codex 0.171 binary) | unsupported: `subagentStart` and `subagentStop` exist (cursor-agent 2026.11.19), but its tool hooks carry only an unverified `parent_tool_call_id`, and which conversation a subagent's hooks report is unclear | a child session (`parentID` set, e.g. the task tool): its first `prompt` is `SubagentStart`, its `experimental.idle` is `SubagentStop`; its hooks carry `agent_id` = the child session id and `agent_type` = its agent, under the root session |
+| Compaction | `PreCompact` (`trigger`, short `custom_instructions`) | `PreCompact` (`trigger`) | `preCompact` (`trigger`) | `session.compaction.started` (`reason` as `trigger`) |
 
 **Cost to the agent.** Activity publishing starts before delivery and runs
 alongside it under one 1.5-second deadline; errors are swallowed. Claude's
@@ -240,6 +240,7 @@ with those messages instead of letting it stop:
 | Claude Code | `{"decision":"block","reason":"<messages>"}` | `stop_hook_active`; Claude Code's own cap of 8 consecutive continuations (resets on a tool call) | [Stop decision control](https://code.claude.com/docs/en/hooks#stop-decision-control), [Stop input](https://code.claude.com/docs/en/hooks#stop-input) |
 | Codex | `{"decision":"block","reason":"<messages>"}`; Codex turns the reason into a new user prompt | `stop_hook_active` | [Hooks: Stop](https://learn.chatgpt.com/docs/hooks) |
 | Cursor | `{"followup_message":"<messages>"}`, only when `status` is `completed` | `loop_limit` is `null` in `hooks/cursor-hooks.json`; the plugin's cap applies | [Hooks: stop](https://cursor.com/docs/agent/hooks) |
+| OpenCode 2 | the hook answers `{"decision":"block","reason":…}`; the plugin passes the reason to `ctx.session.synthetic`, and OpenCode's runner continues because input waits after the `experimental.idle` hook | the plugin sets `stop_hook_active` after its own continuation; the plugin's cap applies | none for `experimental.idle`; [server plugins](https://opencode.ai/v2/docs/build/plugins/server/) for `synthetic` |
 
 The plugin's own guard allows `AI_COLLAB_STOP_CAP` (default 5) consecutive
 message continuations, then lets the agent stop and leaves later messages
@@ -270,6 +271,7 @@ Entry points:
 | Claude Code | `/afk on` (or `/ai-collab:afk on`) | Plugin command `commands/afk.md` ([plugin commands](https://code.claude.com/docs/en/plugins-reference#standard-layout)) |
 | Cursor | `/afk on` | Plugin command `commands/afk.md` ([commands format](https://cursor.com/docs/reference/plugins)) |
 | Codex | `$ai-collab afk on` | Codex plugins carry skills, MCP servers, apps, and hooks but no commands, so the `ai-collab` skill covers it ([build plugins](https://developers.openai.com/codex/plugins/build)) |
+| OpenCode 2 | ask the agent to set AFK on | the installer adds `skills/` to `opencode.json` `skills`, so the `ai-collab` skill covers it |
 
 The mode travels as an envelope on each project's broadcast topic:
 
@@ -308,7 +310,9 @@ of these ends that session's wait:
   appended since its wait began, about once a second, and ignores machine
   text (task notifications, agent hand-backs, `[ai-collab]`). Both formats are
   undocumented: a missing or unparsable file means the wait goes on as before.
-  Cursor has no reliable signal and keeps Esc.
+  Cursor has no reliable signal and keeps Esc. In OpenCode, a prompt that
+  reaches the session's `prompt` hook during the wait stops the Stop hook
+  process (SIGTERM) and no continuation is added.
 
 ## Ask from an agent, reply from the phone
 
@@ -344,6 +348,11 @@ with no decision, so the terminal prompt shows as usual.
 | Claude Code `AskUserQuestion` | the same `PermissionRequest` | `allow` with `updatedInput` = the original `questions` plus `answers` (question → label; multi-select labels joined with `, `) | `{}` |
 | Codex | `PermissionRequest` | `behavior` and, for deny, `message` only | `{}` |
 | Cursor | `beforeShellExecution`, `beforeMCPExecution` | `{"permission":"allow"\|"deny", user_message, agent_message}` | `{"permission":"ask"}` |
+| OpenCode 2 | permission `evaluate` with `effect: "ask"` (tool name = `action`, summary = its `resources`) | the plugin sets `effect` to `allow`, or `deny` with `message` | `effect` stays `ask`: OpenCode publishes its own prompt |
+
+OpenCode runs `evaluate` before it shows its prompt, so while the phone wait
+lasts (AFK `on` or `quiet` only) the terminal shows no prompt; after
+`AI_COLLAB_APPROVAL_S` it shows OpenCode's own.
 
 The hook publishes `{v:1, kind:"approval", from, session, harness, id, tool,
 summary, questions?, expiresAt, ts}` to the broadcast topic (titled with the
@@ -419,7 +428,7 @@ its next tool call (`PostToolUse`) or its stop.
 
 Each project in the sidebar has a **+** button: pick a harness, type the first
 prompt, and tap **Start**. The server accepts only a project name from
-`projects.json` and one of `claude`, `codex`, `cursor` that is in the project's
+`projects.json` and one of `claude`, `codex`, `cursor`, `opencode` that is in the project's
 peers and on `PATH` (plus Node's directory and `~/.local/bin`). It never takes
 a path from the client. It spawns the harness detached, with `shell: false`,
 in the project's `root`, at most once every 10 seconds:
@@ -429,16 +438,19 @@ in the project's `root`, at most once every 10 seconds:
 | Claude Code | `claude --bg [--model <m>] <prompt>` |
 | Codex | `codex exec --json [-m <m>] <prompt>` |
 | Cursor | `cursor-agent -p --output-format stream-json --workspace <root> [--model <m>] <prompt>` |
+| OpenCode 2 | `opencode run --format json [-m <provider/model>] <prompt>` (cwd is the root or worktree; the run uses OpenCode's background server, where the plugin runs) |
 
 The start request body is `{project, harness, prompt, model?}`. A `model`
 must be in the harness's allowlist, which the `models` action
-(`POST /api/models`, body `{}`) returns as `{claude:[...], codex:[...], cursor:[...]}`:
+(`POST /api/models`, body `{}`) returns as `{claude:[...], codex:[...], cursor:[...], opencode:[...]}`
+(`opencode` is empty unless the project's peers list it, or list nothing):
 
 | Harness | Allowlist source |
 |---|---|
 | Claude Code | fixed: the aliases and full ids in the [model configuration docs](https://code.claude.com/docs/en/model-config#model-aliases) (`fable`, `opus`, `sonnet`, `haiku`, `best`, `opusplan`, `sonnet[1m]`, `opus[1m]`, `claude-…` ids) |
 | Codex | slugs not marked `hide` in `$CODEX_HOME/models_cache.json` (Codex's model catalog cache), plus `model` from `config.toml` |
 | Cursor | `cursor-agent --list-models`, cached a day in `$AI_COLLAB_STATE_DIR/models-cursor.json` |
+| OpenCode 2 | first word of each `opencode models` line shaped `provider/model[#variant]`, cached a day in `models-opencode.json` |
 
 Any other value is rejected with 400 before anything is spawned.
 
@@ -450,7 +462,7 @@ No flag skips permissions or trust (`--force`, `--trust`,
 its cwd, like any session; it gets `AI_COLLAB_WAKE=1`, so its first prompt
 is not mistaken for the operator at a terminal. The server waits up to 15
 seconds for the id the CLI prints (Claude: a UUID in its output; Codex:
-`thread.started` `thread_id`; Cursor: `session_id`) and returns the session's
+`thread.started` `thread_id`; Cursor: `session_id`; OpenCode: `sessionID` on its JSON events) and returns the session's
 public address `harness#label`; the raw id stays in the log. The UI links the
 session once its `SessionStart` status arrives. For Codex, the result warns
 when `config.toml` has no trust entry for the plugin's hooks; trust them in
@@ -601,7 +613,8 @@ same cards for one project.
 mention picker, the sidebar and the cards. Claude Code: the `session_title`
 field of its SessionStart and UserPromptSubmit hook input (in the Claude
 2.1.330 hook schema). Codex: the thread's newest `thread_name` in
-`$CODEX_HOME/session_index.jsonl`. Hooks record it in the local registry at
+`$CODEX_HOME/session_index.jsonl`. OpenCode: the session `title` from
+`ctx.session.get`, read when the plugin first sees the session. Hooks record it in the local registry at
 SessionStart, UserPromptSubmit and Stop (`lib/names.mjs`). Cursor gives none;
 the UI falls back to the folder name and the first six words of the session's
 earliest prompt still in the activity history.
@@ -771,8 +784,13 @@ A session counts as online only while that pair matches a live process.
 
 | Action | Session running | Session exited |
 |---|---|---|
-| Direct message (wake) | `queued`: the next hook delivers it | Resume the exact session: `claude --print --resume`, `codex exec resume`, `agent --print --resume` |
-| Compact | Codex: `thread/compact/start` over the local app-server daemon when the thread is loaded there and idle. Otherwise `requested`: an urgent operator message asks the session to finish its step, and the operator runs `/compact` | Claude: `/compact` through the Claude Agent SDK (`query` with `resume`). Codex: `thread/compact/start` over `codex app-server`. Cursor: `unsupported` |
+| Direct message (wake) | `queued`: the next hook delivers it | Resume the exact session: `claude --print --resume`, `codex exec resume`, `agent --print --resume`, `opencode run --session <id>` |
+| Compact | Codex: `thread/compact/start` over the local app-server daemon when the thread is loaded there and idle. OpenCode: as when exited. Otherwise `requested`: an urgent operator message asks the session to finish its step, and the operator runs `/compact` | Claude: `/compact` through the Claude Agent SDK (`query` with `resume`). Codex: `thread/compact/start` over `codex app-server`. OpenCode: `opencode api session.compact --param sessionID=<id> --data {}` (the server's `POST /api/session/:sessionID/compact`). Cursor: `unsupported` |
+
+For OpenCode the recorded process is the OpenCode server that runs the plugin
+(the background service, or the TUI's private server with `--standalone`), so
+a session counts as online while that server runs, like an idle Claude session
+in its terminal.
 
 Compacting a running session, per harness:
 
@@ -809,6 +827,7 @@ locally:
 | Claude Code | Last assistant `usage` in the transcript: `input_tokens + cache_read_input_tokens + cache_creation_input_tokens` |
 | Codex | Last `token_count` event in the rollout: `info.last_token_usage.total_tokens` |
 | Cursor | `preCompact` hook `context_tokens` (sampled only before compaction) |
+| OpenCode 2 | last `session.step.ended` event's `tokens`: `input + cache.read + cache.write`, passed as `context_tokens` |
 
 ### Tailscale
 
@@ -916,6 +935,79 @@ node /path/to/ai-collab/scripts/install-cursor.mjs --copy
 
 Cursor requires a copy here when the source is outside its local plugin directory. Restart Cursor afterwards. Cursor's CLI runs only `sessionStart` and `stop` from a plugin's hooks (observed with cursor-agent 2026.11.19: prompts, tool results and replies never reached plugin hooks, while the same events reached `~/.cursor/hooks.json`). So the installer writes `hooks/cursor-hooks.json`, with the plugin path filled in, into `~/.cursor/hooks.json`: it replaces earlier ai-collab entries and keeps every other tool's hooks. The plugin manifest registers no hooks, so nothing fires twice.
 
+### OpenCode
+
+OpenCode 2 (checked with 2.2.5) loads ai-collab as a server plugin:
+
+```sh
+node /path/to/ai-collab/scripts/install-opencode.mjs
+```
+
+`installOpenCode` (`lib/install-opencode.mjs`) writes three things under
+`$XDG_CONFIG_HOME/opencode` (default `~/.config/opencode`) and keeps every
+other setting:
+
+| What | Where | Content |
+|---|---|---|
+| Plugin | `plugins/ai-collab.js` | a one-line shim that re-exports `lib/opencode-plugin.mjs` from the checkout; the first line marks it as ai-collab's, and a file without that mark is never overwritten |
+| MCP server | `opencode.json` `mcp.servers.ai-collab` (or `mcp.ai-collab` when the file lists servers flat) | `{"type":"local","command":["node","<checkout>/scripts/ai-collab-mcp.mjs","opencode"],"cwd":".","enabled":true}`; OpenCode names the tools `ai-collab_<tool>` |
+| Skill | `opencode.json` `skills` | `<checkout>/skills` |
+
+An unparsable `opencode.json`, or only an `opencode.jsonc`, is left alone and
+the installer says so. Restart OpenCode (or its background service) afterwards.
+
+The plugin runs inside the OpenCode server and starts
+`node scripts/ai-collab-hook.mjs --host opencode` once per event with
+Claude-shaped input (`hook_event_name`, `session_id`, `cwd`, `tool_name`, …),
+so `node` must be on the server's `PATH`. Each OpenCode location (folder)
+loads its own plugin instance; it handles only sessions and events of its own
+folder. Activity-only events are not awaited; delivery hooks wait at most as
+long as the Claude registrations (10 s, Stop 660 s, approvals 600 s).
+
+| OpenCode | Hook input | Plugin applies |
+|---|---|---|
+| session `prompt`, first in a session | `SessionStart` | context appended to `prompt.text` |
+| session `prompt` | `UserPromptSubmit` | context appended to `prompt.text`; ends a running AFK wait |
+| session `experimental.idle` | `Stop` (`stop_hook_active`, `context_tokens`) | `reason` sent with `ctx.session.synthetic` |
+| tool `execute.before` | `PreToolUse` (activity) | — |
+| tool `execute.after`, completed | `PostToolUse` | context appended to `result.content` |
+| tool `execute.after`, error | `PostToolUseFailure` (activity) | — |
+| permission `evaluate`, `effect: "ask"` | `PermissionRequest` | `effect` = `allow` or `deny` + `message` |
+| event `session.text.ended` | `AfterAgentResponse` (activity) | — |
+| event `session.compaction.started` | `PreCompact` (activity) | — |
+| event `session.deleted` | `SessionEnd` (activity) | — |
+| event `session.step.ended` | none | stores `context_tokens` |
+| child session (`parentID`) | `SubagentStart`, `SubagentStop`, and its tool events with `agent_id` (activity only) | — |
+
+**Verified** in an isolated `opencode serve` (temporary XDG dirs, no provider
+credentials, no prompt sent, so no model call): the server loads
+`plugins/ai-collab.js` and follows the re-export; `setup` succeeds against the
+real context and all five hook registrations (`session` `prompt` and
+`experimental.idle`, `tool` `execute.before` and `execute.after`, `permission`
+`evaluate`) return a registration; `ctx.session.get` returns the session info
+itself with `location.directory`; `ctx.event.subscribe` yields
+`{id, created, type, location, data}`; the `mcp.servers` entry connects (12
+tools) with the workspace as its cwd; the `skills` path lists the `ai-collab`
+skill; `opencode mcp add` writes `mcp.servers`; `opencode api <operation>
+--param sessionID=<id>` works (checked with `session.get`); session IDs look
+like `ses_` plus 26 characters; the server's argv[0] is `opencode`. The hook
+side is covered by `test/opencode.test.mjs` against the fake ntfy.
+
+**Inferred, not run** (from the [server plugin docs](https://opencode.ai/v2/docs/build/plugins/server/)
+and the bundled 2.2.5 source): the hook payloads and which fields are
+mutable; that `experimental.idle` (undocumented, used by OpenCode's own goal
+feature the same way) is awaited and that a `synthetic` input queued in it
+continues the session; that `evaluate` waits for the plugin before showing a
+prompt; the `session.text.ended`, `session.step.ended`, and
+`session.compaction.started` payloads; `opencode run --format json` printing
+`sessionID`; `opencode models` printing one `provider/model` per line; and
+`session.compact` compacting a running session. No real OpenCode session ran.
+
+**Limits.** OpenCode runs hooks in the server, not in the `opencode run`
+client, so a phone start's `AI_COLLAB_WAKE=1` and an `AI_COLLAB_PARENT` set
+for a child `opencode run` never reach the hook: a phone start's first prompt
+counts as the operator's, and an OpenCode child names no parent.
+
 ### Skill for agents
 
 `skills/ai-collab/SKILL.md` is a small skill for agents: it covers `peers`, `send`, `inbox`, `afk`, the operator reply routes, and the AFK rules, with the untrusted-message rules. Make sure `scripts/ai-collab` is on PATH, or use its full path.
@@ -944,7 +1036,7 @@ custom channel needs a changed launch:
 
 - Peer names are self-asserted. Use ntfy ACLs to restrict who can publish.
 - Delivery is best effort with no retry; read receipts are best effort too. An offline peer only gets messages still inside the server's cache window.
-- Codex and Cursor event shapes are not verified against live hosts. `beforeSubmitPrompt` and Codex `PostToolUse` are deliberately not registered.
+- Codex, Cursor, and OpenCode event shapes are not verified against live sessions. `beforeSubmitPrompt` and Codex `PostToolUse` are deliberately not registered.
 - Status shows peers that have started or stopped. It is not a presence system.
 - An agent idle at its prompt with AFK mode `off` still hears a message only at its next hook.
 - ntfy rate-limits requests per client IP (default burst 60, one more every 5 s). All local agents and the UI share `127.0.0.1`; many AFK agents waking at once can hit HTTP 429. Adding `127.0.0.1` to the server's `visitor-request-limit-exempt-hosts` lifts that.

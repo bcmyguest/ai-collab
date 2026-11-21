@@ -33,7 +33,7 @@ const DEFAULT_MODEL = "default";
 const PLACES = { folder: "In the project folder", worktree: "In a new git worktree", openshell: "In the openshell sandbox" };
 const HARNESS_COLORS = {
   claude: "[&_[data-slot=avatar-fallback]]:bg-claude", codex: "[&_[data-slot=avatar-fallback]]:bg-codex",
-  cursor: "[&_[data-slot=avatar-fallback]]:bg-cursor", operator: "[&_[data-slot=avatar-fallback]]:bg-primary",
+  cursor: "[&_[data-slot=avatar-fallback]]:bg-cursor", opencode: "[&_[data-slot=avatar-fallback]]:bg-opencode", operator: "[&_[data-slot=avatar-fallback]]:bg-primary",
 };
 const CONNECTION_TOAST = "connection";
 const UPDATE_TOAST = "update";
@@ -43,7 +43,7 @@ const RECONNECT_GRACE_MS = 3_000;
 const STALE_AFTER_MS = 20_000;
 const TICK_MS = 1000;
 const AFK_MODES = [["off", "Off", Bell], ["on", "On", Coffee], ["quiet", "Quiet", BellOff]];
-const HARNESS_NAMES = { claude: "Claude Code", codex: "Codex", cursor: "Cursor" };
+const HARNESS_NAMES = { claude: "Claude Code", codex: "Codex", cursor: "Cursor", opencode: "OpenCode" };
 const RECEIPTS = { sent: ["Sent", Check], delivered: ["Delivered", CheckCheck], read: ["Read", CheckCheck] };
 const clock = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 // Fired on a 401 or a closed stream; the sign-in gate asks /api/auth/me again.
