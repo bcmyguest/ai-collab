@@ -165,7 +165,7 @@ async function main() {
     try {
       if (!subagent) await recordSession(cfg, {
         id: sessionId, cwd, harness: host, event: event || key.slice(0, 32), proc: harnessProcess(host), parent: cfg.parent,
-        name: NAMED_EVENTS.has(event) ? sessionName(host, msg, env) : "",
+        name: NAMED_EVENTS.has(event) ? sessionName(host, msg, env) : "", model: msg.model,
         ...(typed ? { operatorPromptAt: Date.now() } : {}),
       }).catch(() => {});
       if (event && !activityOnly) output = await deliver(cfg, host, event, msg, key);
