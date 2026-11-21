@@ -775,6 +775,7 @@ function Console({ account }) {
               offlineOpen={Boolean(views.get(memoryKey, {}).offline)} onOfflineToggle={rememberOffline}
               openAddress={(address, at) => navigate({ project: at, level: "session", harness: peerOf(address), session: address })}
               empty={home ? "No sessions in any project yet." : "No sessions in " + project + " yet."}
+              dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}
               act={payload => action("approve", payload, "Sent")} answer={(at, id, body) => action("reply", { project: at, question: id, body }, "Reply sent")}/>
           </>}
           {ready && subagents && <SubagentList rows={rows} session={selected.session} run={selected.run} when={at => ago(at, now)} now={now}
