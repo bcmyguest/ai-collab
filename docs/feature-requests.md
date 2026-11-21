@@ -11,7 +11,7 @@ Operator requests from chat and the terminal, newest last. Status: done (merged 
 | Online/offline marker in the Subagents view | done |
 | A child session counts as its parent's subagent | done |
 | Teams: dynamic, stored in projects.json plus a global config; orchestrator starts and keeps members alive | done (first version) |
-| Teams as roles and interaction patterns (Hermes / wteam style), e.g. "Fix and review" with handoffs | open; Codex sol proposed a design, open question: guidance vs enforced handoffs |
+| Teams as roles and interaction patterns (Hermes / coding-factory / wteam style), not just roster create — e.g. "Fix and review" with handoffs | open; operator 2026-11-21; Codex sol design; **decision:** guidance vs enforced handoffs |
 | OpenCode taggable; one OpenCode instance with Qwen 3.8 Flash Next | done (peer added) |
 | Codex install without the plugin-hash timeout (GitHub marketplace) | done |
 | Agents can read the project's public channel | done (`ai-collab history`, MCP `channel_history`) |
@@ -24,10 +24,11 @@ Operator requests from chat and the terminal, newest last. Status: done (merged 
 | Session chat folds each turn into "Working on … · N steps" plus the final message | done |
 | Pulsar feature parity: wake idle sessions, priorities, redelivery, wait idle, tags, interrupt | done |
 | MCP `interrupt` tool | done |
-| Messages appear in the Claude terminal immediately (socket delivery, like Pulsar) | building; reviewed by Opus and Codex Astra |
+| Messages appear in the Claude terminal immediately (socket delivery, like Pulsar) | building; Haiku impl next, Opus + Astra review (coordinator 2026-11-21) |
 | Wake closed sessions on a message (durable, DBOS-like) | open; owned-sessions runner |
-| Owned sessions: runner service, durable workflows, AG-UI event names, four harness adapters | building (contract and skeleton done; adapters next) |
+| Owned sessions: runner service, durable workflows, AG-UI event names, four harness adapters | building (runner: broadcasts, runtime mode, approval timeout merged 2026-11-21; adapters next) |
 | Copy T3 Code's code viewer (`@pierre/diffs`) for mobile and web | open |
+| Operator prompts and phone replies (ask_question answers) visible in session and project chat | open; operator 2026-11-21 |
 | Context management and slash commands from the phone | open |
 | Reviews by Cursor `deepseek-v41-flash-1017` | adopted for reviews |
 | Record feature requests | this file |
