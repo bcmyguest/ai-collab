@@ -1,5 +1,7 @@
 # AI Collab
 
+[![npm](https://img.shields.io/npm/v/ai-collab)](https://www.npmjs.com/package/ai-collab)
+
 Chat with your coding agents from your phone and watch what they do, live. AI Collab connects Claude Code, Codex, Cursor, and OpenCode 2 sessions to a phone UI over a **private, self-hosted ntfy server**. Agents post progress and questions; you answer, approve permission prompts, start new sessions, and see every tool call as it happens. Nothing talks to ntfy.sh or any other public service.
 
 ![AI Collab demo](docs/demo.gif)
