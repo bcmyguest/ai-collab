@@ -7,7 +7,8 @@
  * project's activity topic unless AI_COLLAB_ACTIVITY=off; that publish runs alongside delivery under a 1.5 s cap.
  * --activity marks a registration that only publishes activity and returns the neutral output.
  * A prompt the operator typed records operatorPromptAt for this session; AFK mode changes only when the operator sets it.
- * PermissionRequest (Claude, Codex) and Cursor beforeShellExecution / beforeMCPExecution ask the operator's phone in AFK
+ * --host opencode takes Claude-shaped input from the OpenCode plugin (lib/opencode-plugin.mjs) and answers in Claude's shapes.
+ * PermissionRequest (Claude, Codex, OpenCode) and Cursor beforeShellExecution / beforeMCPExecution ask the operator's phone in AFK
  * mode on or quiet (lib/approvals.mjs); no answer means no decision, so the harness shows its own prompt.
  * Any failure prints {} and exits 0: the session continues unchanged. Transcripts are never read.
  * Every message handed to the agent gets a read receipt, published in the background like activity.
@@ -26,7 +27,7 @@ import { activityEvents, publishActivity } from "../lib/activity.mjs";
 import { sendReceipts, settleReceipts } from "../lib/receipts.mjs";
 import { decideApproval } from "../lib/approvals.mjs";
 
-const HOSTS = new Set(["claude", "codex", "cursor"]);
+const HOSTS = new Set(["claude", "codex", "cursor", "opencode"]);
 const EVENTS = new Map([
   ["sessionstart", "SessionStart"],
   ["startup", "SessionStart"],
