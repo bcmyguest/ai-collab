@@ -65,7 +65,7 @@ async function recorded(record, harness) {
 test("argv templates, prompt checks, and id parsing", () => {
   assert.deepEqual(startCommand("claude", "/r", "hi"), ["claude", ["--bg", "hi"]]);
   assert.deepEqual(startCommand("codex", "/r", "hi"), ["codex", ["exec", "--json", "hi"]]);
-  assert.deepEqual(startCommand("cursor", "/r", "hi"), ["cursor-agent", ["-p", "--output-format", "stream-json", "--workspace", "/r", "hi"]]);
+  assert.deepEqual(startCommand("cursor", "/r", "hi"), ["cursor-agent", ["-p", "--trust", "--output-format", "stream-json", "--workspace", "/r", "hi"]]);
   assert.equal(startCommand("bash", "/r", "hi"), null);
   assert.equal(checkPrompt("  fix it  ").text, "fix it");
   for (const bad of ["", "   ", "--dangerously-skip-permissions", "a\0b", "x".repeat(4001), 42]) assert.ok(checkPrompt(bad).error, String(bad));
@@ -110,7 +110,7 @@ test("codex and cursor argv, and a warning when Codex has not trusted the hooks"
     const result = await (await post({ project: "demo", harness, prompt: "hello there" })).json();
     assert.equal(result.session, `${harness}#${sessionLabel(IDS[harness])}`);
     const run = await recorded(record, harness);
-    assert.deepEqual(run.argv, harness === "codex" ? ["exec", "--json", "hello there"] : ["-p", "--output-format", "stream-json", "--workspace", root, "hello there"]);
+    assert.deepEqual(run.argv, harness === "codex" ? ["exec", "--json", "hello there"] : ["-p", "--trust", "--output-format", "stream-json", "--workspace", root, "hello there"]);
     assert.equal(run.cwd, root);
     assert.equal(Boolean(result.warning), harness === "codex", "untrusted Codex hooks are reported");
   }
