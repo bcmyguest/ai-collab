@@ -35,6 +35,16 @@ function Action({ action }) {
   </p>;
 }
 
+/** A session's actions menu; Dispose waits until the session is offline and registered. */
+export function SessionMenu({ node, disabled, dispose, label = "Actions for " + node.id }) {
+  return <DropdownMenu>
+    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8 shrink-0" aria-label={label}><MoreHorizontal className="size-4"/></Button></DropdownMenuTrigger>
+    <DropdownMenuContent align="end">
+      <DropdownMenuItem disabled={disabled || node.online || !node.registered} onSelect={() => dispose(node)}>Dispose</DropdownMenuItem>
+    </DropdownMenuContent>
+  </DropdownMenu>;
+}
+
 // One session: identity, state, last action, running subagents, pending cards, and nested child sessions.
 function SessionCard({ node, now, open, openAddress, act, answer, dispose, disabled, showProject }) {
   const running = node.subagents.filter(run => runState(run, now) === "running");
@@ -60,12 +70,7 @@ function SessionCard({ node, now, open, openAddress, act, answer, dispose, disab
         </span>
       </button>
       <GoToAgent onClick={() => open(node)}/>
-      {dispose && <DropdownMenu>
-        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8 shrink-0" aria-label={"Actions for " + node.id}><MoreHorizontal className="size-4"/></Button></DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem disabled={disabled || node.online || !node.registered} onSelect={() => dispose(node)}>Dispose</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>}
+      {dispose && <SessionMenu node={node} disabled={disabled} dispose={dispose}/>}
       </div>
       {node.parent && <p className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
         <span className="min-w-0 truncate">started by {short(node.parent)}</span>

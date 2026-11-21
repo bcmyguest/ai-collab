@@ -18,7 +18,7 @@ import { fuzzyRank } from "@/lib/fuzzy";
 import { ActivityRow, GoToAgent, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
 import { NotifyToggle } from "./notify";
-import { SessionList, SubagentList } from "./home";
+import { SessionList, SessionMenu, SubagentList } from "./home";
 import { activityRows, groupSubagents, interleave, runningSubagents } from "@/lib/activity-rows";
 import { conversationKey, drafts, views } from "@/lib/view-memory";
 import { toast } from "sonner";
@@ -182,7 +182,7 @@ function SessionName({ agent }) {
   return agent?.name ? <span className="line-clamp-2 min-w-0 break-words text-xs text-foreground/80">{agent.name}</span> : null;
 }
 
-function Sidebar({ data, selected, now, navigate, newSession }) {
+function Sidebar({ data, selected, now, navigate, newSession, dispose, disabled }) {
   const current = selected.project || data.project;
   // Home's state carries the server's default project's agents; they are not "this project" here.
   const home = selected.level === "home";
@@ -231,10 +231,10 @@ function Sidebar({ data, selected, now, navigate, newSession }) {
       {home ? <p className="px-2 text-sm text-muted-foreground">Pick a project to list its sessions here.</p>
         : data.agents.length === 0 && <p className="px-2 text-sm text-muted-foreground">No sessions seen yet.</p>}
       <ul className="flex flex-col gap-1">
-        {!home && data.agents.map(agent => <li key={agent.id}>
+        {!home && data.agents.map(agent => <li key={agent.id} className="flex min-w-0 items-center gap-1">
           <button type="button" aria-label={agent.waiting ? agent.id + ", waiting on you" : agent.id} title={agent.parent ? agent.id + " · started by " + agent.parent : agent.id} aria-current={selected.level === "session" && selected.session === agent.id ? "page" : undefined}
             onClick={() => navigate({ project: current, level: "session", harness: agent.peer, session: agent.id, ...(selected.level === "session" && selected.session ? { tab: selected.tab } : {}) })}
-            className={cn("flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-sm transition-colors hover:bg-sidebar-accent",
+            className={cn("flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-sm transition-colors hover:bg-sidebar-accent",
               selected.level === "session" && selected.session === agent.id && "bg-sidebar-accent")}>
             <Avatar address={agent.id} className="size-6 text-[9px]"/>
             <span className="flex min-w-0 flex-1 flex-col"><span className="truncate font-mono text-xs">{short(agent.id)}</span><SessionName agent={agent}/></span>
@@ -242,6 +242,7 @@ function Sidebar({ data, selected, now, navigate, newSession }) {
             <Dot online={agent.online}/>
             <span className="shrink-0 text-right text-[11px] leading-tight text-muted-foreground">{ago(agent.lastMessageAt, now)}{agent.activeAt ? <><br/>active {ago(agent.activeAt, now)}</> : null}</span>
           </button>
+          {dispose && <SessionMenu node={{ ...agent, project: current }} disabled={disabled} dispose={dispose} label={"Session actions for " + agent.id}/>}
         </li>)}
       </ul>
     </section>
@@ -705,7 +706,8 @@ function Console({ account }) {
   async function startSession(payload) {
     try { return await api("start", { project, ...payload }); } catch (err) { return { status: "failed", detail: err.message }; }
   }
-  const sidebar = <Sidebar data={data} selected={selected} now={now} navigate={navigate} newSession={newSession}/>;
+  const sidebar = <Sidebar data={data} selected={selected} now={now} navigate={navigate} newSession={newSession}
+    disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}/>;
   const anyWaiting = data.projects.some(project => project.waiting > 0);
   return <div className="flex h-dvh w-full overflow-hidden">
     <aside className="hidden w-72 shrink-0 border-r bg-sidebar text-sidebar-foreground md:block">{sidebar}</aside>
