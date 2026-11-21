@@ -1,5 +1,7 @@
 /**
  * Dispatcher in the UI server: pushes direct messages into Codex and OpenCode sessions that have no hook running.
+ * Claude: a direct message goes to the session's messaging socket (lib/claude-socket.mjs) when the gate is open; otherwise
+ * the waiter and hooks deliver it.
  * Codex: `codex queue --thread <id> --message <text> --resume`, only while the session is idle (lib/idle.mjs).
  * OpenCode: POST /api/session/<id>/prompt with delivery steer (urgent) or queue, and resume: true.
  * A pushed message is marked delivered, so the session's own hooks skip it. fyi and broadcast messages are never pushed.
@@ -10,6 +12,7 @@ import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { broadcastTopic, inboxTopic, receiptsTopic } from "../../lib/config.mjs";
+import { claudeTarget, sendToClaude } from "../../lib/claude-socket.mjs";
 import { nativeSessionId, harnessEnv } from "../../lib/controls.mjs";
 import { formatInbox, identityLine } from "../../lib/format.mjs";
 import { sessionIdleState } from "../../lib/idle.mjs";
@@ -27,7 +30,7 @@ const TICK_MS = 5000;
 const CLAIM_LIMIT = 4;
 const ANSWERS_MAX = 5000;
 const CODEX_TIMEOUT_MS = 30_000;
-const PUSHED = new Set(["codex", "opencode"]);
+const PUSHED = new Set(["claude", "codex", "opencode"]);
 
 function ledgerFile(cfg) {
   return join(cfg.stateDir, cfg.project, "dispatch.json");
@@ -59,6 +62,7 @@ function runCommand(file, args, { env }) {
  */
 export function createDispatcher({
   projects, run = runCommand, opencode = opencodeRequest, idle = sessionIdleState, now = Date.now, env = process.env, claim = claimInbox,
+  claude = sendToClaude,
 } = {}) {
   let timer = null;
   let running = false;
@@ -69,6 +73,7 @@ export function createDispatcher({
   // Delivers text to one session through its harness's API; true on success.
   async function push(session, text, { urgent }) {
     if (!nativeSessionId(session.harness, session.sessionId)) return false;
+    if (session.harness === "claude") return await claude(session, { text, urgent }, { env });
     if (session.harness === "codex") {
       return await run("codex", ["queue", "--thread", session.sessionId, "--message", text, "--resume"], { env: harnessEnv() }) === 0;
     }
@@ -81,8 +86,9 @@ export function createDispatcher({
   // The text a session receives: identity line plus the formatted messages.
   const textFor = (scfg, messages) => [identityLine(scfg), formatInbox(messages, { session: scfg.session })].filter(Boolean).join("\n");
 
-  // Codex waits for an idle session; OpenCode takes a queued or steering prompt in any state.
+  // Claude takes a socket message in any state, when its gate is open; Codex waits for an idle session; OpenCode takes a queued or steering prompt in any state.
   async function ready(session, active) {
+    if (session.harness === "claude") return claudeTarget(session, { env }) !== null;
     if (session.harness === "opencode") return active !== null;
     return await idle(session, { env }) === "idle";
   }
