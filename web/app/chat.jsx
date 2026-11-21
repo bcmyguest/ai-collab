@@ -19,7 +19,6 @@ import { ActivityRow, GoToAgent, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
 import { NotifyToggle } from "./notify";
 import { SessionList, SubagentList } from "./home";
-import { Textarea } from "@/components/ui/textarea";
 import { activityRows, groupSubagents, interleave, runningSubagents } from "@/lib/activity-rows";
 import { conversationKey, drafts, views } from "@/lib/view-memory";
 import { toast } from "sonner";
@@ -31,7 +30,6 @@ const PULL_MAX_PX = 110;
 const LEVELS = [["project", "Project"], ["session", "Sessions"]];
 // Tabs other than chat each level accepts in the hash.
 const TABS = { project: ["activity"], session: ["activity", "subagents"] };
-const DEFAULT_MODEL = "default";
 const PLACES = { folder: "In the project folder", worktree: "In a new git worktree", openshell: "In the openshell sandbox" };
 const HARNESS_COLORS = {
   claude: "[&_[data-slot=avatar-fallback]]:bg-claude", codex: "[&_[data-slot=avatar-fallback]]:bg-codex",
@@ -340,48 +338,37 @@ function useModels(project) {
 
 const modelsOf = (models, harness) => Array.isArray(models[harness]) ? models[harness].filter(id => typeof id === "string" && id) : [];
 
-function NewSession({ project, harnesses, places = ["folder"], agents, models, disabled, start, close, open }) {
-  const [harness, setHarness] = useState(harnesses[0] || "");
+function NewSession({ project, harnesses = [], startable = [], places = ["folder"], agents, models, now, disabled, start, close, open }) {
   const [place, setPlace] = useState("folder");
-  const [prompt, setPrompt] = useState("");
   const [result, setResult] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [model, setModel] = useState(DEFAULT_MODEL);
-  const joined = result?.session && agents.find(agent => agent.id === result.session);
-  const choices = modelsOf(models, harness);
-  async function submit() {
-    setBusy(true);
-    const options = { ...(place === "worktree" ? { worktree: true } : place === "openshell" ? { openshell: true } : {}), ...(model !== DEFAULT_MODEL && choices.includes(model) ? { model } : {}) };
-    try { setResult(await start({ harness, prompt: prompt.trim(), ...options })); } finally { setBusy(false); }
+  const joined = result?.session && agents.some(agent => agent.id === result.session) ? result.session : "";
+  // Opens the new session's chat once it reports.
+  useEffect(() => { if (joined) { close(); open(joined); } }, [joined]);
+  // "@codex:gpt-6 fix the tests" starts codex on gpt-6 with the rest as its prompt.
+  async function submit(body) {
+    const [, harness, model, prompt] = /^@([\w-]+)(?::([\w.:/-]+))?\s+([\s\S]+)/.exec(body) || [];
+    if (!harness) { setResult({ status: "failed", detail: "Start with @harness and a prompt, e.g. @codex fix the tests" }); return false; }
+    const options = { ...(place === "worktree" ? { worktree: true } : place === "openshell" ? { openshell: true } : {}), ...(model ? { model } : {}) };
+    const next = await start({ harness, prompt: prompt.trim(), ...options });
+    setResult(next);
+    return next.status === "started";
   }
   return <section aria-label="New session" className="mx-auto mt-2 flex w-full max-w-3xl flex-col gap-2 rounded-xl border bg-card px-3 py-3 text-sm">
     <div className="flex items-center justify-between gap-2">
       <h2 className="font-medium">New session in {project}</h2>
       <Button variant="ghost" size="sm" onClick={close}>Close</Button>
     </div>
-    {harnesses.length === 0 ? <p className="text-muted-foreground">No harness is installed and configured for this project.</p> : <>
-      <Select value={harness} onValueChange={next => { setHarness(next); setModel(DEFAULT_MODEL); }}>
-        <SelectTrigger aria-label="Harness to start" className="h-9 w-full sm:w-64"><SelectValue placeholder="Pick a harness"/></SelectTrigger>
-        <SelectContent position="popper">{harnesses.map(id => <SelectItem key={id} value={id}>{HARNESS_NAMES[id] || id}</SelectItem>)}</SelectContent>
-      </Select>
-      {choices.length > 0 && <Select value={model} onValueChange={setModel}>
-        <SelectTrigger aria-label="Model" className="h-9 w-full sm:w-64"><SelectValue/></SelectTrigger>
-        <SelectContent position="popper">
-          <SelectItem value={DEFAULT_MODEL}>Default model</SelectItem>
-          {choices.map(id => <SelectItem key={id} value={id}>{id}</SelectItem>)}
-        </SelectContent>
-      </Select>}
+    {startable.length === 0 ? <p className="text-muted-foreground">No harness is installed and configured for this project.</p> : <>
       {places.length > 1 && <Select value={place} onValueChange={setPlace}>
-        <SelectTrigger aria-label="Where to start" className="h-9 w-full sm:w-64"><SelectValue/></SelectTrigger>
+        <SelectTrigger aria-label="Where to start" className="h-8 w-48 text-xs"><SelectValue/></SelectTrigger>
         <SelectContent position="popper">{places.map(id => <SelectItem key={id} value={id}>{PLACES[id] || id}</SelectItem>)}</SelectContent>
       </Select>}
-      <Textarea aria-label="First prompt" placeholder="First prompt: keep it self-contained" value={prompt} onChange={event => setPrompt(event.target.value)} className="min-h-20 text-sm"/>
-      <Button size="sm" className="self-start rounded-full" disabled={disabled || busy || !harness || !prompt.trim()} onClick={submit}>Start</Button>
+      <Composer conversation={conversationKey(project, "new")} agents={agents} harnesses={harnesses} startable={startable} models={models} now={now} disabled={disabled}
+        placeholder="@codex:gpt-6 fix the tests" onSend={submit}/>
     </>}
     {result && <p role="status" className={cn("text-xs", result.status === "started" ? "text-muted-foreground" : "text-destructive")}>
       {[result.status, result.detail, result.warning].filter(Boolean).join(" · ")}
       {result.session && !joined && " · waiting for " + short(result.session) + " to report"}
-      {joined && <Button variant="link" size="sm" className="h-auto px-1 text-xs" onClick={() => open(result.session)}>Open {short(result.session)}</Button>}
     </p>}
   </section>;
 }
@@ -761,8 +748,8 @@ function Console({ account }) {
             onClick={() => action("compact", { target: selected.session }, "Compaction requested")}><Minimize2/>Compact</Button>}/>}
       </header>
       <div className="flex flex-col gap-2 px-3 empty:hidden">
-        {creating && creating === project && ready && <NewSession key={project + ":" + (data.startable || []).join(",")} project={project} harnesses={data.startable || []} places={data.startPlaces}
-          agents={data.agents} models={models} disabled={!ready} start={startSession} close={() => setCreating("")} open={openAddress}/>}
+        {creating && creating === project && ready && <NewSession key={project + ":" + (data.startable || []).join(",")} project={project} harnesses={data.harnesses} startable={data.startable || []} places={data.startPlaces}
+          agents={data.agents} models={models} now={now} disabled={!ready} start={startSession} close={() => setCreating("")} open={openAddress}/>}
         {agent?.wake?.status && <div className="mx-auto mt-2 flex w-full max-w-3xl flex-wrap items-center gap-2 rounded-xl border bg-muted/50 px-3 py-2 text-sm">
           Wake · {agent.wake.status}{agent.wake.detail && " · " + agent.wake.detail}
           {agent.wake.status === "failed" && !agent.online && <Button size="sm" variant="outline" disabled={working} onClick={() => action("wake", { target: selected.session }, "Wake requested")}>Retry wake</Button>}
@@ -781,6 +768,7 @@ function Console({ account }) {
               offlineOpen={Boolean(views.get(memoryKey, {}).offline)} onOfflineToggle={rememberOffline}
               openAddress={(address, at) => navigate({ project: at, level: "session", harness: peerOf(address), session: address })}
               empty={home ? "No sessions in any project yet." : "No sessions in " + project + " yet."}
+              dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}
               act={payload => action("approve", payload, "Sent")} answer={(at, id, body) => action("reply", { project: at, question: id, body }, "Reply sent")}/>
           </>}
           {ready && subagents && <SubagentList rows={rows} session={selected.session} run={selected.run} when={at => ago(at, now)} now={now}

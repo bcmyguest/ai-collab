@@ -7,11 +7,11 @@ import { stripControl } from "../../lib/format.mjs";
 import { NTFY_MESSAGE_MAX_BYTES, latestStatuses, markUrgent, parseEnvelope, sendMessage } from "../../lib/inbox.mjs";
 import { publish } from "../../lib/ntfy.mjs";
 import { parsePhoneReply } from "../../lib/questions.mjs";
-import { listSessions } from "../../lib/sessions.mjs";
+import { disposeSession, listSessions, sessionPlace } from "../../lib/sessions.mjs";
 import { readReceipts } from "../../lib/receipts.mjs";
 import { controlSession } from "../../lib/controls.mjs";
 import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } from "../../lib/approvals.mjs";
-import { availableHarnesses, availablePlaces, checkPrompt, startSession } from "../../lib/start.mjs";
+import { availableHarnesses, availablePlaces, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
 import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
 import { activityRows, groupSubagents, summarize } from "../lib/activity-rows.js";
@@ -21,7 +21,7 @@ import { createHub } from "./hub.mjs";
 import { createPush, notice } from "./push.mjs";
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "approve", "start", "models"];
+const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "approve", "start", "models", "dispose"];
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
 const PARENT = /^[a-z0-9-]{1,24}#[a-f0-9]{16}$/;
@@ -429,12 +429,16 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       found.set(id, { id, peer, session, seenAt, online: state.event === "start" && Date.now() - seenAt < ONLINE_MS, ...(state.parent ? { parent: state.parent } : {}) });
     }
     // Hooks refresh seenAt on every event; minute resolution keeps snapshot pushes to one per agent per minute.
-    for (const { id, peer, session, online, seenAt, parent, cwd, name } of listSessions(cfg)) {
+    let root = "";
+    try { root = projectRoot(cfg.project, env); } catch { /* no registered root */ }
+    for (const { id, peer, session, online, seenAt, parent, cwd, name, sandbox } of listSessions(cfg)) {
+      const where = sessionPlace({ cwd, sandbox }, root);
       const started = typeof parent === "string" && PARENT.test(parent) ? parent : found.get(id)?.parent;
       found.set(id, {
         id, peer, session, online, seenAt, activeAt: Math.floor((seenAt || 0) / 60_000) * 60_000, registered: true, ...(started ? { parent: started } : {}),
         ...(typeof cwd === "string" && isAbsolute(cwd) ? { folder: cleanText(basename(cwd), ACTIVITY_NAME_MAX) } : {}),
         ...(cleanName(name) ? { name: cleanName(name) } : {}),
+        ...(where ? { where: cleanText(where, ACTIVITY_NAME_MAX) } : {}),
       });
     }
     const prompts = firstPrompts(project);
@@ -805,6 +809,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         recipient(cfg, target, true);
         markUrgent(operator, target);
         return json(200, { status: "Sending at the agent's next tool call" });
+      }
+      if (action === "dispose") {
+        disposeSession(cfg, target);
+        return json(200, { status: "Disposed", detail: target });
       }
       if (action === "compact" || action === "wake") {
         recipient(cfg, target, true);

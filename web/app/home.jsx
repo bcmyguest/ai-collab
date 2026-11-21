@@ -1,5 +1,6 @@
 "use client";
-import { Bot, ChevronRight, CornerLeftUp, LoaderCircle } from "lucide-react";
+import { Bot, ChevronRight, CornerLeftUp, LoaderCircle, MoreHorizontal } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -35,7 +36,7 @@ function Action({ action }) {
 }
 
 // One session: identity, state, last action, running subagents, pending cards, and nested child sessions.
-function SessionCard({ node, now, open, openAddress, act, answer, disabled, showProject }) {
+function SessionCard({ node, now, open, openAddress, act, answer, dispose, disabled, showProject }) {
   const running = node.subagents.filter(run => runState(run, now) === "running");
   const label = running.length ? running.length + " subagent" + (running.length === 1 ? "" : "s") : "";
   return <li data-session={node.id} className="flex min-w-0 flex-col gap-2">
@@ -51,6 +52,7 @@ function SessionCard({ node, now, open, openAddress, act, answer, disabled, show
           </span>
           <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
             <span className="font-mono">{short(node.id)}</span>
+            {node.where && <span title="Where it runs">· {node.where}</span>}
             {showProject && <span>· {node.project}</span>}
             <span>· active {ago(Math.max(node.seenAt || 0, node.lastActivityAt || 0), now)}</span>
             {label && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]" title="Running subagents">{label}</Badge>}
@@ -58,6 +60,12 @@ function SessionCard({ node, now, open, openAddress, act, answer, disabled, show
         </span>
       </button>
       <GoToAgent onClick={() => open(node)}/>
+      {dispose && <DropdownMenu>
+        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8 shrink-0" aria-label={"Actions for " + node.id}><MoreHorizontal className="size-4"/></Button></DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem disabled={disabled || node.online || !node.registered} onSelect={() => dispose(node)}>Dispose</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>}
       </div>
       {node.parent && <p className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
         <span className="min-w-0 truncate">started by {short(node.parent)}</span>
@@ -82,16 +90,16 @@ function SessionCard({ node, now, open, openAddress, act, answer, disabled, show
       </div>)}
     </div>
     {node.children.length > 0 && <ul aria-label={"Started by " + short(node.id)} className="ml-4 flex flex-col gap-2 border-l pl-3">
-      {node.children.map(child => <SessionCard key={child.project + child.id} node={child} now={now} open={open} openAddress={openAddress} act={act} answer={answer} disabled={disabled} showProject={showProject}/>)}
+      {node.children.map(child => <SessionCard key={child.project + child.id} node={child} now={now} open={open} openAddress={openAddress} act={act} answer={answer} dispose={dispose} disabled={disabled} showProject={showProject}/>)}
     </ul>}
   </li>;
 }
 
 /** Session cards grouped Waiting on you, AFK hold, Working, Idle, then Offline collapsed. */
-export function SessionList({ sessions, now, open, openAddress, act, answer, disabled, showProject, empty, offlineOpen, onOfflineToggle }) {
+export function SessionList({ sessions, now, open, openAddress, act, answer, dispose, disabled, showProject, empty, offlineOpen, onOfflineToggle }) {
   const tree = sessionTree(sessions || [], now);
   if (!tree.length) return <p className="py-16 text-center text-sm text-muted-foreground">{empty}</p>;
-  const card = node => <SessionCard key={node.project + node.id} node={node} now={now} open={open} openAddress={openAddress} act={act} answer={answer} disabled={disabled} showProject={showProject}/>;
+  const card = node => <SessionCard key={node.project + node.id} node={node} now={now} open={open} openAddress={openAddress} act={act} answer={answer} dispose={dispose} disabled={disabled} showProject={showProject}/>;
   return <div className="flex min-w-0 flex-col gap-5">
     {GROUPS.map(([group, title]) => {
       const list = tree.filter(node => node.group === group);

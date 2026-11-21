@@ -74,6 +74,8 @@ Tapping a message's sender avatar or name, or an `@peer#session` tag, opens that
 
 **Session names** appear next to `harness#label` in the mention picker, the sidebar and the cards. Claude Code: the `session_title` field of its SessionStart and UserPromptSubmit hook input (in the Claude 2.1.330 hook schema). Codex: the thread's newest `thread_name` in `$CODEX_HOME/session_index.jsonl`. OpenCode: the session `title` from `ctx.session.get`, read when the plugin first sees the session. Hooks record it in the local registry at SessionStart, UserPromptSubmit and Stop (`lib/names.mjs`). Cursor gives none; the UI falls back to the folder name and the first six words of the session's earliest prompt still in the activity history.
 
+Each session card shows **where it runs** after its address: `folder` (the project root), `worktree <name>` (under `<root>/.claude/worktrees/` or any other `worktrees/<name>` path), `sandbox` (a registry entry with a `sandbox` field; no hook writes one yet), else the cwd with `~` for home (`sessionPlace` in `lib/sessions.mjs`). A **⋯** menu on each card has **Dispose**, enabled only for an offline session with a registry file. It posts `/api/dispose`; the server checks the address (`peer#16-hex`), that the session belongs to the project and that its recorded process is not running, then deletes `<stateDir>/<project>/registry/<address>.json` (`disposeSession`). A session that still has messages in ntfy history can reappear as an offline card without a registry entry.
+
 A **Go to agent** button sits on every Home card, its "started by" parent, each subagent run (in threads, the overview and on cards), each overview row's agent, and each agent's message. A session started by another shows **Back to parent** under its title; a subagent run's view has **Back to parent** to its session's thread.
 
 ## Chat and activity views
@@ -104,7 +106,7 @@ The **AFK** switch in the header sets the operator mode to `on`, `off`, or `quie
 
 ## Start a session from the phone
 
-Each project in the sidebar has a **+** button (the **New session** panel): pick a harness, type the first prompt, and tap **Start**. The server accepts only a project name from `projects.json` and one of `claude`, `codex`, `cursor`, `opencode` that is in the project's peers and on `PATH` (plus Node's directory and `~/.local/bin`). It never takes a path from the client. It spawns the harness detached, with `shell: false`, in the project's `root`, at most once every 10 seconds:
+Each project in the sidebar has a **+** button (the **New session** panel), a chat whose composer starts the agent: type `@codex:gpt-5-codex fix the tests` (`@codex fix the tests` uses the default model) and send. The text after the tag is the prompt. The panel opens the session's chat once it reports. The server accepts only a project name from `projects.json` and one of `claude`, `codex`, `cursor`, `opencode` that is in the project's peers and on `PATH` (plus Node's directory and `~/.local/bin`). It never takes a path from the client. It spawns the harness detached, with `shell: false`, in the project's `root`, at most once every 10 seconds:
 
 | Harness | argv |
 |---|---|
@@ -113,7 +115,7 @@ Each project in the sidebar has a **+** button (the **New session** panel): pick
 | Cursor | `cursor-agent -p --output-format stream-json --workspace <root> [--model <m>] <prompt>` |
 | OpenCode 2 | `opencode run --format json [-m <provider/model>] <prompt>` (cwd is the root or worktree; the run uses OpenCode's background server, where the plugin runs) |
 
-The start request body is `{project, harness, prompt, model?, worktree?, openshell?}` (`worktree: true` and `openshell: true` choose the place; both at once is rejected). A `model` must be in the harness's allowlist, which the `models` action (`POST /api/models`, body `{}`) returns as `{claude:[...], codex:[...], cursor:[...], opencode:[...]}` (`opencode` is empty unless the project's peers list it, or list nothing). The panel shows a **Model** picker when that returns a list:
+The start request body is `{project, harness, prompt, model?, worktree?, openshell?}` (`worktree: true` and `openshell: true` choose the place; both at once is rejected). A `model` must be in the harness's allowlist, which the `models` action (`POST /api/models`, body `{}`) returns as `{claude:[...], codex:[...], cursor:[...], opencode:[...]}` (`opencode` is empty unless the project's peers list it, or list nothing). The panel's composer takes the model from the `@harness:model` tag, which the mention picker lists from that action:
 
 | Harness | Allowlist source |
 |---|---|
