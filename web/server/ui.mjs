@@ -17,6 +17,7 @@ import { listModels } from "../../lib/models.mjs";
 import { createTeam, deleteTeam, listTeams, teamTask } from "../../lib/teams.mjs";
 import { formatTeamOrchestrator } from "../../lib/format.mjs";
 import { activityRows, groupSubagents, summarize } from "../lib/activity-rows.js";
+import { childRuns } from "../lib/child-subagents.js";
 import { fallbackName, visibleWake, waitingOn } from "../lib/session-state.js";
 import { createAuth } from "./auth.mjs";
 import { createHub } from "./hub.mjs";
@@ -655,7 +656,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const waiting = waitingIds(project, list);
     const mode = latestMode([...projects.values()].flatMap(item => item.hub.events(item.topic))).mode;
     // Home covers every project's hub; Sessions only this project. Both ride the same pushed state event.
-    const runsOf = new Map(sessionCards(project, list, mode).map(card => [card.id, card.subagents]));
+    const own = sessionCards(project, list, mode);
+    const runsOf = new Map(own.map(card => [card.id, card.subagents]));
+    // Child sessions join their parent's subagents on the agent list only; the cards nest them already (sessionTree).
+    const kids = childRuns(own);
     const cards = scope === "home" ? [...projects.values()].flatMap(item => item === project ? sessionCards(item, list, mode)
       : item.failed ? [] : sessionCards(item, agents(item, lastMessages(item)), mode))
       : scope === "sessions" ? sessionCards(project, list, mode) : undefined;
@@ -670,8 +674,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       harnesses: harnesses(project, list, last),
       // Unfinished subagent runs ride on each agent for the composer's @session/run picker.
       agents: list.map(agent => {
-        const subagents = runsOf.get(agent.id);
-        const base = subagents?.length ? { ...agent, subagents } : agent;
+        const subagents = [...(runsOf.get(agent.id) || []), ...(kids.get(agent.id) || [])];
+        const base = subagents.length ? { ...agent, subagents } : agent;
         return waiting.has(agent.id) ? { ...base, waiting: true } : base;
       }),
       messages: scope === "home" ? [] : messages(project, { harness, session }, list),

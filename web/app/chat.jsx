@@ -833,6 +833,7 @@ function Console({ account }) {
               act={payload => action("approve", payload, "Sent")} answer={(at, id, body) => action("reply", { project: at, question: id, body }, "Reply sent")}/>
           </>}
           {ready && subagents && <SubagentList rows={rows} session={selected.session} run={selected.run} when={at => ago(at, now)} now={now}
+            childRuns={(agent?.subagents || []).filter(run => run.child)} openChild={child => navigate({ project, level: "session", harness: child.kind, session: child.id })}
             back={() => navigate({ ...selected, project, tab: "chat", run: "" })}
             pick={run => navigate({ ...selected, project, tab: "subagents", run })}/>}
           {!home && !listing && !subagents && (!ready || thread.length === 0) && <p className="py-16 text-center text-sm text-muted-foreground">

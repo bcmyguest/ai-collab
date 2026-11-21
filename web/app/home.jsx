@@ -125,7 +125,7 @@ export function SessionList({ sessions, now, open, openAddress, act, answer, dis
 }
 
 /** A session's subagent runs; picking one shows only that run's rows. */
-export function SubagentList({ rows, session, run, pick, when, now, back }) {
+export function SubagentList({ rows, session, run, pick, when, now, back, childRuns = [], openChild }) {
   const runs = rows.filter(row => row.type === "subagent" && row.agent === session);
   const chosen = run && runs.find(row => row.run === run);
   if (chosen) return <div className="flex min-w-0 flex-col gap-3" data-run={chosen.run}>
@@ -136,8 +136,23 @@ export function SubagentList({ rows, session, run, pick, when, now, back }) {
     <p className="text-sm font-medium">{subagentLabel(chosen, now)}{chosen.description && " · " + chosen.description}</p>
     {chosen.rows.map(item => <ActivityRow key={item.id} row={item} when={when}/>)}
   </div>;
-  if (!runs.length) return <p className="py-16 text-center text-sm text-muted-foreground">{run ? "That subagent run is not in the recent activity." : "No subagents in the recent activity."}</p>;
-  return <ul aria-label="Subagents" className="flex min-w-0 flex-col gap-2">
+  if (!runs.length && !childRuns.length) return <p className="py-16 text-center text-sm text-muted-foreground">{run ? "That subagent run is not in the recent activity." : "No subagents in the recent activity."}</p>;
+  const children = <ul aria-label="Child sessions" className="flex min-w-0 flex-col gap-2">
+    {childRuns.map(child => <li key={child.id}>
+      <button type="button" onClick={() => openChild(child)} className="flex w-full min-w-0 items-start gap-2.5 rounded-2xl border bg-card px-3 py-2.5 text-left text-sm shadow-xs">
+        <Bot className="mt-0.5 size-4 shrink-0 text-muted-foreground"/>
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="min-w-0 font-medium">{child.kind} · {short(child.id)} · {child.online ? "online" : "offline"}</span>
+          {child.description && <span className="min-w-0 truncate text-xs text-muted-foreground">{child.description}</span>}
+        </span>
+        <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground"/>
+      </button>
+    </li>)}
+  </ul>;
+  if (!runs.length) return children;
+  return <div className="flex min-w-0 flex-col gap-4">
+  {childRuns.length > 0 && children}
+  <ul aria-label="Subagents" className="flex min-w-0 flex-col gap-2">
     {[...runs].reverse().map(row => <li key={row.id}>
       <button type="button" onClick={() => pick(row.run)} className="flex w-full min-w-0 items-start gap-2.5 rounded-2xl border bg-card px-3 py-2.5 text-left text-sm shadow-xs">
         {runState(row, now) === "running" ? <LoaderCircle className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground"/> : <Bot className="mt-0.5 size-4 shrink-0 text-muted-foreground"/>}
@@ -153,5 +168,6 @@ export function SubagentList({ rows, session, run, pick, when, now, back }) {
         <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground"/>
       </button>
     </li>)}
-  </ul>;
+  </ul>
+  </div>;
 }
