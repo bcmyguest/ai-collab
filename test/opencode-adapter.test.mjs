@@ -83,11 +83,11 @@ test("opencode session directory lists the resume command", () => {
   rmSync(stateDir, { recursive: true, force: true });
 });
 
-test("opencode install writes the plugin shim and the MCP server under mcp.servers into a temporary home", async () => {
+test("opencode install writes the plugin shim, the MCP server under mcp.servers, and the skills path into a temporary home", async () => {
   const home = tempHome();
   const dir = opencodeConfigDir({ home });
   mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, "opencode.json"), JSON.stringify({ model: "anthropic/x", plugins: ["other"], mcp: { servers: { other: { type: "local", command: ["x"] } } } }));
+  writeFileSync(path.join(dir, "opencode.json"), JSON.stringify({ model: "anthropic/x", plugins: ["other"], skills: ["/my/skills"], mcp: { servers: { other: { type: "local", command: ["x"] } } } }));
   const first = installOpenCode({ home, importMetaUrl: import.meta.url });
   assert.equal(first.ok, true, first.message);
   const second = installOpenCode({ home, importMetaUrl: import.meta.url });
@@ -95,6 +95,7 @@ test("opencode install writes the plugin shim and the MCP server under mcp.serve
   const config = JSON.parse(readFileSync(first.config, "utf8"));
   assert.equal(config.model, "anthropic/x");
   assert.deepEqual(config.plugins, ["other"]);
+  assert.deepEqual(config.skills, ["/my/skills", path.join(SRC, "skills")], "the skills path is added once");
   assert.deepEqual(Object.keys(config.mcp.servers), ["other", "ai-collab"]);
   assert.deepEqual(config.mcp.servers["ai-collab"], { type: "local", command: ["node", path.join(SRC, "scripts", "ai-collab-mcp.mjs"), "opencode"], cwd: ".", enabled: true });
   assert.equal(first.plugin, path.join(dir, "plugins", "ai-collab.js"));
