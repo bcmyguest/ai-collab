@@ -46,6 +46,8 @@ const AFK_MODES = [["off", "Off", Bell], ["on", "On", Coffee], ["quiet", "Quiet"
 const HARNESS_NAMES = { claude: "Claude Code", codex: "Codex", cursor: "Cursor" };
 const RECEIPTS = { sent: ["Sent", Check], delivered: ["Delivered", CheckCheck], read: ["Read", CheckCheck] };
 const clock = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+// Fired on a 401 or a closed stream; the sign-in gate asks /api/auth/me again.
+const AUTH_CHECK = "ai-collab:auth-check";
 
 function selection() {
   const params = new URLSearchParams(location.hash.slice(1));
@@ -86,6 +88,7 @@ async function api(path, payload) {
   const response = await fetch("/api/" + path, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
   });
+  if (response.status === 401) window.dispatchEvent(new Event(AUTH_CHECK));
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "Request failed");
   return result;
@@ -128,9 +131,9 @@ const peerOf = address => String(address || "").split("#")[0];
 const short = address => address?.includes("#") ? address.slice(0, address.indexOf("#") + 9) : address;
 const colorOf = address => HARNESS_COLORS[peerOf(address)] || "[&_[data-slot=avatar-fallback]]:bg-agent";
 
-export function Avatar({ address, className }) {
+export function Avatar({ address, className, by }) {
   const peer = peerOf(address);
-  const label = peer === "operator" ? "You" : peer.slice(0, 2).toUpperCase();
+  const label = by ? by.slice(0, 2).toUpperCase() : peer === "operator" ? "You" : peer.slice(0, 2).toUpperCase();
   return <MessageAvatar fallback={label} className={cn("size-8 text-[11px] font-semibold [&_[data-slot=avatar-fallback]]:text-white", colorOf(address), className)}/>;
 }
 
@@ -299,22 +302,24 @@ function Ticks({ state }) {
     className={cn("inline-flex", state === "read" ? "text-primary" : "text-muted-foreground")}><Icon className="size-3.5"/></span>;
 }
 
-function ChatMessage({ message, operator, now, reply, open, act, answer, disabled }) {
+function ChatMessage({ message, operator, me, now, reply, open, act, answer, disabled }) {
   const sender = message.from || message.sender || "ntfy";
   const outgoing = sender === operator;
-  const label = ["Question", "Reply", "Approval"].includes(message.kind) ? message.kind + " · " + short(sender) : short(sender);
+  // A signed-in family member's message names them; the viewer's own stays "You".
+  const other = message.by && message.by !== me ? message.by : "";
+  const label = ["Question", "Reply", "Approval"].includes(message.kind) ? message.kind + " · " + (message.by || short(sender)) : short(sender);
   const at = message.time ? message.time * 1000 : 0;
   // An agent's avatar and name open its session (or harness) view; the operator's own and ntfy posts stay plain.
   const openable = !outgoing && sender !== "ntfy" && sender !== "operator";
   const go = () => open(sender);
   return <Message className={cn("max-w-full", outgoing && "flex-row-reverse")}
     onClick={event => { const tag = event.target.closest?.("[data-mention]"); if (tag) open(tag.textContent.replace(/^@/, "")); }}>
-    {openable ? <button type="button" aria-label={"Open avatar " + sender} tabIndex={-1} className="shrink-0 self-start rounded-full" onClick={go}><Avatar address={sender}/></button> : <Avatar address={sender}/>}
+    {openable ? <button type="button" aria-label={"Open avatar " + sender} tabIndex={-1} className="shrink-0 self-start rounded-full" onClick={go}><Avatar address={sender}/></button> : <Avatar address={sender} by={other}/>}
     <div className={cn("flex min-w-0 max-w-[82%] flex-col gap-1", outgoing ? "items-end" : "items-start")}>
       <div className="flex max-w-full flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
         {openable ? <button type="button" aria-label={"Open " + sender} title={sender} onClick={go}
           className="font-medium text-foreground underline-offset-2 hover:underline">{label}</button>
-          : <span className="font-medium text-foreground" title={sender}>{outgoing ? "You" : label}</span>}
+          : <span className="font-medium text-foreground" title={message.by ? sender + " · " + message.by : sender}>{outgoing ? other || "You" : label}</span>}
         {message.to && message.to !== "all" && <span title={message.to}>→ {short(message.to)}</span>}
         {at > 0 && <time dateTime={new Date(at).toISOString()} title={clock.format(at)}>{ago(at, now)}</time>}
         {message.scope === "all" && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">to all</Badge>}
@@ -323,7 +328,7 @@ function ChatMessage({ message, operator, now, reply, open, act, answer, disable
         {openable && sender.includes("#") && <GoToAgent onClick={go} className="size-6"/>}
       </div>
       {message.kind === "Approval" ? <ApprovalCard approval={message.approval} now={now} disabled={disabled} act={act}/>
-        : message.kind === "Question" && message.question ? <QuestionCard body={withMentions(message.body)} answer={message.answer} disabled={disabled} onAnswer={body => answer(message.question, body)}/>
+        : message.kind === "Question" && message.question ? <QuestionCard body={withMentions(message.body)} answer={message.answer} by={message.answeredBy} disabled={disabled} onAnswer={body => answer(message.question, body)}/>
         : <MessageContent markdown className={cn("bubble max-w-full rounded-2xl px-3.5 py-2 text-[15px] leading-relaxed shadow-xs [overflow-wrap:anywhere]",
         outgoing ? "rounded-tr-md border border-primary/25 bg-primary/10 text-foreground" : "rounded-tl-md border bg-card text-card-foreground",
         message.kind === "Question" && "border-amber-500/50")}>{withMentions(message.body)}</MessageContent>}
@@ -466,7 +471,36 @@ function Composer({ agents, harnesses, now, disabled, placeholder, onSend, quest
   </div>;
 }
 
+// With GitHub sign-in on, a signed-out visitor sees only the sign-in button; a 401 or closed stream checks again.
 export default function Chat() {
+  const [account, setAccount] = useState(null);
+  useEffect(() => {
+    let live = true;
+    const check = () => fetch("/api/auth/me", { cache: "no-store" }).then(response => response.json())
+      .then(result => { if (live) setAccount(result); }, () => { if (live) setAccount(current => current || { enabled: false, user: null }); });
+    check();
+    window.addEventListener(AUTH_CHECK, check);
+    return () => { live = false; window.removeEventListener(AUTH_CHECK, check); };
+  }, []);
+  if (!account) return null;
+  if (account.enabled && !account.user) return <SignIn/>;
+  return <Console account={account}/>;
+}
+
+function SignIn() {
+  return <main className="flex h-dvh flex-col items-center justify-center gap-4 px-6 text-center">
+    <h1 className="text-xl font-semibold">AI Collab</h1>
+    <p className="text-sm text-muted-foreground">Sign in to message your agents.</p>
+    <Button asChild className="rounded-full"><a href="/api/auth/login">Sign in with GitHub</a></Button>
+  </main>;
+}
+
+async function signOut() {
+  await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+  window.dispatchEvent(new Event(AUTH_CHECK));
+}
+
+function Console({ account }) {
   const [selected, setSelected] = useState(selection);
   const [data, setData] = useState(initial);
   const [activity, setActivity] = useState([]);
@@ -543,6 +577,7 @@ export default function Chat() {
     source.addEventListener("problem", event => { source.close(); fail(JSON.parse(event.data).error); });
     source.onerror = () => {
       if (source.readyState === EventSource.CLOSED) {
+        if (account.enabled) window.dispatchEvent(new Event(AUTH_CHECK));
         if (autoRetry.current && !retrying.current) { autoRetry.current = false; retryTimer = setTimeout(() => setRevision(n => n + 1), QUIET_RETRY_MS); return; }
         return fail("Connection closed");
       }
@@ -683,6 +718,9 @@ export default function Chat() {
           <NotifyToggle/>
           <ThemeToggle/>
         </div>
+        {account.user && <p className="-mt-1 truncate text-right text-[11px] text-muted-foreground" data-account={account.user.login}>
+          signed in as <span className="font-medium text-foreground" title={account.user.name || undefined}>{account.user.login}</span>
+          {" · "}<button type="button" className="underline-offset-2 hover:underline" onClick={signOut}>sign out</button></p>}
         {!home && <ZoomControls data={data} selected={selected} now={now} navigate={navigate} showActivity={showActivity} setShowActivity={setShowActivity}
           compact={level === "session" && agent?.session && <Button variant="outline" size="sm" className="ml-auto h-9 rounded-full" aria-label="Compact" disabled={!ready || working}
             onClick={() => action("compact", { target: selected.session }, "Compaction requested")}><Minimize2/>Compact</Button>}/>}
@@ -716,7 +754,7 @@ export default function Chat() {
             {ready ? (watching ? "No activity yet." : missing ? "No " + level + " to show yet." : "No messages yet.") : loadError ? "" : watching ? "Loading activity…" : "Loading conversation…"}</p>}
           {ready && !home && !listing && !subagents && thread.map(({ message, activity: row }) => row
             ? <ActivityRow key={row.id} row={row} when={at => ago(at, now)} agent={watching ? agentLink : undefined} now={now} goRun={goRun}/>
-            : <ChatMessage key={message.id} message={message} operator={data.operator} now={now} open={openAddress} disabled={!ready || working}
+            : <ChatMessage key={message.id} message={message} operator={data.operator} me={account.user?.login} now={now} open={openAddress} disabled={!ready || working}
               act={payload => action("approve", payload, "Sent")} answer={(id, body) => action("reply", { question: id, body }, "Reply sent")}
               reply={id => { setQuestion(id); setNotice(""); document.getElementById("composer")?.focus(); }}/>)}
           {ready && (watching || inline) && <Working rows={rows} now={now} overview={watching}/>}
