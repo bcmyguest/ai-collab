@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "next-themes";
+import { HarnessLogo, hasLogo } from "./logos";
 import { Activity, ArrowUp, AtSign, Bell, BellOff, Bot, Check, CheckCheck, Coffee, CornerLeftUp, FolderGit2, House, Menu, Minimize2, Monitor, Moon, Plus, RotateCw, Sun, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -134,7 +135,8 @@ const colorOf = address => HARNESS_COLORS[peerOf(address)] || "[&_[data-slot=ava
 export function Avatar({ address, className, by }) {
   const peer = peerOf(address);
   const label = by ? by.slice(0, 2).toUpperCase() : peer === "operator" ? "You" : peer.slice(0, 2).toUpperCase();
-  return <MessageAvatar fallback={label} className={cn("size-8 text-[11px] font-semibold [&_[data-slot=avatar-fallback]]:text-white", colorOf(address), className)}/>;
+  const fallback = !by && hasLogo(peer) ? <HarnessLogo peer={peer} className="size-[55%]"/> : label;
+  return <MessageAvatar fallback={fallback} className={cn("size-8 text-[11px] font-semibold [&_[data-slot=avatar-fallback]]:text-white", colorOf(address), className)}/>;
 }
 
 function Dot({ online }) {
