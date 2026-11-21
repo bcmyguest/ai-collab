@@ -92,10 +92,9 @@ export interface SessionHandle {
   // Ends the running run; the adapter then emits RUN_FINISHED outcome "cancelled".
   interrupt(): Promise<void>;
   respond(interruptId: string, decision: Decision): Promise<void>;
-  // After resume(): the runId still running in the harness, or null when idle (live adapters only).
-  activeRun?(): string | null;
   contextUsage?(): Promise<ContextUsage | null>;
   setModel?(model: string): Promise<void>;
+  // Applies PERMISSION_TABLE[harness][mode] to the open session; only the operator reaches it, through the control socket.
   setPermissionMode?(mode: PermissionMode): Promise<void>;
   resumeData?(): Record<string, unknown>;
   // Ends the session's process; the native session stays resumable.
@@ -105,8 +104,8 @@ export interface SessionHandle {
 export interface Capabilities {
   steer: boolean;
   images: boolean;
-  // live: a run survives a runner restart; transcript: history survives, the run is cut; none: not resumable.
-  resume: "live" | "transcript" | "none";
+  // transcript: history survives a runner restart and the run is cut (marked interrupted, never resent); none: not resumable.
+  resume: "transcript" | "none";
   permissionModes: PermissionMode[];
 }
 
@@ -116,7 +115,7 @@ export interface Adapter {
   available(env: Record<string, string>): Promise<{ ok: boolean; detail?: string }>;
   // Opens a native session without a prompt.
   open(options: OpenOptions, ctx: SessionContext): Promise<SessionHandle>;
-  // Reattaches to record.nativeId; live adapters re-emit INTERRUPT_REQUESTED for still-pending requests.
+  // Reattaches to record.nativeId for the next input; a cut run is not resumed.
   resume(record: OwnedRecord, ctx: SessionContext, env: Record<string, string>): Promise<SessionHandle>;
   listModels(env: Record<string, string>): Promise<Model[]>;
   listCommands(cwd: string, env: Record<string, string>): Promise<SlashCommand[]>;

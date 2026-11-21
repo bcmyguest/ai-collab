@@ -173,7 +173,7 @@ async function main() {
   const cfg = loadConfig(env, { cwd, host, session });
   if (!cfg.enabled) return emit(neutral(host, key));
   // The runner drives an owned session and publishes everything itself (docs/owned-sessions-contract.md).
-  if (standsDown(cfg, { host, label: session, env: process.env })) return emit(neutral(host, key));
+  if (standsDown(cfg, { label: session })) return emit(neutral(host, key));
   if (argv.includes("--rewake")) return rewake(cfg, host, msg);
 
   // Started first and awaited last, so delivery never waits on it.

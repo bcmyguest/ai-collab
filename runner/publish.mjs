@@ -6,9 +6,10 @@ import { publishActivity } from "../lib/activity.mjs";
 import { approvalMessage, cleanQuestions } from "../lib/approvals.mjs";
 import { sendReceipts } from "../lib/receipts.mjs";
 import { reportContext } from "../lib/usage.mjs";
+import { APPROVAL_TIMEOUT_MIN } from "./contract.mjs";
 
-// Owned approvals wait for the operator; expiresAt only tells the UI the card is old (ntfy keeps 12 h).
-export const OWNED_APPROVAL_MS = 12 * 3600 * 1000;
+// A card's expiresAt is when the runner denies it (AI_COLLAB_APPROVAL_TIMEOUT_MIN); this is the default wait.
+const DEFAULT_APPROVAL_MS = APPROVAL_TIMEOUT_MIN * 60_000;
 const PUBLISH_TIMEOUT_MS = 3000;
 
 const withAgent = (row, e) => (e.subagentRunId ? { ...row, agent: { id: e.subagentRunId, type: e.subagentType || "" } } : row);
@@ -32,10 +33,10 @@ export function activityFor(e) {
 export const sessionEndedRow = (reason) => ({ type: "stop", input: ["session ended", reason].filter(Boolean).join(" · ") });
 
 /** The approval envelope of an owned session (lib/approvals.mjs shape plus owned:true), or null when it cannot fit. */
-export function ownedApprovalMessage(cfg, harness, { id, tool, summary, questions }, { now = Date.now() } = {}) {
+export function ownedApprovalMessage(cfg, harness, { id, tool, summary, questions }, { now = Date.now(), ttlMs = DEFAULT_APPROVAL_MS } = {}) {
   const clean = questions === undefined ? undefined : cleanQuestions(questions);
   const req = { tool: String(tool).slice(0, 128), summary: String(summary).slice(0, 300), ...(clean ? { questions: clean } : {}) };
-  const message = approvalMessage(cfg, harness, req, { id, expiresAt: now + OWNED_APPROVAL_MS, ts: new Date(now).toISOString() });
+  const message = approvalMessage(cfg, harness, req, { id, expiresAt: now + ttlMs, ts: new Date(now).toISOString() });
   if (!message) return null;
   const owned = JSON.stringify({ ...JSON.parse(message), owned: true });
   return Buffer.byteLength(owned) <= NTFY_MESSAGE_MAX_BYTES ? owned : null;
@@ -46,8 +47,8 @@ export function approvalEndMessage(cfg, id, reason) {
 }
 
 /** Publishes the owned approval card on the broadcast topic; throws when it cannot fit or publish. */
-export async function publishApproval(cfg, harness, card) {
-  const message = ownedApprovalMessage(cfg, harness, card);
+export async function publishApproval(cfg, harness, card, ttlMs) {
+  const message = ownedApprovalMessage(cfg, harness, card, { ttlMs });
   if (!message) throw new Error("approval does not fit in one ntfy message");
   const who = `${cfg.peer}#${cfg.session}`;
   await publish(cfg, broadcastTopic(cfg.project), message, { title: `${card.tool} needs approval for ${who}: ${card.summary}`.slice(0, 200), signal: AbortSignal.timeout(PUBLISH_TIMEOUT_MS) });
