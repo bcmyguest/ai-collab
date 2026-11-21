@@ -106,7 +106,7 @@ test("a late confirmation marks the message delivered without a second send", as
   assert.equal(sock.frames.length, 1);
   const envelope = sock.frames[0].message.content;
   mkdirSync(dirname(claude.transcript), { recursive: true });
-  appendFileSync(claude.transcript, `${JSON.stringify({ type: "user", message: { role: "user", content: envelope } })}\n`);
+  appendFileSync(claude.transcript, `${JSON.stringify({ type: "queue-operation", operation: "enqueue", content: envelope })}\n`);
   await dispatcher.drain();
   assert.deepEqual(await claimInbox(target), [], "the watch marked it delivered");
   assert.equal((await dispatcher.tick()).delivered, 0);

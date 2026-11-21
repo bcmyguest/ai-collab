@@ -65,7 +65,7 @@ export async function fakeClaudeSocket(t, { token = "tok-123", accept = true } =
         frames.push(f);
         if (state.accept && state.transcript && f.type === "user") {
           mkdirSync(join(state.transcript, ".."), { recursive: true });
-          appendFileSync(state.transcript, `${JSON.stringify({ type: "user", message: f.message })}\n`);
+          appendFileSync(state.transcript, `${JSON.stringify({ type: "queue-operation", operation: "enqueue", content: f.message.content })}\n`);
         }
       }
     });

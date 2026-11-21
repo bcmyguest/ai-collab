@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { transcriptConfirms } from "../lib/claude-socket.mjs";
 
 // One transcript line holding a user record whose content is the given string, as JSON.
-const record = (content) => `${JSON.stringify({ type: "user", message: { role: "user", content } })}\n`;
+const record = (content) => `${JSON.stringify({ type: "queue-operation", operation: "enqueue", content })}\n`;
 const envelope = (name, body) => `<cross-session-message from-name="${name}">\n${body}\n</cross-session-message>`;
 
 // A transcript file under a new temp dir, cleaned up with the test.

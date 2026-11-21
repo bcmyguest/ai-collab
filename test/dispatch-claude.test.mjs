@@ -50,7 +50,7 @@ async function setup(t, { gate = "accept", listen = true } = {}) {
         // Claude records a delivered user frame in the transcript; a gate that holds it would not.
         if (frame.type === "user" && gate === "accept") {
           mkdirSync(join(transcript, ".."), { recursive: true });
-          appendFileSync(transcript, `${JSON.stringify({ type: "user", message: frame.message })}\n`);
+          appendFileSync(transcript, `${JSON.stringify({ type: "queue-operation", operation: "enqueue", content: frame.message.content })}\n`);
         }
       }
     }));
