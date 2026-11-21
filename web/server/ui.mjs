@@ -14,6 +14,8 @@ import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } 
 import { availableHarnesses, availablePlaces, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
 import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
+import { createTeam, deleteTeam, listTeams, teamTask } from "../../lib/teams.mjs";
+import { formatTeamOrchestrator } from "../../lib/format.mjs";
 import { activityRows, groupSubagents, summarize } from "../lib/activity-rows.js";
 import { fallbackName, visibleWake, waitingOn } from "../lib/session-state.js";
 import { createAuth } from "./auth.mjs";
@@ -21,7 +23,7 @@ import { createHub } from "./hub.mjs";
 import { createPush, notice } from "./push.mjs";
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "approve", "start", "models", "dispose"];
+const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "approve", "start", "models", "dispose", "team"];
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
 const PARENT = /^[a-z0-9-]{1,24}#[a-f0-9]{16}$/;
@@ -171,13 +173,20 @@ function outcomes(events) {
 const MENTION = /(^|[^\w#-])@([a-z0-9-]{1,24}(?:#[a-f0-9]{16}(?:\/[A-Za-z0-9_-]{1,64})?|:[A-Za-z0-9][A-Za-z0-9._/-]{0,119})?)(?![\w-])/g;
 
 /** Session addresses, subagent runs (@session/run), harness names and harness:model pairs tagged with @ in a post, limited to the project's peers. */
-export function mentionedNames(body, peers = []) {
+export function mentionedNames(body, peers = [], teams = []) {
   // A full stop after @harness:model ends the sentence, not the model name.
+  const teamSet = new Set(teams);
   const names = new Set([...String(body).matchAll(MENTION)].map(match => match[2].replace(/\.+$/, "")));
   return [...names].filter(name => {
+    if (teamSet.has(name)) return false;
     const peer = name.split(/[#:]/)[0];
     return peer !== "operator" && peer !== "all" && (!peers.length || peers.includes(peer));
   });
+}
+
+/** Team names tagged with @ in a post. */
+export function mentionedTeams(body, teams = []) {
+  return teams.filter((name) => mentions(body, name));
 }
 
 const mentions = (body, name) => new RegExp(`(^|[^\\w#-])@${name}(?![\\w-])`).test(body);
@@ -335,13 +344,37 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return projects.get(name);
   }
 
+  async function routeTeamMentions(project, body, target, by) {
+    const { cfg, operator } = project;
+    const teams = listTeams(cfg, env);
+    const notes = [];
+    for (const name of mentionedTeams(body, Object.keys(teams))) {
+      const members = teams[name];
+      if (!members?.length) { notes.push(`@${name} unknown team`); continue; }
+      const task = teamTask(body, name);
+      const orch = formatTeamOrchestrator(name, members, task);
+      const mentionedIn = target === "all" ? "all" : target;
+      if (target === "all") {
+        if (!startable(project).includes("claude")) notes.push(`@${name} claude not available here`);
+        else notes.push(`@${name}${await startFor(cfg, orch, { harness: "claude" })}`);
+        continue;
+      }
+      if (target.includes("#")) {
+        await sendMessage(operator, target, orch, { operatorThread: true, mentionedIn, forTeam: name, ...(by ? { by } : {}) });
+        notes.push(`@${name} orchestrator notified`);
+      } else notes.push(`@${name} needs a session or project chat`);
+    }
+    return notes;
+  }
+
   // An @session gets the post in its direct chat; an @harness reaches its running sessions, or starts one with the post as prompt.
   async function routeMentions(project, body, target, by) {
     const { cfg, operator } = project;
+    const teamNames = Object.keys(listTeams(cfg, env));
     const sessions = listSessions(cfg);
     const direct = (to, forSubagent) => sendMessage(operator, to, body, { operatorThread: true, mentionedIn: target, ...(by ? { by } : {}), ...(forSubagent ? { forSubagent } : {}) });
-    const notes = [];
-    for (const name of mentionedNames(body, cfg.peers)) {
+    const notes = [...(await routeTeamMentions(project, body, target, by))];
+    for (const name of mentionedNames(body, cfg.peers, teamNames)) {
       if (name === target) continue;
       if (name.includes(":")) {
         const [harness, model] = [name.slice(0, name.indexOf(":")), name.slice(name.indexOf(":") + 1)];
@@ -646,6 +679,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       ...(scope === "home" ? { unavailable: [...projects.values()].filter(item => item.failed).map(item => item.cfg.project) } : {}),
       startable: startable(project),
       startPlaces: startPlaces(project),
+      teams: Object.entries(listTeams(project.cfg, env)).map(([id, members]) => ({ id, members })),
     };
   }
 
@@ -773,7 +807,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
-      const { project: name, target, body, question, mode, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model } = await payload(request);
+      const { project: name, target, body, question, mode, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, team: teamName, members, delete: deleteTeamName } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -796,6 +830,14 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         return json(201, { sent: true, status: approval.questions ? "Answer sent" : decision === "allow" ? "Allow sent" : "Deny sent" });
       }
       if (action === "models") return json(200, await models(cfg.stateDir, env, { peers: cfg.peers }));
+      if (action === "team") {
+        if (deleteTeamName) {
+          return json(201, deleteTeam(cfg, String(deleteTeamName), env));
+        }
+        if (!teamName || !Array.isArray(members) || !members.length) reject(400, "Enter a team name and at least one member");
+        const modelList = await models(cfg.stateDir, env, { peers: cfg.peers });
+        return json(201, await createTeam(cfg, String(teamName), members.map(String), env, modelList));
+      }
       if (action === "start") {
         if (!startable(project).includes(harness)) reject(400, "That harness is not available for this project");
         // The UI sends worktree / openshell booleans; place is the same choice by name.

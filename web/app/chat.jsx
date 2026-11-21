@@ -182,7 +182,37 @@ function SessionName({ agent }) {
   return agent?.name ? <span className="line-clamp-2 min-w-0 break-words text-xs text-foreground/80">{agent.name}</span> : null;
 }
 
-function Sidebar({ data, selected, now, navigate, newSession, dispose, disabled }) {
+function CreateTeam({ project, teams, startable, models, disabled, create, close }) {
+  const [name, setName] = useState("");
+  const [members, setMembers] = useState("");
+  const [error, setError] = useState("");
+  async function save() {
+    const roster = members.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+    if (!name.trim() || !roster.length) { setError("Name and at least one member required"); return; }
+    for (const member of roster) {
+      const harness = member.split(":")[0];
+      if (!startable.includes(harness)) { setError("Unknown harness: " + harness); return; }
+    }
+    setError("");
+    const result = await create({ project, team: name.trim(), members: roster });
+    if (result?.error) { setError(result.error); return; }
+    close();
+  }
+  return <div className="flex w-full flex-col gap-2 rounded-xl border bg-card p-3 text-sm shadow-sm">
+    <div className="flex items-center justify-between gap-2">
+      <span className="font-medium">Create team</span>
+      <Button type="button" variant="ghost" size="sm" onClick={close}>Cancel</Button>
+    </div>
+    <input className="rounded-lg border bg-background px-2 py-1.5 font-mono text-xs" placeholder="light-team" value={name} onChange={e => setName(e.target.value)}/>
+    <textarea className="min-h-[4.5rem] rounded-lg border bg-background px-2 py-1.5 font-mono text-xs" placeholder="claude:haiku, codex:gpt-5-codex"
+      value={members} onChange={e => setMembers(e.target.value)}/>
+    {teams?.length > 0 && <p className="text-xs text-muted-foreground">Teams: {teams.map(t => t.id).join(", ")}</p>}
+    {error && <p className="text-xs text-destructive">{error}</p>}
+    <Button type="button" size="sm" disabled={disabled} onClick={save}>Save team</Button>
+  </div>;
+}
+
+function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamOpen, createTeam, dispose, disabled }) {
   const current = selected.project || data.project;
   // Home's state carries the server's default project's agents; they are not "this project" here.
   const home = selected.level === "home";
@@ -220,6 +250,16 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, disabled 
         <span className="text-xs text-muted-foreground">all agents</span>
       </button>
     </section>
+    {!home && <section className="px-2 pb-2">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Teams</h2>
+        <Button type="button" variant="ghost" size="sm" className="h-7 rounded-full px-2 text-xs" disabled={disabled} onClick={() => setTeamOpen(!teamOpen)}>{teamOpen ? "Close" : "Create"}</Button>
+      </div>
+      {teamOpen ? <CreateTeam project={current} teams={data.teams} startable={data.startable || []} models={{}} disabled={disabled} create={createTeam} close={() => setTeamOpen(false)}/>
+        : (data.teams?.length ? <ul className="flex flex-col gap-1 text-xs text-muted-foreground">{(data.teams || []).map(team =>
+          <li key={team.id} className="truncate font-mono" title={(team.members || []).join(", ")}>@{team.id} · {(team.members || []).length} members</li>)}</ul>
+          : <p className="text-xs text-muted-foreground">No teams yet.</p>)}
+    </section>}
     <section>
       <div className="flex items-center justify-between px-2 pb-2">
         <h2 className="min-w-0 truncate text-xs font-medium uppercase tracking-wider text-muted-foreground" title={home ? undefined : current}>{home ? "Sessions" : "Sessions · " + current}</h2>
@@ -374,7 +414,7 @@ function NewSession({ project, harnesses = [], startable = [], places = ["folder
   </section>;
 }
 
-function Composer({ conversation, agents, harnesses, startable = [], models = {}, now, disabled, placeholder, onSend, question, cancel, urgentable }) {
+function Composer({ conversation, agents, harnesses, teams = [], startable = [], models = {}, now, disabled, placeholder, onSend, question, cancel, urgentable }) {
   const [draft, setDraftState] = useState(() => drafts.get(conversation, ""));
   const [urgent, setUrgent] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
@@ -384,13 +424,14 @@ function Composer({ conversation, agents, harnesses, startable = [], models = {}
   const mention = mentionAt(draft);
   const options = [...agents.map(agent => ({ id: agent.id, name: agent.name, lastMessageAt: agent.lastMessageAt, activeAt: agent.activeAt, online: agent.online })),
     ...harnesses.map(harness => ({ id: harness.id, lastMessageAt: harness.lastMessageAt, activeAt: harness.activeAt, harness: true })),
+    ...(teams || []).map(team => ({ id: team.id, team: true, members: team.members })),
     ...startable.flatMap(harness => modelsOf(models, harness).map(model => ({ id: harness + ":" + model, harness, model }))),
     // Open subagent runs of the project's sessions, tagged @session/run.
     ...agents.flatMap(agent => (agent.subagents || []).filter(run => run.open).map(run => ({ id: agent.id + "/" + run.run, owner: agent.id, run: true,
       label: short(agent.id) + " › " + [run.kind || "agent", run.description].filter(Boolean).join(": ") })))];
   // "@codex g5" narrows to codex's models; "@gpt" ranks every option.
   const matches = fuzzyRank(mention ? mention[1] + (mention[2] ?? "") : "", mention?.[2] !== undefined ? options.filter(option => option.model && option.harness === mention[1]) : options,
-    option => [option.id, option.name, option.label, HARNESS_NAMES[option.harness === true ? option.id : option.harness], option.model]);
+    option => [option.id, option.name, option.label, HARNESS_NAMES[option.harness === true ? option.id : option.harness], option.model, ...(option.team ? option.members || [] : [])]);
   const picking = showPicker && matches.length > 0;
   const chosen = Math.min(activeIndex, matches.length - 1);
   const busy = disabled || posting;
@@ -427,11 +468,11 @@ function Composer({ conversation, agents, harnesses, startable = [], models = {}
       {matches.map((option, i) => <button type="button" role="option" aria-selected={i === chosen} key={option.id}
         onMouseDown={event => event.preventDefault()} onClick={() => insert(option)}
         className={cn("flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm", i === chosen && "bg-accent text-accent-foreground")}>
-        <Avatar address={option.run ? option.owner : option.model ? option.harness : option.id} className="size-6 text-[9px]"/>
+        <Avatar address={option.run ? option.owner : option.model ? option.harness : option.team ? "operator" : option.id} className="size-6 text-[9px]"/>
         <span className="flex min-w-0 flex-1 flex-col">{option.run ? <span className="truncate text-xs text-foreground/80">{option.label}</span> : <span className="truncate font-mono text-xs">@{option.id}</span>}
-          {option.run ? null : option.model ? <span className="truncate text-xs text-foreground/80">{(HARNESS_NAMES[option.harness] || option.harness) + " · " + option.model}</span> : <SessionName agent={option}/>}</span>
-        {!option.harness && !option.run && <Dot online={option.online}/>}
-        <span className="shrink-0 text-xs text-muted-foreground">{option.run ? "subagent" : option.model ? "new session" : (option.harness ? "harness · " : "") + seen(option, now)}</span>
+          {option.run ? null : option.model ? <span className="truncate text-xs text-foreground/80">{(HARNESS_NAMES[option.harness] || option.harness) + " · " + option.model}</span> : option.team ? <span className="truncate text-xs text-foreground/80">{(option.members || []).join(", ")}</span> : <SessionName agent={option}/>}</span>
+        {!option.harness && !option.run && !option.team && <Dot online={option.online}/>}
+        <span className="shrink-0 text-xs text-muted-foreground">{option.run ? "subagent" : option.team ? "team" : option.model ? "new session" : (option.harness ? "harness · " : "") + seen(option, now)}</span>
       </button>)}
     </div>}
     <div onKeyDownCapture={event => {
@@ -510,6 +551,7 @@ function Console({ account }) {
   const [loadError, setLoadError] = useState("");
   const [question, setQuestion] = useState("");
   const [creating, setCreating] = useState("");
+  const [teamOpen, setTeamOpen] = useState(false);
   const [working, setWorking] = useState(false);
   const [revision, setRevision] = useState(0);
   const [now, setNow] = useState(Date.now);
@@ -709,8 +751,11 @@ function Console({ account }) {
   async function startSession(payload) {
     try { return await api("start", { project, ...payload }); } catch (err) { return { status: "failed", detail: err.message }; }
   }
-  const sidebar = <Sidebar data={data} selected={selected} now={now} navigate={navigate} newSession={newSession}
-    disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}/>;
+  async function saveTeam(payload) {
+    try { return await api("team", payload); } catch (err) { return { error: err.message }; }
+  }
+  const sidebar = <Sidebar data={data} selected={selected} now={now} navigate={navigate} newSession={newSession} teamOpen={teamOpen} setTeamOpen={setTeamOpen}
+    createTeam={saveTeam} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}/>;
   const anyWaiting = data.projects.some(project => project.waiting > 0);
   return <div className="flex h-dvh w-full overflow-hidden">
     <aside className="hidden w-72 shrink-0 border-r bg-sidebar text-sidebar-foreground md:block">{sidebar}</aside>
@@ -799,7 +844,7 @@ function Console({ account }) {
         </div>
       </ChatContainerRoot>
       <div role="status" hidden={!notice} className="mx-auto w-full max-w-3xl px-4 text-center text-xs text-muted-foreground">{notice}</div>
-      {!home && !listing && <Composer key={requested} conversation={conversationKey(project, level === "session" ? selected.session : "")} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} startable={data.startable} models={models} now={now}
+      {!home && !listing && <Composer key={requested} conversation={conversationKey(project, level === "session" ? selected.session : "")} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now}
         placeholder={placeholder} question={question} cancel={() => setQuestion("")} urgentable={!question}
         onSend={async (body, urgent) => {
           const sent = question ? await action("reply", { question, body }, "Reply sent") : await action("send", { target, body, ...(urgent ? { urgent: true } : {}) }, "Sent");

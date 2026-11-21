@@ -30,6 +30,8 @@ A session in a git repo without a `projects.json` entry then joins under the rep
 
 An entry may also set `afkWaitSeconds` and `"activity": "off"` (see the table below).
 
+A `teams` map on an entry names mixed-agent teams for that project: keys are 1–24 character names (`a-z`, `0-9`, single hyphens); values are arrays of members `harness` or `harness:model` (models use the same allowlists as phone starts). Global defaults live in `~/.config/ai-collab/teams.json`; a project name overrides the global roster. See [Phone UI](phone-ui.md#teams).
+
 Hooks use the most specific configured workspace and assign a peer name from the harness.
 
 ## Sessions and routing
