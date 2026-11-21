@@ -27,9 +27,9 @@ export const LAYOUT = {
   screen: { left: SIDE + BEZEL, top: BAND + BEZEL, width: SCREEN_W, height: SCREEN_H, radius: 34 },
   bezel: BEZEL,
 };
-export const FPS = 10;
+export const FPS = 20;
 const MAX_BYTES = 8 * 1024 * 1024; // above this, re-encode at 2 fps less
-const MIN_FPS = 6;
+const MIN_FPS = 16;
 const EASE_S = 0.8;
 const TITLE_S = 2.0;
 const END_S = 1.8;

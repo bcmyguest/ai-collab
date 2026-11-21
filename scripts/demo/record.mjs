@@ -24,6 +24,8 @@ const PROJECT = "calc-demo";
 const FRAME_GAP_MS = 1000 / 20; // capture at most 20 frames per second
 const EASE_WAIT_MS = 850;
 const FAST = 3;
+const SPOT_ZOOM = 1;
+const SPOT_PAD = 6;
 
 const { values: args } = parseArgs({ options: { out: { type: "string", default: join(ROOT, "docs/demo.gif") }, keep: { type: "boolean", default: false } } });
 
@@ -136,7 +138,34 @@ async function recorder(page, dir) {
       cameras.push({ t: Date.now(), rect: { x: clamp(x, VIEWPORT.width - w), y: clamp(y, VIEWPORT.height - h), w, h } });
       await wait(EASE_WAIT_MS);
     },
-    async wide() { cameras.push({ t: Date.now(), rect: null }); await wait(EASE_WAIT_MS); },
+    // Dims everything but the locators' elements; the ring follows them each animation frame as the page scrolls.
+    async spotlight(locators, { zoom = SPOT_ZOOM, ...rest } = {}) {
+      await page.evaluate(() => document.querySelectorAll("[data-demo-spot]").forEach((el) => el.removeAttribute("data-demo-spot")));
+      for (const l of locators) await l.evaluate((el) => el.setAttribute("data-demo-spot", "")).catch(() => {});
+      await page.evaluate((pad) => {
+        if (window.__demoSpot) return;
+        const ring = Object.assign(document.createElement("div"), { id: "demo-spot" });
+        ring.style.cssText = "position:fixed;z-index:2147483647;pointer-events:none;border-radius:14px;box-shadow:0 0 0 2px #a5b4fc,0 0 24px 4px #6366f199,0 0 0 9999px #000000a6;opacity:0;transition:opacity .3s";
+        document.body.append(ring);
+        window.__demoSpot = true;
+        const tick = () => {
+          const rects = [...document.querySelectorAll("[data-demo-spot]")].map((el) => el.getBoundingClientRect()).filter((r) => r.width);
+          if (rects.length) {
+            const x0 = Math.min(...rects.map((r) => r.left)) - pad, y0 = Math.min(...rects.map((r) => r.top)) - pad;
+            const x1 = Math.max(...rects.map((r) => r.right)) + pad, y1 = Math.max(...rects.map((r) => r.bottom)) + pad;
+            Object.assign(ring.style, { left: x0 + "px", top: y0 + "px", width: x1 - x0 + "px", height: y1 - y0 + "px", opacity: "1" });
+          } else ring.style.opacity = "0";
+          requestAnimationFrame(tick);
+        };
+        tick();
+      }, SPOT_PAD);
+      await this.focus(locators, { zoom, ...rest });
+    },
+    async wide() {
+      await page.evaluate(() => document.querySelectorAll("[data-demo-spot]").forEach((el) => el.removeAttribute("data-demo-spot"))).catch(() => {});
+      cameras.push({ t: Date.now(), rect: null });
+      await wait(EASE_WAIT_MS);
+    },
     async stop() { await wait(200); running = false; await loop; },
   };
 }

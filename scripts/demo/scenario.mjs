@@ -70,7 +70,7 @@ export async function scenario({ page, rec, agents, fake, screenshot, project })
   await claude.say("On it: one `calc.html`, no build step. I'll post a screenshot when it runs.");
   const reply = log.getByText("On it: one", { exact: false }).last();
   await reply.waitFor();
-  await rec.focus([reply], { zoom: 1.8, left: true });
+  await rec.spotlight([reply], { left: true });
   await rec.wait(1000);
 
   // 2. Agent working: open Claude's session thread and stream its tool calls.
@@ -89,7 +89,7 @@ export async function scenario({ page, rec, agents, fake, screenshot, project })
   await rec.fast(() => claude.run({ hook_event_name: "PostToolUse", tool_name: "Write", tool_input: { file_path: "/work/calc-demo/calc.html", content: CALC_SOURCE }, tool_response: { type: "create", filePath: "/work/calc-demo/calc.html" }, tool_use_id: "t_write" }, true));
   await write.click();
   await rec.wait(300);
-  await rec.focus([write], { zoom: 1.6, anchor: "top", left: true });
+  await rec.spotlight([write], { anchor: "top", left: true });
   await rec.wait(1500);
   await rec.wide();
   await write.click();
@@ -104,7 +104,7 @@ export async function scenario({ page, rec, agents, fake, screenshot, project })
   });
   const run = log.getByRole("button", { name: /^Subagent · Explore( · in \S+)? · running/ }).last();
   await run.waitFor();
-  await rec.focus([run], { zoom: 1.9, left: true });
+  await rec.spotlight([run], { left: true });
   await rec.fast(async () => {
     await claude.run({ ...sub, hook_event_name: "PreToolUse", tool_name: "Read", tool_input: { file_path: "/work/calc-demo/test/calc.test.mjs" }, tool_use_id: "t_s2" }, true);
     await claude.run({ ...sub, hook_event_name: "PostToolUse", tool_name: "Read", tool_input: { file_path: "/work/calc-demo/test/calc.test.mjs" }, tool_response: { type: "text", file: { filePath: "/work/calc-demo/test/calc.test.mjs", content: "test(\"adds\", () => assert.equal(add(2, 3), 5));" } }, tool_use_id: "t_s2" }, true);
@@ -112,7 +112,7 @@ export async function scenario({ page, rec, agents, fake, screenshot, project })
   await rec.wait(500);
   await run.click();
   await rec.wait(300);
-  await rec.focus([run, log.locator("[data-subagent]").last()], { zoom: 1.6, anchor: "top", left: true });
+  await rec.spotlight([run, log.locator("[data-subagent]").last()], { anchor: "top", left: true });
   await rec.wait(600);
   await rec.fast(async () => {
     await claude.run({ ...sub, hook_event_name: "SubagentStop", last_assistant_message: "Tests live in test/calc.test.mjs and cover +, −, ×, ÷." }, true);
@@ -138,7 +138,7 @@ export async function scenario({ page, rec, agents, fake, screenshot, project })
   });
   const passing = log.getByText("all passing", { exact: false }).last();
   await passing.waitFor();
-  await rec.focus([passing], { zoom: 1.8, left: true });
+  await rec.spotlight([passing], { left: true });
   await rec.wait(1100);
   await rec.wide();
 
@@ -150,7 +150,7 @@ export async function scenario({ page, rec, agents, fake, screenshot, project })
   await image.evaluate((img) => img.complete || new Promise((resolve) => { img.onload = resolve; img.onerror = resolve; }));
   await rec.wait(500);
   await image.scrollIntoViewIfNeeded();
-  await rec.focus([image], { zoom: 1.5 });
+  await rec.spotlight([image]);
   await rec.wait(1600);
   await rec.wide();
 
@@ -185,7 +185,7 @@ async function approval({ page, rec, claude, fake, project }) {
   await rec.wait(300);
   rec.caption("Approve from anywhere", "Allow or deny a tool call");
   const card = page.locator("[data-card=approval]").last();
-  await rec.focus([(await card.count()) ? card : allow], { zoom: 1.6 });
+  await rec.spotlight([(await card.count()) ? card : allow]);
   await rec.wait(1100);
   await allow.click();
   await decision;
