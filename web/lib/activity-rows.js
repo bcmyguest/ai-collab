@@ -126,6 +126,8 @@ export function groupSubagents(rows) {
     const last = run.rows.findLast(row => row.tool);
     run.last = last ? { tool: last.tool, summary: summarize(last.input), time: last.time } : null;
     run.lastTime = Math.max(...run.rows.map(row => row.time || 0));
+    const end = run.rows.at(-1);
+    run.open = end?.type === "tool_call" && !end.result;
   }
   return out;
 }
@@ -133,6 +135,8 @@ export function groupSubagents(rows) {
 /** done (stopped or reported finished), running (a row in the last 2 min), else idle; without now, every unfinished run is running. */
 export function runState(run, now) {
   if (run.done) return "done";
+  // A long tool call (a build, a test run) keeps the run running for up to 15 min without new rows.
+  if (run.open && now !== undefined && now - (run.lastTime ?? run.time) * 1000 < WORKING_MS) return "running";
   return now === undefined || now - (run.lastTime ?? run.time) * 1000 < RUN_ACTIVE_MS ? "running" : "idle";
 }
 

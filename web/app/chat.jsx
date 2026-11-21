@@ -174,7 +174,7 @@ function ThemeToggle() {
 
 // The session's human name after its address, when the harness or its first prompt gives one.
 function SessionName({ agent }) {
-  return agent?.name ? <span className="min-w-0 truncate text-xs text-foreground/80">{agent.name}</span> : null;
+  return agent?.name ? <span className="line-clamp-2 min-w-0 break-words text-xs text-foreground/80">{agent.name}</span> : null;
 }
 
 function Sidebar({ data, selected, now, navigate, newSession }) {
@@ -672,7 +672,7 @@ export default function Chat() {
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs text-muted-foreground">{home ? "All projects" : level === "project" ? (watching ? "Activity · all agents" : "Project") : project + " · " + level}</p>
             <h1 className="truncate text-base font-semibold leading-tight" title={level === "session" ? selected.session : undefined}>{title}</h1>
-            {level === "session" && agent?.name && <p className="truncate text-xs text-muted-foreground" title={agent.name}>{agent.name}</p>}
+            {level === "session" && agent?.name && <p className="line-clamp-2 break-words text-xs text-muted-foreground" title={agent.name}>{agent.name}</p>}
             {level === "session" && agent?.parent && <button type="button" onClick={() => openAddress(agent.parent)} title={"Started by " + agent.parent}
               aria-label={"Back to parent " + agent.parent} className="flex max-w-full items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:underline">
               <CornerLeftUp className="size-3.5 shrink-0"/><span className="truncate">Back to parent {short(agent.parent)}</span></button>}

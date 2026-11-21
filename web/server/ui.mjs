@@ -438,7 +438,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const statusAt = Date.parse(statuses.get(agent.id)?.ts) || 0;
       const open = row && row.type === "tool_call" && !row.result;
       // Unfinished runs; the browser counts only those with a row in the last 2 min (runState).
-      const subagents = (runs.get(agent.id) || []).map(run => ({ id: run.id, agent: run.agent, run: run.run, kind: run.kind, description: run.description, steps: run.steps, time: run.time, lastTime: run.lastTime, last: run.last }));
+      const subagents = (runs.get(agent.id) || []).map(run => ({ id: run.id, agent: run.agent, run: run.run, kind: run.kind, description: run.description, steps: run.steps, time: run.time, lastTime: run.lastTime, last: run.last, open: run.open }));
       return {
         ...agent, project: cfg.project, harness: peerOf(agent.id), lastActivityAt: lastAt, ...(open ? { openCallAt: lastAt } : {}),
         afkHold: mode !== "off" && row?.type === "stop" && /^turn ended/.test(row.input || "") && statusAt < row.time * 1000,
