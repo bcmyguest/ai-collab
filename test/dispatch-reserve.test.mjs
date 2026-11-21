@@ -15,7 +15,7 @@ const CODEX_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
 const CLAUDE_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a6c";
 
 // A registry entry for this process; harness codex (idle on Stop) or claude (socket).
-async function setup(t, { harness = "codex", sessionId = CODEX_ID, cwd = "/tmp", run, claude, env } = {}) {
+async function setup(t, { harness = "codex", sessionId = CODEX_ID, cwd = "/tmp", run, claude, env, now } = {}) {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
   const base = peerEnv(fake, { peer: "operator", AI_COLLAB_PEERS: "alice,bob,codex,claude" });
@@ -36,6 +36,7 @@ async function setup(t, { harness = "codex", sessionId = CODEX_ID, cwd = "/tmp",
     idle: async () => "idle",
     run: run ?? (async () => 0),
     ...(claude ? { claude } : {}),
+    ...(now ? { now } : {}),
   });
   return { bob, target, address, dispatcher };
 }
@@ -93,10 +94,11 @@ test("a Claude session that refuses the message keeps it for the hooks", async (
   const claude = fakeClaudeHome(t, { sessionId: CLAUDE_ID, socket: sock.path });
   sock.state.transcript = claude.transcript;
   const { bob, target, address, dispatcher } = await setup(t, {
-    harness: "claude", sessionId: CLAUDE_ID, cwd: claude.cwd, env: { HOME: claude.home, AI_COLLAB_CLAUDE_CONFIRM_MS: "300" },
+    harness: "claude", sessionId: CLAUDE_ID, cwd: claude.cwd, env: { HOME: claude.home, AI_COLLAB_CLAUDE_CONFIRM_MS: "300", AI_COLLAB_CLAUDE_WATCH_MS: "0" },
   });
   await sendMessage(bob, address, "refused by claude");
   assert.equal((await dispatcher.tick()).delivered, 0);
+  await dispatcher.drain();
   const got = await claimInbox(target);
   assert.equal(got.length, 1, "the message stays unread for the hooks");
   assert.equal(sock.frames.length, 1);

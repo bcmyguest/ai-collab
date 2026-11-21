@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { claudeEnvelope, claudeFrames, claudeTarget, sendToClaude } from "../lib/claude-socket.mjs";
+import { claudeEnvelope, claudeFrames, claudeTarget, deliverToClaude } from "../lib/claude-socket.mjs";
 import { processStart } from "../lib/process.mjs";
 
 const SESSION_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
@@ -96,21 +96,23 @@ test("the envelope keeps the body from closing its own tag and strips quotes fro
   assert.match(env, /x <cross_session_message> y/);
 });
 
-test("sendToClaude writes the frames to the socket and resolves true", async (t) => {
+test("deliverToClaude writes the frames, and reports unconfirmed when the transcript does not show them", async (t) => {
   const sock = await fakeSocket(t);
   const home = fakeHome(t, { socket: sock.path });
-  const ok = await sendToClaude(session, { text: "ping", fromName: "bob", urgent: true }, { env: { CLAUDE_CONFIG_DIR: home } });
-  assert.equal(ok, true);
-  await new Promise((r) => setTimeout(r, 100));
+  const env = { CLAUDE_CONFIG_DIR: home, AI_COLLAB_CLAUDE_CONFIRM_MS: "300", AI_COLLAB_CLAUDE_WATCH_MS: "0" };
+  const r = await deliverToClaude(session, { text: "ping", fromName: "bob", urgent: true, ids: ["m00000001"] }, { env });
+  assert.equal(r.status, "unconfirmed");
+  await new Promise((res) => setTimeout(res, 100));
   assert.equal(sock.frames.length, 2);
   assert.deepEqual(sock.frames[0], { type: "auth", token: "tok-123" });
   assert.equal(sock.frames[1].priority, "next");
   assert.match(sock.frames[1].message.content, /ping/);
 });
 
-test("sendToClaude resolves false when no socket is listening", async (t) => {
+test("deliverToClaude reports unsent when no socket is listening", async (t) => {
   const dir = mkdtempSync(join(tmpdir(), "cs-dead-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const home = fakeHome(t, { socket: join(dir, "dead.sock") });
-  assert.equal(await sendToClaude(session, { text: "x" }, { env: { CLAUDE_CONFIG_DIR: home } }), false);
+  const r = await deliverToClaude(session, { text: "x", ids: ["m00000001"] }, { env: { CLAUDE_CONFIG_DIR: home } });
+  assert.deepEqual(r, { status: "unsent" });
 });

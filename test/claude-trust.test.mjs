@@ -23,8 +23,8 @@ test("a message is delivered when the transcript shows it after the write", asyn
   const sock = await fakeClaudeSocket(t);
   const claude = fakeClaudeHome(t, { sessionId: SESSION_ID, socket: sock.path });
   sock.state.transcript = claude.transcript;
-  const ok = await deliverToClaude(sessionFor(claude.cwd), { text: TEXT, urgent: true, ids: ["m00000001"] }, { env: envFor(claude.home, "3000") });
-  assert.equal(ok, true);
+  const r = await deliverToClaude(sessionFor(claude.cwd), { text: TEXT, urgent: true, ids: ["m00000001"] }, { env: envFor(claude.home, "3000") });
+  assert.equal(r.status, "delivered");
   assert.equal(sock.frames[0].priority, "next");
 });
 
@@ -32,8 +32,8 @@ test("a refused message is not confirmed, so the caller leaves it for the hooks"
   const sock = await fakeClaudeSocket(t, { accept: false });
   const claude = fakeClaudeHome(t, { sessionId: SESSION_ID, socket: sock.path });
   sock.state.transcript = claude.transcript;
-  const ok = await deliverToClaude(sessionFor(claude.cwd), { text: TEXT, ids: ["m00000001"] }, { env: envFor(claude.home, "300") });
-  assert.equal(ok, false);
+  const r = await deliverToClaude(sessionFor(claude.cwd), { text: TEXT, ids: ["m00000001"] }, { env: envFor(claude.home, "300") });
+  assert.equal(r.status, "unconfirmed");
   assert.equal(sock.frames.length, 1, "the frame was written, so only the transcript check fails");
 });
 
@@ -41,8 +41,8 @@ test("a wrong peer token is dropped by the socket and the message is not deliver
   const sock = await fakeClaudeSocket(t, { token: "other-token" });
   const claude = fakeClaudeHome(t, { sessionId: SESSION_ID, socket: sock.path, token: "tok-123" });
   sock.state.transcript = claude.transcript;
-  const ok = await deliverToClaude(sessionFor(claude.cwd), { text: TEXT, ids: ["m00000001"] }, { env: envFor(claude.home, "300") });
-  assert.equal(ok, false);
+  const r = await deliverToClaude(sessionFor(claude.cwd), { text: TEXT, ids: ["m00000001"] }, { env: envFor(claude.home, "300") });
+  assert.notEqual(r.status, "delivered");
   assert.equal(sock.dropped.length, 1);
   assert.equal(sock.frames.length, 0);
 });
