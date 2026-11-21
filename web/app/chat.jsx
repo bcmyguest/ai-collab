@@ -20,6 +20,7 @@ import { NotifyToggle } from "./notify";
 import { SessionList, SubagentList } from "./home";
 import { Textarea } from "@/components/ui/textarea";
 import { activityRows, groupSubagents, interleave, runningSubagents } from "@/lib/activity-rows";
+import { conversationKey, drafts, views } from "@/lib/view-memory";
 import { toast } from "sonner";
 
 const initial = { projects: [], harnesses: [], agents: [], messages: [] };
@@ -184,6 +185,8 @@ function SessionName({ agent }) {
 
 function Sidebar({ data, selected, now, navigate, newSession }) {
   const current = selected.project || data.project;
+  // Home's state carries the server's default project's agents; they are not "this project" here.
+  const home = selected.level === "home";
   return <nav aria-label="Projects" className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto p-4">
     <button type="button" onClick={() => navigate({ level: "home" })} aria-current={selected.level === "home" ? "page" : undefined}
       className="flex items-center gap-2 rounded-xl px-2 text-left text-sm font-semibold tracking-tight" title="Home: every project's sessions">
@@ -218,13 +221,16 @@ function Sidebar({ data, selected, now, navigate, newSession }) {
     </section>
     <section>
       <div className="flex items-center justify-between px-2 pb-2">
-        <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Sessions</h2>
-        <button type="button" onClick={() => navigate({ project: current, level: "session" })} aria-current={selected.level === "session" && !selected.session ? "page" : undefined}
-          className="rounded-full px-2 py-0.5 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">All sessions</button>
+        <h2 className="min-w-0 truncate text-xs font-medium uppercase tracking-wider text-muted-foreground" title={home ? undefined : current}>{home ? "Sessions" : "Sessions · " + current}</h2>
+        {/* Home already lists every project's sessions; elsewhere the button opens this project's list. */}
+        <button type="button" onClick={() => navigate(home ? { level: "home" } : { project: current, level: "session" })}
+          aria-current={home || (selected.level === "session" && !selected.session) ? "page" : undefined}
+          className="shrink-0 rounded-full px-2 py-0.5 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">All sessions</button>
       </div>
-      {data.agents.length === 0 && <p className="px-2 text-sm text-muted-foreground">No sessions seen yet.</p>}
+      {home ? <p className="px-2 text-sm text-muted-foreground">Pick a project to list its sessions here.</p>
+        : data.agents.length === 0 && <p className="px-2 text-sm text-muted-foreground">No sessions seen yet.</p>}
       <ul className="flex flex-col gap-1">
-        {data.agents.map(agent => <li key={agent.id}>
+        {!home && data.agents.map(agent => <li key={agent.id}>
           <button type="button" aria-label={agent.id} title={agent.parent ? agent.id + " · started by " + agent.parent : agent.id} aria-current={selected.level === "session" && selected.session === agent.id ? "page" : undefined}
             onClick={() => navigate({ project: current, level: "session", harness: agent.peer, session: agent.id })}
             className={cn("flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-sm transition-colors hover:bg-sidebar-accent",
@@ -370,8 +376,8 @@ function NewSession({ project, harnesses, places = ["folder"], agents, disabled,
   </section>;
 }
 
-function Composer({ agents, harnesses, now, disabled, placeholder, onSend, question, cancel, urgentable }) {
-  const [draft, setDraft] = useState("");
+function Composer({ conversation, agents, harnesses, now, disabled, placeholder, onSend, question, cancel, urgentable }) {
+  const [draft, setDraftState] = useState(() => drafts.get(conversation, ""));
   const [urgent, setUrgent] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -385,6 +391,8 @@ function Composer({ agents, harnesses, now, disabled, placeholder, onSend, quest
   const chosen = Math.min(activeIndex, matches.length - 1);
   const busy = disabled || posting;
 
+  // Every edit is kept per conversation, so a tab or view switch that remounts the composer restores it.
+  function setDraft(next) { drafts.set(conversation, next); setDraftState(next); }
   function focus() { document.getElementById("composer")?.focus(); }
   function change(next) { setDraft(next); setShowPicker(/(?:^|\s)@[\w#-]*$/.test(next)); setActiveIndex(0); }
   function insert(option) {
@@ -501,8 +509,30 @@ function Console({ account }) {
   const hiddenAt = useRef(0);
   const { home, watching, subagents, inline, listing, requested } = streamOf(selected);
   route.current = requested;
-  // A new view opens at its newest message and follows new ones, even if the last view was scrolled up.
-  useEffect(() => { if (ready) stick.current?.scrollToBottom("instant"); }, [ready, requested]);
+  // Home and a Sessions list remember their scroll and Offline group; other views open at the newest message.
+  const memoryKey = home ? "home" : listing ? "sessions " + (selected.project || data.project || "") : "";
+  const [, remembered] = useState(0);
+  useEffect(() => {
+    if (!ready) return;
+    const list = stick.current?.scrollRef.current;
+    const saved = memoryKey && views.get(memoryKey, {}).scrollTop;
+    if (!list || !saved) { stick.current?.scrollToBottom("instant"); return; }
+    // Leaving the bottom lock first stops use-stick-to-bottom pulling the restored list down on its next resize.
+    stick.current.stopScroll();
+    list.scrollTop = saved;
+  }, [ready, requested]);
+  useEffect(() => {
+    const list = stick.current?.scrollRef.current;
+    if (!ready || !memoryKey || !list) return;
+    const save = () => views.set(memoryKey, { ...views.get(memoryKey, {}), scrollTop: list.scrollTop });
+    list.addEventListener("scroll", save, { passive: true });
+    return () => list.removeEventListener("scroll", save);
+  }, [ready, requested, memoryKey]);
+  function rememberOffline(open) {
+    if (Boolean(views.get(memoryKey, {}).offline) === open) return;
+    views.set(memoryKey, { ...views.get(memoryKey, {}), offline: open });
+    remembered(n => n + 1);
+  }
   useEffect(() => {
     const change = () => {
       const next = selection();
@@ -724,6 +754,7 @@ function Console({ account }) {
           {ready && (home || listing) && <>
             {home && data.unavailable?.length > 0 && <p role="alert" className="text-xs text-destructive">Unavailable: {data.unavailable.join(", ")}</p>}
             <SessionList sessions={data.sessions} now={now} open={openCard} disabled={working} showProject={home}
+              offlineOpen={Boolean(views.get(memoryKey, {}).offline)} onOfflineToggle={rememberOffline}
               openAddress={(address, at) => navigate({ project: at, level: "session", harness: peerOf(address), session: address })}
               empty={home ? "No sessions in any project yet." : "No sessions in " + project + " yet."}
               act={payload => action("approve", payload, "Sent")} answer={(at, id, body) => action("reply", { project: at, question: id, body }, "Reply sent")}/>
@@ -751,7 +782,7 @@ function Console({ account }) {
         </div>
       </ChatContainerRoot>
       <div role="status" hidden={!notice} className="mx-auto w-full max-w-3xl px-4 text-center text-xs text-muted-foreground">{notice}</div>
-      {!home && !listing && <Composer key={requested} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} now={now}
+      {!home && !listing && <Composer key={requested} conversation={conversationKey(project, level === "session" ? selected.session : "")} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} now={now}
         placeholder={placeholder} question={question} cancel={() => setQuestion("")} urgentable={!question}
         onSend={async (body, urgent) => {
           const sent = question ? await action("reply", { question, body }, "Reply sent") : await action("send", { target, body, ...(urgent ? { urgent: true } : {}) }, "Sent");

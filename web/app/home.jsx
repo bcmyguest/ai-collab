@@ -88,7 +88,7 @@ function SessionCard({ node, now, open, openAddress, act, answer, disabled, show
 }
 
 /** Session cards grouped Waiting on you, AFK hold, Working, Idle, then Offline collapsed. */
-export function SessionList({ sessions, now, open, openAddress, act, answer, disabled, showProject, empty }) {
+export function SessionList({ sessions, now, open, openAddress, act, answer, disabled, showProject, empty, offlineOpen, onOfflineToggle }) {
   const tree = sessionTree(sessions || [], now);
   if (!tree.length) return <p className="py-16 text-center text-sm text-muted-foreground">{empty}</p>;
   const card = node => <SessionCard key={node.project + node.id} node={node} now={now} open={open} openAddress={openAddress} act={act} answer={answer} disabled={disabled} showProject={showProject}/>;
@@ -97,7 +97,7 @@ export function SessionList({ sessions, now, open, openAddress, act, answer, dis
       const list = tree.filter(node => node.group === group);
       if (!list.length) return null;
       const body = <ul className="flex flex-col gap-2">{list.map(card)}</ul>;
-      if (group === "offline") return <details key={group} data-group={group} className="group">
+      if (group === "offline") return <details key={group} data-group={group} className="group" open={offlineOpen} onToggle={event => onOfflineToggle?.(event.currentTarget.open)}>
         <summary className="flex cursor-pointer list-none items-center gap-1.5 pb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground [&::-webkit-details-marker]:hidden">
           <ChevronRight className="size-3.5 transition-transform group-open:rotate-90"/>{title} · {list.length}
         </summary>{body}
