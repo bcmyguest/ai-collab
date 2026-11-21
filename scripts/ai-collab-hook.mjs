@@ -13,6 +13,7 @@
  * Any failure prints {} and exits 0: the session continues unchanged. Transcripts are never read.
  * Every message handed to the agent gets a read receipt, published in the background like activity.
  */
+import path from "node:path";
 import { loadConfig, ownEnv, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, publishStatus } from "../lib/inbox.mjs";
 import { childHint, exportParent, greetParent, parentLine } from "../lib/family.mjs";
@@ -130,7 +131,10 @@ async function main() {
   if (!msg || typeof msg !== "object" || Array.isArray(msg)) return emit({});
   // Cursor also runs Claude Code plugins' hooks; its own registration (--host cursor) handles the event.
   if (host !== "cursor" && typeof msg.cursor_version === "string") return emit({});
-  const cwd = typeof msg.cwd === "string" ? msg.cwd : process.cwd();
+  // Cursor sends workspace_roots instead of cwd and runs ~/.cursor/hooks.json hooks from the home folder.
+  const roots = Array.isArray(msg.workspace_roots) ? msg.workspace_roots.filter((r) => typeof r === "string" && path.isAbsolute(r)) : [];
+  const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : roots[0] || process.cwd();
+  msg.cwd = cwd;
   // A child agent inherits its parent's shell environment; ownEnv keeps it from taking the parent's identity.
   const env = ownEnv(process.env, host);
   const sessionId = [msg.session_id, msg.sessionId, msg.conversation_id, msg.conversationId, env.CURSOR_CONVERSATION_ID]
