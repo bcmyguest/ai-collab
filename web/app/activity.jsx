@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CodeBlockCode } from "@/components/ui/code-block";
 import { MessageContent } from "@/components/ui/message";
 import { cn } from "@/lib/utils";
+import { turnLabel } from "@/lib/chat-turns";
 import { inputBlocks, readableText, resultLanguage, runState, subagentLabel, summarize, working } from "@/lib/activity-rows";
 import { ChoiceCard, askedQuestions } from "./cards";
 
@@ -138,6 +139,23 @@ function SubagentRun({ row, when, now, goRun }) {
   </div>;
 }
 
+// One collapsed row per finished turn: its tool calls and intermediate text; tapping it shows them, indented.
+function TurnRun({ row, when }) {
+  const [open, setOpen] = useState(() => expandedRuns.has(row.id));
+  const toggle = () => { if (open) expandedRuns.delete(row.id); else expandedRuns.add(row.id); setOpen(!open); };
+  return <div className="flex min-w-0 flex-col gap-2">
+    <button type="button" aria-expanded={open} onClick={toggle}
+      className="flex min-w-0 items-center gap-2 rounded-lg border border-dashed bg-card px-2.5 py-1.5 text-left text-sm">
+      <Wrench className="size-4 shrink-0 text-muted-foreground"/>
+      <span className="min-w-0 flex-1 truncate">{turnLabel(row)}</span>
+      <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")}/>
+    </button>
+    {open && <div data-turn={row.id} className="ml-3 flex min-w-0 flex-col gap-3 border-l pl-3">
+      {row.rows.map(item => <ActivityRow key={item.id} row={item} when={when}/>)}
+    </div>}
+  </div>;
+}
+
 /** Small "Go to agent" button used wherever an agent or subagent is referenced. */
 export function GoToAgent({ label = "Go to agent", onClick, className }) {
   return <button type="button" aria-label={label} title={label} onClick={event => { event.stopPropagation(); onClick(); }}
@@ -152,6 +170,7 @@ export function ActivityRow({ row, when, agent, now, goRun }) {
     {agent && <div className="flex max-w-full items-center gap-1.5 text-xs text-muted-foreground">{agent(row.agent, row.id)}</div>}
     <SubagentRun row={row} when={when} now={now} goRun={goRun}/>
   </article>;
+  if (row.type === "turn") return <article data-type="turn" className="flex min-w-0 flex-col gap-1"><TurnRun row={row} when={when}/></article>;
   return <article data-type={row.type} className={cn("flex min-w-0 flex-col gap-1", row.type === "prompt" && "items-end")}>
     <div className="flex max-w-full items-center gap-1.5 text-xs text-muted-foreground">
       {agent?.(row.agent, row.id)}
