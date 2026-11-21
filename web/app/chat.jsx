@@ -384,10 +384,13 @@ function Composer({ conversation, agents, harnesses, startable = [], models = {}
   const mention = mentionAt(draft);
   const options = [...agents.map(agent => ({ id: agent.id, name: agent.name, lastMessageAt: agent.lastMessageAt, activeAt: agent.activeAt, online: agent.online })),
     ...harnesses.map(harness => ({ id: harness.id, lastMessageAt: harness.lastMessageAt, activeAt: harness.activeAt, harness: true })),
-    ...startable.flatMap(harness => modelsOf(models, harness).map(model => ({ id: harness + ":" + model, harness, model })))];
+    ...startable.flatMap(harness => modelsOf(models, harness).map(model => ({ id: harness + ":" + model, harness, model }))),
+    // Open subagent runs of the project's sessions, tagged @session/run.
+    ...agents.flatMap(agent => (agent.subagents || []).filter(run => run.open).map(run => ({ id: agent.id + "/" + run.run, owner: agent.id, run: true,
+      label: short(agent.id) + " › " + [run.kind || "agent", run.description].filter(Boolean).join(": ") })))];
   // "@codex g5" narrows to codex's models; "@gpt" ranks every option.
   const matches = fuzzyRank(mention ? mention[1] + (mention[2] ?? "") : "", mention?.[2] !== undefined ? options.filter(option => option.model && option.harness === mention[1]) : options,
-    option => [option.id, option.name, HARNESS_NAMES[option.harness === true ? option.id : option.harness], option.model]);
+    option => [option.id, option.name, option.label, HARNESS_NAMES[option.harness === true ? option.id : option.harness], option.model]);
   const picking = showPicker && matches.length > 0;
   const chosen = Math.min(activeIndex, matches.length - 1);
   const busy = disabled || posting;
@@ -424,11 +427,11 @@ function Composer({ conversation, agents, harnesses, startable = [], models = {}
       {matches.map((option, i) => <button type="button" role="option" aria-selected={i === chosen} key={option.id}
         onMouseDown={event => event.preventDefault()} onClick={() => insert(option)}
         className={cn("flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm", i === chosen && "bg-accent text-accent-foreground")}>
-        <Avatar address={option.model ? option.harness : option.id} className="size-6 text-[9px]"/>
-        <span className="flex min-w-0 flex-1 flex-col"><span className="truncate font-mono text-xs">@{option.id}</span>
-          {option.model ? <span className="truncate text-xs text-foreground/80">{(HARNESS_NAMES[option.harness] || option.harness) + " · " + option.model}</span> : <SessionName agent={option}/>}</span>
-        {!option.harness && <Dot online={option.online}/>}
-        <span className="shrink-0 text-xs text-muted-foreground">{option.model ? "new session" : (option.harness ? "harness · " : "") + seen(option, now)}</span>
+        <Avatar address={option.run ? option.owner : option.model ? option.harness : option.id} className="size-6 text-[9px]"/>
+        <span className="flex min-w-0 flex-1 flex-col">{option.run ? <span className="truncate text-xs text-foreground/80">{option.label}</span> : <span className="truncate font-mono text-xs">@{option.id}</span>}
+          {option.run ? null : option.model ? <span className="truncate text-xs text-foreground/80">{(HARNESS_NAMES[option.harness] || option.harness) + " · " + option.model}</span> : <SessionName agent={option}/>}</span>
+        {!option.harness && !option.run && <Dot online={option.online}/>}
+        <span className="shrink-0 text-xs text-muted-foreground">{option.run ? "subagent" : option.model ? "new session" : (option.harness ? "harness · " : "") + seen(option, now)}</span>
       </button>)}
     </div>}
     <div onKeyDownCapture={event => {

@@ -99,6 +99,7 @@ On 2026-11-21 the `ai-collab-ai-collab--activity` topic held only `tool_result` 
 ## Composer
 
 Type `@` or tap **Mention** to tag a session or harness in a post. A tagged session also gets the post in its direct chat. A tagged harness (`@codex`) gets it in each of its running sessions; with none running, the UI starts one in the project folder with the post as its first prompt, at most one start per 10 seconds. The picker matches fuzzily on address, session name, harness and model, and lists `harness:model` options: `@codex:gpt-5-codex` always starts a new session with that model, if the harness lists it (else the toast says `unknown model`). The toast says what each tag did. Tap a session in the sidebar (the menu on a phone) to chat directly. A direct message its session has not read yet shows **queued** with **Send now**, which makes the session's next hook (its next tool call) poll at once. Tap **Reply from the composer** under a question to answer an MCP question on the broadcast topic. Mention options, the session picker, and the sidebar show when each session and harness last sent a `msg` envelope (`3m ago`, `never`), computed from history the server already holds.
+The picker also lists each open subagent run as `@session/run`; the post goes to its session with `for_subagent`, and the session relays it to the run.
 
 **Send now** adds `urgent: true` to the send request, and a message whose envelope has `urgent: true` shows ⚡. See [Urgent messages](messaging.md#urgent-messages-send-now).
 

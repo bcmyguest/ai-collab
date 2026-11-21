@@ -88,6 +88,8 @@ async function deliver(cfg, host, event, msg, key) {
     for (const name of ["SIGTERM", "SIGINT", "SIGHUP"]) process.once(name, () => ctrl.abort());
     return decideApproval(cfg, { host, key, input: msg, signal: ctrl.signal });
   }
+  // A subagent shares its parent's session id; its messages stay queued for the root session.
+  if (typeof msg.agent_id === "string" && msg.agent_id) return neutral(host, key);
   if (["PostToolUse", "Stop", "PreCompact"].includes(event)) {
     await reportContext(cfg, contextTokens(host, msg)).catch(() => {});
   }
