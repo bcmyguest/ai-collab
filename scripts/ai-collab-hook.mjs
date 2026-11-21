@@ -159,9 +159,11 @@ async function main() {
   let output = neutral(host, key);
   // A prompt the operator typed (not a wake run, agent hand-back or ai-collab's own text); recorded, AFK unchanged.
   const typed = (key === "userpromptsubmit" || key === "beforesubmitprompt") && operatorPrompt(msg.prompt);
+  // A subagent's hooks carry the parent's session id; its cwd (often a worktree) must not rename the parent.
+  const subagent = typeof msg.agent_id === "string" && msg.agent_id !== "";
   if (event || events.length) {
     try {
-      await recordSession(cfg, {
+      if (!subagent) await recordSession(cfg, {
         id: sessionId, cwd, harness: host, event: event || key.slice(0, 32), proc: harnessProcess(host), parent: cfg.parent,
         name: NAMED_EVENTS.has(event) ? sessionName(host, msg, env) : "",
         ...(typed ? { operatorPromptAt: Date.now() } : {}),
