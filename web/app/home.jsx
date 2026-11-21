@@ -6,10 +6,12 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { STATE_LABELS, sessionTree } from "@/lib/session-state";
 import { runState, subagentLabel } from "@/lib/activity-rows";
+import { SUBAGENT_LABELS, subagentState } from "@/lib/subagent-state";
 import { ActivityRow, GoToAgent } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
 import { Avatar, ago } from "./chat";
 
+const SUBAGENT_DOT = { running: "bg-emerald-500", finished: "bg-muted-foreground/40", stale: "bg-amber-500" };
 const CHIP = {
   waiting: "border-amber-500/60 bg-amber-500/15 text-amber-700 dark:text-amber-300",
   afk: "border-sky-500/50 bg-sky-500/10 text-sky-700 dark:text-sky-300",
@@ -140,6 +142,10 @@ export function SubagentList({ rows, session, run, pick, when, now, back }) {
       <button type="button" onClick={() => pick(row.run)} className="flex w-full min-w-0 items-start gap-2.5 rounded-2xl border bg-card px-3 py-2.5 text-left text-sm shadow-xs">
         {runState(row, now) === "running" ? <LoaderCircle className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground"/> : <Bot className="mt-0.5 size-4 shrink-0 text-muted-foreground"/>}
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <span aria-hidden className={cn("inline-block size-2 shrink-0 rounded-full", SUBAGENT_DOT[subagentState(row, now)])}/>
+            <span className="shrink-0">{SUBAGENT_LABELS[subagentState(row, now)]}</span>
+          </span>
           <span className="min-w-0 font-medium [overflow-wrap:anywhere]">{subagentLabel(row, now)}</span>
           <span className="min-w-0 truncate text-xs text-muted-foreground">{row.description ? row.description + " · " : ""}started {when(row.time * 1000)}</span>
           {row.last && <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">{row.last.tool} {row.last.summary}</span>}
