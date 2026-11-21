@@ -77,7 +77,7 @@ export function ApprovalCard({ approval, now, disabled, act }) {
       <ChoiceCard questions={approval.questions} answers={approval.answers} disabled={disabled || !open}
         title={approval.harness + " asks · " + (open ? "answer to continue" : "closed")}
         onSubmit={open ? answers => act({ id: approval.id, answers }) : undefined}/>
-      {outcome && <p className="text-xs text-muted-foreground" data-outcome={approval.state}>{outcome}</p>}
+      {outcome && <p className="text-xs text-muted-foreground" data-outcome={approval.state}>{outcome}{approval.by && " · " + approval.by}</p>}
     </div>;
   }
   return <div className={cn(CARD, "flex flex-col gap-2", open && "border-amber-500/50")} data-card="approval">
@@ -86,17 +86,17 @@ export function ApprovalCard({ approval, now, disabled, act }) {
     {open ? <div className="flex gap-2">
       <Button size="sm" className="rounded-full" disabled={disabled} onClick={() => act({ id: approval.id, decision: "allow" })}><Check/>Allow</Button>
       <Button size="sm" variant="outline" className="rounded-full" disabled={disabled} onClick={() => act({ id: approval.id, decision: "deny" })}><X/>Deny</Button>
-    </div> : <p className="text-xs text-muted-foreground" data-outcome={approval.state}>{outcome}</p>}
+    </div> : <p className="text-xs text-muted-foreground" data-outcome={approval.state}>{outcome}{approval.by && " · " + approval.by}</p>}
   </div>;
 }
 
 /** An ask_question post: the question, then its answer or an answer field. */
-export function QuestionCard({ body, answer, disabled, onAnswer }) {
+export function QuestionCard({ body, answer, by, disabled, onAnswer }) {
   const [draft, setDraft] = useState("");
   return <div className={cn(CARD, "flex flex-col gap-2", !answer && "border-amber-500/50")} data-card="question">
     <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><CircleHelp className="size-3.5"/>Question</p>
     <MessageContent markdown className="bubble max-w-full bg-transparent p-0 text-[15px] leading-relaxed">{body}</MessageContent>
-    {answer ? <p className="text-xs text-muted-foreground">Answered: <span className="font-medium text-foreground">{answer}</span></p>
+    {answer ? <p className="text-xs text-muted-foreground">Answered: <span className="font-medium text-foreground">{answer}</span>{by && " · " + by}</p>
       : <div className="flex flex-col gap-2">
         <Textarea aria-label="Answer" placeholder="Your answer…" value={draft} disabled={disabled} onChange={event => setDraft(event.target.value)} className="min-h-9 text-sm"/>
         <Button size="sm" className="self-start rounded-full" disabled={disabled || !draft.trim()} onClick={async () => { if (await onAnswer(draft.trim())) setDraft(""); }}>Submit</Button>

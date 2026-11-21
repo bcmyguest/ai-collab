@@ -1,7 +1,7 @@
 import { publishMode as publishModeAll } from "../../lib/mode.mjs";
 import { mkdirSync, watch } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
-import { loadConfig, loadProjects, activityTopic, broadcastTopic, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isValidName } from "../../lib/config.mjs";
+import { loadConfig, loadProjects, activityTopic, broadcastTopic, configDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.mjs";
 import { ACTIVITY_TYPES } from "../../lib/activity.mjs";
 import { stripControl } from "../../lib/format.mjs";
 import { NTFY_MESSAGE_MAX_BYTES, latestStatuses, parseEnvelope, sendMessage } from "../../lib/inbox.mjs";
@@ -16,6 +16,7 @@ import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
 import { activityRows, groupSubagents, summarize } from "../lib/activity-rows.js";
 import { fallbackName, visibleWake } from "../lib/session-state.js";
+import { createAuth } from "./auth.mjs";
 import { createHub } from "./hub.mjs";
 import { createPush, notice } from "./push.mjs";
 
@@ -44,13 +45,17 @@ const NOTIFY_RECENT_MS = 15 * 60_000;
 const NOTIFY_RETRY_MS = 30_000;
 const IMPORTANT_PREFIX = "IMPORTANT, the agent waits for this answer: ";
 const PUSH_ACTIONS = ["key", "subscribe", "test"];
+// A question or approval reply the UI sent for a signed-in user names them in its ntfy title.
+const REPLY_TITLE = /^Reply from operator \(([^)]+)\)$/;
 const encoder = new TextEncoder();
 
 const peerOf = address => String(address || "").split("#")[0];
+const replyTitle = (cfg, by) => "Reply from " + cfg.peer + (by ? ` (${by})` : "");
+const replyBy = event => { const by = REPLY_TITLE.exec(event.title || "")?.[1]; return isGithubLogin(by) ? by : undefined; };
 
-// Operator AFK mode for every project's agents; throws when any project's publish fails.
-export async function publishMode(cfgs, mode) {
-  const failed = (await publishModeAll(cfgs, mode)).filter(r => !r.ok);
+// Operator AFK mode for every project's agents, by the signed-in user if any; throws when any project's publish fails.
+export async function publishMode(cfgs, mode, by) {
+  const failed = (await publishModeAll(cfgs, mode, by ? { by } : {})).filter(r => !r.ok);
   if (failed.length) throw new Error(`Mode publish failed for ${failed.map(r => r.project).join(", ")}`);
 }
 
@@ -119,12 +124,14 @@ function baseEntry(event) {
     if (envelope.kind !== "msg" || typeof envelope.body !== "string") return null;
     const sender = envelope.session ? `${envelope.from}#${envelope.session}` : envelope.from;
     const to = envelope.toSession ? `${envelope.to}#${envelope.toSession}` : envelope.to;
-    return { id, time, kind: "Message", sender, from: sender, to, body: envelope.body, thread: envelope.operatorThread === true, ...(envelope.urgent === true ? { urgent: true } : {}) };
+    const by = envelope.from === "operator" && isGithubLogin(envelope.by) ? { by: envelope.by } : {};
+    return { id, time, kind: "Message", sender, from: sender, to, body: envelope.body, thread: envelope.operatorThread === true, ...(envelope.urgent === true ? { urgent: true } : {}), ...by };
   }
   const question = questionPattern.exec(message);
   if (question) return { id, time, kind: "Question", sender: question[1], from: question[1], body: question[2], question: question[3] };
   const reply = parsePhoneReply(message);
-  if (reply) return { id, time, kind: "Reply", sender: "ntfy", from: "ntfy", body: reply.answer, question: reply.id };
+  const by = replyBy(event);
+  if (reply) return { id, time, kind: "Reply", sender: "ntfy", from: "ntfy", body: reply.answer, question: reply.id, ...(by ? { by } : {}) };
   return { id, time, kind: "Message", sender: "ntfy", from: "ntfy", body: message };
 }
 
@@ -142,21 +149,23 @@ function approvalEntry({ id, time }, e) {
   return { id, time, kind: "Approval", sender, from: sender, body: approval.summary, approval };
 }
 
-// Outcome of each approval and the first answer to each question, from the broadcast topic's replies and end envelopes.
+// Outcome of each approval and the answers to each question (with who sent them), from the broadcast topic's replies and end envelopes.
 function outcomes(events) {
   const ends = new Map();
   const replies = new Map();
+  const senders = new Map();
   for (const event of events) {
     const reply = parsePhoneReply(event.message);
     if (reply) {
-      if (!replies.has(reply.id)) replies.set(reply.id, []);
+      if (!replies.has(reply.id)) { replies.set(reply.id, []); senders.set(reply.id, []); }
       replies.get(reply.id).push(reply.answer);
+      senders.get(reply.id).push(replyBy(event));
       continue;
     }
     const e = parseEnvelope(event.message);
     if (e?.kind === "approval-end" && APPROVAL_ID.test(e.id) && END_REASONS.includes(e.reason) && !ends.has(e.id)) ends.set(e.id, e.reason);
   }
-  return { ends, replies };
+  return { ends, replies, senders };
 }
 
 const mentions = (body, name) => new RegExp(`(^|[^\\w#-])@${name}(?![\\w-])`).test(body);
@@ -212,7 +221,7 @@ export function assertSameOrigin(request, allowedOrigin) {
   if ((site && site !== "same-origin") || !fromUi) reject(403, "Same-origin request required");
 }
 
-export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, setMode = publishMode, env = process.env, start = startSession, models = listModels, push: notifier = null }) {
+export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, setMode = publishMode, env = process.env, start = startSession, models = listModels, push: notifier = null, auth = null }) {
   if (!configs.length) throw new Error("No ai-collab project is configured");
   for (const item of configs) if (!item.enabled) throw new Error(item.reason);
   if (allowedOrigin && (!allowedOrigin.startsWith("https://") || new URL(allowedOrigin).origin !== allowedOrigin)) {
@@ -493,22 +502,28 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     } else {
       list = entries(project, project.topic, () => true);
     }
-    const { ends, replies } = outcomes(project.hub.events(project.topic));
+    const { ends, replies, senders } = outcomes(project.hub.events(project.topic));
     const approvals = new Set(list.filter(item => item.kind === "Approval").map(item => item.approval.id));
     return list.filter(item => !(item.kind === "Reply" && approvals.has(item.question)))
       .sort((a, b) => a.time - b.time || a.id.localeCompare(b.id)).slice(-MAX_MESSAGES)
       .map(item => {
-        if (item.kind === "Approval") return { ...item, approval: approvalState(item.approval, ends, replies) };
-        if (item.kind === "Question" && replies.has(item.question)) return { ...item, answer: replies.get(item.question)[0] };
+        if (item.kind === "Approval") return { ...item, approval: approvalState(item.approval, ends, replies, senders) };
+        if (item.kind === "Question" && replies.has(item.question)) {
+          const by = senders.get(item.question)[0];
+          return { ...item, answer: replies.get(item.question)[0], ...(by ? { answeredBy: by } : {}) };
+        }
         return item.from === "operator" && item.kind === "Message" && item.to ? { ...item, receipt: receiptOf(project, item, agentList) } : item;
       });
   }
 
   // pending, sent (answered, the hook has not read it yet), or the end reason; with the decision or answers that applied.
-  function approvalState(approval, ends, replies) {
-    const decision = (replies.get(approval.id) || []).map(answer => replyDecision(approval, answer)).find(Boolean);
+  function approvalState(approval, ends, replies, senders = new Map()) {
+    const decisions = (replies.get(approval.id) || []).map(answer => replyDecision(approval, answer));
+    const at = decisions.findIndex(Boolean);
+    const decision = decisions[at];
+    const by = senders.get(approval.id)?.[at];
     const state = ends.get(approval.id) || (decision ? "sent" : "pending");
-    return { ...approval, state, ...(decision ? { decision: decision.behavior, ...(decision.answers ? { answers: decision.answers } : {}) } : {}) };
+    return { ...approval, state, ...(decision ? { decision: decision.behavior, ...(decision.answers ? { answers: decision.answers } : {}), ...(by ? { by } : {}) } : {}) };
   }
 
   function findApproval(project, id) {
@@ -625,9 +640,22 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return { project, harness: scope === "home" ? "" : harness, session: scope === "home" ? "" : session, activity: mode === "activity", scope };
   }
 
+  // The signed-in GitHub user, or a 401 while sign-in is on; null while it is off.
+  function caller(request) {
+    if (!auth) return null;
+    return auth.user(request) || reject(401, "Sign in with GitHub");
+  }
+
+  // /api/auth/<step>; without github.json only "me" answers, saying sign-in is off.
+  async function authApi(request, step) {
+    if (auth) return auth.route(request, step);
+    return step === "me" ? json(200, { enabled: false, user: null }) : json(404, { error: "GitHub sign-in is not configured" });
+  }
+
   function events(request) {
     let selected;
     try {
+      caller(request);
       selected = view(new URL(request.url));
     } catch (err) {
       return json(err.status || 400, { error: err.message });
@@ -662,12 +690,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   async function handle(request, action) {
     try {
       if (request.method !== "POST" || !ACTIONS.includes(action)) reject(404, "Unknown route");
+      const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
       const { project: name, target, body, question, mode, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
-        await setMode([...projects.values()].map(item => item.cfg), mode);
+        await setMode([...projects.values()].map(item => item.cfg), mode, by);
         return json(201, { status: "AFK " + mode, detail: "Sent to " + projects.size + (projects.size === 1 ? " project" : " projects") });
       }
       const project = projectFor(name);
@@ -683,7 +712,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           if (!["allow", "deny"].includes(decision)) reject(400, "Decision must be allow or deny");
           answer = decision;
         }
-        await publish(cfg, topic, `reply ${id} ${answer}`, { title: "Reply from " + cfg.peer });
+        await publish(cfg, topic, `reply ${id} ${answer}`, { title: replyTitle(cfg, by) });
         return json(201, { sent: true, status: approval.questions ? "Answer sent" : decision === "allow" ? "Allow sent" : "Deny sent" });
       }
       if (action === "models") return json(200, await models(cfg.stateDir, env));
@@ -714,14 +743,15 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (typeof question !== "string" || !/^[a-f0-9]{12}$/.test(question) || (target && target !== "all")) reject(400, "Invalid question");
         const reply = `reply ${question} ${body.trim()}`;
         if (body.trim().length > 2000 || Buffer.byteLength(reply) > NTFY_MESSAGE_MAX_BYTES) reject(400, "Reply exceeds the size limit");
-        await publish(cfg, topic, reply, { title: "Reply from " + cfg.peer });
+        await publish(cfg, topic, reply, { title: replyTitle(cfg, by) });
         return json(201, { sent: true });
       }
       recipient(cfg, target);
       const direct = action === "send" && target.includes("#");
       try {
         if (urgent !== undefined && typeof urgent !== "boolean") reject(400, "urgent must be true or false");
-        await sendMessage(direct || action === "send" ? operator : cfg, target, body.trim(), { operatorThread: direct, urgent: urgent === true });
+        const sender = direct || action === "send" ? operator : cfg;
+        await sendMessage(sender, target, body.trim(), { operatorThread: direct, urgent: urgent === true, ...(by && sender.peer === "operator" ? { by } : {}) });
       } catch (err) {
         if (err.message.includes("-byte limit")) reject(400, `Message exceeds ${NTFY_MESSAGE_MAX_BYTES} encoded bytes`);
         throw err;
@@ -737,6 +767,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   // GET key, POST/DELETE subscribe, POST test: the browser's push subscription and a test notification.
   async function pushApi(request, action) {
     try {
+      caller(request);
       if (!PUSH_ACTIONS.includes(action)) reject(404, "Unknown route");
       if (!notifier) reject(404, "Notifications are not configured");
       if (action === "key") {
@@ -766,7 +797,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
    * Serves an attachment that appears in a loaded project's history; anything else is 404.
    * Images come from chat topics; text/plain comes only from the activity topic (a large tool result).
    */
-  async function file(name) {
+  async function file(name, request) {
+    if (auth && !(request && auth.user(request))) return json(401, { error: "Sign in with GitHub" });
     const text = TEXT_FILE_NAME.test(name);
     if (!text && !FILE_NAME.test(name)) return new Response("Not found", { status: 404 });
     for (const project of projects.values()) {
@@ -792,6 +824,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   return {
+    auth: authApi,
     events,
     file,
     handle,
@@ -819,7 +852,9 @@ export function ui() {
       : [loadConfig(process.env, { cwd: process.env.AI_COLLAB_UI_WORKSPACE || process.cwd(), host: "operator" })];
     // VAPID subject: the UI's HTTPS origin, or a mailto: placeholder without one.
     const push = createPush({ dir: join(projects[0].stateDir, "push"), subject: process.env.AI_COLLAB_UI_ORIGIN || "mailto:ai-collab@localhost.invalid" });
-    const instance = createUi({ projects, allowedOrigin: process.env.AI_COLLAB_UI_ORIGIN, push });
+    // GitHub sign-in turns on with ${configDir}/github.json.
+    const auth = createAuth({ dir: configDir(process.env), stateDir: projects[0].stateDir, origin: process.env.AI_COLLAB_UI_ORIGIN });
+    const instance = createUi({ projects, allowedOrigin: process.env.AI_COLLAB_UI_ORIGIN, push, auth });
     // Repos that auto-join after start-up appear within one refresh interval.
     setInterval(() => instance.refresh(loadProjects(process.env, { host: "operator" })), REFRESH_MS).unref();
     globalThis[INSTANCE] = instance;
