@@ -168,9 +168,9 @@ function outcomes(events) {
   return { ends, replies, senders };
 }
 
-const MENTION = /(^|[^\w#-])@([a-z0-9-]{1,24}(?:#[a-f0-9]{16}|:[A-Za-z0-9][A-Za-z0-9._/-]{0,119})?)(?![\w-])/g;
+const MENTION = /(^|[^\w#-])@([a-z0-9-]{1,24}(?:#[a-f0-9]{16}(?:\/[A-Za-z0-9_-]{1,64})?|:[A-Za-z0-9][A-Za-z0-9._/-]{0,119})?)(?![\w-])/g;
 
-/** Session addresses, harness names and harness:model pairs tagged with @ in a post, limited to the project's peers. */
+/** Session addresses, subagent runs (@session/run), harness names and harness:model pairs tagged with @ in a post, limited to the project's peers. */
 export function mentionedNames(body, peers = []) {
   // A full stop after @harness:model ends the sentence, not the model name.
   const names = new Set([...String(body).matchAll(MENTION)].map(match => match[2].replace(/\.+$/, "")));
@@ -339,7 +339,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   async function routeMentions(project, body, target, by) {
     const { cfg, operator } = project;
     const sessions = listSessions(cfg);
-    const direct = to => sendMessage(operator, to, body, { operatorThread: true, mentionedIn: target, ...(by ? { by } : {}) });
+    const direct = (to, forSubagent) => sendMessage(operator, to, body, { operatorThread: true, mentionedIn: target, ...(by ? { by } : {}), ...(forSubagent ? { forSubagent } : {}) });
     const notes = [];
     for (const name of mentionedNames(body, cfg.peers)) {
       if (name === target) continue;
@@ -351,7 +351,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         continue;
       }
       if (name.includes("#")) {
-        if (sessions.some(item => item.id === name)) { await direct(name); notes.push("@" + name + " sent"); } else notes.push("@" + name + " unknown");
+        // @session/run goes to the session that owns the subagent run.
+        const [address, run] = name.split("/");
+        if (sessions.some(item => item.id === address)) { await direct(address, run); notes.push("@" + name + " sent"); } else notes.push("@" + name + " unknown");
         continue;
       }
       const running = sessions.filter(item => item.peer === name && item.online && item.id !== target);
@@ -620,6 +622,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const waiting = waitingIds(project, list);
     const mode = latestMode([...projects.values()].flatMap(item => item.hub.events(item.topic))).mode;
     // Home covers every project's hub; Sessions only this project. Both ride the same pushed state event.
+    const runsOf = new Map(sessionCards(project, list, mode).map(card => [card.id, card.subagents]));
     const cards = scope === "home" ? [...projects.values()].flatMap(item => item === project ? sessionCards(item, list, mode)
       : item.failed ? [] : sessionCards(item, agents(item, lastMessages(item)), mode))
       : scope === "sessions" ? sessionCards(project, list, mode) : undefined;
@@ -632,7 +635,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }),
       view: { harness, session, ...(scope ? { scope } : {}) },
       harnesses: harnesses(project, list, last),
-      agents: list.map(agent => waiting.has(agent.id) ? { ...agent, waiting: true } : agent),
+      // Unfinished subagent runs ride on each agent for the composer's @session/run picker.
+      agents: list.map(agent => {
+        const subagents = runsOf.get(agent.id);
+        const base = subagents?.length ? { ...agent, subagents } : agent;
+        return waiting.has(agent.id) ? { ...base, waiting: true } : base;
+      }),
       messages: scope === "home" ? [] : messages(project, { harness, session }, list),
       ...(cards ? { sessions: cards } : {}),
       ...(scope === "home" ? { unavailable: [...projects.values()].filter(item => item.failed).map(item => item.cfg.project) } : {}),
