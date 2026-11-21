@@ -1,0 +1,21 @@
+import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import test from "node:test";
+import { sessionLabel } from "../lib/config.mjs";
+import { listSessions, recordSession } from "../lib/sessions.mjs";
+
+test("a session keeps the model its hooks report until a later hook reports another", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "session-model-"));
+  const id = "11111111-2222-3333-4444-555555555555";
+  const cfg = { stateDir: dir, project: "demo", peer: "cursor", session: sessionLabel(id), peers: [] };
+  await recordSession(cfg, { id, cwd: dir, harness: "cursor", event: "start", model: "composer-2.5" });
+  assert.equal(listSessions(cfg)[0].model, "composer-2.5");
+  await recordSession(cfg, { id, cwd: dir, harness: "cursor", event: "prompt" });
+  assert.equal(listSessions(cfg)[0].model, "composer-2.5");
+  await recordSession(cfg, { id, cwd: dir, harness: "cursor", event: "prompt", model: "bad name;rm" });
+  assert.equal(listSessions(cfg)[0].model, "composer-2.5");
+  await recordSession(cfg, { id, cwd: dir, harness: "cursor", event: "prompt", model: "gpt-6.2-sol" });
+  assert.equal(listSessions(cfg)[0].model, "gpt-6.2-sol");
+});

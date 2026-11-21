@@ -467,7 +467,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     // Hooks refresh seenAt on every event; minute resolution keeps snapshot pushes to one per agent per minute.
     let root = "";
     try { root = projectRoot(cfg.project, env); } catch { /* no registered root */ }
-    for (const { id, peer, session, online, seenAt, parent, cwd, name, sandbox } of listSessions(cfg)) {
+    for (const { id, peer, session, online, seenAt, parent, cwd, name, sandbox, model } of listSessions(cfg)) {
       const where = sessionPlace({ cwd, sandbox }, root);
       const started = typeof parent === "string" && PARENT.test(parent) ? parent : found.get(id)?.parent;
       found.set(id, {
@@ -475,6 +475,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         ...(typeof cwd === "string" && isAbsolute(cwd) ? { folder: cleanText(basename(cwd), ACTIVITY_NAME_MAX) } : {}),
         ...(cleanName(name) ? { name: cleanName(name) } : {}),
         ...(where ? { where: cleanText(where, ACTIVITY_NAME_MAX) } : {}),
+        ...(typeof model === "string" && model ? { model: cleanText(model, ACTIVITY_NAME_MAX) } : {}),
       });
     }
     const prompts = firstPrompts(project);

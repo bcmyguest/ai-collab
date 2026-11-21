@@ -15,6 +15,7 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { fuzzyRank } from "@/lib/fuzzy";
+import { agentDetail } from "@/lib/agent-detail";
 import { withMentions } from "@/lib/mentions";
 import { ActivityRow, GoToAgent, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
@@ -314,7 +315,7 @@ function Ticks({ state }) {
     className={cn("inline-flex", state === "read" ? "text-primary" : "text-muted-foreground")}><Icon className="size-3.5"/></span>;
 }
 
-function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, answer, nudge, disabled }) {
+function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, answer, nudge, disabled, detail }) {
   const sender = message.from || message.sender || "ntfy";
   const outgoing = sender === operator;
   // A signed-in family member's message names them; the viewer's own stays "You".
@@ -334,6 +335,7 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
         {openable ? <button type="button" aria-label={"Open " + sender} title={sender} onClick={go}
           className="font-medium text-foreground underline-offset-2 hover:underline">{label}</button>
           : <span className="font-medium text-foreground" title={message.by ? sender + " · " + message.by : sender}>{outgoing ? other || "You" : label}</span>}
+        {detail && <span data-agent-detail className="text-[11px] text-muted-foreground/80">{"· " + detail}</span>}
         {message.to && message.to !== "all" && <span title={message.to}>→ {short(message.to)}</span>}
         {at > 0 && <time dateTime={new Date(at).toISOString()} title={clock.format(at)}>{ago(at, now)}</time>}
         {replyFrom && message.kind !== "Approval" && <button type="button" aria-label={"Reply to " + sender} title="Reply" onClick={() => replyFrom({ id: message.id, sender, prefill })}
@@ -841,6 +843,7 @@ function Console({ account }) {
           {ready && !home && !listing && !subagents && thread.map(({ message, activity: row }) => row
             ? <ActivityRow key={row.id} row={row} when={at => ago(at, now)} agent={watching ? agentLink : undefined} now={now} goRun={goRun}/>
             : <ChatMessage key={message.id} message={message} operator={data.operator} me={account.user?.login} now={now} open={openAddress} disabled={!ready || working}
+              detail={agentDetail(data.agents.find(agent => agent.id === message.from))}
               act={payload => action("approve", payload, "Sent")} answer={(id, body) => action("reply", { question: id, body }, "Reply sent")}
               nudge={to => action("nudge", { target: to }, "Sending now")}
               reply={id => { setQuestion(id); setNotice(""); document.getElementById("composer")?.focus(); }}

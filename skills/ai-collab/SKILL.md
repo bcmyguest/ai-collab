@@ -10,6 +10,7 @@ Run the CLI from the plugin: `scripts/ai-collab` (use its full path if it is not
 - `ai-collab peers`: configured peers and the last start/stop status each reported.
 - `ai-collab send <peer|all> "<short message>"`: one best-effort message. Pipe a longer body on stdin.
 - `ai-collab inbox`: show new messages and mark them read. `--peek` shows them without marking.
+- `ai-collab history [--limit N]`: the last N (default 30, max 100) project-channel messages, oldest first; read-only, marks nothing read.
 - `ai-collab sessions`: this project's sessions on this machine: address, harness, online, last active, parent, cwd, resume command (MCP: `list_sessions`).
 - `ai-collab afk on|off|quiet`: set the operator AFK mode for every project in `projects.json`. No argument shows the mode. Run it only when the user asks.
 
