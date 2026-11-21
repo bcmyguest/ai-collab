@@ -3,7 +3,6 @@
   "version": "0.9.0",
   "description": "Best-effort messaging and status between coding-agent peers over a private ntfy server.",
   "license": "Apache-2.0",
-  "private": true,
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -66,5 +65,9 @@
     "gifenc": "^1.0.3",
     "playwright-core": "1.65.1",
     "sharp": "^0.35.5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bcmyguest/ai-collab.git"
   }
 }

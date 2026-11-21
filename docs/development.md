@@ -31,7 +31,7 @@ pnpm build    # sync docs, check theme contrast, build, check every internal lin
 
 ## Releases
 
-Releases are manual. Run the **Prepare release** workflow on `main` (tick `dry_run` to preview). git-cliff (`cliff.toml`) computes the next version from the commits since the last tag: `feat` bumps the minor version, `fix` the patch, and `!` or `BREAKING CHANGE` the minor version below 1.0.0. The workflow writes that version into `package.json`, `package-lock.json`, and the three `*-plugin/plugin.json` manifests, commits `chore(release): vX.Y.Z`, tags it, and dispatches **Release**, which checks the manifests against the tag, re-runs tests and build, and publishes a GitHub Release with git-cliff notes. With no tag yet, the first run tags `v0.7.0`.
+Releases are manual. Run the **Prepare release** workflow on `main` (tick `dry_run` to preview). git-cliff (`cliff.toml`) computes the next version from the commits since the last tag: `feat` bumps the minor version, `fix` the patch, and `!` or `BREAKING CHANGE` the minor version below 1.0.0. The workflow writes that version into `package.json`, `package-lock.json`, and the three `*-plugin/plugin.json` manifests, commits `chore(release): vX.Y.Z`, tags it, and dispatches **Release**, which checks the manifests against the tag, re-runs tests and build, publishes a GitHub Release with git-cliff notes, and publishes the package to npm. The npm job uses npm trusted publishing: npm accepts the OIDC token of `release.yml` on `bcmyguest/ai-collab`, so the repository holds no npm token. npm already has 0.9.0, so the next release must bump past it.
 
 ## Re-record the demo
 

@@ -1,7 +1,7 @@
 name: Release
 
-# Publishes a tag: tests, build, GitHub Release with git-cliff notes. No npm publish:
-# package.json is private and users install the plugin from the repo.
+# Publishes a tag: tests, build, GitHub Release with git-cliff notes, and npm publish through
+# npm trusted publishing (OIDC from this workflow file; no token secret).
 # prepare-release.yml dispatches this on the tag; a manual tag push also works.
 on:
   push:
@@ -85,3 +85,23 @@ jobs:
         with:
           tag_name: ${{ needs.gate.outputs.tag }}
           body: ${{ steps.notes.outputs.content }}
+
+  npm:
+    name: npm publish
+    needs: [gate, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # npm trusted publishing exchanges this OIDC token for a one-time publish credential.
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.gate.outputs.tag }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      # Trusted publishing needs npm 11.5.1 or later.
+      - run: npm install -g npm@11
+      - run: npm publish --access public
