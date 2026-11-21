@@ -11,13 +11,13 @@ The types live in `runner/types.d.ts`, the constants and validators in `runner/c
 | Process | A separate `ai-collab-runner` systemd user unit (`deploy/ai-collab-runner.service`) | operator |
 | Language | ESM JS with JSDoc and a `.d.ts` contract. TypeScript is allowed; adapters in `.ts` must use erasable syntax only, so Node runs them without a build step. Rust is a long-term option. | operator |
 | Execution | Durable workflows: a SQLite workflow/step log shaped like DBOS (see [Durable execution](#durable-execution)) | operator; this page picks the implementation |
-| Codex | Its own `codex app-server` child per runner, launched with `-c thread_unload_delay_secs=0` and `AI_COLLAB_OWNED=codex` | review |
+| Codex | Its own `codex app-server` child per runner, launched with `-c thread_unload_delay_secs=0` | review |
 | Claude | Agent SDK `query()` with an `AsyncIterable` prompt; the adapter picks the session UUID and passes it as `options.sessionId` (sdk.d.ts L2273) | research |
 | OpenCode | The registered OpenCode service (`~/.local/state/opencode/service.json`), HTTP plus SSE; permission replies are always `once` | research, review |
 | Cursor | `cursor-agent acp`, in a git worktree outside OpenShell for now; `--force` inside an OpenShell sandbox later | operator |
 | Events | ntfy envelopes now; normalized event names follow AG-UI so a later AG-UI or SSE stream maps one to one | operator |
-| Hook stand-down | Registry file keyed by session label, plus `AI_COLLAB_OWNED=<harness>` in every process the runner spawns | review |
-| Cut runs | Never resent. A run on a `live` adapter resumes after a restart; a run on a `transcript` adapter is marked interrupted | operator, this page |
+| Hook stand-down | Owned record keyed by session label; only the process the runner spawned stands down, and agents started inside it register as its children | operator |
+| Cut runs | Never resent. Every cut run, on every adapter, is marked interrupted | operator |
 | T3 Code | MIT; may be ported with its notice kept (one-line header naming T3 Code, the file, and the commit) | operator |
 
 ## Architecture
@@ -79,7 +79,7 @@ One workflow per owned session, id `session-<uuid>`, name `session`, input `{pro
 | *(not a step)* | Registry entry (`lib/sessions.mjs` `recordSession`, pid = runner); "owned session started" notice on the first run only | runs again, so the registry shows the restarted runner's pid | |
 | `recv:input` | Waits for durable `input` messages and takes them all as one run (texts joined by a blank line, message ids merged); `{close:true}` ends the loop | returns the recorded batch | not checkpointed until consumed, so nothing is lost |
 | `run.send` | `liveHandle()` (resumes when needed), `handle.send(input)` → `{runId}`, then read receipts | returns `{runId}` | `onCut`: the run is marked interrupted ("runner restarted before the harness accepted the input"); **not resent** |
-| `run.wait` | Waits for `RUN_FINISHED` or `RUN_ERROR` with that `runId` | returns the outcome | `live` adapter: re-executes, reattaches with `adapter.resume()`, and keeps waiting (the run **resumes**). `transcript` adapter: `onCut` marks it interrupted |
+| `run.wait` | Waits for `RUN_FINISHED` or `RUN_ERROR` with that `runId` | returns the outcome | `onCut` marks the run interrupted |
 | `close` | Cancels open approvals, `handle.close()`, record `ended`, registry pid cleared, "session ended" row | returns | re-executes |
 
 The first prompt is the first input; the loop starts with it, not with `recv`.
@@ -90,8 +90,7 @@ The first prompt is the first input; the loop starts with it, not with `recv`.
 |---|---|
 | Waiting in `recv:input` (idle) | Workflow replays to `recv`; no harness call until the next input, which resumes the native session lazily |
 | Cut inside `run.send` | Marked interrupted with `RUN_FINISHED {outcome:"cancelled", reason}`; the operator resends by hand |
-| Cut inside `run.wait`, `resume: "live"` (OpenCode; Codex too if its threads keep running in a surviving process) | Run resumes: `adapter.resume()` reattaches, re-emits pending `INTERRUPT_REQUESTED`, then emits `RUN_FINISHED` for that `runId`; `handle.activeRun()` returning another id or null counts as finished |
-| Cut inside `run.wait`, `resume: "transcript"` (Claude, Cursor, own-child Codex) | Marked interrupted (`turn ended · interrupted · runner restarted`); `record.cut = {runId, at, reason}`; open approval cards end with reason `cancelled` |
+| Cut inside `run.wait` | Marked interrupted (`turn ended · interrupted · runner restarted`); `record.cut = {runId, at, reason}`; open approval cards end with reason `cancelled` |
 | `resume: "none"` | Next input fails with 409; the operator closes the session |
 | Adapter module missing at boot | The workflow fails (status ERROR); its owned record stays as it was |
 | Messages that arrived on ntfy while the runner was down | Read from the stored `ntfy-cursor:<project>` and deduplicated by `ntfy:<event id>` |
@@ -106,14 +105,15 @@ Each adapter is `runner/adapters/<harness>.mjs` with a default export `(options:
 
 | Member | Contract | Claude | Codex | OpenCode | Cursor |
 |---|---|---|---|---|---|
-| `capabilities.resume` | `live`, `transcript` or `none` | `transcript` | `transcript` (own child dies with the runner) | `live` | `transcript` |
+| `capabilities.resume` | `transcript` or `none` | `transcript` | `transcript` (own child dies with the runner) | `transcript` | `transcript` |
 | `capabilities.steer` | whether `steer()` exists | `streamInput` | `turn/steer` | `/prompt` `delivery:"steer"` | false until verified |
 | `available(env)` | `{ok, detail?}`, no tokens | CLI present | `codex --version` | service reachable | `cursor-agent --version` |
 | `open(options, ctx)` | Native session, no prompt. `handle.nativeId` is set when it resolves | `query()` with `sessionId` = new UUID | `initialize`, `thread/start` | create a session (endpoint unverified) | `initialize`, `session/new` |
-| `resume(record, ctx, env)` | Reattach to `record.nativeId`; `live` adapters re-emit pending interrupts | `options.resume` | `thread/resume` | reconnect SSE, list pending permissions | `session/load` |
+| `resume(record, ctx, env)` | Reattach to `record.nativeId` for the next input; a cut run is not resumed | `options.resume` | `thread/resume` | reconnect SSE, list pending permissions | `session/load` |
 | `handle.send(input)` | Starts a run; resolves `{runId}` once the harness accepted it | yield an `SDKUserMessage` | `turn/start` | `POST .../prompt` | `session/prompt` |
 | `handle.steer(input)` | Adds input to the running run | `streamInput` | `turn/steer` | `delivery:"steer"` | — |
 | `handle.interrupt()` | Ends the run; the adapter then emits `RUN_FINISHED {outcome:"cancelled"}` | `query.interrupt()` | `turn/interrupt` | `POST .../interrupt` | `session/cancel` |
+| `handle.setPermissionMode(mode)` | Applies a mode from the permission table to the open session; called only by the runner on the operator's control-socket request | `query.setPermissionMode()` | next `turn/start` settings | the runner's auto-reply set | unverified |
 | `handle.respond(interruptId, decision)` | `{behavior:"allow"\|"deny", answers?}` | `canUseTool` resolves | approval response | `.../permission/:id/reply` `once` or `reject` | `request_permission` result |
 | `listModels(env)` | `[{id, label?, default?}]` | `initializationResult()` | `model/list` | `model.list` | unverified |
 | `listCommands(cwd, env)` | `[{name, description?, argumentHint?}]`, no tokens | `initializationResult()` (T3 ClaudeProvider.ts L520-L601) | `skills/list` | `command.list` | — |
@@ -124,7 +124,8 @@ Each adapter is `runner/adapters/<harness>.mjs` with a default export `(options:
 Rules for every adapter:
 
 - Emit only the events below, through `ctx.emit`. The runner validates each with `eventProblem` and drops malformed ones.
-- Spawn children with `options.env` (it carries `AI_COLLAB_OWNED=<harness>`), `shell: false`, and argv from a fixed template; the prompt is never an argv element that a CLI could read as a flag (`checkPrompt` already rejects a leading `-`).
+- Spawn children with `options.env`, `shell: false`, and argv from a fixed template; the prompt is never an argv element that a CLI could read as a flag (`checkPrompt` already rejects a leading `-`).
+- Export `AI_COLLAB_PARENT=<harness>#<label>` (`label` = `sessionLabel(nativeId)`) into the shell environment the agent runs commands in, as `lib/family.mjs` does for hook-driven sessions, so an agent it starts registers as the owned session's child.
 - Map `options.permission` (from the permission table) onto the harness; never widen it.
 - Emit completed items. `TEXT_MESSAGE_CHUNK` is allowed but the ntfy path drops it; it is for the later SSE stream.
 - Reject `open` with an `Error` whose message the operator can act on. Never print secrets into it.
@@ -157,7 +158,7 @@ AG-UI ends a run at an interrupt and resumes it as a new run; the harnesses keep
 
 All envelopes are `v: 1` and publish through the existing helpers: `publishActivity` (`lib/activity.mjs`, one 1.5 s deadline per batch, clipping to 4,095 bytes), `publishStatus` (`lib/inbox.mjs`), `sendReceipts` (`lib/receipts.mjs`) and `publish` (`lib/ntfy.mjs`) for approvals. The sender of every envelope is `from: <harness>, session: <label>`, the same as a hook in that session, so `web/server/ui.mjs` (`activityItem`, `approvalEntry`, `outcomes`, `agents`) renders owned rows, cards and presence without change. Publishes for one session are serialized, so rows keep their order.
 
-- **Approval card:** `lib/approvals.mjs` `approvalMessage` shape plus `owned: true`: `{v, kind:"approval", from, session, harness, id (12 hex), tool, summary, questions?, expiresAt, ts, owned}`. The runner, not the adapter, makes the 12-hex `id` and maps it to the adapter's `interruptId`. `expiresAt` is `ts` + 12 h (ntfy's cache window): owned approvals never expire on their own and are never answered by a timeout. The UI's existing Allow / Deny publishes `reply <id> allow|deny` (or the answers as JSON) on the broadcast topic; the runner streams that topic and calls `handle.respond`. Ends: `allowed`, `denied`, `answered`, `cancelled` (run ended, session closed, or runner restarted).
+- **Approval card:** `lib/approvals.mjs` `approvalMessage` shape plus `owned: true`: `{v, kind:"approval", from, session, harness, id (12 hex), tool, summary, questions?, expiresAt, ts, owned}`. The runner, not the adapter, makes the 12-hex `id` and maps it to the adapter's `interruptId`. `expiresAt` is `ts` + `AI_COLLAB_APPROVAL_TIMEOUT_MIN` minutes (default 30, at most 720, ntfy's cache window). The runner denies an unanswered card at that time and ends it with `denied`. The UI's existing Allow / Deny publishes `reply <id> allow|deny` (or the answers as JSON) on the broadcast topic; the runner streams that topic and calls `handle.respond`. Ends: `allowed`, `denied` (operator or timeout), `answered`, `cancelled` (run ended, session closed, or runner restarted).
 - **Read receipts:** published when `handle.send` or `handle.steer` resolves, for the ntfy ids the input carried.
 - **Status:** `start` at `RUN_STARTED`, `stop` at a run's end and at session end. Today's UI counts a session online for `ONLINE_MS` after `start`, as with hooks.
 
@@ -176,15 +177,13 @@ All envelopes are `v: 1` and publish through the existing helpers: `publishActiv
 
 ## Hook stand-down
 
-`scripts/ai-collab-hook.mjs` calls `lib/owned.mjs` `standsDown(cfg, {host, label, env})` right after loading its config. When it returns true, the hook prints its neutral output (`{}`; `{permission:"ask"}` for Cursor permission hooks; `{continue:true}` for Cursor `beforeSubmitPrompt`) and publishes nothing: no activity, status, approval, inbox claim, receipt, Stop wait or registry write. It returns true when either:
+`scripts/ai-collab-hook.mjs` calls `lib/owned.mjs` `standsDown(cfg, {label})` right after loading its config. When it returns true, the hook prints its neutral output (`{}`; `{permission:"ask"}` for Cursor permission hooks; `{continue:true}` for Cursor `beforeSubmitPrompt`) and publishes nothing: no activity, status, approval, inbox claim, receipt, Stop wait or registry write. It returns true when `owned/<label>.json` exists for the hook input's session id and its status is not `ended`. Only the process the runner spawned matches: its native session id is the one in the record.
 
-1. `owned/<label>.json` exists for the hook input's session id and its status is not `ended`; or
-2. `AI_COLLAB_OWNED` equals the hook's `--host`. This covers hooks that fire before the record exists (a Claude CLI's `SessionStart`, a Codex app-server child's first events).
+An agent started inside an owned session (say `claude -p` from an owned Claude's Bash) has its own native session id, matches no record, and reports normally. It registers as the owned session's child through `AI_COLLAB_PARENT` (`lib/family.mjs`, `lib/config.mjs` `ownEnv`); the adapter exports that variable into the shell its agent runs commands in (see the adapter rules).
 
 Known limits:
 
-- A same-harness agent started from inside an owned session's shell (say `claude -p` from an owned Claude's Bash) inherits `AI_COLLAB_OWNED` and stays silent. A different harness still reports.
-- The OpenCode service is shared, so its env carries no marker; a `SessionStart` that fires between session creation and the `claim` step may publish one stray row.
+- Hooks that fire before the `claim` step writes the record (a Claude CLI's `SessionStart`, a Codex app-server child's first events, the shared OpenCode service) may publish one stray row.
 - Once a session is `ended`, its hooks report again, so a later `claude --resume <id>` from a terminal shows up as a normal session.
 
 ## Control API (runner ↔ UI)
@@ -198,10 +197,11 @@ HTTP/1.1 JSON over a unix socket: `AI_COLLAB_RUNNER_SOCKET`, else `$XDG_RUNTIME_
 | `GET /v1/harnesses/:harness/models` | | `{models}` |
 | `GET /v1/harnesses/:harness/commands?project=` | | `{commands}` |
 | `GET /v1/sessions` | | `{sessions: [view]}` |
-| `POST /v1/sessions` | `{project, harness, prompt, model?, place?: "folder"\|"worktree", permissionMode?}` | 201 `{status:"started", session, nativeId, workflowId, detail}` once `open` and `claim` are done; at most one start per 10 s |
+| `POST /v1/sessions` | `{project, harness, prompt, model?, place?: "folder"\|"worktree", permissionMode? (default: see Permission modes)}` | 201 `{status:"started", session, nativeId, workflowId, detail}` once `open` and `claim` are done; at most one start per 10 s |
 | `GET /v1/sessions/:harness/:label` | | `view`: `{session, harness, project, nativeId, workflowId, cwd, place, status, permissionMode, model?, run, approvals, cut?}` |
 | `POST /v1/sessions/:harness/:label/send` | `{text, steer?}` | 202 `{status: "sent"\|"queued"\|"steered"}` |
 | `POST /v1/sessions/:harness/:label/interrupt` | | 202 `{status: "interrupting"\|"idle"}` |
+| `POST /v1/sessions/:harness/:label/mode` | `{mode}` | `{status:"changed", permissionMode}`; 400 when the harness or place does not allow the mode, 409 when the adapter cannot change it while open |
 | `POST /v1/sessions/:harness/:label/approvals/:id` | `{decision: "allow"\|"deny"}` or `{answers}` | `{status:"answered"}` |
 | `GET /v1/sessions/:harness/:label/context` | | `{context: {tokens, window?} \| null}` |
 | `DELETE /v1/sessions/:harness/:label` | | `{status: "ended"\|"closing"}` |
@@ -217,9 +217,10 @@ How a UI start reaches the runner (the UI change comes with the first adapter, n
 
 The runner streams, per project, `ai-collab-<project>--to--all` plus `ai-collab-<project>--to--<harness>` for every loaded adapter, from the stored cursor.
 
-- A `msg` envelope with `to: <harness>` and `toSession: <label>` of an owned session becomes a durable `input` message, deduplicated by `ntfy:<event id>`. The text is `lib/format.mjs` `formatInbox([message])`, the same block hooks inject, so agents answer with `reply_to_operator` or `send_to_all` as they do today. `urgent: true` steers when the adapter can steer; otherwise it queues.
-- `reply <id> <answer>` on the broadcast topic answers the owned approval with that id (`lib/approvals.mjs` `replyDecision`).
-- Broadcasts without `toSession` are not delivered to owned sessions; see the open choices below.
+- A `msg` envelope with `to: <harness>` and `toSession: <label>` of an owned session (a direct message or an @mention) becomes a durable `input` message for that session.
+- A `msg` envelope with `to: "all"` on the broadcast topic, and raw operator text there that is neither a phone reply nor a question, becomes an `input` message for every owned session of the project, like a terminal session. A session's own broadcast is skipped. Each delivery to an idle owned session starts a turn.
+- Every input is deduplicated by `ntfy:<event id>:<label>`. The text is `lib/format.mjs` `formatInbox([message])`, the same block hooks inject, so agents answer with `reply_to_operator` or `send_to_all` as they do today. `urgent: true` steers when the adapter can steer; otherwise it queues.
+- `reply <id> <answer>` on the broadcast topic answers the owned approval with that id (`lib/approvals.mjs` `replyDecision`). Anyone who can post to the project topic may answer.
 
 ## Permission modes
 
@@ -227,12 +228,16 @@ Modes: `supervised`, `accept-edits`, `auto`, `full-access`. The table is `PERMIS
 
 | Mode | Claude `permissionMode` | Codex `approvalPolicy` / `approvalsReviewer` / `sandboxPolicy` | OpenCode (auto-reply `once` to) | Cursor |
 |---|---|---|---|---|
-| `supervised` | `default` | `untrusted` / `user` / `readOnly` | nothing; every ask goes to the phone | ACP `request_permission` goes to the phone |
-| `accept-edits` | `acceptEdits` (**default**) | `on-request` / `user` / `workspaceWrite` | edit asks (**default**) | — |
-| `auto` | `auto` | `on-request` / `auto_review` / `workspaceWrite` (**default**) | — | — |
+| `supervised` | `default` | `untrusted` / `user` / `readOnly` | nothing; every ask goes to the phone (**default**) | ACP `request_permission` goes to the phone (**default**) |
+| `accept-edits` | `acceptEdits` | `on-request` / `user` / `workspaceWrite` | edit asks | — |
+| `auto` | `auto` (**default**) | `on-request` / `auto_review` / `workspaceWrite` (**default**) | — | — |
 | `full-access` | `bypassPermissions` | granular (only MCP elicitations ask) / `user` / `dangerFullAccess` | every ask | `--force`; only with `place: "openshell"` (rejected until OpenShell starts are built) |
 
-Cursor's default is `supervised` while it runs in a worktree outside OpenShell. OpenCode replies are always `once`, never `always`, because an "always" grant covers the whole project. An adapter that cannot honour a mode leaves it out of `capabilities.permissionModes`, and the runner answers 400.
+Defaults: Claude `auto`, Codex `auto`, OpenCode `supervised`, Cursor `supervised` (`DEFAULT_PERMISSION`). With `place: "openshell"` the default is `full-access` for every harness (`defaultPermission(harness, place)`).
+
+The operator changes a running session's mode with `POST /v1/sessions/:harness/:label/mode` on the control socket (0600, the operator's user only). Neither ntfy nor the MCP server offers the operation, so an agent cannot raise its own mode; it can ask the operator. The runner validates the pair with `permissionSettings`, calls `handle.setPermissionMode`, updates the owned record and publishes a notice row.
+
+Cursor's `full-access` needs OpenShell. OpenCode replies are always `once`, never `always`, because an "always" grant covers the whole project. An adapter that cannot honour a mode leaves it out of `capabilities.permissionModes`, and the runner answers 400.
 
 ## Files
 
@@ -251,16 +256,7 @@ Cursor's default is `supervised` while it runs in a worktree outside OpenShell. 
 | `deploy/ai-collab-runner.service` | User unit template; not installed |
 | `test/runner*.test.mjs` | Tests with the fake adapter and fake ntfy |
 
-Environment: `AI_COLLAB_RUNNER_SOCKET`, `AI_COLLAB_RUNNER_DB` (default `$AI_COLLAB_STATE_DIR/runner.db`), `AI_COLLAB_RUNNER_HARNESSES` (comma list), and the usual `AI_COLLAB_*` project settings, read through `loadProjects`.
-
-## Open choices for the operator
-
-1. **Broadcast delivery.** Owned sessions now receive only messages addressed to their session. Delivering every project-chat broadcast would start a paid run per owned session per broadcast. Options: (a) direct only (current); (b) broadcasts too; (c) broadcasts that @mention the session.
-2. **Cut runs on `live` adapters.** They resume (current). The alternative marks every cut run interrupted, which is simpler but drops work OpenCode already did.
-3. **Default modes.** Claude `accept-edits`, Codex `auto`, OpenCode `accept-edits` (the review fixed only its `once` replies), Cursor `supervised` until OpenShell.
-4. **Approval expiry.** Owned approvals wait without a deadline (`expiresAt` = 12 h, for display only). The alternative denies after N minutes.
-5. **Same-harness children** of an owned session stay silent (see Hook stand-down). The alternative sets `AI_COLLAB_OWNED` to the address and lets hooks without a session match report.
-6. **Runner trust.** Anyone who can write the broadcast topic can answer an owned approval, as today. Requiring Allow / Deny through the authenticated control socket would close that.
+Environment: `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (minutes before an unanswered owned approval is denied; default 30), `AI_COLLAB_RUNNER_SOCKET`, `AI_COLLAB_RUNNER_DB` (default `$AI_COLLAB_STATE_DIR/runner.db`), `AI_COLLAB_RUNNER_HARNESSES` (comma list), and the usual `AI_COLLAB_*` project settings, read through `loadProjects`.
 
 ## Operator decisions (2026-11-21)
 
