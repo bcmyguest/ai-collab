@@ -22,6 +22,7 @@ import { createPush, notice } from "./push.mjs";
 const INSTANCE = Symbol.for("ai-collab.ui");
 const ACTIONS = ["messages", "send", "reply", "compact", "wake", "afk", "approve", "start", "models"];
 const START_GAP_MS = 10_000;
+const REFRESH_MS = 10_000;
 const PARENT = /^[a-z0-9-]{1,24}#[a-f0-9]{16}$/;
 const STARTABLE_CACHE_MS = 60_000;
 const ANSWER_MAX_CHARS = 2000;
@@ -234,11 +235,24 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     pushTimer.unref?.();
   }
 
-  for (const item of configs) {
-    if (projects.has(item.project)) continue;
+  // Adds a project once; a hub new to this instance gets its listener, and push keeps its topics open.
+  function addProject(item) {
+    if (projects.has(item.project) || closed) return false;
     // Projects on the same ntfy server and account share one hub, hence one streaming subscription.
     const key = item.url + "\n" + item.token;
-    if (!hubs.has(key)) hubs.set(key, createHub(item, { keep: name => known.has(name) }));
+    if (!hubs.has(key)) {
+      const hub = createHub(item, { keep: name => known.has(name) });
+      hubs.set(key, hub);
+      hub.listen((name, events) => {
+        for (const project of projects.values()) {
+          if (project.hub !== hub) continue;
+          if (name === project.status) latestStatuses(events, project.statuses);
+          if (name === project.receipts) readReceipts(events, project.reads);
+          if (notifier) notifyActions(project, name, events);
+        }
+        broadcast();
+      });
+    }
     const registry = join(item.stateDir, item.project, "registry");
     mkdirSync(registry, { recursive: true, mode: 0o700 });
     const watcher = watch(registry, broadcast);
@@ -253,28 +267,18 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     };
     for (const name of [project.topic, project.status, project.activity, project.receipts, ...project.inboxes.values()]) known.add(name);
     projects.set(item.project, project);
-  }
-  const fallback = projects.values().next().value;
-  for (const hub of hubs.values()) {
-    hub.listen((name, events) => {
-      for (const project of projects.values()) {
-        if (project.hub !== hub) continue;
-        if (name === project.status) latestStatuses(events, project.statuses);
-        if (name === project.receipts) readReceipts(events, project.reads);
-        if (notifier) notifyActions(project, name, events);
-      }
-      broadcast();
-    });
-  }
-  // The sender keeps every project's broadcast and inbox topics open, so notifications go out with no browser tab open.
-  if (notifier) {
-    for (const project of projects.values()) {
+    // The sender keeps every project's broadcast and inbox topics open, so notifications go out with no browser tab open.
+    if (notifier) {
       const open = name => project.hub.open(name).catch(() => {
         if (!closed) setTimeout(() => open(name), NOTIFY_RETRY_MS).unref?.();
       });
       for (const name of [project.topic, ...project.inboxes.values()]) open(name);
     }
+    broadcast();
+    return true;
   }
+  for (const item of configs) addProject(item);
+  const fallback = projects.values().next().value;
 
   // New approvals, choice cards, questions, and direct messages to the operator become one push each.
   function notifyActions(project, topic, added) {
@@ -792,6 +796,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     file,
     handle,
     push: pushApi,
+    /** Adds every enabled config not yet watched (auto-joined repos); returns how many were added. */
+    refresh(list) {
+      return list.filter(item => item.enabled && addProject(item)).length;
+    },
     close() {
       closed = true;
       for (const client of clients) client.write = () => {};
@@ -811,7 +819,10 @@ export function ui() {
       : [loadConfig(process.env, { cwd: process.env.AI_COLLAB_UI_WORKSPACE || process.cwd(), host: "operator" })];
     // VAPID subject: the UI's HTTPS origin, or a mailto: placeholder without one.
     const push = createPush({ dir: join(projects[0].stateDir, "push"), subject: process.env.AI_COLLAB_UI_ORIGIN || "mailto:ai-collab@localhost.invalid" });
-    globalThis[INSTANCE] = createUi({ projects, allowedOrigin: process.env.AI_COLLAB_UI_ORIGIN, push });
+    const instance = createUi({ projects, allowedOrigin: process.env.AI_COLLAB_UI_ORIGIN, push });
+    // Repos that auto-join after start-up appear within one refresh interval.
+    setInterval(() => instance.refresh(loadProjects(process.env, { host: "operator" })), REFRESH_MS).unref();
+    globalThis[INSTANCE] = instance;
   }
   return globalThis[INSTANCE];
 }

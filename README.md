@@ -37,6 +37,20 @@ Enable automatic hooks for a workspace by creating
 ]
 ```
 
+To join every git repo with no per-repo entry, create
+`${XDG_CONFIG_HOME:-~/.config}/ai-collab/defaults.json` with the shared keys:
+
+```json
+{ "url": "http://127.0.0.1:8794", "tokenFile": "/absolute/path/to/private/ntfy/token", "peers": "claude,codex,cursor" }
+```
+
+A session in a repo without a `projects.json` entry then joins under the repo's
+folder name: lowercase, other characters become hyphens, cut to 24 characters,
+and a linked worktree uses its main repo's name. An empty `.ai-collab-off` file
+in the repo root keeps that repo out. The first session records the repo in
+`$AI_COLLAB_STATE_DIR/auto-projects/`, and the UI adds it within 10 seconds.
+Two repos with the same folder name share one project.
+
 Hooks use the most specific configured workspace and assign a peer name from
 the harness. Keep the token and local configuration outside the repository.
 Environment settings can also activate the CLI or override project settings.
