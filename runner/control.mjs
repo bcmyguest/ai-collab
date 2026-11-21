@@ -17,6 +17,9 @@ export function runnerSocket(env = process.env) {
 
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
 
+// The caller label a client sends as ?caller=, reduced to 80 safe characters for the log.
+const callerOf = (url) => String(url.searchParams.get("caller") || "").replace(/[^\w.:@/-]/g, "").slice(0, 80) || "unknown";
+
 async function body(req) {
   const chunks = [];
   let size = 0;
@@ -45,6 +48,14 @@ export async function route(runner, method, url, input) {
   if (parts[0] !== "v1") fail(404, "Not found");
   const [, area, a, b, action, id] = parts;
   if (area === "health" && method === "GET") return [200, { ok: true, version: VERSION, harnesses: (await runner.harnesses()).map((h) => h.harness) }];
+  if (area === "schedules") {
+    if (!a && method === "GET") return [200, runner.schedules()];
+    if (a && b === "run" && !action) {
+      if (method !== "POST") fail(405, "Method not allowed");
+      return [202, runner.runSchedule(a, callerOf(url))];
+    }
+    fail(404, "Not found");
+  }
   if (area === "harnesses") {
     if (method !== "GET") fail(405, "Method not allowed");
     if (!a) return [200, { harnesses: await runner.harnesses() }];
@@ -86,6 +97,7 @@ function socketLive(path) {
 /** Listens on the unix socket; refuses to replace a live runner. Resolves {server, path, close}. */
 export async function listenControl(runner, path) {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  chmodSync(dirname(path), 0o700);
   if (await socketLive(path)) throw new Error(`another runner listens on ${path}`);
   rmSync(path, { force: true });
   const server = http.createServer(async (req, res) => {
@@ -101,10 +113,16 @@ export async function listenControl(runner, path) {
     res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
     res.end(JSON.stringify(value));
   });
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(path, resolve);
-  });
+  // The umask makes the socket 0600 from its first moment; the chmod below is the backstop.
+  const mask = process.umask(0o177);
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(path, resolve);
+    });
+  } finally {
+    process.umask(mask);
+  }
   chmodSync(path, 0o600);
   return {
     server, path,

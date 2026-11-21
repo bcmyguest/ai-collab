@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // ai-collab-runner entry: loads projects and adapters, recovers durable sessions, serves the control socket.
+import { mkdirSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { loadProjects, stateDir } from "../lib/config.mjs";
@@ -7,6 +8,8 @@ import { HARNESSES } from "./contract.mjs";
 import { openDurable } from "./durable.mjs";
 import { createRunner } from "./runner.mjs";
 import { listenControl, runnerSocket } from "./control.mjs";
+import { loadSchedules, registerSchedules } from "./schedules.mjs";
+import { acquireLock } from "./lock.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -40,17 +43,38 @@ export async function main(env = process.env) {
   if (!projects.length) log("no enabled project; serving the control socket only");
   const names = String(env.AI_COLLAB_RUNNER_HARNESSES || HARNESSES.join(",")).split(",").map((s) => s.trim()).filter(Boolean);
   const adapters = await loadAdapters(names, { env, log });
-  const durable = openDurable(runnerDb(env));
-  const runner = createRunner({ projects, adapters, durable, env, log });
-  const recovered = await runner.boot();
-  const control = await listenControl(runner, runnerSocket(env));
-  log(`listening on ${control.path}; adapters ${[...adapters.keys()].join(", ") || "none"}; recovered ${recovered.length} session(s)`);
+  const db = runnerDb(env);
+  mkdirSync(dirname(db), { recursive: true, mode: 0o700 });
+  const release = acquireLock(join(dirname(db), "runner.lock"));
+  let durable;
+  let runner;
+  let control;
+  try {
+    durable = openDurable(db);
+    // Registered before boot so PENDING ticks recover with the sessions; invalid entries are reported, not fatal.
+    const { entries, errors } = loadSchedules(env);
+    for (const error of errors) log(`schedule skipped: ${error}`);
+    const schedules = registerSchedules(durable, entries, { env, log });
+    runner = createRunner({ projects, adapters, durable, env, log, scheduleErrors: errors });
+    const recovered = await runner.boot();
+    // Serve the socket before any tick can start, so a failed bind starts nothing.
+    control = await listenControl(runner, runnerSocket(env));
+    durable.startSchedules();
+    log(`listening on ${control.path}; adapters ${[...adapters.keys()].join(", ") || "none"}; recovered ${recovered.length} session(s); schedules ${schedules.join(", ") || "none"}`);
+  } catch (error) {
+    await control?.close();
+    if (runner) await runner.stop();
+    else await durable?.close();
+    release();
+    throw error;
+  }
   let stopping = false;
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;
     await control.close();
     await runner.stop();
+    release();
     process.exit(0);
   };
   process.on("SIGTERM", shutdown);

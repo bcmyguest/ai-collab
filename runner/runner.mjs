@@ -19,6 +19,7 @@ import { publishApproval, publishApprovalEnd, publishEnded, publishEvent, publis
 export const START_TIMEOUT_MS = 60_000;
 export const START_GAP_MS = 10_000;
 export const CLOSE_WAIT_MS = 10_000;
+export const MANUAL_RUN_GAP_MS = 10_000;
 const STREAM_RETRY_MAX_MS = 30_000;
 const TEXT_MAX = 4000;
 const MODEL = /^[a-zA-Z0-9][a-zA-Z0-9._:/[\]-]{0,119}$/;
@@ -53,8 +54,9 @@ function view(s) {
 }
 
 /** Creates the runner over project configs, a Map harness → Adapter and a durable log (runner/durable.mjs). */
-export function createRunner({ projects, adapters, durable, env = process.env, git = runGit, now = Date.now, startGapMs = START_GAP_MS, approvalMs = approvalTimeoutMs(env), watch = true, log = () => {} }) {
+export function createRunner({ projects, adapters, durable, env = process.env, git = runGit, now = Date.now, startGapMs = START_GAP_MS, approvalMs = approvalTimeoutMs(env), watch = true, log = () => {}, scheduleErrors = [] }) {
   const configs = new Map(projects.map((cfg) => [cfg.project, cfg]));
+  const manualAt = new Map();
   const sessions = new Map();
   const claims = new Map();
   const watchers = new AbortController();
@@ -379,15 +381,29 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
 
   /** Re-runs PENDING session workflows from the durable log (restart rules), then watches ntfy. */
   async function boot() {
-    const claimed = durable.pending().map((id) => new Promise((resolve) => claims.set(id, resolve)));
+    // Scheduled ticks recover too, but only session workflows hold the boot until they claim.
+    const isSession = (id) => durable.status(id)?.name === "session";
+    const sessionIds = durable.pending().filter(isSession);
+    const claimed = sessionIds.map((id) => new Promise((resolve) => claims.set(id, resolve)));
     const ids = durable.recover();
-    const waits = ids.map((id, i) => Promise.race([claimed[i], durable.result(id).catch(() => {})]));
+    const waits = sessionIds.map((id, i) => Promise.race([claimed[i], durable.result(id).catch(() => {})]));
     const timer = new AbortController();
     await Promise.race([Promise.all(waits), delay(START_TIMEOUT_MS, null, { signal: timer.signal }).catch(() => {})]);
     timer.abort();
-    for (const id of ids) claims.delete(id);
+    for (const id of sessionIds) claims.delete(id);
     if (watch) for (const cfg of configs.values()) watchProject(cfg);
-    return ids;
+    return ids.filter(isSession);
+  }
+
+  /** Runs a schedule's tick now; fails 404 for an unknown schedule and 429 within MANUAL_RUN_GAP_MS of the last one. */
+  function runSchedule(name, caller = "unknown") {
+    if (!durable.hasSchedule(name)) fail(404, "Unknown schedule");
+    const at = now();
+    if (at - (manualAt.get(name) ?? -Infinity) < MANUAL_RUN_GAP_MS) fail(429, `Wait ${MANUAL_RUN_GAP_MS / 1000} seconds between manual runs`);
+    manualAt.set(name, at);
+    const result = durable.runScheduled(name);
+    log(`manual run of ${name} as ${result.id} (${result.status}) by ${caller}`);
+    return result;
   }
 
   // An ntfy event: a phone reply to an owned approval, or a message for an owned session.
@@ -483,6 +499,8 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   return {
     start, send, interrupt, respond, setMode, close, boot, stop, harnesses,
     list: () => [...sessions.values()].map(view),
+    schedules: () => ({ schedules: durable.schedules(), configError: scheduleErrors }),
+    runSchedule,
     get: (address) => view(find(address)),
     models: (harness) => adapterOf(harness).listModels(env),
     commands: (harness, project) => {
