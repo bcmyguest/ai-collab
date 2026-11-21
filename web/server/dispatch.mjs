@@ -1,8 +1,11 @@
 /**
- * Dispatcher in the UI server: pushes direct messages into Codex and OpenCode sessions that have no hook running.
+ * Dispatcher in the UI server: pushes direct messages into Codex, OpenCode and Claude sessions.
+ * Claude: a direct message goes to the session's messaging socket (lib/claude-socket.mjs) when the gate is open, and counts
+ * as delivered only once the transcript shows it. Otherwise the waiter and hooks deliver it.
  * Codex: `codex queue --thread <id> --message <text> --resume`, only while the session is idle (lib/idle.mjs).
  * OpenCode: POST /api/session/<id>/prompt with delivery steer (urgent) or queue, and resume: true.
- * A pushed message is marked delivered, so the session's own hooks skip it. fyi and broadcast messages are never pushed.
+ * A pushed message is reserved before the push and marked delivered after it, so the session's hooks and the waiter skip it.
+ * A failed push releases the reservation and backs off per (session, message). fyi and broadcast messages are never pushed.
  * A message sent with expectReply is redelivered when the target has not answered (respond or read receipt):
  * after REDELIVER_MS, at most MAX_ATTEMPTS attempts, until TTL_MS after the first one. Cursor stays hook-only.
  */
@@ -10,10 +13,11 @@ import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { broadcastTopic, inboxTopic, receiptsTopic } from "../../lib/config.mjs";
+import { claudeTarget, deliverToClaude } from "../../lib/claude-socket.mjs";
 import { nativeSessionId, harnessEnv } from "../../lib/controls.mjs";
 import { formatInbox, identityLine } from "../../lib/format.mjs";
 import { sessionIdleState } from "../../lib/idle.mjs";
-import { claimInbox, markDelivered, parseEnvelope } from "../../lib/inbox.mjs";
+import { claimInbox, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery } from "../../lib/inbox.mjs";
 import { pollCached } from "../../lib/ntfy.mjs";
 import { opencodeRequest } from "../../lib/opencode-api.mjs";
 import { readReceipts } from "../../lib/receipts.mjs";
@@ -27,7 +31,12 @@ const TICK_MS = 5000;
 const CLAIM_LIMIT = 4;
 const ANSWERS_MAX = 5000;
 const CODEX_TIMEOUT_MS = 30_000;
-const PUSHED = new Set(["codex", "opencode"]);
+const BACKOFF_BASE_MS = 5000;
+const BACKOFF_MAX_MS = 10 * 60_000;
+const PUSHED = new Set(["claude", "codex", "opencode"]);
+
+// A direct, non-broadcast message that is not fyi: the only kind pushed.
+const direct = (m) => m.priority !== "fyi" && m.from !== "ntfy" && m.to !== "all";
 
 function ledgerFile(cfg) {
   return join(cfg.stateDir, cfg.project, "dispatch.json");
@@ -54,35 +63,87 @@ function runCommand(file, args, { env }) {
 }
 
 /**
- * Builds the dispatcher. projects() returns the enabled project configs; run, opencode, idle, now and env are injectable.
- * tick() makes one pass over every project and resolves the delivery counts; start() runs it every TICK_MS.
+ * Builds the dispatcher. projects() returns the enabled project configs; run, opencode, idle, claude, claim, now and env
+ * are injectable. tick() makes one pass over every project and resolves the delivery counts; start() runs it every TICK_MS;
+ * drain() resolves once the background confirmations of unconfirmed Claude pushes have ended.
  */
 export function createDispatcher({
   projects, run = runCommand, opencode = opencodeRequest, idle = sessionIdleState, now = Date.now, env = process.env, claim = claimInbox,
+  claude = deliverToClaude,
 } = {}) {
   let timer = null;
   let running = false;
   const reads = new Map();
   const answers = new Map();
   const cursors = new Map();
+  const backoff = new Map();
+  const watchers = new Set();
 
-  // Delivers text to one session through its harness's API; true on success.
-  async function push(session, text, { urgent }) {
-    if (!nativeSessionId(session.harness, session.sessionId)) return false;
+  const slot = (session, id) => `${session.id}\n${id}`;
+  const cooling = (session, id) => (backoff.get(slot(session, id))?.nextAt ?? 0) > now();
+
+  // Records a failed attempt for each id; the next attempt waits BACKOFF_BASE_MS doubling, up to BACKOFF_MAX_MS.
+  function failed(session, ids) {
+    for (const id of ids) {
+      const failures = (backoff.get(slot(session, id))?.failures ?? 0) + 1;
+      backoff.set(slot(session, id), { failures, nextAt: now() + Math.min(BACKOFF_BASE_MS * 2 ** (failures - 1), BACKOFF_MAX_MS) });
+    }
+  }
+
+  function forget(session, ids) {
+    for (const id of ids) backoff.delete(slot(session, id));
+  }
+
+  function pruneBackoff() {
+    for (const [key, entry] of backoff) if (entry.nextAt < now() - TTL_MS) backoff.delete(key);
+  }
+
+  // Delivers text to one session through its harness's API. Resolves {status}: "delivered", "unsent" or "unconfirmed" (Claude only).
+  async function push(session, text, { urgent, ids }) {
+    if (!nativeSessionId(session.harness, session.sessionId)) return { status: "unsent" };
+    if (session.harness === "claude") return await claude(session, { text, urgent, ids }, { env });
     if (session.harness === "codex") {
-      return await run("codex", ["queue", "--thread", session.sessionId, "--message", text, "--resume"], { env: harnessEnv() }) === 0;
+      const ok = await run("codex", ["queue", "--thread", session.sessionId, "--message", text, "--resume"], { env: harnessEnv() }) === 0;
+      return { status: ok ? "delivered" : "unsent" };
     }
     const r = await opencode("POST", `/api/session/${encodeURIComponent(session.sessionId)}/prompt`, {
       body: { text, delivery: urgent ? "steer" : "queue", resume: true }, env,
     });
-    return r.ok;
+    return { status: r.ok ? "delivered" : "unsent" };
+  }
+
+  // Keeps the reservation while a late confirmation is watched, then marks the messages delivered or releases them.
+  function watchLate(scfg, ids, watch) {
+    const job = watch()
+      .then((ok) => (ok ? markDelivered(scfg, ids) : releaseDelivery(scfg, ids)))
+      .catch(() => {})
+      .finally(() => watchers.delete(job));
+    watchers.add(job);
+  }
+
+  // Pushes reserved messages and settles the reservation. Resolves "delivered", "failed" or "pending" (watched).
+  async function dispatchIds(session, scfg, text, { urgent, ids }) {
+    const result = await push(session, text, { urgent, ids });
+    if (result.status === "delivered") {
+      await markDelivered(scfg, ids).catch(() => {});
+      forget(session, ids);
+      return "delivered";
+    }
+    failed(session, ids);
+    if (result.status === "unconfirmed") {
+      watchLate(scfg, ids, result.watch);
+      return "pending";
+    }
+    await releaseDelivery(scfg, ids).catch(() => {});
+    return "failed";
   }
 
   // The text a session receives: identity line plus the formatted messages.
   const textFor = (scfg, messages) => [identityLine(scfg), formatInbox(messages, { session: scfg.session })].filter(Boolean).join("\n");
 
-  // Codex waits for an idle session; OpenCode takes a queued or steering prompt in any state.
+  // Claude takes a socket message in any state, when its gate is open; Codex waits for an idle session; OpenCode takes a queued or steering prompt in any state.
   async function ready(session, active) {
+    if (session.harness === "claude") return claudeTarget(session, { env }) !== null;
     if (session.harness === "opencode") return active !== null;
     return await idle(session, { env }) === "idle";
   }
@@ -118,11 +179,18 @@ export function createDispatcher({
     for (const session of sessions) {
       if (!await ready(session, active)) continue;
       const scfg = { ...cfg, peer: session.peer, session: session.session };
-      const waiting = (await claim(scfg, { commit: false, limit: CLAIM_LIMIT }).catch(() => []))
-        .filter((m) => m.priority !== "fyi" && m.from !== "ntfy" && m.to !== "all");
+      // The predicate runs before the cap: fyi, broadcasts and messages in backoff or reserved do not use up the claim.
+      const candidates = await claim(scfg, {
+        commit: false, limit: CLAIM_LIMIT, accept: (m) => direct(m) && !cooling(session, m.id),
+      }).catch(() => []);
+      if (!candidates.length) continue;
+      // Reserve before the push so the waiter's claim cannot take the same messages.
+      const owned = new Set(await reserveDelivery(scfg, candidates.map((m) => m.id)));
+      const waiting = candidates.filter((m) => owned.has(m.id));
       if (!waiting.length) continue;
-      if (!await push(session, textFor(scfg, waiting), { urgent: waiting.some((m) => m.urgent) })) continue;
-      await markDelivered(scfg, waiting.map((m) => m.id)).catch(() => {});
+      const ids = waiting.map((m) => m.id);
+      const status = await dispatchIds(session, scfg, textFor(scfg, waiting), { urgent: waiting.some((m) => m.urgent), ids });
+      if (status !== "delivered") continue;
       counts.delivered += waiting.length;
       for (const m of waiting) {
         if (m.expectReply) entries[m.id] = { address: session.id, from: m.from, firstAt: now(), lastAt: now(), attempts: 1, message: m };
@@ -136,10 +204,12 @@ export function createDispatcher({
         if (acked(id, e.address) || now() - e.firstAt >= TTL_MS || (due && e.attempts >= MAX_ATTEMPTS)) {
           delete entries[id];
           counts.dropped += 1;
-        } else if (due && session && await ready(session, active)) {
+        } else if (due && session && !cooling(session, id) && await ready(session, active)) {
           const scfg = { ...cfg, peer: session.peer, session: session.session };
           const again = { ...e.message, attempt: e.attempts + 1, attempts: MAX_ATTEMPTS };
-          if (await push(session, textFor(scfg, [again]), { urgent: again.urgent === true })) {
+          // Redelivery reserves an id that is already seen, so the seen list can be trimmed without exposing it.
+          const owned = await reserveDelivery(scfg, [id], { allowSeen: true });
+          if (owned.length && await dispatchIds(session, scfg, textFor(scfg, [again]), { urgent: again.urgent === true, ids: [id] }) === "delivered") {
             Object.assign(e, { lastAt: now(), attempts: e.attempts + 1 });
             counts.redelivered += 1;
           }
@@ -159,6 +229,7 @@ export function createDispatcher({
     if (running) return total;
     running = true;
     try {
+      pruneBackoff();
       const probe = await opencode("GET", "/api/session/active", { env });
       const active = probe.ok ? new Set(Object.keys(probe.body?.data ?? probe.body ?? {})) : null;
       for (const cfg of projects()) {
@@ -174,6 +245,9 @@ export function createDispatcher({
 
   return {
     tick,
+    drain() {
+      return Promise.allSettled([...watchers]);
+    },
     start() {
       if (!timer) timer = setInterval(() => void tick(), TICK_MS).unref();
     },

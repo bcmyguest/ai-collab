@@ -17,6 +17,7 @@ scripts/ai-collab send bob "FYI: CI is green" --priority fyi  # queued, never wa
 scripts/ai-collab send bob#0123456789abcdef "ship it?" --expect-reply  # redelivered until bob answers
 scripts/ai-collab wait 30                            # block for the next message
 scripts/ai-collab wait idle:bob#0123456789abcdef 45  # block until that agent has no turn running
+scripts/ai-collab wait reply:m00000042 45  # block until a reply to that message id
 scripts/ai-collab interrupt codex#0123456789abcdef   # interrupt a running Codex or OpenCode turn
 scripts/ai-collab respond m00000042 done "merged"    # answer a message by id
 scripts/ai-collab identity --activity "reviewing PR 12" --tag pr:12
@@ -68,12 +69,12 @@ Six MCP tools (plus the options below) follow the agent-messaging interface of t
 | `list_agents` | Live sessions of the project on this machine: address, harness, project, name, activity line, tags, last active, parent. `all: true` adds offline ones; `tags: [...]` keeps sessions that carry every tag. | session registry (`lib/sessions.mjs`) | `ai-collab agents [--all] [--tag T]...` |
 | `send` | To a session (`peer#label`), a peer name, or `all` / `*`. `await_reply: N` blocks up to N s (max 45) for a `reply`, `done` or `declined` answer to this message. `priority` (`normal`, `urgent`, `fyi`), `expect_reply`, `urgent`, `reply_to`, `attachment` optional. | `sendMessage`, the Stop hook's ntfy stream waiter | `ai-collab send <to> [msg] [--urgent] [--priority P] [--expect-reply] [--await N]` |
 | `respond` | Answers a message id with `state` `working`, `reply`, `done` or `declined` and an optional body: an operator direct message in its chat, a broadcast on the shared channel, a peer message to its sender's session. | msg envelope with `replyTo` and `state` | `ai-collab respond <id> <state> [msg]` |
-| `wait` | Blocks up to `seconds` (max 45) for a new message to this session; returns it marked read. `until: "idle:<address>"` blocks until that agent has no turn running (`idle`), its process ended (`ended`) or the timeout. | stream waiter + `claimInbox`; `lib/idle.mjs` | `ai-collab wait [N]`, `ai-collab wait idle:<address> [N]` |
+| `wait` | Blocks up to `seconds` (max 45) for a new message to this session; returns it marked read. `until: "idle:<address>"` blocks until that agent has no turn running (`idle`), its process ended (`ended`) or the timeout. | stream waiter + `claimInbox`; `lib/idle.mjs` | `ai-collab wait [N]`, `ai-collab wait idle:<address> [N]`, `ai-collab wait reply:<id> [N]` |
 | `inbox` | Reads new messages and marks them delivered; publishes read receipts. `peek: true` leaves them unread. | `claimInbox`, `lib/receipts.mjs` | `ai-collab inbox [--peek]` |
 | `history` | Lists the last `limit` (default 30, max 100) project-channel messages, oldest first; read-only, no cursor or receipts. | `channelHistory` | `ai-collab history [--limit N]` |
 | `set_identity` | Stores `name`, `activity` (one line, at most 200 characters) and `tags` (at most 10, e.g. `pr:12`, `role:reviewer`) in this session's registry entry. | session registry | `ai-collab identity [--name N] [--activity T] [--tag T]...` |
 
-A `respond` answer is a msg envelope with `replyTo` and an optional `state` field; clients that predate it show it as an ordinary message. Tool results label each message with `answer_with`. The tools and the hooks share one inbox cursor per session, so a message read through `wait` or `inbox` is not delivered again by a hook. The 45-second cap keeps a call under Codex's default MCP tool timeout; call `wait` again to keep listening.
+A `respond` answer is a msg envelope with `replyTo` and an optional `state` field; clients that predate it show it as an ordinary message. Tool results label each message with `answer_with`. The tools and the hooks share one inbox cursor per session, so a message read through `wait` or `inbox` is not delivered again by a hook. The 45-second cap keeps a call under Codex's default MCP tool timeout; call `wait` again to keep listening. `ai-collab wait reply:<id> [N]` reads the inbox history for a reply, done or declined, to that message id. It neither claims nor marks messages, so a reply a hook already claimed is still found. On a reply it prints that message as one line (the same line as `inbox`, without the untrusted-data header) and exits 0; on timeout it prints `no reply yet` and exits 1. An empty or malformed id exits 1 with a usage line. `send --await` is separate: it exits 0 whether or not a reply arrives.
 
 ## Waking idle sessions
 
@@ -81,12 +82,41 @@ A hook runs only while its agent runs a turn, so an idle session would otherwise
 
 | Harness | Path | Notes |
 |---|---|---|
+| Claude Code, direct messages | messaging socket (`lib/claude-socket.mjs`, dispatcher in the UI server) | Tried first when the session's gate is open (see [Claude messaging socket](#claude-messaging-socket)). A message it cannot deliver stays for the rows below. |
 | Claude Code | `asyncRewake` hook (`hooks/hooks.json`, `lib/waiter.mjs`) | A second hook on `SessionStart`, `UserPromptSubmit` and `Stop`: `ai-collab-hook.mjs --rewake --host claude`, registered with `"asyncRewake": true`, `"timeout": 3600`, `rewakeMessage` and `rewakeSummary`. It streams the session's inbox and the project `--to--all` topic. A message that is not `fyi` is claimed (read receipt sent), printed on stderr, and the process exits 2, which wakes the idle session and shows the message. Exactly one waiter runs per session: it records its pid and /proc start tick in `<state>/<project>/sessions/<peer>/<session>.waiter.json`, and a new waiter sends SIGTERM to the old one. It runs nothing for a subagent (`agent_id` present), exits quietly after 3300 s (`AI_COLLAB_WAITER_MAX_S` overrides it) or when the Claude process is gone, and the next event re-arms it. |
 | Codex | dispatcher in the UI server (`web/server/dispatch.mjs`) | For a direct message to an idle Codex session it runs `codex queue --thread <native id> --message <text> --resume`. Idle means the last hook event the registry recorded is `Stop`, `SessionStart` or `SessionEnd`. A busy session gets the message from its Stop hook. |
 | OpenCode | the same dispatcher | `POST /api/session/<id>/prompt` on the OpenCode service with `{text, delivery: "queue" \| "steer", resume: true}`: `steer` for an urgent message, `queue` otherwise, in any state. The endpoint is read from `$XDG_STATE_HOME/opencode/service.json` (loopback only); a `--standalone` OpenCode has no service, so its hooks deliver. |
 | Cursor | hooks only | no push path |
 
-The dispatcher polls every 5 s, only for online Codex and OpenCode sessions, and only for direct messages: broadcasts and `fyi` messages stay in the inbox. After a push it marks the message seen for that session (`markDelivered`), so the session's hooks skip it. A failed push leaves the message for the hooks. `AI_COLLAB_DISPATCH=off` stops the dispatcher. Native session ids come from the registry (`lib/sessions.mjs`).
+The dispatcher polls every 5 s, only for online Claude (with an open gate), Codex and OpenCode sessions, and only for direct messages: broadcasts and `fyi` messages stay in the inbox. After a push it marks the message seen for that session (`markDelivered`), so the session's hooks skip it. A failed push leaves the message for the hooks. `AI_COLLAB_DISPATCH=off` stops the dispatcher. Native session ids come from the registry (`lib/sessions.mjs`).
+
+### Claude messaging socket
+
+For a direct message to a Claude session, the dispatcher writes the message to the session's messaging socket and then confirms it in the transcript. A confirmed message appears as a user turn, and an urgent one lands mid-turn. The socket is used only when every check below passes; otherwise the message stays unread for the hooks and the waiter.
+
+Checks before the write (`claudeTarget` in `lib/claude-socket.mjs`):
+
+- The registry entry is `claude` with a `pid` and `pidStart`, and `/proc/<pid>/stat` still shows that start tick (no PID reuse).
+- `<config dir>/sessions/<pid>.json` (config dir: `CLAUDE_CONFIG_DIR`, else `~/.claude`) is a regular file owned by this user, not a symlink, with the same `sessionId` and, when present, `pid`. Its `messagingSocketPath` is an absolute path to a unix socket owned by this user, not a symlink.
+- Exactly one `<pid>.*.key` token file exists and is owned by this user. Zero or several key files, or a read error, leave the message for the hooks: the write never goes unauthenticated.
+- The gate is open. The user's `settings.json` must set `crossSessionInbound` to `"accept"`. A project `.claude/settings.json` or `settings.local.json` in the session's cwd, and `/etc/claude-code/managed-settings.json` or any `managed-settings.d/*.json`, must not set it to anything else (`hold`, `refuse`, another value, or an unparsable file). A closed or unknown gate leaves the message for the hooks. Server-managed settings and a `--settings` flag cannot be read from disk, so a session that uses either is not covered by this check.
+- The cwd is absolute and at most 200 characters, so the transcript path is known.
+
+The write: newline-delimited JSON with an `auth` frame (the token), then a `user` frame whose content is the `<cross-session-message from-name="…">` envelope. `urgent` sets `priority: "next"` (lands after the current step); other messages use `"later"` (queued behind the current turn). The body is the text the hooks print (`formatInbox`): sender, message id, the `respond` hint and the untrusted-body warning. The socket write has a 5 s timeout.
+
+The confirmation: the dispatcher records the transcript's size before the write, then reads only the bytes written after it (`<config dir>/projects/<cwd with non-alphanumerics as "-">/<sessionId>.jsonl`, at most the last 4 MB). Each line is parsed as JSON, and a string value must hold `<cross-session-message from-name="<sender>">` and `id=<message id> ` for every message in the batch. A quoted id outside an envelope, an earlier delivery, or another sender's name does not count. The window is 5 s (`AI_COLLAB_CLAUDE_CONFIRM_MS`, a positive number of ms).
+
+A write that is not confirmed in the window is `unconfirmed`. The reservation stays, and the dispatcher keeps checking the same bytes until the window plus `AI_COLLAB_CLAUDE_WATCH_MS` (default 35 s) ends. A late confirmation marks the message delivered; otherwise the reservation is released and the hooks take the message. The reservation (60 s) outlives that window, so the hooks cannot take a message mid-watch. A message that Claude enqueues after the window ends can still reach the session twice, once from the socket and once from the hooks. That case is not detected.
+
+A message whose push or confirmation fails is backed off per (session, message): the next attempt waits 5 s, then 10 s, 20 s and so on, up to 10 min, so a held message is not re-written to the socket on every tick. `fyi` messages, reserved messages and messages in backoff are skipped before the claim cap, so they do not use up the 4 messages a tick pushes.
+
+What Claude does with a frame, from its binary (`claude.exe` 2.1.330 `strings`): a message can be held (`crossSessionInbound` is `hold`, or a managed or repo setting holds it), refused for a permission-mode mismatch (`mode-mismatch`, `no-mode-asserted`: this session bypasses prompts and the sender sends no mode attestation, so these messages are held), rate-limited ("Too many messages to this session just now"), or dropped when the queue is full. Each of these leaves no confirmed line in the transcript, so the message stays with the hooks. A message that is confirmed but later dropped from a queue is not detected.
+
+Claude's socket protocol is undocumented. Pulsar's dist sends the same frames (`~/.local/share/pulsar/current/dist/cli-sqgan6a2.js`, `claudeEnvelope` and the `deliver` method). The transcript line format and the envelope were read from the binary, not observed in a live session.
+
+Delivery is one owner per message: the dispatcher reserves each message under the inbox lock before the push, and every claim skips reserved ids. A claim that meets a reserved message stops before it (its cursor does not pass it), so a push that then fails leaves the message for the next claim. Reserved ids never enter the seen list. A reservation expires after 60 s if the process dies.
+
+A socket delivery with `expect_reply` is redelivered like any other push (see below). A copy that is not confirmed is never recorded in the redelivery ledger, so the ledger does not redeliver it. A copy confirmed late by the watch is delivered but not added to the ledger, so it gets no redelivery.
 
 ### Priority
 
@@ -100,7 +130,7 @@ The dispatcher polls every 5 s, only for online Codex and OpenCode sessions, and
 - at most 5 attempts, and no later than 24 h after the first;
 - until the target acknowledges: a `respond` of any state (`working`, `reply`, `done`, `declined`) or a read receipt from that session.
 
-Redelivery covers sessions the dispatcher serves (Codex, OpenCode). It sends no notice to the sender when it gives up. Claude's waiter and hooks deliver once.
+Redelivery covers sessions the dispatcher serves (Claude with an open gate, Codex, OpenCode). It sends no notice to the sender when it gives up. Claude's waiter and hooks deliver once.
 
 ### Interrupt
 
