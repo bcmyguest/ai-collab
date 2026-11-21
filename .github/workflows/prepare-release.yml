@@ -1,0 +1,92 @@
+name: Prepare release
+
+# Manual release. git-cliff derives the next version from Conventional Commits since
+# the last tag (feat -> minor, fix -> patch, `!`/BREAKING -> minor below 1.0.0, major
+# after), then this workflow bumps every manifest, commits, tags and dispatches
+# release.yml. With no prior tag the first run tags cliff.toml's initial_tag (v0.7.0).
+#
+# A tag pushed with GITHUB_TOKEN does not trigger `on: push: tags`, so this workflow
+# dispatches release.yml itself.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Compute the next version only: no commit, tag or release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  actions: write
+  # git-cliff resolves [remote.github] + github.contributors through the API and
+  # panics with HTTP 403 on /pulls without this; unspecified scopes are `none`.
+  pull-requests: read
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Bump, tag, dispatch
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+
+      - name: Install git-cliff
+        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: git-cliff
+
+      - name: Compute next version
+        id: ver
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag=$(git-cliff --config cliff.toml --bumped-version)
+          if [ -z "$tag" ]; then echo "::error::git-cliff returned no version."; exit 1; fi
+          if git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
+            echo "::error::No releasable commits since the last tag ($tag exists)."; exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "Next version: $tag (package.json: $(jq -r .version package.json))"
+          git-cliff --config cliff.toml --unreleased --tag "$tag" --strip header >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Bump manifests, commit, tag, push
+        if: ${{ !inputs.dry_run }}
+        env:
+          TAG: ${{ steps.ver.outputs.tag }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ "$(jq -r .version package.json)" != "$VERSION" ]; then
+            # package.json + package-lock.json
+            npm version "$VERSION" --no-git-tag-version
+            for f in .claude-plugin/plugin.json .codex-plugin/plugin.json .cursor-plugin/plugin.json; do
+              jq --indent 2 --arg v "$VERSION" '.version = $v' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+            done
+            npm test --silent -- test/manifests.test.mjs
+            git add package.json package-lock.json .claude-plugin/plugin.json .codex-plugin/plugin.json .cursor-plugin/plugin.json
+            git commit -m "chore(release): $TAG"
+          fi
+          git tag -a "$TAG" -m "ai-collab $TAG"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "$TAG"
+
+      - name: Dispatch release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: gh workflow run release.yml --ref "$TAG"

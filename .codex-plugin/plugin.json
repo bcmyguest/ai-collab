@@ -1,0 +1,22 @@
+{
+  "name": "ai-collab",
+  "version": "0.9.0",
+  "description": "Best-effort messages and start/stop status between coding-agent peers over a private ntfy server. Inbound messages are surfaced as untrusted, provenance-labelled context.",
+  "keywords": [
+    "ntfy",
+    "messaging",
+    "peers",
+    "coding-agents"
+  ],
+  "hooks": "./hooks/codex-hooks.json",
+  "skills": "./skills/",
+  "mcpServers": {
+    "ai-collab": {
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/scripts/ai-collab-mcp.mjs",
+        "codex"
+      ]
+    }
+  }
+}

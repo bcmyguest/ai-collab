@@ -1,0 +1,14 @@
+{
+  "name": "ai-collab",
+  "owner": {
+    "name": "Local"
+  },
+  "plugins": [
+    {
+      "name": "ai-collab",
+      "source": "./",
+      "description": "Peer messaging over private ntfy."
+    }
+  ],
+  "description": "Local coding-agent messaging over ntfy."
+}

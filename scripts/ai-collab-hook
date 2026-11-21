@@ -1,0 +1,3 @@
+#!/bin/sh
+# Hook wrapper used by hooks/*.json. Passes --host <claude|codex|cursor> through.
+exec node "$(dirname "$0")/ai-collab-hook.mjs" "$@"

@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [{ "command": "\"${CURSOR_PLUGIN_ROOT}/scripts/ai-collab-hook\" --host cursor" }],
+    "beforeSubmitPrompt": [{ "command": "\"${CURSOR_PLUGIN_ROOT}/scripts/ai-collab-hook\" --activity --host cursor", "timeout": 5 }],
+    "afterAgentResponse": [{ "command": "\"${CURSOR_PLUGIN_ROOT}/scripts/ai-collab-hook\" --activity --host cursor", "timeout": 5 }],
+    "postToolUse": [{ "command": "\"${CURSOR_PLUGIN_ROOT}/scripts/ai-collab-hook\" --host cursor" }],
+    "postToolUseFailure": [{ "command": "\"${CURSOR_PLUGIN_ROOT}/scripts/ai-collab-hook\" --activity --host cursor", "timeout": 5 }],
+    "preCompact": [{ "command": "\"${CURSOR_PLUGIN_ROOT}/scripts/ai-collab-hook\" --host cursor" }],
+    "stop": [{ "command": "\"${CURSOR_PLUGIN_ROOT}/scripts/ai-collab-hook\" --host cursor", "timeout": 660, "loop_limit": null }],
+    "sessionEnd": [{ "command": "\"${CURSOR_PLUGIN_ROOT}/scripts/ai-collab-hook\" --activity --host cursor", "timeout": 5 }]
+  }
+}

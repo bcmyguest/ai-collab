@@ -1,0 +1,3 @@
+#!/bin/sh
+# CLI wrapper: ai-collab peers | send <peer|all> [message] | inbox [--peek] | afk [on|off|quiet]
+exec node "$(dirname "$0")/ai-collab.mjs" "$@"

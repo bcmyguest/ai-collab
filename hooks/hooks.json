@@ -1,0 +1,19 @@
+{
+  "description": "AI Collab: publish start/stop status and session activity (subagents and compaction included), surface new peer messages as untrusted context, and deliver waiting messages at Stop.",
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --host claude", "timeout": 20 }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --host claude", "timeout": 10 }] }],
+    "PreToolUse": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --activity --host claude", "async": true }] }],
+    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --host claude", "timeout": 10 }] }],
+    "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --activity --host claude", "async": true }] }],
+    "MessageDisplay": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --activity --host claude", "async": true }] }],
+    "Notification": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --activity --host claude", "async": true }] }],
+    "SubagentStart": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --activity --host claude", "async": true }] }],
+    "SubagentStop": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --activity --host claude", "async": true }] }],
+    "PreCompact": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --activity --host claude", "async": true }] }],
+    "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --host claude", "timeout": 600 }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --host claude", "timeout": 660 }] }],
+    "StopFailure": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --activity --host claude", "async": true }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --activity --host claude", "timeout": 3 }] }]
+  }
+}
