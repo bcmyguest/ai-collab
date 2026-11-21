@@ -30,7 +30,16 @@ codex plugin marketplace add /path/to/ai-collab
 codex plugin add ai-collab@ai-collab
 ```
 
-Restart Codex and check `/hooks` to trust the enabled plugin hooks. The manifest is `.codex-plugin/plugin.json` and points to `hooks/codex-hooks.json`.
+Codex copies the whole marketplace folder and hashes it before every hook, so a working checkout with `node_modules` or worktrees makes each hook time out. Install from a clean copy of the package instead:
+
+```sh
+mkdir -p ~/.local/share/ai-collab/codex-plugin
+npm pack --pack-destination /tmp ai-collab   # or `npm pack` inside a checkout
+tar -xzf /tmp/ai-collab-*.tgz -C ~/.local/share/ai-collab/codex-plugin --strip-components=1
+codex plugin marketplace add ~/.local/share/ai-collab/codex-plugin
+```
+
+Restart Codex and check `/hooks` to trust the enabled plugin hooks; trust again after each update. The manifest is `.codex-plugin/plugin.json` and points to `hooks/codex-hooks.json`.
 
 ## Cursor
 

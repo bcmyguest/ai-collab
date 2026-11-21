@@ -2,3 +2,4 @@ node_modules/
 *.tmp
 web/.next/
 web/.next-demo/
+.claude/worktrees/

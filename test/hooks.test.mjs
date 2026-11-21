@@ -177,7 +177,8 @@ test("configured hooks deliver phone posts to each session and identify outbound
   const labels = [];
   for (const [host, event, ids] of sessions) {
     const input = { cwd: join(cwd, "subdir"), hook_event_name: event, ...ids };
-    const first = JSON.parse((await runHook(["--host", host], input, env)).out);
+    const out = JSON.parse((await runHook(["--host", host], input, env)).out);
+    const first = { additional_context: out.hookSpecificOutput?.additionalContext ?? out.additional_context };
     assert.match(first.additional_context, /from=ntfy.*Please post a status update/);
     const label = first.additional_context.match(/AI_COLLAB_SESSION=([a-f0-9]{16})/)?.[1];
     assert.ok(label);
