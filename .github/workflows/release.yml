@@ -109,4 +109,5 @@ jobs:
           set -euo pipefail
           v=$(jq -r .version package.json)
           if npm view "ai-collab@$v" version >/dev/null 2>&1; then echo "ai-collab@$v is already on npm"; exit 0; fi
-          npm publish --access public
+          # Verbose logs show whether the OIDC exchange ran (npm logs "oidc" lines) when a publish is refused.
+          npm publish --access public --loglevel verbose
