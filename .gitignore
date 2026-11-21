@@ -3,3 +3,4 @@ node_modules/
 web/.next/
 web/.next-demo/
 .claude/worktrees/
+.cursor/cli.json
