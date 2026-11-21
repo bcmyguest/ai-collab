@@ -12,11 +12,11 @@ import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { broadcastTopic, inboxTopic, receiptsTopic } from "../../lib/config.mjs";
-import { claudeTarget, sendToClaude } from "../../lib/claude-socket.mjs";
+import { claudeTarget, deliverToClaude } from "../../lib/claude-socket.mjs";
 import { nativeSessionId, harnessEnv } from "../../lib/controls.mjs";
 import { formatInbox, identityLine } from "../../lib/format.mjs";
 import { sessionIdleState } from "../../lib/idle.mjs";
-import { claimInbox, markDelivered, parseEnvelope } from "../../lib/inbox.mjs";
+import { MAX_PER_CLAIM, claimInbox, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery } from "../../lib/inbox.mjs";
 import { pollCached } from "../../lib/ntfy.mjs";
 import { opencodeRequest } from "../../lib/opencode-api.mjs";
 import { readReceipts } from "../../lib/receipts.mjs";
@@ -62,7 +62,7 @@ function runCommand(file, args, { env }) {
  */
 export function createDispatcher({
   projects, run = runCommand, opencode = opencodeRequest, idle = sessionIdleState, now = Date.now, env = process.env, claim = claimInbox,
-  claude = sendToClaude,
+  claude = deliverToClaude,
 } = {}) {
   let timer = null;
   let running = false;
@@ -71,9 +71,9 @@ export function createDispatcher({
   const cursors = new Map();
 
   // Delivers text to one session through its harness's API; true on success.
-  async function push(session, text, { urgent }) {
+  async function push(session, text, { urgent, ids }) {
     if (!nativeSessionId(session.harness, session.sessionId)) return false;
-    if (session.harness === "claude") return await claude(session, { text, urgent }, { env });
+    if (session.harness === "claude") return await claude(session, { text, urgent, ids }, { env });
     if (session.harness === "codex") {
       return await run("codex", ["queue", "--thread", session.sessionId, "--message", text, "--resume"], { env: harnessEnv() }) === 0;
     }
@@ -124,11 +124,21 @@ export function createDispatcher({
     for (const session of sessions) {
       if (!await ready(session, active)) continue;
       const scfg = { ...cfg, peer: session.peer, session: session.session };
-      const waiting = (await claim(scfg, { commit: false, limit: CLAIM_LIMIT }).catch(() => []))
-        .filter((m) => m.priority !== "fyi" && m.from !== "ntfy" && m.to !== "all");
+      // fyi and broadcasts are filtered before the cap, so a run of fyi messages cannot starve a direct one.
+      const candidates = (await claim(scfg, { commit: false, limit: MAX_PER_CLAIM }).catch(() => []))
+        .filter((m) => m.priority !== "fyi" && m.from !== "ntfy" && m.to !== "all")
+        .slice(0, CLAIM_LIMIT);
+      if (!candidates.length) continue;
+      // Reserve before the push so the waiter's claim cannot take the same messages; release them if the push fails.
+      const owned = new Set(await reserveDelivery(scfg, candidates.map((m) => m.id)));
+      const waiting = candidates.filter((m) => owned.has(m.id));
       if (!waiting.length) continue;
-      if (!await push(session, textFor(scfg, waiting), { urgent: waiting.some((m) => m.urgent) })) continue;
-      await markDelivered(scfg, waiting.map((m) => m.id)).catch(() => {});
+      const ids = waiting.map((m) => m.id);
+      if (!await push(session, textFor(scfg, waiting), { urgent: waiting.some((m) => m.urgent), ids })) {
+        await releaseDelivery(scfg, ids).catch(() => {});
+        continue;
+      }
+      await markDelivered(scfg, ids).catch(() => {});
       counts.delivered += waiting.length;
       for (const m of waiting) {
         if (m.expectReply) entries[m.id] = { address: session.id, from: m.from, firstAt: now(), lastAt: now(), attempts: 1, message: m };
@@ -145,7 +155,7 @@ export function createDispatcher({
         } else if (due && session && await ready(session, active)) {
           const scfg = { ...cfg, peer: session.peer, session: session.session };
           const again = { ...e.message, attempt: e.attempts + 1, attempts: MAX_ATTEMPTS };
-          if (await push(session, textFor(scfg, [again]), { urgent: again.urgent === true })) {
+          if (await push(session, textFor(scfg, [again]), { urgent: again.urgent === true, ids: [id] })) {
             Object.assign(e, { lastAt: now(), attempts: e.attempts + 1 });
             counts.redelivered += 1;
           }
