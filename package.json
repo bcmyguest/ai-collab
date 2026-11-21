@@ -2,6 +2,7 @@
   "name": "ai-collab",
   "version": "0.9.0",
   "description": "Best-effort messaging and status between coding-agent peers over a private ntfy server.",
+  "license": "Apache-2.0",
   "private": true,
   "type": "module",
   "engines": {

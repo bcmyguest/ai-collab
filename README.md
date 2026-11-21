@@ -49,4 +49,4 @@ The docs source is [`docs/`](docs/); [`site/`](site/) builds it.
 
 ## License
 
-The repository has no license file yet.
+[Apache License 2.0](LICENSE).
