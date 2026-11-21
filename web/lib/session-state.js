@@ -7,13 +7,18 @@ export const STATES = ["waiting", "afk", "working", "idle", "offline"];
 export const STATE_LABELS = { waiting: "Waiting on you", afk: "AFK hold", working: "Working", idle: "Idle", offline: "Offline" };
 const FIRST_WORDS = 6;
 
+/** True when a pending item the operator can answer in the UI is open: blocking and not expired. */
+export function waitingOn(pending, now) {
+  return (pending || []).some(p => p.blocking && !(p.expiresAt && p.expiresAt < now));
+}
+
 /**
  * State of one session card from server facts:
  * waiting (an open approval, choice or important question), afk (its Stop hook holds the turn in AFK mode),
  * working (an open tool call under 15 min old, a running subagent, or activity in the last 60 s), idle (online), else offline.
  */
 export function sessionState(s, now) {
-  if (s.pending?.some(p => p.blocking && !(p.expiresAt && p.expiresAt < now))) return "waiting";
+  if (waitingOn(s.pending, now)) return "waiting";
   if (s.online && s.afkHold) return "afk";
   if (s.openCallAt && now - s.openCallAt < WORKING_MS) return "working";
   if (s.lastActivityAt && now - s.lastActivityAt < RECENT_MS) return "working";

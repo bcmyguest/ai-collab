@@ -15,7 +15,7 @@ import { availableHarnesses, availablePlaces, checkPrompt, startSession } from "
 import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
 import { activityRows, groupSubagents, summarize } from "../lib/activity-rows.js";
-import { fallbackName, visibleWake } from "../lib/session-state.js";
+import { fallbackName, visibleWake, waitingOn } from "../lib/session-state.js";
 import { createAuth } from "./auth.mjs";
 import { createHub } from "./hub.mjs";
 import { createPush, notice } from "./push.mjs";
@@ -471,12 +471,19 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       if (item.kind === "Approval") {
         const approval = approvalState(item.approval, ends, replies);
         if (approval.state !== "pending" || (approval.expiresAt && approval.expiresAt < Date.now())) continue;
-        add(item.from, { ...item, project: project.cfg.project, approval, blocking: true, expiresAt: approval.expiresAt });
+        // A view-only terminal approval is answered in the terminal, so it does not wait on the operator.
+        add(item.from, { ...item, project: project.cfg.project, approval, blocking: approval.terminal !== true, expiresAt: approval.expiresAt });
       } else if (item.question && !replies.has(item.question) && (online.has(item.from) || Date.now() - item.time * 1000 < ONLINE_MS)) {
         add(item.from, { ...item, project: project.cfg.project, blocking: IMPORTANT.test(item.body) });
       }
     }
     return out;
+  }
+
+  // Addresses of the project's sessions in list that wait on the operator (sessionState "waiting").
+  function waitingIds(project, list) {
+    const pending = pendingBySender(project, list);
+    return new Set(list.filter(agent => waitingOn(pending.get(agent.id), Date.now())).map(agent => agent.id));
   }
 
   // Home and Sessions cards: each session's facts for sessionState(), its last action and running subagents.
@@ -606,6 +613,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   function snapshot({ project, harness, session, scope }) {
     const last = lastMessages(project);
     const list = agents(project, last);
+    const waiting = waitingIds(project, list);
     const mode = latestMode([...projects.values()].flatMap(item => item.hub.events(item.topic))).mode;
     // Home covers every project's hub; Sessions only this project. Both ride the same pushed state event.
     const cards = scope === "home" ? [...projects.values()].flatMap(item => item === project ? sessionCards(item, list, mode)
@@ -613,10 +621,14 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       : scope === "sessions" ? sessionCards(project, list, mode) : undefined;
     return {
       project: project.cfg.project, operator: project.operator.peer, mode,
-      projects: [...projects.values()].map(item => ({ id: item.cfg.project, peers: item.cfg.peers })),
+      // Waiting counts per project, present only when above 0; a failed project has no sessions to count.
+      projects: [...projects.values()].map(item => {
+        const count = item === project ? waiting.size : item.failed ? 0 : waitingIds(item, agents(item, lastMessages(item))).size;
+        return { id: item.cfg.project, peers: item.cfg.peers, ...(count ? { waiting: count } : {}) };
+      }),
       view: { harness, session, ...(scope ? { scope } : {}) },
       harnesses: harnesses(project, list, last),
-      agents: list,
+      agents: list.map(agent => waiting.has(agent.id) ? { ...agent, waiting: true } : agent),
       messages: scope === "home" ? [] : messages(project, { harness, session }, list),
       ...(cards ? { sessions: cards } : {}),
       ...(scope === "home" ? { unavailable: [...projects.values()].filter(item => item.failed).map(item => item.cfg.project) } : {}),

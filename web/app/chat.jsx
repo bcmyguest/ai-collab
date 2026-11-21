@@ -203,6 +203,8 @@ function Sidebar({ data, selected, now, navigate, newSession }) {
               project.id === current && "bg-sidebar-accent font-medium")}>
             <FolderGit2 className="size-4 shrink-0 text-muted-foreground"/>
             <span className="min-w-0 flex-1 truncate">{project.id}</span>
+            {project.waiting > 0 && <span className="shrink-0 rounded-full border border-amber-500/60 bg-amber-500/15 px-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-300"
+              aria-label={project.waiting + " waiting on you"} title="Sessions waiting on you">{project.waiting}</span>}
             <span aria-hidden className="text-xs text-muted-foreground" title="Peers">{project.peers.length || ""}</span>
           </button>
           <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label={"New session in " + project.id}
@@ -232,12 +234,13 @@ function Sidebar({ data, selected, now, navigate, newSession }) {
         : data.agents.length === 0 && <p className="px-2 text-sm text-muted-foreground">No sessions seen yet.</p>}
       <ul className="flex flex-col gap-1">
         {!home && data.agents.map(agent => <li key={agent.id}>
-          <button type="button" aria-label={agent.id} title={agent.parent ? agent.id + " · started by " + agent.parent : agent.id} aria-current={selected.level === "session" && selected.session === agent.id ? "page" : undefined}
+          <button type="button" aria-label={agent.waiting ? agent.id + ", waiting on you" : agent.id} title={agent.parent ? agent.id + " · started by " + agent.parent : agent.id} aria-current={selected.level === "session" && selected.session === agent.id ? "page" : undefined}
             onClick={() => navigate({ project: current, level: "session", harness: agent.peer, session: agent.id })}
             className={cn("flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-sm transition-colors hover:bg-sidebar-accent",
               selected.level === "session" && selected.session === agent.id && "bg-sidebar-accent")}>
             <Avatar address={agent.id} className="size-6 text-[9px]"/>
             <span className="flex min-w-0 flex-1 flex-col"><span className="truncate font-mono text-xs">{short(agent.id)}</span><SessionName agent={agent}/></span>
+            {agent.waiting && <span role="img" aria-label="Waiting on you" title="Waiting on you" className="inline-block size-2.5 shrink-0 rounded-full bg-amber-500 ring-2 ring-amber-500/25"/>}
             <Dot online={agent.online}/>
             <span className="shrink-0 text-right text-[11px] leading-tight text-muted-foreground">{ago(agent.lastMessageAt, now)}{agent.activeAt ? <><br/>active {ago(agent.activeAt, now)}</> : null}</span>
           </button>
@@ -716,6 +719,7 @@ function Console({ account }) {
     try { return await api("start", { project, ...payload }); } catch (err) { return { status: "failed", detail: err.message }; }
   }
   const sidebar = <Sidebar data={data} selected={selected} now={now} navigate={navigate} newSession={newSession}/>;
+  const anyWaiting = data.projects.some(project => project.waiting > 0);
   return <div className="flex h-dvh w-full overflow-hidden">
     <aside className="hidden w-72 shrink-0 border-r bg-sidebar text-sidebar-foreground md:block">{sidebar}</aside>
     <Sheet open={navOpen} onOpenChange={setNavOpen}>
@@ -728,7 +732,9 @@ function Console({ account }) {
     <main className="flex min-w-0 flex-1 flex-col">
       <header className="sticky top-0 z-10 flex flex-col gap-2 border-b bg-background/85 px-3 py-2 backdrop-blur supports-backdrop-filter:bg-background/70">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" className="md:hidden" aria-label="Projects" aria-expanded={navOpen} onClick={() => setNavOpen(true)}><Menu/></Button>
+          <Button variant="ghost" size="icon" className="relative md:hidden" aria-label="Projects" aria-expanded={navOpen} onClick={() => setNavOpen(true)} title={anyWaiting ? "Sessions waiting on you" : undefined}>
+            <Menu/>{anyWaiting && <span aria-hidden className="absolute right-1.5 top-1.5 size-2.5 rounded-full bg-amber-500 ring-2 ring-background"/>}
+          </Button>
           {/* Back one level: a session returns to its project chat, a project to Home. */}
           {!home && <Button variant="ghost" size="icon" aria-label={level === "session" ? "Back to " + project : "Home"} title={level === "session" ? "Back to the " + project + " chat" : "Home: every project's sessions"}
             onClick={() => navigate(level === "session" ? { project, level: "project" } : { level: "home" })}><ArrowLeft/></Button>}
