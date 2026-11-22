@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ARC, GAP, NODE, layeredLayout, listLayout, taskGraph } from "../web/lib/task-graph.js";
+import { ARC, GAP, NODE, NODE_MIN_WIDTH, layeredLayout, listLayout, taskGraph } from "../web/lib/task-graph.js";
 
 const task = (id, blockers = [], status = "open") => ({ id, title: id, status, blockers });
 const nodesOf = (tasks) => tasks.map(({ id }) => ({ id }));
@@ -116,4 +116,13 @@ test("arcs whose rows overlap take different lanes; the bulge stays inside the c
   assert.notEqual(reach("a", "c"), reach("a", "e"), "overlapping spans do not share a lane");
   for (const edge of laid.edges) assert.ok(Number(reach(edge.from, edge.to)) >= 0);
   assert.ok(ARC.base > 0);
+});
+
+test("many overlapping arcs compress into a gutter that keeps the phone canvas inside 358 px", () => {
+  const tasks = [task("root"), ...Array.from({ length: 20 }, (_, i) => task(`child-${i}`, ["root"]))];
+  const laid = listLayout(nodesOf(tasks), edgesOf(tasks), { maxWidth: 358 });
+  assert.ok(laid.width <= 358, `width ${laid.width} fits the phone`);
+  assert.ok(laid.nodeWidth >= NODE_MIN_WIDTH);
+  assert.equal(laid.edges.length, 20);
+  for (const edge of laid.edges) assert.ok(Number(edge.d.match(/C(-?[\d.]+),/)[1]) >= 0, "no arc leaves the canvas");
 });

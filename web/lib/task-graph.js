@@ -4,7 +4,8 @@ export const NODE = { width: 200, height: 56 };
 export const NODE_MIN_WIDTH = 150;
 export const GAP = { layer: 64, node: 24 };
 // Arc bulge in the list layout: base for the first lane, step per further lane.
-export const ARC = { base: 16, step: 14 };
+// The gutter never exceeds maxGutter: past a few lanes the lane spacing compresses to fit.
+export const ARC = { base: 16, step: 14, maxGutter: 72 };
 export const STATUS_FILL = { open: "#94a3b8", decided: "#38bdf8", building: "#f59e0b", blocked: "#ef4444", done: "#10b981" };
 
 /** The graph of tasks: done tasks go when showDone is false, and so do the edges from them. */
@@ -162,14 +163,15 @@ export function listLayout(nodes, edges, { maxWidth } = {}) {
   const valid = edges.filter(edge => known.has(edge.from) && known.has(edge.to));
   const lanes = arcLanes(order, valid);
   const laneCount = lanes.length ? Math.max(...lanes) + 1 : 0;
-  const gutter = ARC.base + ARC.step * laneCount;
+  const step = laneCount ? Math.min(ARC.step, (ARC.maxGutter - ARC.base) / laneCount) : ARC.step;
+  const gutter = laneCount ? ARC.base + step * laneCount : ARC.base;
   const w = Number.isFinite(maxWidth) ? Math.max(NODE_MIN_WIDTH, Math.min(NODE.width, maxWidth - gutter)) : NODE.width;
   const h = NODE.height;
   const pos = new Map(order.map((id, index) => [id, { x: gutter, y: index * (h + GAP.node) }]));
   const routed = valid.map((edge, index) => {
     const a = pos.get(edge.from);
     const b = pos.get(edge.to);
-    const depth = ARC.base + ARC.step * lanes[index];
+    const depth = ARC.base + step * lanes[index];
     const ys = a.y + h / 2;
     const ye = b.y + h / 2;
     return { from: edge.from, to: edge.to, d: `M${gutter},${ys} C${gutter - depth},${ys} ${gutter - depth},${ye} ${gutter},${ye}` };
