@@ -21,6 +21,7 @@ import { agentDetail } from "@/lib/agent-detail";
 import { withMentions } from "@/lib/mentions";
 import { chatThread } from "@/lib/chat-turns";
 import { PatternsPage } from "./patterns-page";
+import { TaskBoard } from "./tasks";
 import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
 import { TABS, parseSelection } from "@/lib/selection";
 import { subscribeUiEvents } from "@/lib/ui-events";
@@ -220,6 +221,9 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
       <div className="flex items-center justify-between px-2 pb-2">
         <h2 className="min-w-0 truncate text-xs font-medium uppercase tracking-wider text-muted-foreground" title={home ? undefined : current}>{home ? "Sessions" : "Sessions · " + current}</h2>
         {/* Home already lists every project's sessions; elsewhere the button opens this project's list. */}
+        {!home && <button type="button" onClick={() => navigate({ project: current, level: "project", tab: "tasks" })}
+          aria-current={selected.level === "project" && selected.tab === "tasks" ? "page" : undefined}
+          className="shrink-0 rounded-full px-2 py-0.5 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">Tasks</button>}
         <button type="button" onClick={() => navigate(home ? { level: "home" } : { project: current, level: "session" })}
           aria-current={home || (selected.level === "session" && !selected.session) ? "page" : undefined}
           className="shrink-0 rounded-full px-2 py-0.5 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">All sessions</button>
@@ -790,6 +794,7 @@ function Console({ account }) {
   const project = selected.project || data.project || "";
   const models = useModels(project);
   const level = selected.level;
+  const tasksView = level === "project" && selected.tab === "tasks";
   const agent = level === "session" ? data.agents.find(item => item.id === selected.session) : undefined;
   const target = level === "session" ? selected.session : "all";
   const missing = level === "session" && !target;
@@ -924,7 +929,7 @@ function Console({ account }) {
         {ready ? <PatternsPage data={data} project={project} selected={selected} navigate={navigate} call={patternCall} disabled={working}/>
           : <p className="py-16 text-center text-sm text-muted-foreground">Loading patterns…</p>}
       </div>}
-      {!patterns && <ChatContainerRoot contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
+      {!patterns && (tasksView ? <TaskBoard board={data.tasks} now={now}/> : <ChatContainerRoot contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
         <ChatContainerContent key={requested} className="mx-auto w-full max-w-3xl gap-5 px-3 py-4">
           {!ready && (home || listing || subagents) && !loadError && <p className="py-16 text-center text-sm text-muted-foreground">Loading sessions…</p>}
           {ready && (home || listing) && <>
@@ -962,7 +967,7 @@ function Console({ account }) {
         <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
           <ScrollButton className="pointer-events-auto shadow-md" aria-label="Scroll to newest"/>
         </div>
-      </ChatContainerRoot>}
+      </ChatContainerRoot>)}
       <div role="status" hidden={!notice} className="mx-auto w-full max-w-3xl px-4 text-center text-xs text-muted-foreground">{notice}</div>
       {!home && !listing && !patterns && <Composer key={requested} conversation={conversationKey(project, level === "session" ? selected.session : "")} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
         placeholder={placeholder} question={question} cancel={() => setQuestion("")} urgentable={!question} replying={replyTo} cancelReply={() => setReplyTo(null)}
