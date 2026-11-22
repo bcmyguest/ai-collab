@@ -85,6 +85,8 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   let lastStartAt = 0;
   let pumpTimer = null;
   let lastPruneAt = -Infinity;
+// In-memory read positions of the pump's peeks, keyed by state file and topic; see recordPeek in lib/inbox.mjs.
+const pumpPeeks = new Map();
 
   const sessionCfg = (project, harness, label) => ({ ...configs.get(project), peer: harness, session: label });
   const adapterOf = (harness) => adapters.get(harness) || fail(400, `No ${harness} adapter is loaded`);
@@ -508,6 +510,8 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       durable.prune([DELIVERY, WAKE], now() - PRUNE_AFTER_MS);
     }
     let wakes = 0;
+    // One poll per topic and read position per tick, shared by every session that reads it.
+    const peek = { poll: new Map(), peek: pumpPeeks };
     for (const cfg of configs.values()) {
       if (!cfg.enabled) continue;
       migrateLedger(cfg, started);
@@ -523,7 +527,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         if (session.online) {
           if (!PUSHED.has(session.harness)) continue;
           const fresh = (m) => !durable.status(`${DELIVERY}:${session.id}:${m.id}`);
-          const messages = await deps.claim(scfg, { commit: false, limit: CLAIM_LIMIT, accept: (m) => direct(m) && fresh(m) }).catch(() => []);
+          const messages = await deps.claim(scfg, { commit: false, limit: CLAIM_LIMIT, accept: (m) => direct(m) && fresh(m), ...peek }).catch(() => []);
           for (const message of messages) {
             const id = `${DELIVERY}:${session.id}:${message.id}`;
             const run = durable.startWorkflowOnce(DELIVERY, id, { project: cfg.project, address: session.id, message });
@@ -533,7 +537,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         }
         // Only the exact session's messages wake it: a message to the peer as a whole never does.
         if (!PUSHED.has(session.harness) || session.seenAt < now() - SEEN_WITHIN_MS || wakes >= WAKES_PER_TICK || wakeTail.has(session.id)) continue;
-        const messages = await deps.claim(scfg, { commit: false, limit: WAKE_BATCH, accept: (m) => direct(m) && m.to === session.id }).catch(() => []);
+        const messages = await deps.claim(scfg, { commit: false, limit: WAKE_BATCH, accept: (m) => direct(m) && m.to === session.id, ...peek }).catch(() => []);
         if (!messages.length) continue;
         const adopt = { nativeId: session.sessionId, cwd: session.cwd, ...(session.model ? { model: session.model } : {}) };
         const id = startWake(cfg.project, session.id, messages, { adopt });
