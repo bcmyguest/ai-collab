@@ -5,7 +5,7 @@ import { sessionLabel } from "../../lib/config.mjs";
 import { APPROVAL_REQUESTED, PERMISSION_MODES } from "../contract.mjs";
 
 /** A fake Adapter; calls records every adapter call for assertions. */
-export function createFakeAdapter({ harness = "codex", capabilities = {}, openError = null } = {}) {
+export function createFakeAdapter({ harness = "codex", capabilities = {}, openError = null, compact = true } = {}) {
   const calls = [];
   let runs = 0;
 
@@ -77,6 +77,15 @@ export function createFakeAdapter({ harness = "codex", capabilities = {}, openEr
       },
       async setPermissionMode(mode) { calls.push({ op: "setPermissionMode", nativeId, mode }); },
       async contextUsage() { return { tokens: 1234, window: 200000 }; },
+      // A harness "compaction": reports before/after counts and leaves a compact step in the timeline.
+      ...(compact ? {
+        async compact() {
+          calls.push({ op: "compact", nativeId, running: Boolean(running) });
+          if (running) throw new Error(`${harness}: finish the running turn before compacting`);
+          ctx.emit({ type: EventType.STEP_FINISHED, stepName: "compact", metadata: { aiCollab: { compaction: { trigger: "manual", phase: "finished", tokensBefore: 90000, tokensAfter: 20000 } } } });
+          return { before: 90000, after: 20000 };
+        },
+      } : {}),
       resumeData: () => ({ fake: true }),
       async close() {
         calls.push({ op: "close", nativeId });

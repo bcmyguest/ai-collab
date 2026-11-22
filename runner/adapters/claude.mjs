@@ -12,6 +12,7 @@ import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, LIMIT, PERMISSION_MODES, permiss
 export const OWNED_ENV = "AI_COLLAB_OWNED";
 const ASK_QUESTION = "AskUserQuestion";
 const HANDSHAKE_MS = 60_000;
+const COMPACT_MS = 5 * 60_000;
 
 /** A push-based async iterable: the SDK reads user messages from it, and end() closes it. */
 export function inputQueue() {
@@ -57,6 +58,8 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
   const inputs = inputQueue();
   const pending = new Map();
   const toolNames = new Map();
+  // Watchers for an in-flight compact(), fed every message before the run/approval branches.
+  const compactWatch = new Set();
   let run = null;
   let closed = false;
   let ended = false;
@@ -128,6 +131,8 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
   }
 
   function onMessage(msg) {
+    // A compaction in flight sees the boundary and status messages before anything else claims them.
+    if (compactWatch.size) for (const watch of [...compactWatch]) watch(msg);
     const attribution = msg.parent_tool_use_id ? { subagentRunId: msg.parent_tool_use_id } : {};
     if (msg.type === "assistant") {
       msg.message.content.forEach((block, index) => {
@@ -173,6 +178,7 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
       if (!closed) {
         if (run) finishRun({ error: "claude process exited during a run" });
         cancelPending("cancelled");
+        for (const watch of [...compactWatch]) watch({ type: "system", subtype: "status", compact_result: "failed", compact_error: "the claude process exited" });
       }
     }
   })();
@@ -207,6 +213,33 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
       cancelPending("cancelled");
       await q.interrupt();
     },
+    // "/compact" typed into the session: the CLI runs its own compaction on the live conversation.
+    // The CLI reports it with a compact_boundary (finished with token counts) and a status message.
+    async compact() {
+      if (closed || ended) throw new Error("the claude session has ended");
+      if (run) throw new Error("claude: finish the running turn before compacting");
+      if (compactWatch.size) throw new Error("claude: a compaction is already running");
+      const boundary = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => { stop(); reject(new Error("compaction timed out")); }, COMPACT_MS);
+        function stop() { clearTimeout(timer); compactWatch.delete(watch); }
+        const watch = (msg) => {
+          if (msg.type === "system" && msg.subtype === "compact_boundary") {
+            stop();
+            const meta = msg.compact_metadata ?? {};
+            return resolve({ before: meta.pre_tokens, after: meta.post_tokens });
+          }
+          if (msg.type === "system" && msg.subtype === "status" && msg.compact_result === "failed") {
+            stop();
+            reject(new Error(msg.compact_error || "claude compaction failed"));
+          }
+        };
+        compactWatch.add(watch);
+      });
+      boundary.catch(() => {}); // rejected only if the watcher is abandoned
+      // A local slash command bypasses the loop, so it carries no run; the answer arrives as local_command_output.
+      inputs.push({ type: "user", message: { role: "user", content: "/compact" }, parent_tool_use_id: null });
+      return boundary;
+    },
     async respond(interruptId, decision) {
       respond(interruptId, decision);
     },
@@ -229,6 +262,8 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
       closed = true;
       if (run) finishRun({});
       cancelPending("cancelled");
+      // An in-flight compact() fails at once instead of waiting for its timeout.
+      for (const watch of [...compactWatch]) watch({ type: "system", subtype: "status", compact_result: "failed", compact_error: "the session closed" });
       inputs.end();
       q.close();
     },

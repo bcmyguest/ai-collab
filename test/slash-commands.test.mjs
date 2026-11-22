@@ -49,9 +49,11 @@ test("every harness states support for every known command and for passthrough",
   }
 });
 
-test("claude and codex compact are partial: a running session only gets a request", () => {
+test("claude and codex compact are partial: an owned session compacts, a terminal one only gets a request", () => {
   assert.equal(SUPPORT.claude.compact.status, "partial");
+  assert.match(SUPPORT.claude.compact.reason, /runner-owned session compacts in place/);
   assert.equal(SUPPORT.codex.compact.status, "partial");
+  assert.match(SUPPORT.codex.compact.reason, /runner-owned session compacts in place/);
   assert.equal(SUPPORT.opencode.compact.status, "supported");
 });
 

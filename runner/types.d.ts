@@ -16,6 +16,8 @@ export interface UserInput {
 export interface Model { id: string; label?: string; default?: boolean }
 export interface SlashCommand { name: string; description?: string; argumentHint?: string }
 export interface ContextUsage { tokens: number; window?: number }
+// What a harness compaction reported: before/after token counts when the harness names them.
+export interface CompactResult { before?: number; after?: number }
 
 // The operator's answer to an interrupt; answers carries an AskUserQuestion-style choice.
 export interface Decision { behavior: "allow" | "deny"; answers?: Record<string, string>; message?: string }
@@ -91,6 +93,9 @@ export interface SessionHandle {
   steer?(input: UserInput): Promise<void>;
   // Ends the running run; the adapter then emits RUN_FINISHED outcome "cancelled".
   interrupt(): Promise<void>;
+  // Compacts the session's context in place through the harness's own trigger, and resolves once it finished.
+  // Absent when the harness exposes no trigger (Cursor); the runner then reports that instead of asking by message.
+  compact?(): Promise<CompactResult>;
   respond(interruptId: string, decision: Decision): Promise<void>;
   contextUsage?(): Promise<ContextUsage | null>;
   setModel?(model: string): Promise<void>;

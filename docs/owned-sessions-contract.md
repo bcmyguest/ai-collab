@@ -232,6 +232,7 @@ Each adapter is `runner/adapters/<harness>.mjs` with a default export `(options:
 | `handle.send(input)` | Starts a run; resolves `{runId}` once the harness accepted it | yield an `SDKUserMessage` | `turn/start` | `POST .../prompt` | `session/prompt`; resolves once written to the child's stdin (UNVERIFIED that Cursor accepted it) |
 | `handle.steer(input)` | Adds input to the running run | `streamInput` | `turn/steer` | `delivery:"steer"` | — |
 | `handle.interrupt()` | Ends the run; the adapter then emits `RUN_FINISHED {outcome:{type:"cancelled"}}` | `query.interrupt()` | `turn/interrupt` | `POST .../interrupt` | `session/cancel`; the pending `session/prompt` returns `cancelled` |
+| `handle.compact()` | Compacts the context in place, through the harness's own trigger; resolves `{before?, after?}`. Absent for Cursor | `/compact` typed into the live query; reads the `compact_boundary` counts | `thread/compact/start`; first and last `thread/tokenUsage/updated` totals | `POST .../compact` | — (the runner reports `unsupported`) |
 | `handle.setPermissionMode(mode)` | Applies a mode from the permission table to the open session; called only by the runner on the operator's control-socket request | `query.setPermissionMode()` | next `turn/start` settings | the runner's auto-reply set | not built: `--force` is a process argument, so 409 |
 | `handle.respond(interruptId, decision)` | `{behavior:"allow"\|"deny", answers?}` | `canUseTool` resolves | approval response | `.../permission/:id/reply` `once` or `reject` | `request_permission` result: `selected` with an `allow_once` or `reject_once` option, else `cancelled` |
 | `listModels(env)` | `[{id, label?, default?}]` | `initializationResult()` | `model/list` | `model.list` | `cursor-agent --list-models` (UNVERIFIED output format) |
@@ -354,6 +355,7 @@ HTTP/1.1 JSON over a unix socket: `AI_COLLAB_RUNNER_SOCKET`, else `$XDG_RUNTIME_
 | `GET /v1/sessions/:harness/:label` | | `view`: `{session, harness, project, nativeId, workflowId, cwd, place, status, permissionMode, model?, run, approvals, cut?}` |
 | `POST /v1/sessions/:harness/:label/send` | `{text, steer?}` | 202 `{status: "sent"\|"queued"\|"steered"}` |
 | `POST /v1/sessions/:harness/:label/interrupt` | | 202 `{status: "interrupting"\|"idle"}` |
+| `POST /v1/sessions/:harness/:label/compact` | | 200 `{status:"succeeded", detail, before?, after?}` after an in-place harness compaction; 409 when the session is mid-turn or ended; `{status:"unsupported"}` when the harness has no outside trigger (Cursor) |
 | `POST /v1/sessions/:harness/:label/mode` | `{mode}` | `{status:"changed", permissionMode}`; 400 when the harness or place does not allow the mode, 409 when the adapter cannot change it while open |
 | `POST /v1/sessions/:harness/:label/approvals/:id` | `{decision: "allow"\|"deny"}` or `{answers}` | `{status:"answered"}` |
 | `GET /v1/sessions/:harness/:label/context` | | `{context: {tokens, window?} \| null}` |

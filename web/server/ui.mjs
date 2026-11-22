@@ -39,7 +39,8 @@ import { createAuth } from "./auth.mjs";
 import { createHub } from "./hub.mjs";
 import { createPush, notice } from "./push.mjs";
 import { createDispatcher } from "./dispatch.mjs";
-import { runnerUp } from "../../runner/client.mjs";
+import { runnerClient, runnerUp } from "../../runner/client.mjs";
+import { runnerSocket } from "../../runner/control.mjs";
 import { readScheduleRuns, readSchedules } from "./schedules.mjs";
 import { answerMessage, answerText, terminalMessages } from "../lib/operator-messages.js";
 import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a2ui.js";
@@ -305,7 +306,19 @@ function tasksOf(name, env) {
   try { return openTasks(name, env); } catch { return null; }
 }
 
-export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start = startSession, models = listModels, push: notifier = null, auth = null }) {
+/**
+ * Compacts through the runner when it owns the session: its adapters run the harness's own trigger (Claude /compact,
+ * Codex thread/compact/start, OpenCode session.compact). Resolves null when the runner does not own the address, so the
+ * caller falls back to lib/controls.mjs (a terminal session, or a session outside the runner). `runner` is the
+ * runnerClient factory, injected in tests.
+ */
+async function runnerCompact(address, runner, env) {
+  const r = await runner({ socket: runnerSocket(env) }).compact(address).catch(() => null);
+  if (!r || ![200, 409].includes(r.status) || !r.body) return null;
+  return r.status === 200 ? r.body : { status: "failed", detail: r.body.error || "The runner refused the compaction" };
+}
+
+export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start = startSession, models = listModels, push: notifier = null, auth = null, runner = runnerClient }) {
   if (!configs.length) throw new Error("No ai-collab project is configured");
   for (const item of configs) if (!item.enabled) throw new Error(item.reason);
   if (allowedOrigin && (!allowedOrigin.startsWith("https://") || new URL(allowedOrigin).origin !== allowedOrigin)) {
@@ -1153,13 +1166,18 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (!parsed) reject(400, "Commands start with /name");
         recipient(cfg, target, true);
         const session = listSessions(cfg).find(item => item.id === target);
-        return json(200, await slashCommand(session, parsed, { compact: peer => control("compact", peer, { cfg }) }));
+        // /compact compacts an owned session in place; every other command keeps its control path.
+        const compact = parsed.name === "compact"
+          ? async peer => (await runnerCompact(peer.id, runner, env)) ?? control("compact", peer, { cfg })
+          : peer => control("compact", peer, { cfg });
+        return json(200, await slashCommand(session, parsed, { compact }));
       }
       if (action === "compact" || action === "wake") {
         recipient(cfg, target, true);
         const session = listSessions(cfg).find(item => item.id === target);
         if (action === "wake") return json(200, wakeAgent(project, target, session));
-        return json(200, await control("compact", session, { cfg }));
+        // The runner owns the harness trigger for a session it started; a terminal session falls back to controls.
+        return json(200, (await runnerCompact(target, runner, env)) ?? await control("compact", session, { cfg }));
       }
       if (typeof body !== "string" || !body.trim() || body.length > 4000) reject(400, "Enter 1–4000 characters");
       if (action === "reply" || question !== undefined) {
