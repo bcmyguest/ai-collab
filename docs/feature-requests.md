@@ -42,4 +42,11 @@ Operator requests from chat and the terminal, newest last. Status: done (merged 
 | Teams as wteam-style DOT graphs: team.dot per team (project and global), full wteam semantics (agent, count, skill, prompt; on, kind broadcast/pair/fan-in; description, max_visits), DOT text editor with live graph | building (operator 2026-11-22: list, graph and run view first; DOT storage and runner next) |
 | Inspect and edit teams in the UI | building |
 | Compaction in all agents: compact every harness, before/after tokens per compaction, a cross-agent compaction map, one compaction event model | building (operator 2026-11-22) |
+| Structured task list (tasks.json) with status board, dependency graph and live links to agents | building (operator 2026-11-22) |
+| Clear and model/provider switch tracked like compaction, phone commands for every harness | building (operator 2026-11-22) |
+| Running-subagent count; hide long-idle subagents; fix 2 shown of 4 running | building |
+| Session view shows which agent is running now | building |
+| Close or delete a project | building |
+| Operator's pending messages in project chat | building |
+| Sidebar projects show running/inactive counts, not harness types | building |
 | Record feature requests | this file |
