@@ -9,6 +9,9 @@ if (!process.argv.includes("app-server") && !process.argv.includes("--version"))
 const LOG = process.env.FAKE_CODEX_LOG;
 const log = (entry) => { if (LOG) appendFileSync(LOG, `${JSON.stringify(entry)}\n`); };
 const write = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
+// A prompt containing "closing" meets a thread still closing for its first FAKE_CODEX_CLOSING_TIMES turn/start
+// requests (default 0, so other tests are untouched): the server answers with an error and runs no turn.
+let closingRefusals = Number(process.env.FAKE_CODEX_CLOSING_TIMES ?? 0);
 
 if (process.argv.includes("--version")) {
   process.stdout.write("codex-cli 0.171.0 (fake)\n");
@@ -82,6 +85,10 @@ function handle(message) {
       return write({ id, result: { thread: { id: params.threadId } } });
     case "turn/start": {
       const text = params.input[0].text;
+      if (/closing/.test(text) && closingRefusals > 0) {
+        closingRefusals -= 1;
+        return write({ id, error: { code: -32000, message: "thread is closing" } });
+      }
       // Respond first, then run: the adapter learns the turn id from the response.
       write({ id, result: { turn: { id: `turn-${turns + 1}`, items: [], status: "inProgress" } } });
       return runTurn(params.threadId, text);
