@@ -88,4 +88,8 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Code mode B now: compile team.dot to a runner durable workflow; agents keep pattern advance (operator: yes) | open |
 | cap/max_visits hit suspends the run for the operator instead of failing it (operator: yes, confirm) | open |
 | Notification settings lost after UI rebuild: alert level and/or browser push not surviving deploy | open |
+| PM run detail: each schedule run links to the PM session timeline (tool calls, messages, builders started) | open |
+| PM mission file: a file the PM owns and edits (mission, goals, rules), versioned in git, read each tick | open |
+| PM feedback loop: each run ends with a review; lessons go to openmem (substrate approved) and the mission file | open |
+| PM tracked handoffs: builders start as runner-owned sessions linked to tasks (rides on team-runs/OpenShell) | open |
 <!-- tasks:end -->
