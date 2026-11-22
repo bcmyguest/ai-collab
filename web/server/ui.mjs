@@ -5,7 +5,7 @@ import { ACTIVITY_BATCH, STREAM_ERROR } from "../lib/ui-events.js";
 import { mkdirSync, watch } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
 import { buzzes, readAlertLevel, writeAlertLevel } from "../../lib/alerts.mjs";
-import { loadConfig, loadProjects, activityTopic, broadcastTopic, configDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.mjs";
+import { loadConfig, loadProjects, activityTopic, startDefaultSetting, broadcastTopic, configDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.mjs";
 import { ACTIVITY_TYPES } from "../../lib/activity.mjs";
 import { stripControl } from "../../lib/format.mjs";
 import { NTFY_MESSAGE_MAX_BYTES, latestStatuses, markUrgent, parseEnvelope, sendMessage } from "../../lib/inbox.mjs";
@@ -852,6 +852,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       ...(cards ? { sessions: cards } : {}),
       ...(scope === "home" ? { unavailable: shown.filter(item => item.failed).map(item => item.cfg.project) } : {}),
       startable: startable(project),
+      // The new-session default (defaults.json startDefault, else cursor on deepseek); the form prefills it when available.
+      startDefault: startDefaultSetting(env),
       startPlaces: startPlaces(project),
       teams: Object.entries(listTeams(project.cfg, env)).map(([id, members]) => ({ id, members })),
       patterns: patternRows(project.cfg, env),
