@@ -19,6 +19,7 @@ The peer hooks and MCP server need only Node 22+ (builtin `fetch`). The operator
 | [AFK mode](afk.md) | Progress posts, phone questions, Stop-hook waits |
 | [Approvals and questions](approvals.md) | Permission prompts and questions answered from the phone |
 | [Messaging](messaging.md) | CLI and MCP tools, Stop continuation, receipts |
+| [Tasks](tasks.md) | Project task store, `ai-collab task`, status board and dependency graph |
 | [Activity](activity.md) | What hooks publish, per harness |
 | [GitHub sign-in](github-sign-in.md) | Optional OAuth sign-in for the UI |
 | [Security model](security.md) | What is sent and what is trusted |
