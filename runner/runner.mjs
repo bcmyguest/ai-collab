@@ -20,6 +20,7 @@ import { sessionIdleState } from "../lib/idle.mjs";
 import { opencodeRequest } from "../lib/opencode-api.mjs";
 import { childEnv, checkPrompt, findExecutable, projectRoot, worktreeNames } from "../lib/start.mjs";
 import { parseCodeMode, resolveCodeMode } from "../lib/code-mode.mjs";
+import { openTasks } from "../lib/tasks.mjs";
 import { ownedFile, readOwned, writeOwned } from "../lib/owned.mjs";
 import { limitFromRunError } from "../lib/limits.mjs";
 import { alertLimit } from "../lib/limit-alert.mjs";
@@ -83,7 +84,7 @@ function view(s) {
   return {
     session: r.address, harness: r.harness, project: r.project, nativeId: r.nativeId, workflowId: r.workflowId, cwd: r.cwd,
     place: r.place, status: r.status, permissionMode: r.permissionMode, ...(r.model ? { model: r.model } : {}), ...codeModeField(r.codeMode), run: r.run,
-    approvals: r.approvals.map(({ id, tool, summary }) => ({ id, tool, summary })), ...(r.cut ? { cut: r.cut } : {}),
+    ...(r.taskId ? { taskId: r.taskId } : {}), approvals: r.approvals.map(({ id, tool, summary }) => ({ id, tool, summary })), ...(r.cut ? { cut: r.cut } : {}),
   };
 }
 
@@ -270,7 +271,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
 
   // The durable session workflow: place → open → claim, then one run.send/run.wait pair per input until closed.
   async function sessionWorkflow(wf, input) {
-    const { project, harness, place, permissionMode, model, codeMode } = input;
+    const { project, harness, place, permissionMode, model, codeMode, taskId } = input;
     const adapter = adapterOf(harness);
     const holder = { s: null, live: null };
     const cwd = await wf.step("place", () => placeCwd(project, harness, place));
@@ -280,7 +281,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         const childLabel = sessionLabel(nativeId);
         writeOwned(sessionCfg(project, harness, childLabel), {
           v: 1, label: childLabel, address: `${harness}#${childLabel}`, workflowId: wf.id, harness, nativeId, project, cwd, place, permissionMode,
-          ...(model ? { model } : {}), ...codeModeField(codeMode), status: "starting", run: null, approvals: [], createdAt: now(),
+          ...(model ? { model } : {}), ...codeModeField(codeMode), ...(taskId ? { taskId } : {}), status: "starting", run: null, approvals: [], createdAt: now(),
         });
       };
       const options = { project, cwd, place, permissionMode, permission: permissionSettings(harness, permissionMode, place).settings, env: ownedEnv(), beforeStart, ...(model ? { model } : {}), ...codeModeField(codeMode) };
@@ -293,7 +294,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     await wf.step("claim", async () => {
       const record = {
         v: 1, label, address: `${harness}#${label}`, workflowId: wf.id, harness, nativeId: opened.nativeId, project, cwd, place, permissionMode,
-        ...(model ? { model } : {}), ...codeModeField(codeMode), status: "idle", run: null, approvals: [], createdAt: now(),
+        ...(model ? { model } : {}), ...codeModeField(codeMode), ...(taskId ? { taskId } : {}), status: "idle", run: null, approvals: [], createdAt: now(),
       };
       writeOwned(cfg, record);
       return null;
@@ -624,7 +625,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   durable.register("session", sessionWorkflow);
 
   /** Starts an owned session; resolves {status:"started", session, nativeId, workflowId, detail}. */
-  async function start({ project, harness, prompt, model, place = "folder", permissionMode, codeMode } = {}) {
+  async function start({ project, harness, prompt, model, place = "folder", permissionMode, codeMode, taskId } = {}) {
     if (!configs.has(project)) fail(400, "Unknown project");
     const adapter = adapterOf(harness);
     if (!PLACES.includes(place)) fail(400, "Unknown start place");
@@ -636,13 +637,17 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     if (checked.error) fail(400, checked.error);
     if (model !== undefined && (typeof model !== "string" || !MODEL.test(model))) fail(400, "Invalid model name");
     if (codeMode !== undefined && parseCodeMode(codeMode) === undefined) fail(400, "codeMode must be on or off");
+    if (taskId !== undefined) {
+      if (typeof taskId !== "string" || !taskId) fail(400, "Invalid task id");
+      if (!openTasks(project, env).list().some(task => task.id === taskId)) fail(400, "Unknown task in this project");
+    }
     if (now() - lastStartAt < startGapMs) fail(429, "Wait 10 seconds between starts");
     lastStartAt = now();
     const workflowId = `session-${randomUUID()}`;
     const claimed = new Promise((resolve) => claims.set(workflowId, resolve));
     const timer = new AbortController();
     try {
-      const run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, ...(model ? { model } : {}), codeMode: resolveCodeMode(codeMode, env) });
+      const run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), codeMode: resolveCodeMode(codeMode, env) });
       const ended = run.then((out) => fail(502, `${harness} session ended at once: ${out?.ended || "no reason"}`));
       ended.catch(() => {});
       const s = await Promise.race([
@@ -650,7 +655,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         ended,
         delay(START_TIMEOUT_MS, null, { signal: timer.signal }).then(() => fail(504, `${harness} did not open within ${START_TIMEOUT_MS / 1000} s`)),
       ]);
-      return { status: "started", session: s.record.address, nativeId: s.record.nativeId, workflowId, detail: `${harness} owned session started` };
+      return { status: "started", session: s.record.address, nativeId: s.record.nativeId, workflowId, ...(taskId ? { taskId } : {}), detail: `${harness} owned session started` };
     } catch (error) {
       if (error.status) throw error;
       throw Object.assign(new Error(`${harness} failed to start: ${error.message}`), { status: 502 });

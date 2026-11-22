@@ -31,6 +31,7 @@ import { clearFields, modelFields, sessionHistory } from "../../lib/session-even
 import { compactionFields } from "../../lib/compaction.mjs";
 import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern, savePattern, saveTeamText, teamTemplates, teamTextOf } from "../../lib/patterns.mjs";
 import { authorTeam, saveAuthoredTeam } from "../../lib/team-author.mjs";
+import { listOwned } from "../../lib/owned.mjs";
 import { openTasks } from "../../lib/tasks.mjs";
 import { taskTags } from "../lib/task-tags.js";
 import { taskBoard } from "./task-board.mjs";
@@ -930,7 +931,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       patterns: patternRows(project.cfg, env),
       templates: teamTemplates(),
       runs: runs.slice(0, 20),
-      tasks: taskBoard(project.tasks, list, runs),
+      tasks: taskBoard(project.tasks, list, runs, project.tasks ? listOwned(project.cfg) : []),
     };
   }
 

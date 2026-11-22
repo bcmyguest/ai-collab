@@ -78,7 +78,7 @@ test("builder start runs the agent in its own sandbox and lands its commit on th
   assert.equal(res.code, 0, res.err);
   assert.match(res.out, new RegExp(`^builder-smoke-task\tsmoke-task\t${SANDBOX}\t.*ai-collab-wt-smoke-task\tbuilder/smoke-task\n$`));
   const [run] = readJsonLines(l.env.FAKE_SYSTEMD_LOG).filter((a) => a[0] === "systemd-run");
-  for (const flag of ["--user", "--collect", "--unit=builder-smoke-task", `--working-directory=${path.join(l.home, "ai-collab-wt-smoke-task")}`, "--setenv=AI_COLLAB_PROJECT=demo"]) assert.ok(run.includes(flag), flag);
+  for (const flag of ["--user", "--collect", "--unit=builder-smoke-task", `--working-directory=${path.join(l.home, "ai-collab-wt-smoke-task")}`, "--setenv=AI_COLLAB_PROJECT=demo", "--setenv=AI_COLLAB_BUILDER_TASK=smoke-task"]) assert.ok(run.includes(flag), flag);
   assert.deepEqual(run.slice(-3), ["builder", "run", "smoke-task"]);
   // The commit made inside the sandbox is on the host branch, and the worktree is clean.
   assert.match(wtGit(l, "log", "--format=%s", "-2"), /^docs: add a line\ninit\n$/);
