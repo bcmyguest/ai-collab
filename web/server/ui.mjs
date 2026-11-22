@@ -934,7 +934,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const mode = latestMode([...projects.values()].flatMap(item => item.hub.events(item.topic))).mode;
     // Home covers every project's hub; Sessions only this project. Both ride the same pushed state event.
     const own = sessionCards(project, list, mode);
-    const runsOf = new Map(own.map(card => [card.id, card.subagents]));
+    const cardsById = new Map(own.map(card => [card.id, card]));
     // Child sessions join their parent's subagents on the agent list only; the cards nest them already (sessionTree).
     const kids = childRuns(own);
     const hidden = hiddenProjects();
@@ -963,11 +963,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       harnesses: harnesses(project, placed(list), last),
       // Unfinished subagent runs ride on each agent for the composer's @session/run picker.
       agents: list.map(agent => {
-        const subagents = [...(runsOf.get(agent.id) || []), ...(kids.get(agent.id) || [])];
+        const card = cardsById.get(agent.id);
+        const subagents = [...(card?.subagents || []), ...(kids.get(agent.id) || [])];
         const owned = agent.peer === "claude" && agent.id === session ? readOwned(project.cfg, agent.session) : null;
         const modelControl = owned?.address === agent.id && ["idle", "running"].includes(owned.status)
           ? { current: owned.model || "", busy: owned.status === "running" } : null;
-        const base = { ...agent, ...(subagents.length ? { subagents } : {}), ...(modelControl ? { modelControl } : {}) };
+        const { lastActivityAt, openCallAt, afkHold, pending } = card || {};
+        const base = { ...agent, lastActivityAt, openCallAt, afkHold, pending, ...(subagents.length ? { subagents } : {}), ...(modelControl ? { modelControl } : {}) };
         // Context telemetry and instruction files from the session's state file (lib/usage.mjs).
         const context = readContext({ stateDir: project.cfg.stateDir, project: project.cfg.project, peer: agent.peer, session: agent.session });
         const withContext = context.tokens !== null || context.files.length ? { ...base, context } : base;

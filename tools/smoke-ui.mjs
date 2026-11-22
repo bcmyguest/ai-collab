@@ -1,4 +1,4 @@
-// Loads the UI at phone width. Pass --decisions, --composer, or --home-sessions to exercise fixture projects.
+// Loads the UI at phone width. Pass --decisions, --composer, --home-sessions, or --inactive.
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 
-async function phoneFixture(homeSessions) {
+async function phoneFixture({ homeSessions = false, inactive = false } = {}) {
   const { createUi, installUi } = await import("../web/server/ui.mjs");
   const { broadcastTopic, inboxTopic, loadProjects, sessionLabel } = await import("../lib/config.mjs");
   const { addTask, taskStoreFile, writeStore } = await import("../lib/tasks.mjs");
@@ -44,8 +44,8 @@ async function phoneFixture(homeSessions) {
     id: address, sessionId, cwd: projectsConfig[0].root, harness: "claude", seenAt: Date.now(),
   });
   const sessions = [];
+  const { processStart } = await import("../lib/process.mjs");
   if (homeSessions) {
-    const { processStart } = await import("../lib/process.mjs");
     for (const [index, name] of ["Trace reconnect", "", ""].entries()) {
       const sessionId = "jev-debugger-fixture-" + index;
       const id = "claude#" + sessionLabel(sessionId);
@@ -57,6 +57,20 @@ async function phoneFixture(homeSessions) {
       });
       sessions.push({ id, title: name || id.slice(0, 15), metadata: index === 2 ? "jev-debugger · repro" : "jev-debugger" });
     }
+  }
+  if (inactive) {
+    const liveSession = "live-fixture";
+    const liveAddress = "claude#" + sessionLabel(liveSession);
+    writeState(join(cfg.stateDir, cfg.project, "registry", liveAddress + ".json"), {
+      id: liveAddress, sessionId: liveSession, cwd: projectsConfig[0].root, harness: "claude",
+      seenAt: Date.now(), pid: process.pid, pidStart: processStart(process.pid),
+    });
+    const oldSession = "old-fixture";
+    const oldAddress = "claude#" + sessionLabel(oldSession);
+    writeState(join(cfg.stateDir, cfg.project, "registry", oldAddress + ".json"), {
+      id: oldAddress, sessionId: oldSession, cwd: projectsConfig[0].root, harness: "claude",
+      seenAt: Date.now() - 25 * 60 * 60_000,
+    });
   }
   const ui = installUi(createUi({ projects, env, hasDraft: async () => false,
     control: async () => ({ status: "requested" }) }));
@@ -170,6 +184,28 @@ async function checkHomeSessions(page, fixture) {
   await page.waitForURL(url => new URLSearchParams(url.hash.slice(1)).get("session") === id);
 }
 
+async function checkInactive(page, fixture) {
+  const show = page.getByRole("button", { name: "Show 2 inactive", exact: true });
+  const hide = page.getByRole("button", { name: "Hide 2 inactive", exact: true });
+  const dead = page.getByRole("button", { name: /^Dead · 1/ });
+  await show.waitFor();
+  await page.getByRole("heading", { name: "Idle · 1", exact: true }).waitFor();
+  assert.equal(await dead.count(), 0);
+  await page.screenshot({ path: process.env.SMOKE_SCREENSHOT || "/tmp/ai-collab-inactive-390.png" });
+  await show.click();
+  await dead.waitFor();
+  assert.equal(await dead.getAttribute("aria-expanded"), "false");
+  await page.reload();
+  await hide.waitFor();
+  await page.goto(fixture.url + "/#" + new URLSearchParams({ project: fixture.project, level: "session" }));
+  await hide.waitFor();
+  await page.goto(fixture.url + "/#project=" + fixture.project);
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  const sidebar = page.getByRole("navigation", { name: "Projects" });
+  await sidebar.getByRole("button", { name: "Hide 2 inactive", exact: true }).click();
+  await sidebar.getByRole("button", { name: "Show 2 inactive", exact: true }).waitFor();
+}
+
 const deployedChrome = "/home/b/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome";
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || (existsSync(deployedChrome) ? deployedChrome : undefined) });
 let fixture;
@@ -177,8 +213,9 @@ try {
   const composer = process.argv.includes("--composer");
   const decisions = process.argv.includes("--decisions");
   const homeSessions = process.argv.includes("--home-sessions");
-  if (composer || decisions || homeSessions) fixture = await phoneFixture(homeSessions);
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, ...(composer || homeSessions ? { isMobile: true, hasTouch: true } : {}) });
+  const inactive = process.argv.includes("--inactive");
+  if (composer || decisions || homeSessions || inactive) fixture = await phoneFixture({ homeSessions, inactive });
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, ...(composer || homeSessions || inactive ? { isMobile: true, hasTouch: true } : {}) });
   const errors = [];
   page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
   page.on("pageerror", error => errors.push("pageerror: " + error.message));
@@ -187,6 +224,7 @@ try {
   if (composer) await checkComposer(page, fixture);
   else if (decisions) await checkDecisions(page, fixture);
   else if (homeSessions) await checkHomeSessions(page, fixture);
+  else if (inactive) await checkInactive(page, fixture);
   else await page.waitForTimeout(6000);
   console.log(errors.slice(0, 15).join("\n") || "no errors");
   console.log("text:", (await page.innerText("body")).slice(0, 300).replace(/\n+/g, " | "));

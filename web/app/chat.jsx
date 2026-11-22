@@ -27,13 +27,14 @@ import { TaskBoard } from "./tasks";
 import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
 import { TABS, parseSelection, selectionHash } from "@/lib/selection";
 import { namedAgents, unnamedAgents } from "@/lib/sidebar";
+import { sessionState } from "@/lib/session-state";
 import { subscribeUiEvents } from "@/lib/ui-events";
 import { ActivityRow, GoToAgent, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
 import { SurfaceContext } from "@/components/a2ui/surface";
 import { NotifyToggle } from "./notify";
 import { DecisionQueue } from "./decisions";
-import { SessionList, SessionMenu, SubagentList } from "./home";
+import { InactiveSessions, SessionList, SessionMenu, SubagentList } from "./home";
 import { RunningCount, SubagentRuns } from "./subagent-runs";
 import { ClosedProjects, ProjectMenu } from "./project-menu";
 import { Quote } from "./quote";
@@ -281,10 +282,17 @@ function AgentList({ agents, project, selected, now, navigate, dispose, openRaw,
   </section>;
 }
 
-function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, disabled, projectAction, openHash }) {
+function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, disabled, projectAction, openHash, inactiveOpen, onInactiveToggle }) {
   const current = selected.project || data.project;
   // Home's state carries the server's default project's agents; they are not "this project" here.
   const home = selected.level === "home" || selected.level === "inbox";
+  const visible = home ? [] : data.agents.filter(agent => !agent.gone);
+  const active = [];
+  const inactive = [];
+  for (const agent of visible) {
+    const group = sessionState(agent, now) === "offline" ? inactive : active;
+    group.push(agent);
+  }
   return <nav aria-label="Projects" className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto p-4">
     <button type="button" onClick={() => navigate({ level: "home" })} aria-current={selected.level === "home" ? "page" : undefined}
       className="flex items-center gap-2 rounded-xl px-2 text-left text-sm font-semibold tracking-tight" title="Home: every project's sessions">
@@ -332,7 +340,7 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
     {/* Scheduled jobs are the runner's own entries, not agents: they stay in their own section below. */}
     <ScheduledJobs project={home ? "" : current} openRun={openHash}/>
     {/* Agents (sessions that set an identity name) sit apart from the plain session rows and from Scheduled jobs. */}
-    {!home && namedAgents(data.agents).length > 0 && <AgentList agents={namedAgents(data.agents)} project={current} selected={selected} now={now} navigate={navigate} dispose={dispose} openRaw={openRaw} disabled={disabled}/>}
+    {!home && namedAgents(active).length > 0 && <AgentList agents={namedAgents(active)} project={current} selected={selected} now={now} navigate={navigate} dispose={dispose} openRaw={openRaw} disabled={disabled}/>}
     <section>
       <div className="flex items-center justify-between px-2 pb-2">
         <h2 className="min-w-0 truncate text-xs font-medium uppercase tracking-wider text-muted-foreground" title={home ? undefined : current}>{home ? "Sessions" : "Sessions · " + current}</h2>
@@ -341,10 +349,15 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
           className="shrink-0 rounded-full px-2 py-0.5 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">All sessions</button>
       </div>
       {home ? <p className="px-2 text-sm text-muted-foreground">Pick a project to list its sessions here.</p>
-        : unnamedAgents(data.agents).length === 0 && namedAgents(data.agents).length === 0 && <p className="px-2 text-sm text-muted-foreground">No sessions seen yet.</p>}
+        : visible.length === 0 && <p className="px-2 text-sm text-muted-foreground">No sessions seen yet.</p>}
       <ul className="flex flex-col gap-1">
-        {!home && unnamedAgents(data.agents).map(agent => <SessionRow key={agent.id} agent={agent} project={current} selected={selected} now={now} navigate={navigate} dispose={dispose} openRaw={openRaw} disabled={disabled}/>)}
+        {unnamedAgents(active).map(agent => <SessionRow key={agent.id} agent={agent} project={current} selected={selected} now={now} navigate={navigate} dispose={dispose} openRaw={openRaw} disabled={disabled}/>)}
       </ul>
+      {inactive.length > 0 && <InactiveSessions count={inactive.length} open={inactiveOpen} onToggle={onInactiveToggle}>
+        <ul className="flex flex-col gap-1">
+          {[...namedAgents(inactive), ...unnamedAgents(inactive)].map(agent => <SessionRow key={agent.id} agent={agent} project={current} selected={selected} now={now} navigate={navigate} dispose={dispose} openRaw={openRaw} disabled={disabled} lead={agent.identityName ? "name" : undefined}/>)}
+        </ul>
+      </InactiveSessions>}
     </section>
   </nav>;
 }
@@ -739,7 +752,7 @@ function Console({ account }) {
   const hiddenAt = useRef(0);
   const { home, watching, subagents, inline, raw, listing, tasks, compactions, requested } = streamOf(selected);
   route.current = requested;
-  // Home and a Sessions list remember their scroll and Offline group; other views open at the newest message.
+  // Home and a Sessions list remember their scroll and Dead group; other views open at the newest message.
   const memoryKey = home ? (selected.level === "home" ? "home" : "") : listing ? "sessions " + (selected.project || data.project || "") : "";
   const [, remembered] = useState(0);
   useEffect(() => {
@@ -763,10 +776,13 @@ function Console({ account }) {
     list.addEventListener("scroll", save, { passive: true });
     return () => list.removeEventListener("scroll", save);
   }, [ready, requested, memoryKey]);
-  function rememberOffline(open) {
-    if (Boolean(views.get(memoryKey, {}).offline) === open) return;
-    views.set(memoryKey, { ...views.get(memoryKey, {}), offline: open });
-    remembered(n => n + 1);
+  const [inactiveOpen, setInactiveOpen] = useState(false);
+  useEffect(() => {
+    try { setInactiveOpen(localStorage.getItem("ai-collab:show-inactive") === "true"); } catch {}
+  }, []);
+  function rememberInactive(open) {
+    setInactiveOpen(open);
+    try { localStorage.setItem("ai-collab:show-inactive", String(open)); } catch {}
   }
   function rememberDead(open) {
     if (Boolean(views.get(memoryKey, {}).dead) === open) return;
@@ -999,7 +1015,7 @@ function Console({ account }) {
     const done = await action(path, { project: name }, path === "close" ? "Closed" : path === "reopen" ? "Reopened" : "Deleted");
     if (done && path !== "reopen" && name === (selected.project || data.project)) navigate({ level: "home" });
   }
-  const sidebar = <Sidebar data={data} selected={selected} now={now} navigate={navigate} newSession={newSession} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")} openRaw={openRaw} projectAction={projectAction}
+  const sidebar = <Sidebar inactiveOpen={inactiveOpen} onInactiveToggle={rememberInactive} data={data} selected={selected} now={now} navigate={navigate} newSession={newSession} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")} openRaw={openRaw} projectAction={projectAction}
     openHash={hash => { setNavOpen(false); location.hash = hash.slice(1); }}/>;
   const anyWaiting = data.projects.some(project => project.waiting > 0);
   return <SurfaceContext.Provider value={{ surfaces, submit: payload => action("a2ui", payload, "Sent"), disabled: !ready || working }}><div className="flex h-dvh w-full overflow-hidden">
@@ -1090,7 +1106,7 @@ function Console({ account }) {
             {home && <DecisionQueue decisions={data.decisions} inbox={inbox} now={now} disabled={working} action={action}
               openInbox={() => navigate({ level: "inbox" })}/>}
             {!inbox && <SessionList sessions={data.sessions} now={now} open={openCard} raw={openRaw} disabled={working} showProject={home} compact={home}
-              offlineOpen={Boolean(views.get(memoryKey, {}).offline)} onOfflineToggle={rememberOffline}
+              inactiveOpen={inactiveOpen} onInactiveToggle={rememberInactive}
               deadOpen={Boolean(views.get(memoryKey, {}).dead)} onDeadToggle={rememberDead}
               openAddress={(address, at) => navigate({ project: at, level: "session", harness: peerOf(address), session: address })}
               empty={home ? "No sessions in any project yet." : "No sessions in " + project + " yet."}
