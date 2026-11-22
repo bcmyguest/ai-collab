@@ -1,10 +1,11 @@
 "use client";
-import { Bot, ChevronRight, CirclePlay, CircleStop, FileText, Globe, ListTodo, LoaderCircle, Minimize2, Paperclip, Pencil, Plug, Search, SquareArrowOutUpRight, Terminal, TriangleAlert, Wrench } from "lucide-react";
+import { Bot, ChevronRight, CirclePlay, CircleStop, Eraser, FileText, Globe, ListTodo, LoaderCircle, Minimize2, Paperclip, Pencil, Plug, Search, SquareArrowOutUpRight, Terminal, TriangleAlert, Wrench } from "lucide-react";
 import { useMemo, useState } from "react";
 import { CodeBlockCode } from "@/components/ui/code-block";
 import { MessageContent } from "@/components/ui/message";
 import { cn } from "@/lib/utils";
 import { groupLabel } from "@/lib/chat-turns";
+import { clearText, compactionText, modelText } from "@/lib/compaction-view";
 import { activeAgents, inputBlocks, readableText, resultLanguage, runState, subagentLabel, summarize } from "@/lib/activity-rows";
 import { toolDiff } from "@/lib/tool-diff";
 import { ChoiceCard, askedQuestions } from "./cards";
@@ -116,9 +117,11 @@ function Body({ item }) {
       // A result without its call names the tool and its command inside its own box.
       return <Result item={item} input={item.input} header={Boolean(item.tool)} summary={summarize(item.input)}/>;
     default: {
-      const Icon = item.type === "start" ? CirclePlay : item.type === "compact" ? Minimize2 : CircleStop;
+      const Icon = { start: CirclePlay, compact: Minimize2, clear: Eraser, model: Bot }[item.type] || CircleStop;
+      const label = item.type === "clear" ? clearText(item.clear) : item.type === "model" && item.modelSwitch ? modelText(item.modelSwitch)
+        : compactionText(item.compaction) || item.input || item.type;
       return <>
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Icon className="size-3.5"/>{item.input || item.type}</p>
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Icon className="size-3.5"/>{label}</p>
         {item.output && <MessageContent markdown className="bubble max-w-full rounded-2xl rounded-tl-md border border-dashed bg-muted/30 px-3 py-1.5 text-sm leading-relaxed text-foreground/90 [overflow-wrap:anywhere]">{item.output}</MessageContent>}
       </>;
     }

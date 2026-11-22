@@ -166,7 +166,7 @@ Compacting a running session, per harness:
 |---|---|---|
 | Codex | The TUI attaches to the local app-server daemon (`daemon_auto_start` in `codex features list`); `codex app-server proxy` connects another client to it. The protocol (`codex app-server generate-json-schema`) has `thread/loaded/list`, `thread/read` (status `idle` or `active`), `thread/resume` ("If thread_id identifies a running thread, app-server rejoins that thread"), and `thread/compact/start`. | Lists loaded threads; if the thread is loaded and idle, rejoins it with only its id and compacts it. A busy thread or one outside the daemon gets the urgent request; press Compact again once its turn ends. |
 | Claude Code | None documented. [Hook outputs](https://code.claude.com/docs/en/hooks#precompact-output) cannot start a compaction (PreCompact only shapes one), a Stop `reason` is text for the model, and `/compact` runs only when typed in the session or sent from [Remote Control](https://code.claude.com/docs/en/remote-control). | Urgent request; run `/compact` in the terminal or from Remote Control. |
-| Cursor | None: `cursor-agent --help` lists no compaction command or flag. | Urgent request; run `/compact` in the session. |
+| Cursor | None found. `cursor-agent --help` and `cursor-agent acp --help` list no compaction command or flag; the ACP handler bundled in cursor-agent 2026.11.22 dispatches `session/new`, `load`, `resume`, `fork`, `list`, `status`, `prompt`, `cancel`, `set_mode`, `set_model` and `set_config_option`, with no `session/compact`; no `/compact` command string appears in the bundle. Not run against a live session. | Urgent request; run `/compact` in the session. |
 
 ai-collab never writes another process's transcript or rollout files.
 
@@ -187,6 +187,16 @@ Context alerts post one context alert to the broadcast topic each time a session
 | Codex | Last `token_count` event in the rollout: `info.last_token_usage.total_tokens` |
 | Cursor | `preCompact` hook `context_tokens` (sampled only before compaction) |
 | OpenCode 2 | last `session.step.ended` event's `tokens`: `input + cache.read + cache.write`, passed as `context_tokens` |
+
+## Compaction map
+
+The sidebar's **Compactions** entry, and **Compaction map** in a session's menu, open `#project=<name>&level=compactions`. It lists every agent in the project: harness, model, the context against the window (`tokens of window · N to window`), and its compactions, clears and model switches on one time axis shared by all rows. The axis runs from the oldest entry (or an hour ago) to now. Markers: amber auto, blue manual, red failed, sky clear, green model switch. The three newest entries follow each card with their times.
+
+Headroom is `window - tokens` and shows only when the harness reported both (Codex does; Claude, Cursor and OpenCode report no window). No harness reports its auto-compact point, so the map shows no auto-compact headroom. The history is the activity kept in memory (500 events per project).
+
+Timeline rows: `Compacted · auto · 182k → 31k · 4 files dropped`, `Cleared · 140k → 0`, `Model claude-haiku-5-5 → claude-opus-5-5`. A compaction's before count and dropped files come from its started row; the after count comes from the runner (Claude's `post_tokens`), so a hook-observed compaction shows no after count.
+
+Phone Clear and Model switch: no new channel is verified. `/clear` stays `unsupported` on every harness. `/model` keeps its current support. The Claude Agent SDK has `Query.setModel` (sdk.d.ts:3227), but no phone route calls it. Cursor's ACP dispatcher serves `session/set_model`; `runner/adapters/cursor.mjs` `setModel` sends it, **unverified**: it has not run against a live cursor-agent, and no route calls it.
 
 ## Slash commands and context
 

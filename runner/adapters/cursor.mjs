@@ -296,6 +296,11 @@ export default function cursorAdapter(config = {}) {
         cancelApprovals(session);
       },
       async respond(interruptId, decision) { respond(session, interruptId, decision); },
+      // UNVERIFIED: session/set_model is in cursor-agent 2026.11.22's ACP dispatcher; the params follow the ACP spec. Not called live.
+      async setModel(modelId) {
+        if (conn.dead) throw conn.dead;
+        return conn.request("session/set_model", { sessionId: session.sessionId, modelId }, TOOL_TIMEOUT_MS);
+      },
       async close() {
         if (session.closed) return;
         session.closed = true;

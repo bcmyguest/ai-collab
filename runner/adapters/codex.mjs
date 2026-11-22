@@ -161,8 +161,8 @@ function itemCompleted(session, item) {
     case "mcpToolCall":
       return toolCall(session, item.id, item.tool, item.arguments, "", FAILED_STATUS.includes(item.status));
     case "contextCompaction":
-      emit({ type: EventType.STEP_STARTED, stepName: "compact" });
-      return emit({ type: EventType.STEP_FINISHED, stepName: "compact" });
+      emit({ type: EventType.STEP_STARTED, stepName: "compact", metadata: { aiCollab: { compaction: { phase: "started" } } } });
+      return emit({ type: EventType.STEP_FINISHED, stepName: "compact", metadata: { aiCollab: { compaction: { phase: "finished" } } } });
   }
 }
 

@@ -36,6 +36,7 @@ import { ClosedProjects, ProjectMenu } from "./project-menu";
 import { Quote } from "./quote";
 import { ScheduledJobs } from "./scheduled";
 import { quoteText } from "@/lib/quote";
+import { CompactionMap } from "./compactions";
 import { activityRows, groupSubagents } from "@/lib/activity-rows";
 import { conversationKey, drafts, views } from "@/lib/view-memory";
 import { toast } from "sonner";
@@ -81,10 +82,13 @@ function streamOf(selected) {
   const raw = session && selected.tab === "raw";
   // Sessions with none picked lists the project's sessions under the selector.
   const listing = selected.level === "session" && !selected.session;
+  // The compaction map reads each agent's compactions and context from the sessions view.
+  const compactions = selected.level === "compactions";
   if (watching || inline || subagents || raw) stream.set("view", "activity");
   else if (home) stream.set("view", "home");
-  else if (listing) stream.set("view", "sessions");
-  return { home, watching, subagents, inline, raw, listing, requested: stream.toString() };
+  else if (listing || compactions) stream.set("view", "sessions");
+  if (compactions) stream.set("history", "1");
+  return { home, watching, subagents, inline, raw, listing, compactions, requested: stream.toString() };
 }
 
 async function api(path, payload) {
@@ -188,6 +192,10 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
       className="flex items-center gap-2 rounded-xl px-2 text-left text-sm font-semibold tracking-tight" title="Home: every project's sessions">
       <span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground">ai</span>AI Collab
     </button>
+    <button type="button" onClick={() => navigate({ project: current, level: "compactions" })} aria-current={selected.level === "compactions" ? "page" : undefined}
+      className="flex items-center gap-2 rounded-xl px-2 text-left text-sm" title="Compactions of every agent in this project">
+      <Minimize2 className="size-4"/>Compactions
+    </button>
     <section>
       <h2 className="px-2 pb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Projects</h2>
       <ul className="flex flex-col gap-1">
@@ -244,7 +252,7 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
             <Dot online={agent.online}/>
             <span className="shrink-0 text-right text-[11px] leading-tight text-muted-foreground">{ago(agent.lastMessageAt, now)}{agent.activeAt ? <><br/>active {ago(agent.activeAt, now)}</> : null}</span>
           </button>
-          {dispose && <SessionMenu node={{ ...agent, project: current }} disabled={disabled} dispose={dispose} raw={openRaw} label={"Session actions for " + agent.id}/>}
+          {dispose && <SessionMenu node={{ ...agent, project: current }} disabled={disabled} dispose={dispose} raw={openRaw} map={() => navigate({ project: current, level: "compactions" })} label={"Session actions for " + agent.id}/>}
           </div>
           <SubagentRuns runs={agent.subagents} now={now} open={run => navigate({ project: current, level: "session", harness: agent.peer, session: agent.id, tab: "subagents", run: run.run })}/>
         </li>)}
@@ -627,7 +635,7 @@ function Console({ account }) {
   const shown = useRef(false);
   const autoRetry = useRef(true);
   const hiddenAt = useRef(0);
-  const { home, watching, subagents, inline, raw, listing, requested } = streamOf(selected);
+  const { home, watching, subagents, inline, raw, listing, compactions, requested } = streamOf(selected);
   route.current = requested;
   // Home and a Sessions list remember their scroll and Offline group; other views open at the newest message.
   const memoryKey = home ? "home" : listing ? "sessions " + (selected.project || data.project || "") : "";
@@ -908,7 +916,7 @@ function Console({ account }) {
             <ContextChip context={agent.context || {}} rows={rows.filter(row => row.agent === agent.id)}/>
             {agent.online && ["codex", "opencode"].includes(agent.peer) && <Button variant="outline" size="sm" className="h-9 rounded-full" aria-label="Interrupt" disabled={!ready || working}
               onClick={() => action("interrupt", { target: selected.session }, "Interrupt requested")}><Square/>Interrupt</Button>}
-            <SessionMenu node={{ ...agent, project }} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}
+            <SessionMenu node={{ ...agent, project }} disabled={working} map={() => navigate({ project, level: "compactions" })} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}
               raw={openRaw} label={"Session actions for " + selected.session}/>
             <Button variant="outline" size="sm" className="h-9 rounded-full" aria-label="Compact" disabled={!ready || working}
               onClick={() => action("compact", { target: selected.session }, "Compaction requested")}><Minimize2/>Compact</Button></span>}/>}
@@ -931,7 +939,7 @@ function Console({ account }) {
       </div>}
       {!patterns && (tasksView ? <TaskBoard board={data.tasks} now={now} open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatContainerRoot contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
         <ChatContainerContent key={requested} className="mx-auto w-full max-w-3xl gap-5 px-3 py-4">
-          {!ready && (home || listing || subagents) && !loadError && <p className="py-16 text-center text-sm text-muted-foreground">Loading sessions…</p>}
+          {!ready && (home || listing || subagents || compactions) && !loadError && <p className="py-16 text-center text-sm text-muted-foreground">Loading sessions…</p>}
           {ready && (home || listing) && <>
             {home && data.unavailable?.length > 0 && <p role="alert" className="text-xs text-destructive">Unavailable: {data.unavailable.join(", ")}</p>}
             <SessionList sessions={data.sessions} now={now} open={openCard} raw={openRaw} disabled={working} showProject={home} compact={home}
@@ -941,6 +949,7 @@ function Console({ account }) {
               dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}
               act={payload => action("approve", payload, "Sent")} answer={(at, id, body) => action("reply", { project: at, question: id, body }, "Reply sent")}/>
           </>}
+          {ready && compactions && <CompactionMap agents={data.agents || []} now={now}/>}
           {ready && subagents && <SubagentList rows={rows} session={selected.session} run={selected.run} when={at => ago(at, now)} now={now}
             childRuns={(agent?.subagents || []).filter(run => run.child)} openChild={child => navigate({ project, level: "session", harness: child.kind, session: child.id })}
             back={() => navigate({ ...selected, project, tab: "activity", run: "" })}

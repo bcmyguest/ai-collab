@@ -32,12 +32,13 @@ export function projectUiEvents() {
     const row = projectEvent(event);
     if (row?.kind !== "activity") return null;
     const { id, time, attachment } = meta;
-    const { from, session, harness, type, tool, callId, input, output, agent } = row;
+    const { from, session, harness, type, tool, callId, input, output, agent, compaction, clear, modelSwitch } = row;
     items.push({
       id, time, agent: from + "#" + session, harness, type,
       ...(tool ? { tool } : {}), ...(callId ? { callId } : {}),
       ...(input ? { input } : {}), ...(output ? { output } : {}),
       ...(agent ? { subagent: agent } : {}), ...(attachment ? { attachment } : {}),
+      ...(compaction ? { compaction } : {}), ...(clear ? { clear } : {}), ...(modelSwitch ? { modelSwitch } : {}),
     });
     return null;
   };

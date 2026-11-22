@@ -274,8 +274,9 @@ test("activity history keeps the newest events when the cache exceeds the poll c
 
 test("PreCompact publishes a compact row: /compact skips UserPromptSubmit, so this is the only trace", async (t) => {
   assert.deepEqual(activityEvents("claude", "precompact", { trigger: "manual", custom_instructions: "keep the API notes" }),
-    [{ type: "compact", input: "compacting · manual · keep the API notes" }]);
-  assert.deepEqual(activityEvents("codex", "precompact", { trigger: "auto", custom_instructions: "x".repeat(201) }), [{ type: "compact", input: "compacting · auto" }]);
+    [{ type: "compact", input: "compacting · manual · keep the API notes", compaction: { trigger: "manual", phase: "started" } }]);
+  assert.deepEqual(activityEvents("codex", "precompact", { trigger: "auto", custom_instructions: "x".repeat(201) }),
+    [{ type: "compact", input: "compacting · auto", compaction: { trigger: "auto", phase: "started" } }]);
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
   const r = await runHook(["--activity", "--host", "claude"], { hook_event_name: "PreCompact", session_id: "s", trigger: "manual", custom_instructions: "" }, peerEnv(fake, { peer: "claude" }));

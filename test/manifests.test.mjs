@@ -26,7 +26,7 @@ test("all three harness manifests parse and point at existing hook files", () =>
 
 test("hook configs reference the wrappers and scripts that exist", () => {
   const claude = read("hooks/hooks.json").hooks;
-  assert.deepEqual(Object.keys(claude).sort(), ["InstructionsLoaded", "MessageDisplay", "Notification", "PermissionRequest", "PostToolUse", "PostToolUseFailure", "PreCompact", "PreToolUse",
+  assert.deepEqual(Object.keys(claude).sort(), ["InstructionsLoaded", "MessageDisplay", "Notification", "PermissionRequest", "PostCompact", "PostModelSwitch", "PostToolUse", "PostToolUseFailure", "PreCompact", "PreToolUse",
     "SessionEnd", "SessionStart", "Stop", "StopFailure", "SubagentStart", "SubagentStop", "UserPromptSubmit"]);
   const codex = read("hooks/codex-hooks.json").hooks;
   assert.deepEqual(Object.keys(codex).sort(), ["PermissionRequest", "PostToolUse", "PreCompact", "PreToolUse", "SessionEnd", "SessionStart", "Stop", "SubagentStart", "SubagentStop", "UserPromptSubmit"]);

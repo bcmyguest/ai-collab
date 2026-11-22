@@ -5,6 +5,8 @@ import { encodeEnvelope } from "../lib/agui.mjs";
 import { publish } from "../lib/ntfy.mjs";
 import { publishStatus } from "../lib/inbox.mjs";
 import { publishActivity } from "../lib/activity.mjs";
+import { compactionFields } from "../lib/compaction.mjs";
+import { modelFields } from "../lib/session-events.mjs";
 import { approvalMessage, cleanQuestions } from "../lib/approvals.mjs";
 import { sendReceipts } from "../lib/receipts.mjs";
 import { reportContext } from "../lib/usage.mjs";
@@ -15,6 +17,17 @@ const DEFAULT_APPROVAL_MS = APPROVAL_TIMEOUT_MIN * 60_000;
 const PUBLISH_TIMEOUT_MS = 3000;
 
 const withAgent = (row, e) => (e.subagentRunId ? { ...row, agent: { id: e.subagentRunId, type: e.metadata?.aiCollab?.subagentType || "" } } : row);
+
+// A compact row; a step carrying metadata.aiCollab.compaction also gets the shared compaction fields.
+function compactRow(type, meta) {
+  const fields = meta?.compaction ? compactionFields(meta.compaction) : null;
+  const compaction = fields ? { compaction: fields } : {};
+  if (type === EventType.STEP_FINISHED) {
+    const input = fields?.phase === "failed" ? "compaction failed" : ["compacted", fields?.trigger].filter(Boolean).join(" · ");
+    return { type: "compact", input, ...compaction };
+  }
+  return { type: "compact", input: ["compacting", meta?.note].filter(Boolean).join(" · "), ...compaction };
+}
 
 /** Activity rows (lib/activity.mjs event shape) for one RunnerEvent; [] when the event has no row on ntfy. */
 export function activityFor(e) {
@@ -34,7 +47,12 @@ export function activityFor(e) {
         output: contentToText(e.content), callId: e.toolCallId,
       }, e)];
     case EventType.STEP_STARTED:
-      return e.stepName === "compact" ? [{ type: "compact", input: ["compacting", meta?.note].filter(Boolean).join(" · ") }] : [];
+    case EventType.STEP_FINISHED:
+      if (e.stepName === "model") {
+        const fields = e.type === EventType.STEP_FINISHED && meta?.modelSwitch ? modelFields(meta.modelSwitch) : null;
+        return fields ? [{ type: "model", input: `Model ${fields.from} → ${fields.to}`, modelSwitch: fields }] : [];
+      }
+      return e.stepName === "compact" ? [compactRow(e.type, meta)] : [];
     case EventType.CUSTOM:
       if (e.name === ERROR) return [{ type: "error", output: e.value }];
       return e.name === NOTICE ? [{ type: "text", tool: "Notification", output: e.value }] : [];

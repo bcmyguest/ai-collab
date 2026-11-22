@@ -40,11 +40,12 @@ function Action({ action }) {
 }
 
 /** A session's actions menu; Dispose waits until the session is offline and registered. */
-export function SessionMenu({ node, disabled, dispose, raw, label = "Actions for " + node.id }) {
+export function SessionMenu({ node, disabled, dispose, raw, map, label = "Actions for " + node.id }) {
   return <DropdownMenu>
     <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8 shrink-0" aria-label={label}><MoreHorizontal className="size-4"/></Button></DropdownMenuTrigger>
     <DropdownMenuContent align="end">
       {raw && <DropdownMenuItem onSelect={() => raw(node)}>Raw activity</DropdownMenuItem>}
+      {map && <DropdownMenuItem onSelect={() => map(node)}>Compaction map</DropdownMenuItem>}
       <DropdownMenuItem disabled={disabled || node.online || !node.registered} onSelect={() => dispose(node)}>Dispose</DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>;

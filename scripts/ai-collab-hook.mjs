@@ -28,8 +28,10 @@ import { recordSession } from "../lib/sessions.mjs";
 import { sessionName } from "../lib/names.mjs";
 import { harnessProcess, isRunning } from "../lib/process.mjs";
 import { WAITER_MAX_S, runWaiter, takeWaiterSlot } from "../lib/waiter.mjs";
-import { contextUsage, recordInstructions, reportContext } from "../lib/usage.mjs";
+import { ON_DEMAND_LOADS, contextUsage, dropOnDemandFiles, readContext, recordInstructions, reportContext } from "../lib/usage.mjs";
 import { activityEvents, publishActivity } from "../lib/activity.mjs";
+import { compactionFields } from "../lib/compaction.mjs";
+import { clearFields } from "../lib/session-events.mjs";
 import { sendReceipts, settleReceipts } from "../lib/receipts.mjs";
 import { closeTerminalCards, decideApproval, decideQuestion } from "../lib/approvals.mjs";
 import { standsDown } from "../lib/owned.mjs";
@@ -44,6 +46,7 @@ const EVENTS = new Map([
   ["stop", "Stop"],
   ["sessionend", "SessionEnd"],
   ["precompact", "PreCompact"],
+  ["postcompact", "PostCompact"],
   ["permissionrequest", "PermissionRequest"],
   ["beforeshellexecution", "PermissionRequest"],
   ["beforemcpexecution", "PermissionRequest"],
@@ -52,6 +55,18 @@ const EVENTS = new Map([
 const NAMED_EVENTS = new Set(["SessionStart", "UserPromptSubmit", "Stop"]);
 // Cursor permission hooks fall through to Cursor's own prompt with "ask".
 const CURSOR_PERMISSION = new Set(["beforeshellexecution", "beforemcpexecution"]);
+
+// A compaction start or clear carries the meter's last reading; a compaction start also counts the on-demand files it drops.
+function stampContext(cfg, events) {
+  const context = readContext(cfg);
+  const tokensBefore = context.tokens ?? undefined;
+  const filesDropped = context.files.filter(entry => ON_DEMAND_LOADS.has(entry.load)).length;
+  return events.map(event => {
+    if (event.clear) return { ...event, clear: clearFields({ tokensBefore }) };
+    if (event.compaction?.phase === "started") return { ...event, compaction: compactionFields({ ...event.compaction, tokensBefore, filesDropped }) };
+    return event;
+  });
+}
 
 function hostArg(argv) {
   const i = argv.indexOf("--host");
@@ -179,8 +194,10 @@ async function main() {
   if (argv.includes("--rewake")) return rewake(cfg, host, msg);
 
   // Started first and awaited last, so delivery never waits on it.
-  const events = activityEvents(host, key, msg);
+  const events = key === "precompact" || key === "sessionend" ? stampContext(cfg, activityEvents(host, key, msg)) : activityEvents(host, key, msg);
   const activity = publishActivity(cfg, host, events).catch(() => 0);
+  // A finished compaction has dropped the on-demand files, so the next one must not count them again.
+  const dropped = key === "postcompact" ? dropOnDemandFiles(cfg).catch(() => false) : Promise.resolve(false);
   // A view-only approval card (AFK off) closes once a later event shows the terminal prompt resolved.
   const closing = closeTerminalCards(cfg, { host, key, input: msg }).catch(() => []);
   const event = EVENTS.get(key);
@@ -210,7 +227,7 @@ async function main() {
     }
   }
   emit(output);
-  await Promise.all([activity, closing, settleReceipts()]);
+  await Promise.all([activity, closing, dropped, settleReceipts()]);
 }
 
 try {

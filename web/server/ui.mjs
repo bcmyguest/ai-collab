@@ -23,6 +23,8 @@ import { availableHarnesses, availablePlaces, projectRoot, checkPrompt, startSes
 import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
 import { closedProjectNames, createTeam, deleteTeam, listTeams, readProjectsFile, removeProject, setProjectClosed, teamTask } from "../../lib/teams.mjs";
+import { clearFields, modelFields, sessionHistory } from "../../lib/session-events.mjs";
+import { compactionFields } from "../../lib/compaction.mjs";
 import { copyPattern, listPatterns, removableNames, removePattern, savePattern } from "../../lib/patterns.mjs";
 import { openTasks } from "../../lib/tasks.mjs";
 import { taskBoard } from "./task-board.mjs";
@@ -123,6 +125,11 @@ function activityItem(event) {
       const value = cleanText(e[key], max);
       if (value) item[key] = value;
     }
+    const compaction = e.compaction ? compactionFields(e.compaction) : null;
+    if (compaction) item.compaction = compaction;
+    if (e.clear) item.clear = clearFields(e.clear);
+    const modelSwitch = e.modelSwitch ? modelFields(e.modelSwitch) : null;
+    if (modelSwitch) item.modelSwitch = modelSwitch;
     const attachment = attachmentOf(event, { text: true });
     if (attachment) item.attachment = attachment;
     // A subagent's rows carry its run; the envelope's agent becomes subagent because agent already names the session.
@@ -798,7 +805,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return project.places.list;
   }
 
-  function snapshot({ project, harness, session, scope }) {
+  function snapshot({ project, harness, session, scope, history: wantHistory }) {
     const last = lastMessages(project);
     const list = agents(project, last);
     const waiting = waitingIds(project, list);
@@ -814,6 +821,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       : item.failed ? [] : sessionCards(item, agents(item, lastMessages(item)), mode))
       : scope === "sessions" ? sessionCards(project, list, mode) : undefined;
     const runs = listRuns(project.cfg);
+    // Each agent's compactions, clears and model switches from the activity in memory; only the compactions view asks (history=1).
+    const history = wantHistory ? sessionHistory(activityList(project)) : new Map();
     return {
       project: project.cfg.project, operator: project.operator.peer, mode, alerts: readAlertLevel(env),
       // Sessions per project as running and inactive, read by the sidebar rows; kept apart from projects.
@@ -836,7 +845,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         // Context telemetry and instruction files from the session's state file (lib/usage.mjs).
         const context = readContext({ stateDir: project.cfg.stateDir, project: project.cfg.project, peer: agent.peer, session: agent.session });
         const withContext = context.tokens !== null || context.files.length ? { ...base, context } : base;
-        return waiting.has(agent.id) ? { ...withContext, waiting: true } : withContext;
+        const withHistory = history.has(agent.id) ? { ...withContext, history: history.get(agent.id) } : withContext;
+        return waiting.has(agent.id) ? { ...withHistory, waiting: true } : withHistory;
       }),
       messages: scope === "home" ? [] : messages(project, { harness, session }, list),
       ...(cards ? { sessions: cards } : {}),
@@ -956,7 +966,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const mode = url.searchParams.get("view");
     // view=home adds every project's session cards; view=sessions this project's.
     const scope = mode === "home" || mode === "sessions" ? mode : "";
-    return { project, harness: scope === "home" ? "" : harness, session: scope === "home" ? "" : session, activity: mode === "activity", scope };
+    return { project, harness: scope === "home" ? "" : harness, session: scope === "home" ? "" : session, activity: mode === "activity", scope, history: url.searchParams.get("history") === "1" };
   }
 
   // The signed-in GitHub user, or a 401 while sign-in is on; null while it is off.
