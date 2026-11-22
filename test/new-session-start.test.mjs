@@ -105,5 +105,5 @@ test("an unnamed mode starts the harness's normal editing mode, and the model pi
   // An empty startMode is the same as none, so an older client keeps working.
   const second = await setup(t);
   await (await second.post({ project: "demo", harness: "codex", prompt: "ship it", startMode: "" })).json();
-  assert.deepEqual((await recorded(second.record, "codex")).argv, ["exec", "--json", "ship it"]);
+  assert.deepEqual((await recorded(second.record, "codex")).argv, ["exec", "--json", "-c", "features.code_mode=true", "ship it"]);
 });

@@ -6,6 +6,7 @@ import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import { sessionLabel } from "../../lib/config.mjs";
 import { childEnv, findExecutable } from "../../lib/start.mjs";
 import { classifyLimit } from "../../lib/limits.mjs";
+import { claudeCodeModeSettings } from "../../lib/code-mode.mjs";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, LIMIT, PERMISSION_MODES, permissionSettings } from "../contract.mjs";
 
 // Env marker on the CLI child; hooks stand down by the owned record, this names the harness that spawned the child.
@@ -53,7 +54,7 @@ async function userMessage(input, priority) {
 }
 
 /** Starts one session's query and message pump; attach() awaits the handshake before the handle is used. */
-function startSession({ query, ctx, nativeId, cwd, model, permission, env, resume }) {
+function startSession({ query, ctx, nativeId, cwd, model, permission, env, resume, codeMode }) {
   const threadId = `claude#${sessionLabel(nativeId)}`;
   const inputs = inputQueue();
   const pending = new Map();
@@ -72,6 +73,8 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
       permissionMode: permission.permissionMode,
       canUseTool: (toolName, input, extra) => canUseTool(toolName, input, extra),
       ...(model ? { model } : {}),
+      // Flag settings are the only layer a headless Claude reads code mode from (lib/code-mode.mjs).
+      ...(typeof codeMode === "boolean" ? { settings: claudeCodeModeSettings(codeMode) } : {}),
       ...(resume ? { resume: nativeId } : { sessionId: nativeId }),
     },
   });
@@ -320,14 +323,14 @@ export function createClaudeAdapter({ query = sdkQuery, handshakeMs = HANDSHAKE_
       const nativeId = randomUUID();
       await options.beforeStart?.(nativeId);
       const session = startSession({
-        query, ctx, nativeId, cwd: options.cwd, model: options.model, permission: options.permission, env: options.env,
+        query, ctx, nativeId, cwd: options.cwd, model: options.model, permission: options.permission, env: options.env, codeMode: options.codeMode,
       });
       return attach(session, "claude session", handshakeMs);
     },
     async resume(record, ctx, childVars) {
       const { settings } = permissionSettings("claude", record.permissionMode, record.place);
       const session = startSession({
-        query, ctx, nativeId: record.nativeId, cwd: record.cwd, model: record.model, permission: settings, env: childVars, resume: true,
+        query, ctx, nativeId: record.nativeId, cwd: record.cwd, model: record.model, permission: settings, env: childVars, resume: true, codeMode: record.codeMode,
       });
       return attach(session, "claude resume", handshakeMs);
     },

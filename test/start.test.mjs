@@ -110,7 +110,7 @@ test("codex and cursor argv, and a warning when Codex has not trusted the hooks"
     const result = await (await post({ project: "demo", harness, prompt: "hello there" })).json();
     assert.equal(result.session, `${harness}#${sessionLabel(IDS[harness])}`);
     const run = await recorded(record, harness);
-    assert.deepEqual(run.argv, harness === "codex" ? ["exec", "--json", "hello there"] : ["-p", "--trust", "--output-format", "stream-json", "--workspace", root, "hello there"]);
+    assert.deepEqual(run.argv, harness === "codex" ? ["exec", "--json", "-c", "features.code_mode=true", "hello there"] : ["-p", "--trust", "--output-format", "stream-json", "--workspace", root, "hello there"]);
     assert.equal(run.cwd, root);
     assert.equal(Boolean(result.warning), harness === "codex", "untrusted Codex hooks are reported");
   }

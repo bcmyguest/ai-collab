@@ -99,7 +99,7 @@ test("worktree start: Claude gets --worktree; Codex starts in a git worktree on 
   const tree = path.join(second.root, ".claude", "worktrees", name);
   assert.deepEqual(git.argv, ["-C", second.root, "worktree", "add", "-b", "ai-collab/" + name.slice("ai-collab-".length), tree]);
   const [harness] = await recorded(second.record, "codex");
-  assert.deepEqual(harness.argv, ["exec", "--json", "add tests"]);
+  assert.deepEqual(harness.argv, ["exec", "--json", "-c", "features.code_mode=true", "add tests"]);
   assert.equal(harness.cwd, tree);
   assert.match(codex.detail, new RegExp("worktree " + name));
 });

@@ -8,6 +8,13 @@ export const HARNESS_LABELS = { claude: "Claude Code", codex: "Codex", cursor: "
 /** The place pill's short label, and the full name its menu and aria-label use. */
 export const PLACE_LABELS = { folder: "Folder", worktree: "Worktree", openshell: "OpenShell" };
 export const PLACE_NAMES = { folder: "Local folder", worktree: "New git worktree", openshell: "OpenShell sandbox" };
+// Harnesses whose UI start can turn native code mode on; Claude's --bg start refuses it (docs/code-mode.md).
+export const CODE_MODE_START_HARNESSES = ["codex"];
+
+/** The start payload's codeMode field: the toggle's value for a harness that has one, else nothing. */
+export function codeModeField(harness, on) {
+  return CODE_MODE_START_HARNESSES.includes(harness) ? { codeMode: on === true } : {};
+}
 
 /** After the harness changes: its listed model stays if it has one, else its first model. */
 export function chooseHarness(choice, harness, models = {}) {

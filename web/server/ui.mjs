@@ -22,6 +22,7 @@ import { parseCommand } from "../lib/slash-commands.js";
 import { startModes } from "../lib/start-mode.js";
 import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } from "../../lib/approvals.mjs";
 import { availableHarnesses, availablePlaces, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
+import { codeModeDefault } from "../../lib/code-mode.mjs";
 import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
 import { LIMIT_TOOL, chooseLimit, limitEndMessage } from "../../lib/limit-alert.mjs";
@@ -922,6 +923,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       startable: startable(project),
       // The new-session default (defaults.json startDefault, else cursor on deepseek); the form prefills it when available.
       startDefault: startDefaultSetting(env),
+      // Native code mode for new starts (defaults.json codeMode, default on); the composer prefills its toggle.
+      codeModeDefault: codeModeDefault(env),
       startPlaces: startPlaces(project),
       teams: Object.entries(listTeams(project.cfg, env)).map(([id, members]) => ({ id, members })),
       patterns: patternRows(project.cfg, env),
@@ -1098,7 +1101,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
-      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, startMode, team: teamName, members, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps } = await payload(request);
+      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, startMode, codeMode, team: teamName, members, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -1196,9 +1199,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         // The dialogue's Agent / Ask / Plan pill; an unnamed mode is the harness's normal, editing one.
         const chosenMode = startMode === undefined || startMode === null || startMode === "" ? "agent" : startMode;
         if (typeof chosenMode !== "string" || !startModes(harness).includes(chosenMode)) reject(400, "That mode is not available for this harness");
+        if (codeMode !== undefined && codeMode !== null && typeof codeMode !== "boolean") reject(400, "codeMode must be true or false");
         if (Date.now() - lastStartAt < START_GAP_MS) reject(429, "Wait 10 seconds between starts");
         lastStartAt = Date.now();
-        return json(201, await start(cfg, { harness, prompt: checked.text, env, place: where || "folder", mode: chosenMode, ...(chosen !== undefined ? { model: chosen } : {}) }));
+        return json(201, await start(cfg, { harness, prompt: checked.text, env, place: where || "folder", mode: chosenMode, ...(chosen !== undefined ? { model: chosen } : {}), ...(typeof codeMode === "boolean" ? { codeMode } : {}) }));
       }
       // A queued message is already on ntfy: the urgent marker makes the recipient's next hook poll at once.
       if (action === "nudge") {

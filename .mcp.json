@@ -6,6 +6,13 @@
         "${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-mcp.mjs",
         "claude"
       ]
+    },
+    "ai-collab-code": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-code-mcp.mjs",
+        "claude"
+      ]
     }
   }
 }
