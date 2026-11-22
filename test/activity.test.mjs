@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawn } from "node:child_process";
@@ -31,7 +32,7 @@ function runHook(args, input, env) {
   });
 }
 
-const activity = (fake) => fake.state.publishes.filter((p) => p.topic === TOPIC).map((p) => JSON.parse(p.message));
+const activity = (fake) => fake.state.publishes.filter((p) => p.topic === TOPIC).map((p) => parseWireEnvelope(p.message));
 const strip = ({ ts, ...rest }) => rest;
 const cfgFor = (peer, session) => ({ ...loadConfig(peerEnv({ url: "http://127.0.0.1:1" }, { peer })), session });
 
@@ -40,8 +41,8 @@ test("envelopes fit 4096 bytes with an explicit marker, strip control and bidi c
   const output = "line ✓ ‮evil\u0007\n".repeat(2000);
   const { message, attach } = buildActivity(cfg, "claude", { type: "tool_result", tool: "Bash", callId: "toolu_1", output });
   assert.ok(Buffer.byteLength(message) <= ACTIVITY_MAX_BYTES, `${Buffer.byteLength(message)} bytes`);
-  const envelope = JSON.parse(message);
-  assert.deepEqual(Object.keys(envelope), ["v", "kind", "from", "session", "harness", "ts", "type", "tool", "callId", "output"]);
+  const envelope = parseWireEnvelope(message);
+  assert.deepEqual(Object.keys(envelope).sort(), ["callId", "from", "harness", "kind", "output", "session", "tool", "ts", "type", "v"]);
   assert.equal(envelope.kind, "activity");
   const cleaned = output.replace(/[‮\u0007]/g, "");
   const marker = /…\[truncated (\d+) bytes\]$/.exec(envelope.output);
@@ -60,14 +61,14 @@ test("envelopes fit 4096 bytes with an explicit marker, strip control and bidi c
 
   const call = buildActivity(cfg, "claude", { type: "tool_call", tool: "Write", input: { file_path: "/x", content: "\"quoted\"\\".repeat(3000) } });
   assert.ok(Buffer.byteLength(call.message) <= ACTIVITY_MAX_BYTES);
-  assert.match(JSON.parse(call.message).input, /…\[truncated \d+ bytes\]$/);
+  assert.match(parseWireEnvelope(call.message).input, /…\[truncated \d+ bytes\]$/);
   assert.equal(call.attach, undefined, "only results and errors attach");
 
   const both = buildActivity(cfg, "codex", { type: "tool_result", input: "short input", output: "x".repeat(10_000) });
-  assert.equal(JSON.parse(both.message).input, "short input", "the smaller field is kept whole");
+  assert.equal(parseWireEnvelope(both.message).input, "short input", "the smaller field is kept whole");
 
   const small = buildActivity(cfg, "cursor", { type: "prompt", input: "hello" });
-  assert.deepEqual(strip(JSON.parse(small.message)), { v: 1, kind: "activity", from: "claude", session: "aabbccddeeff0011", harness: "cursor", type: "prompt", input: "hello" });
+  assert.deepEqual(strip(parseWireEnvelope(small.message)), { v: 1, kind: "activity", from: "claude", session: "aabbccddeeff0011", harness: "cursor", type: "prompt", input: "hello" });
 });
 
 test("each harness's documented hook input maps to activity events; thinking is never read", () => {

@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -102,7 +103,7 @@ test("a post that only @harness:model-starts a session starts it and stays out o
   assert.deepEqual(await claimInbox(claude, { commit: false }), []);
   assert.deepEqual(await claimInbox(other, { commit: false }), []);
   // It stays legible on the project channel for the phone, marked as a start.
-  const posted = fake.state.publishes.filter(p => p.topic === "ai-collab-demo--to--all").map(p => JSON.parse(p.message)).filter(Boolean);
+  const posted = fake.state.publishes.filter(p => p.topic === "ai-collab-demo--to--all").map(p => parseWireEnvelope(p.message)).filter(Boolean);
   const envelope = posted.find(e => e.body === "@codex:gpt-5-codex build the header");
   assert.equal(envelope?.startOnly, true);
   assert.equal(envelope?.from, "operator");

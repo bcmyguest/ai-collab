@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawn } from "node:child_process";
@@ -34,7 +35,7 @@ test("subagent hooks publish start, tagged tool calls, and a stop row with the l
     { ...sub, hook_event_name: "SubagentStop", agent_transcript_path: "/tmp/SECRET.jsonl", last_assistant_message: "Found 3 call sites." + "y".repeat(5000) },
     { session_id: "s-parent", cwd: "/tmp", hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "ls" }, tool_use_id: "toolu_2" },
   ]) assert.deepEqual(JSON.parse((await runHook("claude", input, env)).out), {});
-  const rows = fake.state.publishes.filter((p) => p.topic === activityTopic("demo")).map((p) => JSON.parse(p.message));
+  const rows = fake.state.publishes.filter((p) => p.topic === activityTopic("demo")).map((p) => parseWireEnvelope(p.message));
   assert.deepEqual(rows.map((e) => [e.type, e.agent, e.session]), [
     ["start", { id: "agent-7", type: "Explore" }, sessionLabel("s-parent")],
     ["tool_call", { id: "agent-7", type: "Explore" }, sessionLabel("s-parent")],

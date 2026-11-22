@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -21,7 +22,7 @@ const ASK = { tool_name: "AskUserQuestion", tool_input: { questions: QUESTIONS }
 const BASH = { tool_name: "Bash", tool_input: { command: "make deploy" } };
 
 const setMode = (fake, mode) => fake.inject(ALL, JSON.stringify({ v: 1, kind: "mode", from: "operator", mode, ts: Date.now() }));
-const envelopes = (fake, kind) => fake.state.publishes.map(p => { try { return { ...JSON.parse(p.message), raw: p.message, title: p.title }; } catch { return null; } })
+const envelopes = (fake, kind) => fake.state.publishes.map(p => { try { return { ...parseWireEnvelope(p.message), raw: p.message, title: p.title }; } catch { return null; } })
   .filter(m => m?.kind === kind);
 
 async function setup(t, extra = {}) {

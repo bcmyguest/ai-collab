@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync } from "node:fs";
@@ -230,7 +231,7 @@ test("opencode helpers: content append, result text, tokens, permission input", 
 
 test("opencode shared code: activity harness, text events, approvals in Claude's shape, context tokens, title", () => {
   const cfg = { peer: "opencode", session: "0123456789abcdef" };
-  assert.equal(JSON.parse(buildActivity(cfg, "opencode", { type: "text", output: "hi" }).message).harness, "opencode");
+  assert.equal(parseWireEnvelope(buildActivity(cfg, "opencode", { type: "text", output: "hi" }).message).harness, "opencode");
   assert.deepEqual(activityEvents("opencode", "afteragentresponse", { text: "hi" }), [{ type: "text", output: "hi" }]);
   assert.deepEqual(activityEvents("opencode", "pretooluse", { tool_name: "bash", tool_input: { command: "ls" }, tool_use_id: "c" }),
     [{ type: "tool_call", tool: "bash", input: { command: "ls" }, callId: "c" }]);
@@ -250,7 +251,7 @@ test("opencode runHook against the real hook: SessionStart publishes status and 
   const out = await runHook({ hook_event_name: "SessionStart", session_id: ROOT, cwd, source: "startup" }, { env, node: process.execPath, timeoutMs: 15_000 });
   assert.match(out.hookSpecificOutput.additionalContext, /body="ping from bob"/);
   assert.match(out.hookSpecificOutput.additionalContext, /Your sender identity is opencode#/);
-  const status = JSON.parse(fake.state.publishes.find((p) => p.topic === "ai-collab-demo--status").message);
+  const status = parseWireEnvelope(fake.state.publishes.find((p) => p.topic === "ai-collab-demo--status").message);
   assert.deepEqual([status.event, status.harness], ["start", "opencode"]);
 });
 

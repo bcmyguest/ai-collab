@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -72,7 +73,7 @@ test("parent exports its address, the child greets it once, and both can message
   assert.match(context(child), new RegExp(`started by the agent ${PARENT}; your address is ${CHILD}`));
   await runHook(["--host", "codex"], { ...start, source: "resume" }, childEnv);
 
-  const status = fake.state.publishes.filter(p => p.topic === "ai-collab-demo--status").map(p => JSON.parse(p.message)).find(s => s.harness === "codex");
+  const status = fake.state.publishes.filter(p => p.topic === "ai-collab-demo--status").map(p => parseWireEnvelope(p.message)).find(s => s.harness === "codex");
   assert.deepEqual([status.from, status.session, status.parent], ["codex", sessionLabel(CHILD_ID), PARENT]);
   const parentCfg = loadConfig(env, { host: "claude", session: sessionLabel(PARENT_ID) });
   const greetings = (await claimInbox(parentCfg)).filter(m => m.body.startsWith("started:"));

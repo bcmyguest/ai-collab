@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawn } from "node:child_process";
@@ -25,7 +26,7 @@ function runHook(input, env) {
   });
 }
 
-const receipts = (fake) => fake.state.publishes.filter((p) => p.topic === receiptsTopic("demo")).map((p) => JSON.parse(p.message));
+const receipts = (fake) => fake.state.publishes.filter((p) => p.topic === receiptsTopic("demo")).map((p) => parseWireEnvelope(p.message));
 
 test("receipt envelopes batch ids under ntfy's byte cap", () => {
   const cfg = { peer: "alice", session: "0123456789abcdef" };
@@ -33,7 +34,7 @@ test("receipt envelopes batch ids under ntfy's byte cap", () => {
   const messages = receiptMessages(cfg, ids, "2026-01-01T00:00:00.000Z");
   assert.ok(messages.length > 1);
   for (const m of messages) assert.ok(Buffer.byteLength(m) <= NTFY_MESSAGE_MAX_BYTES);
-  const parsed = messages.map((m) => JSON.parse(m));
+  const parsed = messages.map(parseWireEnvelope);
   assert.deepEqual(parsed.flatMap((m) => m.ids), ids);
   assert.deepEqual(Object.keys(parsed[0]), ["v", "kind", "from", "session", "ids", "state", "ts"]);
   const reads = readReceipts(messages.map((message) => ({ message })));

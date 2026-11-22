@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -19,7 +20,7 @@ const QUESTIONS = [
 ];
 
 const setMode = (fake, mode) => fake.inject(ALL, JSON.stringify({ v: 1, kind: "mode", from: "operator", mode, ts: Date.now() }));
-const envelopes = (fake, kind) => fake.state.publishes.map((p) => { try { return { ...JSON.parse(p.message), topic: p.topic, title: p.title }; } catch { return null; } })
+const envelopes = (fake, kind) => fake.state.publishes.map((p) => { try { return { ...parseWireEnvelope(p.message), topic: p.topic, title: p.title }; } catch { return null; } })
   .filter((m) => m?.kind === kind);
 
 async function published(fake, kind) {

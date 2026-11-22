@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
@@ -15,7 +16,7 @@ test("send --reply-to links the post and never lands in the body; an unknown fla
   const env = peerEnv(fake, { peer: "alice", AI_COLLAB_PEERS: "alice,bob" });
   let r = io(env);
   assert.equal(await runCli(["send", "all", "the answer", "--reply-to", "abc123"], r.io), 0);
-  const post = fake.state.publishes.map((p) => JSON.parse(p.message)).find((m) => m.body?.startsWith("the answer"));
+  const post = fake.state.publishes.map((p) => parseWireEnvelope(p.message)).find((m) => m.body?.startsWith("the answer"));
   assert.equal(post.body, "the answer");
   assert.equal(post.replyTo, "abc123");
 

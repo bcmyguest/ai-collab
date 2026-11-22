@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -55,8 +56,8 @@ async function until(check, what, ms = 4000) {
   }
 }
 
-const envelopes = (fake, topic) => fake.state.publishes.filter((p) => p.topic === topic).map((p) => JSON.parse(p.message)).filter(Boolean);
-const rows = (fake) => fake.state.publishes.filter((p) => p.topic === ACTIVITY).map((p) => JSON.parse(p.message));
+const envelopes = (fake, topic) => fake.state.publishes.filter((p) => p.topic === topic).map((p) => parseWireEnvelope(p.message)).filter(Boolean);
+const rows = (fake) => fake.state.publishes.filter((p) => p.topic === ACTIVITY).map((p) => parseWireEnvelope(p.message));
 
 test("start opens a session, claims the registry, and publishes prompt, text and stop rows", async () => {
   const fake = await startFakeNtfy();

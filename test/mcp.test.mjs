@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
@@ -84,7 +85,7 @@ test("MCP reply_to_operator answers an exact-session direct chat in the same thr
   const reply = fake.state.publishes.at(-1);
   assert.equal(reply.topic, sent.topic);
   assert.deepEqual(
-    (({ from, session: s, to, operatorThread, replyTo, body }) => ({ from, s, to, operatorThread, replyTo, body }))(JSON.parse(reply.message)),
+    (({ from, session: s, to, operatorThread, replyTo, body }) => ({ from, s, to, operatorThread, replyTo, body }))(parseWireEnvelope(reply.message)),
     { from: "alice", s: session, to: "operator", operatorThread: true, replyTo: messageId, body: "All green" },
   );
 });
