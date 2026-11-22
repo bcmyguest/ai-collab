@@ -11,7 +11,7 @@ Operator requests from chat and the terminal, newest last. Status: done (merged 
 | Online/offline marker in the Subagents view | done |
 | A child session counts as its parent's subagent | done |
 | Teams: dynamic, stored in projects.json plus a global config; orchestrator starts and keeps members alive | done (first version) |
-| Teams as roles and interaction patterns (Hermes / coding-factory / wteam style), not just roster create — e.g. "Fix and review" with handoffs | open; operator 2026-11-21; Codex sol design; **decision:** guidance vs enforced handoffs |
+| Teams as roles and interaction patterns (Hermes / coding-factory / wteam style), not just roster create — e.g. "Fix and review" with handoffs | open; operator 2026-11-21; Codex sol design; decided: each handoff is required or guidance, set per pattern |
 | OpenCode taggable; one OpenCode instance with Qwen 3.8 Flash Next | done (peer added) |
 | Codex install without the plugin-hash timeout (GitHub marketplace) | done |
 | Agents can read the project's public channel | done (`ai-collab history`, MCP `channel_history`) |
@@ -31,5 +31,7 @@ Operator requests from chat and the terminal, newest last. Status: done (merged 
 | Operator prompts and phone replies (ask_question answers) visible in session and project chat | building (operator: both chats) |
 | Context management and slash commands from the phone | open |
 | Reviews by Cursor `deepseek-v41-flash-1017` | adopted for reviews |
-| Agent questions asked in the terminal (Claude AskUserQuestion, etc.) also appear on the phone and can be answered there | open; operator 2026-11-21 |
+| Agent questions asked in the terminal (Claude AskUserQuestion, etc.) also appear in the UI in the same multiple-choice format and can be answered there | building |
+| Merge chat and activity: one session timeline; project chat for cross-session messages, completions, questions and live status; raw activity in the session menu | building |
+| A UI message to one session stays out of the project chat | decided |
 | Record feature requests | this file |
