@@ -3,6 +3,8 @@
 export const NODE = { width: 200, height: 56 };
 export const NODE_MIN_WIDTH = 150;
 export const GAP = { layer: 64, node: 24 };
+// Arc bulge in the list layout: base for the first lane, step per further lane.
+export const ARC = { base: 16, step: 14 };
 export const STATUS_FILL = { open: "#94a3b8", decided: "#38bdf8", building: "#f59e0b", blocked: "#ef4444", done: "#10b981" };
 
 /** The graph of tasks: done tasks go when showDone is false, and so do the edges from them. */
@@ -14,10 +16,13 @@ export function taskGraph(tasks, { showDone = true } = {}) {
   return { nodes, edges, hidden: tasks.length - shown.length };
 }
 
-// A node's layer is one more than its deepest blocker; the order inside a layer follows the blockers' positions.
-function layersOf(nodes, edges) {
+// Layers by longest blocker chain. An edge that skips layers gets a dummy node in each skipped layer,
+// so its route passes between the nodes instead of through them. Returns the layers and each edge's chain.
+function layeredChains(nodes, edges) {
+  const ids = new Set(nodes.map(node => node.id));
+  const valid = edges.filter(edge => ids.has(edge.from) && ids.has(edge.to));
   const preds = new Map(nodes.map(node => [node.id, []]));
-  for (const edge of edges) if (preds.has(edge.to) && preds.has(edge.from)) preds.get(edge.to).push(edge.from);
+  for (const edge of valid) preds.get(edge.to).push(edge.from);
   const depth = new Map();
   const layerOf = id => {
     if (!depth.has(id)) depth.set(id, preds.get(id).length ? 1 + Math.max(...preds.get(id).map(layerOf)) : 0);
@@ -25,71 +30,150 @@ function layersOf(nodes, edges) {
   };
   const layers = [];
   for (const node of nodes) (layers[layerOf(node.id)] ||= []).push(node.id);
+  const chains = new Map();
+  const up = new Map();
+  valid.forEach((edge, index) => {
+    const chain = [edge.from];
+    for (let l = layerOf(edge.from) + 1; l < layerOf(edge.to); l++) {
+      const dummy = `~${index}:${l}`;
+      (layers[l] ||= []).push(dummy);
+      chain.push(dummy);
+    }
+    chain.push(edge.to);
+    for (let k = 1; k < chain.length; k++) (up.get(chain[k]) || up.set(chain[k], []).get(chain[k])).push(chain[k - 1]);
+    chains.set(`${edge.from}>${edge.to}`, chain);
+  });
+  // Two barycenter sweeps: each layer sorted by the mean position of its blockers above; ties keep store order.
   const position = new Map();
   const place = () => layers.forEach(list => list.forEach((id, index) => position.set(id, index)));
   place();
-  // Two barycenter sweeps: each layer sorted by the mean position of its blockers above; ties keep store order.
   for (let sweep = 0; sweep < 2; sweep++) {
     for (let l = 1; l < layers.length; l++) {
       const mean = id => {
-        const at = preds.get(id).map(p => position.get(p));
+        const at = (up.get(id) || []).map(p => position.get(p));
         return at.length ? at.reduce((sum, x) => sum + x, 0) / at.length : position.get(id);
       };
       layers[l].sort((a, b) => mean(a) - mean(b));
       layers[l].forEach((id, index) => position.set(id, index));
     }
   }
-  return layers;
+  return { layers, chains };
 }
 
-// Node width for a layer of `across` nodes that must fit in maxWidth; the default width when nothing is given.
-function fittedWidth(across, maxWidth) {
-  if (!Number.isFinite(maxWidth)) return NODE.width;
-  const fit = Math.floor((maxWidth - (across - 1) * GAP.node) / across);
-  return Math.min(NODE.width, Math.max(NODE_MIN_WIDTH, fit));
+// SVG path through the chain's anchor points: a cubic per hop, curved along the flow.
+function curve(points, down) {
+  let d = `M${points[0].x},${points[0].y}`;
+  for (let k = 1; k < points.length; k++) {
+    const a = points[k - 1];
+    const b = points[k];
+    if (down) {
+      const mid = (b.y - a.y) / 2;
+      d += ` C${a.x},${a.y + mid} ${b.x},${b.y - mid} ${b.x},${b.y}`;
+    } else {
+      const mid = (b.x - a.x) / 2;
+      d += ` C${a.x + mid},${a.y} ${b.x - mid},${b.y} ${b.x},${b.y}`;
+    }
+  }
+  return d;
 }
 
 /**
  * Positions for the graph: layers run top to bottom ("down") or left to right ("right").
- * maxWidth narrows the nodes so the widest layer fits a "down" canvas (never below NODE_MIN_WIDTH).
+ * maxWidth wraps a "down" layer into rows and narrows the nodes so each row fits (never below NODE_MIN_WIDTH).
  * Returns {width, height, nodeWidth, nodes: [{id, x, y}], edges: [{from, to, d}]}; d is SVG path data.
  */
 export function layeredLayout(nodes, edges, { direction = "down", maxWidth } = {}) {
-  const layers = layersOf(nodes, edges);
-  const across = Math.max(1, ...layers.map(list => list.length));
   const down = direction === "down";
-  const w = down ? fittedWidth(across, maxWidth) : NODE.width;
+  const { layers, chains } = layeredChains(nodes, edges);
+  const longest = Math.max(1, ...layers.map(list => list.length));
+  const fit = down && Number.isFinite(maxWidth);
+  const perRow = fit ? Math.max(1, Math.min(longest, Math.floor((maxWidth + GAP.node) / (NODE_MIN_WIDTH + GAP.node)))) : longest;
+  const w = fit ? Math.min(NODE.width, Math.floor((maxWidth - (perRow - 1) * GAP.node) / perRow)) : NODE.width;
   const h = NODE.height;
-  // Size of a node across its layer, and the lane one layer takes along the flow.
-  const cross = down ? w : h;
-  const lane = (down ? h : w) + GAP.layer;
-  const step = cross + GAP.node;
-  // Cross-axis extent of the widest layer; a narrower layer is centred on it.
-  const span = across * cross + (across - 1) * GAP.node;
-  const placed = new Map();
-  layers.forEach((list, l) => {
-    const inLayer = list.length * cross + (list.length - 1) * GAP.node;
-    const offset = (span - inLayer) / 2;
-    list.forEach((id, index) => {
-      const offsetAcross = offset + index * step;
-      const along = l * lane;
-      placed.set(id, down ? { x: offsetAcross, y: along } : { x: along, y: offsetAcross });
-    });
+  const pos = new Map();
+  let width;
+  let height;
+  if (down) {
+    const span = perRow * w + (perRow - 1) * GAP.node;
+    let top = 0;
+    for (const list of layers) {
+      const rows = Math.ceil(list.length / perRow);
+      list.forEach((id, i) => {
+        const row = Math.floor(i / perRow);
+        const count = Math.min(perRow, list.length - row * perRow);
+        const rowWidth = count * w + (count - 1) * GAP.node;
+        pos.set(id, { x: (span - rowWidth) / 2 + (i % perRow) * (w + GAP.node), y: top + row * (h + GAP.node) });
+      });
+      top += rows * h + (rows - 1) * GAP.node + GAP.layer;
+    }
+    width = span;
+    height = layers.length ? top - GAP.layer : h;
+  } else {
+    const across = longest * h + (longest - 1) * GAP.node;
+    let left = 0;
+    for (const list of layers) {
+      const span = list.length * h + (list.length - 1) * GAP.node;
+      list.forEach((id, i) => pos.set(id, { x: left, y: (across - span) / 2 + i * (h + GAP.node) }));
+      left += w + GAP.layer;
+    }
+    width = layers.length ? left - GAP.layer : w;
+    height = across;
+  }
+  // Anchor of a chain point: the bottom or top middle of a node (down), or its right or left middle (right).
+  const anchor = (id, role) => {
+    const p = pos.get(id);
+    if (down) return { x: p.x + w / 2, y: role === "start" ? p.y + h : role === "end" ? p.y : p.y + h / 2 };
+    return { x: role === "start" ? p.x + w : role === "end" ? p.x : p.x + w / 2, y: p.y + h / 2 };
+  };
+  const routed = edges.filter(edge => pos.has(edge.from) && pos.has(edge.to)).map(({ from, to }) => {
+    const chain = chains.get(`${from}>${to}`);
+    const points = chain.map((id, k) => anchor(id, k === 0 ? "start" : k === chain.length - 1 ? "end" : "middle"));
+    return { from, to, d: curve(points, down) };
   });
-  const width = down ? span : Math.max(0, layers.length - 1) * lane + w;
-  const height = down ? Math.max(0, layers.length - 1) * lane + h : span;
-  const laid = nodes.map(node => ({ id: node.id, ...placed.get(node.id) }));
-  const routed = edges.filter(edge => placed.has(edge.from) && placed.has(edge.to)).map(({ from, to }) => {
-    const a = placed.get(from);
-    const b = placed.get(to);
-    const d = down
-      ? { x1: a.x + w / 2, y1: a.y + h, x2: b.x + w / 2, y2: b.y }
-      : { x1: a.x + w, y1: a.y + h / 2, x2: b.x, y2: b.y + h / 2 };
-    const mid = down ? (d.y2 - d.y1) / 2 : (d.x2 - d.x1) / 2;
-    const path = down
-      ? `M${d.x1},${d.y1} C${d.x1},${d.y1 + mid} ${d.x2},${d.y2 - mid} ${d.x2},${d.y2}`
-      : `M${d.x1},${d.y1} C${d.x1 + mid},${d.y1} ${d.x2 - mid},${d.y2} ${d.x2},${d.y2}`;
-    return { from, to, d: path };
-  });
+  const laid = nodes.map(node => ({ id: node.id, ...pos.get(node.id) }));
   return { width, height, nodeWidth: w, nodes: laid, edges: routed };
+}
+
+// Arc lanes for the list layout: each edge takes the first lane where its row span does not overlap another's.
+function arcLanes(order, edges) {
+  const row = new Map(order.map((id, index) => [id, index]));
+  const spans = edges.map(({ from, to }) => [row.get(from), row.get(to)]);
+  const byLength = spans.map((_, index) => index).sort((a, b) => (spans[a][1] - spans[a][0]) - (spans[b][1] - spans[b][0]));
+  const lanes = [];
+  const lane = new Array(edges.length);
+  for (const index of byLength) {
+    const [a, b] = spans[index];
+    let found = lanes.findIndex(taken => taken.every(([x, y]) => b <= x || a >= y));
+    if (found < 0) found = lanes.push([]) - 1;
+    lanes[found].push([a, b]);
+    lane[index] = found;
+  }
+  return lane;
+}
+
+/**
+ * One node per row in dependency order, arcs for the edges in a gutter to the left: no arc crosses a node.
+ * Used on a phone. Returns the same shape as layeredLayout, plus the arc bulge in each edge's d.
+ */
+export function listLayout(nodes, edges, { maxWidth } = {}) {
+  const { layers } = layeredChains(nodes, edges);
+  const order = layers.flat().filter(id => nodes.some(node => node.id === id));
+  const known = new Set(order);
+  const valid = edges.filter(edge => known.has(edge.from) && known.has(edge.to));
+  const lanes = arcLanes(order, valid);
+  const laneCount = lanes.length ? Math.max(...lanes) + 1 : 0;
+  const gutter = ARC.base + ARC.step * laneCount;
+  const w = Number.isFinite(maxWidth) ? Math.max(NODE_MIN_WIDTH, Math.min(NODE.width, maxWidth - gutter)) : NODE.width;
+  const h = NODE.height;
+  const pos = new Map(order.map((id, index) => [id, { x: gutter, y: index * (h + GAP.node) }]));
+  const routed = valid.map((edge, index) => {
+    const a = pos.get(edge.from);
+    const b = pos.get(edge.to);
+    const depth = ARC.base + ARC.step * lanes[index];
+    const ys = a.y + h / 2;
+    const ye = b.y + h / 2;
+    return { from: edge.from, to: edge.to, d: `M${gutter},${ys} C${gutter - depth},${ys} ${gutter - depth},${ye} ${gutter},${ye}` };
+  });
+  const height = order.length ? order.length * h + (order.length - 1) * GAP.node : h;
+  return { width: gutter + w, height, nodeWidth: w, nodes: order.map(id => ({ id, ...pos.get(id) })), edges: routed };
 }

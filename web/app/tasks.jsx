@@ -34,7 +34,7 @@ function Card({ task, now, open }) {
   </>;
   return <li>
     {target
-      ? <button type="button" aria-label={`Open ${target}`} onClick={() => open(target)} className={cn(CARD, "transition-colors hover:bg-accent")}>{body}</button>
+      ? <button type="button" aria-label={`${task.title}, open ${target}`} onClick={() => open(target)} className={cn(CARD, "transition-colors hover:bg-accent")}>{body}</button>
       : <div className={CARD}>{body}</div>}
   </li>;
 }
