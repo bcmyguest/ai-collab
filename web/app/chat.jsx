@@ -29,6 +29,7 @@ import { ApprovalCard, QuestionCard } from "./cards";
 import { SurfaceContext } from "@/components/a2ui/surface";
 import { NotifyToggle } from "./notify";
 import { SessionList, SessionMenu, SubagentList } from "./home";
+import { RunningCount, SubagentRuns } from "./subagent-runs";
 import { activityRows, groupSubagents } from "@/lib/activity-rows";
 import { conversationKey, drafts, views } from "@/lib/view-memory";
 import { toast } from "sonner";
@@ -226,7 +227,8 @@ function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamO
       {home ? <p className="px-2 text-sm text-muted-foreground">Pick a project to list its sessions here.</p>
         : data.agents.length === 0 && <p className="px-2 text-sm text-muted-foreground">No sessions seen yet.</p>}
       <ul className="flex flex-col gap-1">
-        {!home && data.agents.map(agent => <li key={agent.id} className="flex min-w-0 items-center gap-1">
+        {!home && data.agents.map(agent => <li key={agent.id} className="flex min-w-0 flex-col gap-1">
+          <div className="flex min-w-0 items-center gap-1">
           <button type="button" aria-label={agent.waiting ? agent.id + ", waiting on you" : agent.id} title={agent.parent ? agent.id + " · started by " + agent.parent : agent.id} aria-current={selected.level === "session" && selected.session === agent.id ? "page" : undefined}
             onClick={() => navigate({ project: current, level: "session", harness: agent.peer, session: agent.id, ...(selected.level === "session" && selected.session ? { tab: selected.tab } : {}) })}
             className={cn("flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-sm transition-colors hover:bg-sidebar-accent",
@@ -234,10 +236,13 @@ function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamO
             <Avatar address={agent.id} className="size-6 text-[9px]"/>
             <span className="flex min-w-0 flex-1 flex-col"><span className="truncate font-mono text-xs">{short(agent.id)}</span><SessionName agent={agent}/></span>
             {agent.waiting && <span role="img" aria-label="Waiting on you" title="Waiting on you" className="inline-block size-2.5 shrink-0 rounded-full bg-amber-500 ring-2 ring-amber-500/25"/>}
+            <RunningCount runs={agent.subagents} now={now}/>
             <Dot online={agent.online}/>
             <span className="shrink-0 text-right text-[11px] leading-tight text-muted-foreground">{ago(agent.lastMessageAt, now)}{agent.activeAt ? <><br/>active {ago(agent.activeAt, now)}</> : null}</span>
           </button>
           {dispose && <SessionMenu node={{ ...agent, project: current }} disabled={disabled} dispose={dispose} raw={openRaw} label={"Session actions for " + agent.id}/>}
+          </div>
+          <SubagentRuns runs={agent.subagents} now={now} open={run => navigate({ project: current, level: "session", harness: agent.peer, session: agent.id, tab: "subagents", run: run.run })}/>
         </li>)}
       </ul>
     </section>
@@ -875,6 +880,7 @@ function Console({ account }) {
           </div>
           {level === "session" && agent && <span className="flex items-center gap-1.5 text-xs text-muted-foreground" title={agent.online ? "online" : "offline"}>
             <Dot online={agent.online}/><span className="hidden sm:inline">{agent.online ? "online" : "offline"}</span></span>}
+          {level === "session" && agent && <RunningCount runs={agent.subagents} now={now}/>}
           <AfkToggle mode={data.mode || "off"} disabled={!ready || working} set={mode => action("afk", { mode }, "AFK " + mode)}/>
           <NotifyToggle/>
           <ThemeToggle/>
