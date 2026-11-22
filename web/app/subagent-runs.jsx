@@ -7,7 +7,7 @@ import { runningCount, splitIdleRuns } from "@/lib/subagent-state";
 /** "2 running" for a session's subagent runs; nothing when none run. */
 export function RunningCount({ runs = [], now }) {
   const count = runningCount(runs, now);
-  return count ? <Badge variant="secondary" className="h-4 shrink-0 px-1.5 text-[10px]" title="Running subagents">{count} running</Badge> : null;
+  return count ? <Badge variant="secondary" className="h-4 shrink-0 whitespace-nowrap px-1.5 text-[10px]" title="Running subagents">{count} running</Badge> : null;
 }
 
 /** A session's subagent runs under its sidebar row; runs idle past 30 min sit behind "Show N idle". Child sessions stay separate rows. */

@@ -175,7 +175,7 @@ function ThemeToggle() {
 
 // The session's human name after its address, when the harness or its first prompt gives one.
 function SessionName({ agent }) {
-  return agent?.name ? <span className="line-clamp-2 min-w-0 break-words text-xs text-foreground/80">{agent.name}</span> : null;
+  return agent?.name ? <span className="block min-w-0 truncate text-xs text-foreground/80" title={agent.name}>{agent.name}</span> : null;
 }
 
 function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamOpen, createPattern, dispose, openRaw, disabled, projectAction }) {
@@ -199,7 +199,7 @@ function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamO
             <span className="min-w-0 flex-1 truncate">{project.id}</span>
             {project.waiting > 0 && <span className="shrink-0 rounded-full border border-amber-500/60 bg-amber-500/15 px-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-300"
               aria-label={project.waiting + " waiting on you"} title="Sessions waiting on you">{project.waiting}</span>}
-            <span aria-hidden className="text-xs text-muted-foreground" title="Peers">{project.peers.length || ""}</span>
+            <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{data.projectCounts?.[project.id] ? data.projectCounts[project.id].running + " running · " + data.projectCounts[project.id].inactive + " inactive" : ""}</span>
           </button>
           <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label={"New session in " + project.id}
             title="New session" onClick={() => newSession(project.id)}><Plus/></Button>

@@ -28,7 +28,7 @@ import { advanceRun, listRuns, startRun } from "../../lib/pattern-runs.mjs";
 import { formatTeamOrchestrator } from "../../lib/format.mjs";
 import { activityRows, groupSubagents, summarize } from "../lib/activity-rows.js";
 import { childRuns } from "../lib/child-subagents.js";
-import { fallbackName, visibleWake, waitingOn } from "../lib/session-state.js";
+import { fallbackName, sessionCounts, visibleWake, waitingOn } from "../lib/session-state.js";
 import { createAuth } from "./auth.mjs";
 import { createHub } from "./hub.mjs";
 import { createPush, notice } from "./push.mjs";
@@ -802,6 +802,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       : scope === "sessions" ? sessionCards(project, list, mode) : undefined;
     return {
       project: project.cfg.project, operator: project.operator.peer, mode, alerts: readAlertLevel(env),
+      // Sessions per project as running and inactive, read by the sidebar rows; kept apart from projects.
+      projectCounts: Object.fromEntries(shown.map(item => [item.cfg.project, sessionCounts(item === project ? list : item.failed ? [] : agents(item, lastMessages(item)))])),
       // Waiting counts per project, present only when above 0; a failed project has no sessions to count.
       projects: shown.map(item => {
         const count = item === project ? waiting.size : item.failed ? 0 : waitingIds(item, agents(item, lastMessages(item))).size;
