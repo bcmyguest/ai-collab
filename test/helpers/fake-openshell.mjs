@@ -2,7 +2,7 @@
 // Fake openshell for runner-adapter-cursor tests: sandboxes live in FAKE_OPENSHELL_STATE (JSON); `exec` runs its
 // command locally; upload/download copy real files so a test can see the worktree round trip.
 // A sandboxed cursor binary maps to FAKE_SANDBOX_CURSOR_BIN. Every argv is appended to FAKE_OPENSHELL_LOG.
-import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { spawn } from "node:child_process";
@@ -22,7 +22,12 @@ const nameArg = (argv) => {
 // beside the fake's state file (the test's own temp dir), never in the directory the test runs from.
 const root = () => process.env.FAKE_OPENSHELL_ROOT
   || (statePath ? join(dirname(statePath), "sandboxes") : join(tmpdir(), "fake-openshell"));
-const inside = (sandbox, remote) => join(root(), sandbox, String(remote || ".").replace(/^\/+/, ""));
+// One mapping for every command: the sandbox's root directory is /sandbox, and a relative path is from there.
+const inside = (sandbox, remote) => {
+  const base = join(root(), sandbox);
+  const rel = String(remote || "").replace(/^\/sandbox\/?/, "").replace(/^\/+/, "");
+  return rel ? join(base, rel) : base;
+};
 
 if (args[0] === "sandbox" && args[1] === "list") {
   process.stdout.write(`${JSON.stringify({ next_page_token: "", sandboxes: load().sandboxes })}\n`);
@@ -60,6 +65,8 @@ if (args[0] === "sandbox" && args[1] === "upload") {
     ? join(target, basename(String(local).replace(/\/+$/, "")))
     : target;
   mkdirSync(dirname(final), { recursive: true });
+  // A second upload over the same name replaces it, as openshell does.
+  rmSync(final, { recursive: true, force: true });
   cpSync(String(local).replace(/\/+$/, ""), final, { recursive: true });
   process.stdout.write(`✓ Upload complete: ${local} -> ${final}\n`);
   process.exit(0);
@@ -72,7 +79,7 @@ if (args[0] === "sandbox" && args[1] === "download") {
     process.exit(1);
   }
   mkdirSync(String(dest || "."), { recursive: true });
-  cpSync(from, String(dest || "."), { recursive: true });
+  cpSync(from, String(dest || "."), { recursive: true, force: true });
   process.exit(0);
 }
 if (args[0] === "sandbox" && args[1] === "exec") {
