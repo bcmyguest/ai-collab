@@ -93,5 +93,6 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | PM feedback loop: each run ends with a review; lessons go to openmem (substrate approved) and the mission file | open |
 | PM tracked handoffs: builders start as runner-owned sessions linked to tasks (rides on team-runs/OpenShell) | open |
 | Compact button really compacts the session (today it only asks the agent by message) | open |
-| Tasks view easy to find on phone: a header button opens the task board (today only the sidebar 'Tasks' link) | open |
+| Task board as its own left-sidebar entry (like Compactions), not a link beside SESSIONS | open |
+| Task board glitches while scrolling large lists | open |
 <!-- tasks:end -->
