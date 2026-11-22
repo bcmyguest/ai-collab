@@ -19,6 +19,8 @@ import { availableHarnesses, availablePlaces, projectRoot, checkPrompt, startSes
 import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
 import { createTeam, deleteTeam, listTeams, teamTask } from "../../lib/teams.mjs";
+import { createPattern, deletePattern, listPatterns } from "../../lib/patterns.mjs";
+import { listRuns, startRun } from "../../lib/pattern-runs.mjs";
 import { formatTeamOrchestrator } from "../../lib/format.mjs";
 import { activityRows, groupSubagents, summarize } from "../lib/activity-rows.js";
 import { childRuns } from "../lib/child-subagents.js";
@@ -30,7 +32,7 @@ import { createDispatcher } from "./dispatch.mjs";
 import { answerMessage, answerText, terminalMessages } from "../lib/operator-messages.js";
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "approve", "start", "models", "dispose", "team", "interrupt"];
+const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "approve", "start", "models", "dispose", "team", "interrupt", "pattern"];
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
 const PARENT = /^[a-z0-9-]{1,24}#[a-f0-9]{16}$/;
@@ -372,6 +374,19 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return projects.get(name);
   }
 
+  // @pattern in any chat starts a run of the saved pattern with the text after the tag as its task.
+  async function routePatternMentions(project, body) {
+    const { cfg } = project;
+    const patterns = listPatterns(cfg, env);
+    const notes = [];
+    for (const name of mentionedTeams(body, Object.keys(patterns).filter((item) => !patterns[item].legacy))) {
+      const task = teamTask(body, name);
+      const started = await startRun(cfg, name, task, env, { start, models: await models(cfg.stateDir, env, { peers: cfg.peers }) }).catch((error) => ({ status: "failed", detail: error.message }));
+      notes.push(`@${name} run ${started.id ?? ""} ${started.status}${started.detail ? ": " + started.detail : ""}`);
+    }
+    return notes;
+  }
+
   async function routeTeamMentions(project, body, target, by) {
     const { cfg, operator } = project;
     const teams = listTeams(cfg, env);
@@ -398,10 +413,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   // An @session gets the post in its direct chat; an @harness reaches its running sessions, or starts one with the post as prompt.
   async function routeMentions(project, body, target, by) {
     const { cfg, operator } = project;
-    const teamNames = Object.keys(listTeams(cfg, env));
+    const teamNames = [...Object.keys(listTeams(cfg, env)), ...Object.keys(listPatterns(cfg, env))];
     const sessions = listSessions(cfg);
     const direct = (to, forSubagent) => sendMessage(operator, to, body, { operatorThread: true, mentionedIn: target, ...(by ? { by } : {}), ...(forSubagent ? { forSubagent } : {}) });
-    const notes = [...(await routeTeamMentions(project, body, target, by))];
+    const notes = [...(await routeTeamMentions(project, body, target, by)), ...(await routePatternMentions(project, body))];
     for (const name of mentionedNames(body, cfg.peers, teamNames)) {
       if (name === target) continue;
       if (name.includes(":")) {
@@ -742,6 +757,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       startable: startable(project),
       startPlaces: startPlaces(project),
       teams: Object.entries(listTeams(project.cfg, env)).map(([id, members]) => ({ id, members })),
+      patterns: Object.values(listPatterns(project.cfg, env)).map(({ name, source, legacy, roles, handoffs }) => ({ name, source, legacy: legacy === true, roles, handoffs })),
+      runs: listRuns(project.cfg).slice(0, 20),
     };
   }
 
@@ -879,7 +896,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
-      const { project: name, target, body, question, mode, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, team: teamName, members, delete: deleteTeamName, replyTo } = await payload(request);
+      const { project: name, target, body, question, mode, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, team: teamName, members, delete: deleteTeamName, replyTo, pattern: patternSpec, deletePattern: deletePatternName, startPattern, task: patternTask } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -909,6 +926,14 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (!teamName || !Array.isArray(members) || !members.length) reject(400, "Enter a team name and at least one member");
         const modelList = await models(cfg.stateDir, env, { peers: cfg.peers });
         return json(201, await createTeam(cfg, String(teamName), members.map(String), env, modelList));
+      }
+      if (action === "pattern") {
+        if (deletePatternName) return json(201, deletePattern(cfg, String(deletePatternName), env));
+        if (startPattern) {
+          const started = await startRun(cfg, String(startPattern), String(patternTask ?? ""), env, { start, models: await models(cfg.stateDir, env, { peers: cfg.peers }) });
+          return json(201, started);
+        }
+        return json(201, await createPattern(cfg, patternSpec, env, await models(cfg.stateDir, env, { peers: cfg.peers })));
       }
       if (action === "start") {
         if (!startable(project).includes(harness)) reject(400, "That harness is not available for this project");
