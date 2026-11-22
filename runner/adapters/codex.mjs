@@ -74,7 +74,7 @@ async function connectServer(pool, env) {
   const server = startServer(pool, env);
   pool.booting = server; // shutdown kills a child that has not finished its handshake
   try {
-    await server.request("initialize", { clientInfo: CLIENT, capabilities: null });
+    await server.request("initialize", { clientInfo: CLIENT, capabilities: { experimentalApi: true } });
   } catch (error) {
     server.child.kill();
     throw error;
