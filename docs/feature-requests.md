@@ -69,7 +69,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Two near-identical bell icons: make them distinct or merge | done merged 4c444e5, deployed |
 | task add treats --help as a title; add help output and a remove command | open |
 | Runner wake.send retries a codex thread that is closing (runner/runner.mjs:379-399) | done merged 0d2bd07 + 31cd4e3; retryable JSON-RPC refusals retried 3x, backoff capped 4s; mayHaveStarted never retried |
-| Limit card: typed rate_limit_event suppressed by earlier untyped StopFailure card (lib/limit-alert.mjs:207) | blocked Fix needs test/limit-alert.test.mjs:135-136 changed (upgrade republishes the card) or a state-only upgrade |
+| Limit card: typed rate_limit_event suppressed by earlier untyped StopFailure card (lib/limit-alert.mjs:207) | building Fix needs test/limit-alert.test.mjs:135-136 changed (upgrade republishes the card) or a state-only upgrade |
 | Fan-in hangs when another role stays live (lib/pattern-runs.mjs:354-360) | done branch cursor-verify-fixes (Cursor deepseek, started 16:23); do not dispatch |
 | Limit card: two open cards for one window when resetsAt differs (lib/limit-alert.mjs:202) | done branch cursor-verify-fixes (Cursor deepseek, started 16:23); do not dispatch |
 | Cursor limit detection drops error.code/data and exit-path text (runner/adapters/cursor.mjs:109,95) | done branch cursor-verify-fixes (Cursor deepseek, started 16:23); do not dispatch |
@@ -79,7 +79,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | System messages (compact request etc.) render as from operator; give them a system sender | open |
 | Posts that only @harness:model-start a session still wake running agents (ui.mjs routeMentions) | open |
 | Operator @mention of the PM wakes its schedule at once (runner has no run-now) | done An @session tag in any chat wakes that idle session (ui.mjs routeMentions) |
-| Code-mode workflows: inference decides, code executes — map to DOT teams, runner/DBOS, OpenShell sandbox | open |
+| Code-mode workflows: inference decides, code executes — map to DOT teams, runner/DBOS, OpenShell sandbox | decided Research /dev/shm/research/code-mode.md; operator agreed 2026-11-22; split into tasks A, team-runs, B, cap-suspend |
 | CI prek gate fails on main: end-of-file newlines in lib/compaction.mjs, lib/teams.mjs, test/teams.test.mjs, test/teams-mentions.test.mjs | done |
 | Chat to design teams: a Team Author agent that writes and edits team.dot from a plain-language conversation instead of the DOT editor | building |
 | CLI send puts unknown flags (--reply-to, --progress) into the message body; add --reply-to and reject unknown flags | done |
@@ -87,4 +87,5 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Team runs live in the runner and run in OpenShell, not the project folder (operator: yes) | open |
 | Code mode B now: compile team.dot to a runner durable workflow; agents keep pattern advance (operator: yes) | open |
 | cap/max_visits hit suspends the run for the operator instead of failing it (operator: yes, confirm) | open |
+| Notification settings lost after UI rebuild: alert level and/or browser push not surviving deploy | open |
 <!-- tasks:end -->
