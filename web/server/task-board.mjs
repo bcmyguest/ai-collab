@@ -15,6 +15,7 @@ export function taskBoard(backend, agents = [], runs = []) {
     tasks: list.map(task => ({
       id: task.id,
       title: task.title,
+      ...(task.priority ? { priority: task.priority } : {}),
       status: task.status,
       ...(task.detail ? { detail: task.detail } : {}),
       blockers: task.blockers,

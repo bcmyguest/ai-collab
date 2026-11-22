@@ -2,11 +2,19 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ageOf, boardClock, columnsOf, countsOf, FILTERS } from "@/lib/task-board";
+import { ageOf, boardClock, columnsOf, countsOf, FILTERS, statusLabel } from "@/lib/task-board";
+import { priorityOf } from "../../lib/task-order.mjs";
 import { cn } from "@/lib/utils";
 import { TaskGraph } from "./task-graph";
 
 const DOT = { open: "bg-muted-foreground", decided: "bg-sky-500", building: "bg-amber-500", blocked: "bg-destructive", done: "bg-emerald-500" };
+// P0 stands out in red, P3 is quiet; P1 and P2 sit between.
+const PRIORITY_BADGE = {
+  P0: "border-destructive/40 bg-destructive/10 text-destructive",
+  P1: "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  P2: "border-border bg-muted text-muted-foreground",
+  P3: "border-border bg-transparent text-muted-foreground/70",
+};
 const VIEWS = [["board", "Board"], ["graph", "Graph"]];
 const CARD = "flex w-full min-w-0 flex-col gap-1.5 rounded-xl border bg-card p-3 text-left text-sm";
 // A long column renders its rows lazily instead of building every off-screen card: the browser skips layout and paint for
@@ -23,6 +31,7 @@ const Card = memo(function Card({ task, age, open }) {
   const target = task.owner || task.runSession || "";
   const body = <>
     <div className="flex min-w-0 items-start gap-2">
+      <Badge variant="outline" aria-label={`priority ${priorityOf(task)}`} className={cn("shrink-0 font-mono text-[10px]", PRIORITY_BADGE[priorityOf(task)])}>{priorityOf(task)}</Badge>
       <span className="min-w-0 flex-1 font-medium leading-snug break-words">{task.title}</span>
       <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{task.id}</span>
     </div>
@@ -52,10 +61,10 @@ const Card = memo(function Card({ task, age, open }) {
 const Column = memo(function Column({ status, list, now, open }) {
   return <section aria-label={status} className="flex min-w-0 flex-col gap-2">
     <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-      <span aria-hidden className={cn("inline-block size-2 rounded-full", DOT[status])}/>{status} · {list.length}
+      <span aria-hidden className={cn("inline-block size-2 rounded-full", DOT[status])}/>{statusLabel(status)} · {list.length}
     </h2>
     {list.length ? <ul className="flex flex-col gap-2">{list.map(task => <Card key={task.id} task={task} age={task.last ? ageOf(task.last.at, now) : ""} open={open}/>)}</ul>
-      : <p className="text-xs text-muted-foreground">No {status} tasks.</p>}
+      : <p className="text-xs text-muted-foreground">No {statusLabel(status)} tasks.</p>}
   </section>;
 });
 
@@ -83,7 +92,7 @@ export function TaskBoard({ board, now, open = () => {} }) {
       <div role="group" aria-label="Filter by status" className="flex flex-wrap gap-2">
         {FILTERS.map(status => <Button key={status} type="button" size="sm" variant={filter === status ? "default" : "outline"}
           aria-pressed={filter === status} className="h-8 rounded-full capitalize" onClick={() => setFilter(status)}>
-          {status === "all" ? "All" : status} · {status === "all" ? tasks.length : counts[status]}
+          {status === "all" ? "All" : statusLabel(status)} · {status === "all" ? tasks.length : counts[status]}
         </Button>)}
       </div>
       <div className="flex flex-col gap-4 md:grid md:grid-cols-5 md:items-start">

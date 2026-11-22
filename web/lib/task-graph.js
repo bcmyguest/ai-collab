@@ -12,7 +12,7 @@ export const STATUS_FILL = { open: "#94a3b8", decided: "#38bdf8", building: "#f5
 export function taskGraph(tasks, { showDone = true } = {}) {
   const shown = tasks.filter(task => showDone || task.status !== "done");
   const ids = new Set(shown.map(task => task.id));
-  const nodes = shown.map(({ id, title, status, owner, runSession }) => ({ id, title, status, owner, runSession }));
+  const nodes = shown.map(({ id, title, status, owner, runSession, priority }) => ({ id, title, status, owner, runSession, priority }));
   const edges = shown.flatMap(task => (task.blockers || []).filter(id => ids.has(id)).map(id => ({ from: id, to: task.id })));
   return { nodes, edges, hidden: tasks.length - shown.length };
 }
