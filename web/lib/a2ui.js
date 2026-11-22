@@ -45,15 +45,27 @@ function surfaceOps(surfaceId, components, model) {
   ];
 }
 
-// Permission request: summary, then Allow and Deny while open, else the terminal note or the outcome.
+// A closed request shows a muted badge: "answered" when someone answered it, else "closed"; none while open.
+const ANSWERED = ["allowed", "denied", "answered", "sent"];
+const badgeOf = (approval, open) => open ? "" : ANSWERED.includes(approval.state) ? "answered" : "closed";
+// The title line, with the badge beside it when closed; pushes its components and returns the child ids.
+function titleRow(components, title, badge) {
+  components.push(text("title", title));
+  if (!badge) return ["title"];
+  components.push({ id: "badge", component: "Chip", text: badge, tone: "muted" });
+  components.push({ id: "heading", component: "Row", children: ["title", "badge"], justify: "spaceBetween", align: "center" });
+  return ["heading"];
+}
+
+// Permission request: tool line and summary, then Allow and Deny while open, else the terminal note or the outcome.
 function permissionOps(approval, open, outcome, terminal) {
-  const components = [column("root", []), text("title", `${approval.harness} asks permission · ${approval.tool}`)];
-  const children = ["title"];
+  const components = [column("root", [])];
+  const children = titleRow(components, "Permission · " + approval.tool, badgeOf(approval, open));
   if (approval.summary) { components.push(text("summary", approval.summary)); children.push("summary"); }
   if (open && !terminal) {
-    components.push({ id: "actions", component: "Row", children: ["allow", "deny"] });
+    components.push({ id: "actions", component: "Row", children: ["allow", "deny"], justify: "end" });
     components.push(...button("allow", "Allow", "primary", "decide", { id: approval.id, decision: "allow" }));
-    components.push(...button("deny", "Deny", "borderless", "decide", { id: approval.id, decision: "deny" }));
+    components.push(...button("deny", "Deny", "default", "decide", { id: approval.id, decision: "deny" }));
     children.push("actions");
   } else {
     components.push(text("status", open ? IN_TERMINAL : withBy(outcome, approval.by)));
@@ -63,16 +75,20 @@ function permissionOps(approval, open, outcome, terminal) {
   return surfaceOps(approvalSurfaceId(approval.id), components, {});
 }
 
-// AskUserQuestion: per question a header, the question, an OptionPicker and an Other field; read-only once closed.
+// AskUserQuestion: per question a header chip, step, question, OptionPicker with the Other field as its last row; read-only once closed.
 function choiceOps(approval, open, outcome, terminal) {
   const interactive = open && !terminal;
-  const title = approval.harness + " asks · " + (!open ? "closed" : terminal ? IN_TERMINAL : "answer to continue");
-  const components = [column("root", ["title"]), text("title", title)];
-  const rootChildren = ["title"];
+  const count = approval.questions.length;
+  const components = [column("root", [])];
+  const rootChildren = titleRow(components, count > 1 ? count + " questions" : "Question", badgeOf(approval, open));
   approval.questions.forEach((q, i) => {
     const group = "q" + i;
     const children = [];
-    if (q.header) { components.push(text(group + "-header", q.header)); children.push(group + "-header"); }
+    if (i > 0) { components.push({ id: group + "-rule", component: "Divider" }); rootChildren.push(group + "-rule"); }
+    const top = [];
+    if (q.header) { components.push({ id: group + "-chip", component: "Chip", text: q.header }); top.push(group + "-chip"); }
+    if (count > 1) { components.push({ id: group + "-step", component: "Text", variant: "caption", text: `${i + 1} of ${count}` }); top.push(group + "-step"); }
+    if (top.length) { components.push({ id: group + "-top", component: "Row", children: top, justify: "spaceBetween", align: "center" }); children.push(group + "-top"); }
     components.push(text(group + "-text", q.question));
     children.push(group + "-text");
     const options = q.options.map(o => ({
@@ -81,9 +97,9 @@ function choiceOps(approval, open, outcome, terminal) {
     }));
     const multiSelect = q.multiSelect === true;
     if (interactive) {
-      components.push({ id: group + "-pick", component: "OptionPicker", options, multiSelect, value: { path: `/picks/${i}` }, other: { path: `/other/${i}` } });
+      components.push({ id: group + "-pick", component: "OptionPicker", options, multiSelect, value: { path: `/picks/${i}` }, other: { path: `/other/${i}` }, otherChild: group + "-other" });
       components.push({ id: group + "-other", component: "TextField", label: "Other…", value: { path: `/other/${i}` } });
-      children.push(group + "-pick", group + "-other");
+      children.push(group + "-pick");
     } else {
       const answer = String(approval.answers?.[q.question] ?? "");
       const chosen = answer ? answer.split(", ") : [];
@@ -102,9 +118,10 @@ function choiceOps(approval, open, outcome, terminal) {
     const condition = every.length === 1 ? every[0] : { call: "and", args: { values: every }, returnType: "boolean" };
     const checks = [{ condition, message: "Answer every question" }];
     components.push(...button("submit", "Submit", "primary", "answer", { id: approval.id, picks: { path: "/picks" }, other: { path: "/other" } }, checks));
-    rootChildren.push("submit");
+    components.push({ id: "footer", component: "Row", children: ["submit"], justify: "end" });
+    rootChildren.push("footer");
   } else {
-    components.push(text("status", withBy(outcome, approval.by)));
+    components.push(text("status", open ? IN_TERMINAL : withBy(outcome, approval.by)));
     rootChildren.push("status");
   }
   components[0].children = rootChildren;
@@ -122,8 +139,8 @@ export function approvalOperations(approval, now) {
 
 /** Operations for an ask_question post: its body, then an answer field, or the answer once given. */
 export function questionOperations(question, body, answer, by) {
-  const components = [column("root", []), text("label", "Question"), text("body", body)];
-  const children = ["label", "body"];
+  const components = [column("root", []), text("body", body)];
+  const children = ["body"];
   if (answer) {
     components.push(text("status", "Answered: " + answer + (by ? " · " + by : "")));
     children.push("status");
