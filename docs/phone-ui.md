@@ -278,7 +278,7 @@ Headroom is `window - tokens` and shows only when the harness reported both (Cod
 
 Timeline rows: `Compacted · auto · 182k → 31k · 4 files dropped`, `Cleared · 140k → 0`, `Model claude-haiku-5-5 → claude-opus-5-5`. A compaction's before count and dropped files come from its started row; the after count comes from the runner (Claude's `post_tokens`), so a hook-observed compaction shows no after count.
 
-Phone Clear and Model switch: no new channel is verified. `/clear` stays `unsupported` on every harness. `/model` keeps its current support. The Claude Agent SDK has `Query.setModel` (sdk.d.ts:3227), but no phone route calls it. Cursor's ACP dispatcher serves `session/set_model`; `runner/adapters/cursor.mjs` `setModel` sends it, **unverified**: it has not run against a live cursor-agent, and no route calls it.
+The session header shows a model picker for runner-owned Claude sessions. While idle, select a model to apply it to subsequent responses on the same SDK query. The runner saves the selection for resume and records successful switches in the timeline. Slash command support is listed below.
 
 ## Task board
 

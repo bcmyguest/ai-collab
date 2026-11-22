@@ -21,10 +21,11 @@ import { claudeConfirmedSince, claudeSnapshot, claudeWindowMs } from "../lib/cla
 import { ackTracker, direct, MAX_ATTEMPTS, PUSHED, pushSession, readDispatchLedger, readySession, writeDispatchLedger } from "../lib/deliver-push.mjs";
 import { sessionIdleState } from "../lib/idle.mjs";
 import { opencodeRequest } from "../lib/opencode-api.mjs";
-import { childEnv, checkPrompt, findExecutable, projectRoot, worktreeNames } from "../lib/start.mjs";
+import { childEnv, checkPrompt, findExecutable, modelShape, projectRoot, worktreeNames } from "../lib/start.mjs";
 import { parseCodeMode, resolveCodeMode } from "../lib/code-mode.mjs";
 import { openTasks } from "../lib/tasks.mjs";
 import { ownedFile, readOwned, writeOwned } from "../lib/owned.mjs";
+import { modelFields } from "../lib/session-events.mjs";
 import { limitFromRunError } from "../lib/limits.mjs";
 import { alertLimit } from "../lib/limit-alert.mjs";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, LIMIT, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, permissionSettings } from "./contract.mjs";
@@ -237,9 +238,12 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     if (s.record.status === "ended") fail(409, "The owned session has ended");
     const adapter = adapterOf(s.record.harness);
     if (adapter.capabilities.resume === "none") fail(409, `${s.record.harness} sessions cannot resume`);
-    s.live = await adapter.resume(s.record, contextFor({ s }, s.record.harness, s.signal), ownedEnv());
-    save(s);
-    return s.live;
+    s.resuming ??= (async () => {
+      s.live = await adapter.resume(s.record, contextFor({ s }, s.record.harness, s.signal), ownedEnv());
+      save(s);
+      return s.live;
+    })().finally(() => { s.resuming = null; });
+    return s.resuming;
   }
 
   // Resolves when runId ends.
@@ -341,6 +345,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       const sent = await wf.step("run.send", async () => {
         try {
           const handle = await liveHandle(s);
+          while (s.switchingModel) await s.switchingModel.catch(() => {});
           s.record.status = "running";
           save(s);
           const { runId } = await handle.send(turn);
@@ -440,6 +445,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
               s.record.status = "idle";
               await recordSession(cfg, { id: record.nativeId, cwd: record.cwd, harness, event: "owned", proc }).catch(() => {});
               const handle = await liveHandle(s);
+              while (s.switchingModel) await s.switchingModel.catch(() => {});
               s.record.status = "running";
               save(s);
               const { runId } = await handle.send({ text, messageIds });
@@ -843,10 +849,35 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     if (s.record.status === "ended") fail(409, "The owned session has ended");
     if (s.record.status === "running") fail(409, "The session is mid-turn; compact it once the turn ends");
     const handle = await liveHandle(s);
+    if (s.switchingModel) fail(409, "Wait for the model switch to finish");
     if (!handle.compact) return { status: "unsupported", detail: `${s.record.harness} has no outside compaction trigger` };
     const counts = await handle.compact();
     const span = Number.isFinite(counts?.before) && Number.isFinite(counts?.after) ? `${counts.before} → ${counts.after} tokens.` : "";
     return { status: "succeeded", detail: `Compacted the session in place. ${span}`.trim(), ...(counts?.before !== undefined ? { before: counts.before } : {}), ...(counts?.after !== undefined ? { after: counts.after } : {}) };
+  }
+
+  async function setModel(address, model) {
+    const s = find(address);
+    const r = s.record;
+    if (r.harness !== "claude") fail(400, "Model switching is available for runner-owned Claude sessions");
+    if (r.status !== "idle" || s.switchingModel) fail(409, "The Claude session must be idle to switch models");
+    if (!modelShape(r.harness, model)) fail(400, "Select a valid Claude model");
+    const fields = modelFields({ from: r.model || "default", to: model });
+    if (!fields) fail(400, "Select a valid Claude model");
+    if (fields.to === r.model) return { status: "Model already selected", model: r.model };
+    s.switchingModel = (async () => {
+      const handle = await liveHandle(s);
+      if (r.status !== "idle") fail(409, "The Claude session must be idle to switch models");
+      if (!handle.setModel) fail(409, "This Claude session cannot switch models");
+      await handle.setModel(fields.to);
+      r.model = fields.to;
+      save(s);
+      void enqueuePublish(s, () => publishEvent(s.cfg, r.harness, {
+        type: EventType.STEP_FINISHED, stepName: "model", metadata: { aiCollab: { modelSwitch: fields } },
+      }));
+      return { status: "Model switched", model: r.model, detail: r.model };
+    })().finally(() => { s.switchingModel = null; });
+    return s.switchingModel;
   }
 
   /** Changes an owned session's permission mode; reached only through the control socket, never through ntfy or MCP. */
@@ -1051,7 +1082,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   };
 
   return {
-    start, startPattern, advancePattern, send, interrupt, compact, respond, setMode, close, boot, stop, harnesses, deliveries, pump: pumpDeliveries,
+    start, startPattern, advancePattern, send, interrupt, compact, respond, setModel, setMode, close, boot, stop, harnesses, deliveries, pump: pumpDeliveries,
     list: () => [...sessions.values()].map(view),
     // Each schedule with the command and folder its schedules.json entry names, and the session it resumes.
     schedules: () => ({ schedules: durable.schedules().map((s) => ({ ...s, ...entryOf(s.name) })), configError: scheduleErrors }),

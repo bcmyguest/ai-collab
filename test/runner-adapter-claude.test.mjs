@@ -64,6 +64,7 @@ function fakeSdk({ onUser = echoReply, init, failInit = null, onCompact = compac
         record.interrupts++;
         api.result({});
       },
+      async setModel(model) { record.model = model; },
       async setPermissionMode(mode) { record.modes.push(mode); },
       async getContextUsage() { return { totalTokens: 500, maxTokens: 200000 }; },
       close() { record.closed = true; out.end(); },
@@ -420,4 +421,17 @@ test("capabilities declare the transcript resume and every permission mode", () 
   assert.equal(adapter.harness, "claude");
   assert.equal(adapter.capabilities.resume, "transcript");
   assert.deepEqual(adapter.capabilities.permissionModes, ["supervised", "accept-edits", "auto", "full-access"]);
+});
+
+test("model switching uses the existing streaming query", async () => {
+  const { adapter, sdk, ctx } = harness();
+  const handle = await adapter.open(OPTIONS, ctx);
+  try {
+    await handle.setModel("sonnet");
+    assert.equal(sdk.queries.length, 1);
+    assert.equal(sdk.queries[0].model, "sonnet");
+    assert.deepEqual(sdk.queries[0].seen, []);
+  } finally {
+    await handle.close();
+  }
 });

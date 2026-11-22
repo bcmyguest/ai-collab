@@ -285,7 +285,8 @@ Verified means the string appears in the local OpenCode 2.2.5 binary (`strings`)
 | Approval id is the `permission.asked` `data.id`; asks with an auto-reply action get `once` without a card | Adapter behaviour; not run against a live service | test file |
 | `AI_COLLAB_PARENT` export into the agent shell | Not done: the service runs its own shell, so the adapter cannot set a per-session env | owned-sessions.md |
 | Hook stand-down | Keyed by owned record (session id), not by env, because the service is shared | `lib/owned.mjs` `standsDown` |
-| Not implemented | `contextUsage`, `setModel`, question forms (`/form` replies), `resumeData` | |
+| Model switch | `setModel` calls the live Claude SDK query while idle. The runner saves the selection for resume. |
+| Not implemented | `contextUsage`, question forms (`/form` replies), `resumeData` | |
 ### Codex adapter status
 
 `runner/adapters/codex.mjs` bounds each RPC at 60 s. A timed-out `turn/start` carries `mayHaveStarted`, so the runner never resends it. A `turn/start` or `thread/resume` the app-server answers with a JSON-RPC error carries `retryable`, because the server refused it and ran nothing: this is the "thread is closing" case, where a wake resumes a thread whose unload from the session's close is still in flight, and the runner retries it with backoff. `shutdown()` also kills a child still in its `initialize` handshake. `steer` and `interrupt` after the child is gone (or the session closed) throw `the codex app-server is not running` instead of a `TypeError`. Tested against `test/helpers/fake-codex-silent-app-server.mjs` (`test/runner-adapter-codex-regressions.test.mjs`) and `test/helpers/fake-codex-app-server.mjs` (`test/runner-wake-retry.test.mjs`); nothing ran against the real app-server, and the real error text for a closing thread is UNVERIFIED — the retry keys on the JSON-RPC error, not on the text.

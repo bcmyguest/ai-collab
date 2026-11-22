@@ -91,6 +91,7 @@ export async function route(runner, method, url, input) {
   // Real in-place compaction through the harness's own trigger (Claude /compact, Codex thread/compact/start, OpenCode
   // session.compact); 409 when the session is mid-turn, "unsupported" when the harness has no outside trigger.
   if (action === "compact") return [200, await runner.compact(target)];
+  if (action === "model") return [200, await runner.setModel(target, input.model)];
   if (action === "mode") return [200, await runner.setMode(target, input.mode)];
   if (action === "approvals" && /^[a-f0-9]{12}$/.test(id || "")) return [200, await runner.respond(target, id, { decision: input.decision, ...(input.answers ? { answers: input.answers } : {}) })];
   fail(404, "Not found");

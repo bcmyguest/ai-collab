@@ -24,6 +24,7 @@ export const runnerClient = (options = {}) => ({
   send: (address, text, { steer = false } = {}) => runnerRequest("POST", `${sessionPath(address)}/send`, { text, steer }, options),
   interrupt: (address) => runnerRequest("POST", `${sessionPath(address)}/interrupt`, {}, options),
   compact: (address) => runnerRequest("POST", `${sessionPath(address)}/compact`, {}, options),
+  setModel: (address, model) => runnerRequest("POST", `${sessionPath(address)}/model`, { model }, options),
   setMode: (address, mode) => runnerRequest("POST", `${sessionPath(address)}/mode`, { mode }, options),
   approve: (address, id, decision) => runnerRequest("POST", `${sessionPath(address)}/approvals/${encodeURIComponent(id)}`, decision, options),
   context: (address) => runnerRequest("GET", `${sessionPath(address)}/context`, undefined, options),
