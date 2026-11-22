@@ -23,6 +23,7 @@ import { TABS, parseSelection } from "@/lib/selection";
 import { subscribeUiEvents } from "@/lib/ui-events";
 import { ActivityRow, GoToAgent, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
+import { SurfaceContext } from "@/components/a2ui/surface";
 import { NotifyToggle } from "./notify";
 import { SessionList, SessionMenu, SubagentList } from "./home";
 import { activityRows, groupSubagents } from "@/lib/activity-rows";
@@ -329,7 +330,7 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
         {openable && sender.includes("#") && <GoToAgent onClick={go} className="size-6"/>}
       </div>
       {message.kind === "Approval" ? <ApprovalCard approval={message.approval} now={now} disabled={disabled} act={act}/>
-        : message.kind === "Question" && message.question ? <QuestionCard body={withMentions(message.body)} answer={message.answer} by={message.answeredBy} disabled={disabled} onAnswer={body => answer(message.question, body)}/>
+        : message.kind === "Question" && message.question ? <QuestionCard question={message.question} body={withMentions(message.body)} answer={message.answer} by={message.answeredBy} disabled={disabled} onAnswer={body => answer(message.question, body)}/>
         : <MessageContent markdown className={cn("bubble max-w-full rounded-2xl px-3.5 py-2 text-[15px] leading-relaxed shadow-xs [overflow-wrap:anywhere]",
         outgoing ? "rounded-tr-md border border-primary/25 bg-primary/10 text-foreground" : "rounded-tl-md border bg-card text-card-foreground",
         message.kind === "Question" && "border-amber-500/50")}>{withMentions(message.body)}</MessageContent>}
@@ -547,6 +548,8 @@ function Console({ account }) {
   const [selected, setSelected] = useState(selection);
   const [data, setData] = useState(initial);
   const [activity, setActivity] = useState([]);
+  // A2UI surfaces by id, from the stream's ACTIVITY_SNAPSHOT frames.
+  const [surfaces, setSurfaces] = useState({});
   const [pull, setPull] = useState(0);
   const pullFrom = useRef(null);
   const pullRef = useRef(0);
@@ -656,6 +659,8 @@ function Console({ account }) {
             setData(data); setReady(true); setLoadError(""); setNow(Date.now());
             toast.dismiss(CONNECTION_TOAST);
             retrying.current = false; shown.current = false; autoRetry.current = true;
+          } else if (event === "surface") {
+            setSurfaces(map => ({ ...map, [data.id]: data.operations }));
           } else if (event === "activity") {
             const { reset, items } = data;
             setActivity(list => (reset ? items : [...list, ...items]).slice(-ACTIVITY_MAX));
@@ -783,7 +788,7 @@ function Console({ account }) {
   const sidebar = <Sidebar data={data} selected={selected} now={now} navigate={navigate} newSession={newSession} teamOpen={teamOpen} setTeamOpen={setTeamOpen}
     createTeam={saveTeam} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")} openRaw={openRaw}/>;
   const anyWaiting = data.projects.some(project => project.waiting > 0);
-  return <div className="flex h-dvh w-full overflow-hidden">
+  return <SurfaceContext.Provider value={{ surfaces, submit: payload => action("a2ui", payload, "Sent"), disabled: !ready || working }}><div className="flex h-dvh w-full overflow-hidden">
     <aside className="hidden w-72 shrink-0 border-r bg-sidebar text-sidebar-foreground md:block">{sidebar}</aside>
     <Sheet open={navOpen} onOpenChange={setNavOpen}>
       <SheetContent side="left" className="w-[85vw] max-w-80 bg-sidebar p-0">
@@ -889,5 +894,5 @@ function Console({ account }) {
           return sent;
         }}/>}
     </main>
-  </div>;
+  </div></SurfaceContext.Provider>;
 }
