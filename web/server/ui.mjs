@@ -473,7 +473,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       if (name.includes("#")) {
         // @session/run goes to the session that owns the subagent run.
         const [address, run] = name.split("/");
-        if (sessions.some(item => item.id === address)) { await direct(address, run); notes.push("@" + name + " sent"); } else notes.push("@" + name + " unknown");
+        const session = sessions.find(item => item.id === address);
+        if (!session) { notes.push("@" + name + " unknown"); continue; }
+        await direct(address, run);
+        // An idle session wakes on its tag, as it would on a direct message.
+        const woke = session.online ? null : wakeAgent(project, address, session);
+        notes.push("@" + name + (woke?.status === "waking" ? " sent, waking" : " sent"));
         continue;
       }
       const running = sessions.filter(item => item.peer === name && item.online && item.id !== target);
