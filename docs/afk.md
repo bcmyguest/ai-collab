@@ -41,3 +41,11 @@ AFK stays on until you turn it off in the UI or with `afk off`; typing in a sess
 
 - **Esc** interrupts a running Stop hook in Claude Code, Codex, and Cursor.
 - **A prompt queued in the waiting session ends its wait at once**; AFK stays on. Claude Code queues a prompt typed, or sent through Remote Control, while the hook runs and records it in the transcript as a `queue-operation` `enqueue` line; Codex appends it to `$CODEX_HOME/history.jsonl` (default `~/.codex`) with the session ID. The Stop hook checks only the lines appended since its wait began, about once a second, and ignores machine text (task notifications, agent hand-backs, `[ai-collab]`). Both formats are undocumented: a missing or unparsable file means the wait goes on as before. Cursor has no reliable signal and keeps Esc. In OpenCode, a prompt that reaches the session's `prompt` hook during the wait stops the Stop hook process (SIGTERM) and no continuation is added.
+
+For a one-key return, run `ai-collab afk park` while using the phone. In tmux, open it over the running agent pane with this optional binding in `~/.tmux.conf`:
+
+```tmux
+bind-key a display-popup -E -d '#{pane_current_path}' 'ai-collab afk park'
+```
+
+Press the tmux prefix followed by **a** to open the popup. **Space** publishes AFK off across the same projects as `ai-collab afk off` and closes the popup, returning keyboard input to the pane. **Ctrl-C** closes the popup and leaves AFK mode as it was. Set AFK on or quiet separately from the phone or CLI.

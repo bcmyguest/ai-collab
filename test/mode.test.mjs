@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { PassThrough } from "node:stream";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -109,4 +110,33 @@ test("publishMode and `ai-collab afk` reach every project in projects.json", asy
   assert.equal(out, "one\tquiet\ntwo\tquiet\n");
   assert.equal(await runCli(["afk", "maybe"], io), 1);
   assert.match(err, /usage: afk on\|off\|quiet/);
+});
+
+test("afk park publishes off only when Space is pressed and restores the terminal", async (t) => {
+  const fake = await startFakeNtfy();
+  t.after(() => fake.close());
+  const env = peerEnv(fake, { peer: "operator" });
+  const cfg = loadConfig(env);
+  fake.inject(ALL, mode("on", 1000));
+  const stdin = new PassThrough();
+  stdin.isTTY = true;
+  stdin.isRaw = false;
+  stdin.setRawMode = (raw) => { stdin.isRaw = raw; };
+  const stdout = { isTTY: true, write() {} };
+  const io = { env, stdin, stdout, now: () => 2000 };
+
+  const cancelled = runCli(["afk", "park"], io);
+  stdin.write("x");
+  stdin.write("\x03");
+  assert.equal(await cancelled, 130);
+  assert.equal(stdin.isRaw, false);
+  assert.equal((await currentMode(cfg)).mode, "on");
+
+  const switched = runCli(["afk", "park"], io);
+  assert.equal(stdin.isRaw, true);
+  stdin.write(" ");
+  assert.equal(await switched, 0);
+  assert.equal(stdin.isRaw, false);
+  assert.equal(stdin.listenerCount("data"), 0);
+  assert.equal((await currentMode(cfg)).mode, "off");
 });
