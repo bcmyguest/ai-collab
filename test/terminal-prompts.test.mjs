@@ -11,14 +11,18 @@ import { sse } from "./helpers/ui-stream.mjs";
 
 const base = "http://127.0.0.1:8795";
 
-test("session chat shows typed terminal prompts as operator messages, skipping machine text and UI echoes", async (t) => {
+test("session chat shows typed terminal prompts as operator messages, skipping machine text and UI echoes", { timeout: 10000 }, async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const cfg = loadConfig(peerEnv(fake, { peer: "operator" }));
+  const env = peerEnv(fake, { peer: "operator" });
+  const cfg = loadConfig(env);
   const bob = { ...loadConfig(peerEnv(fake, { peer: "bob" })), session: "0000000000000001" };
   const target = `bob#${bob.session}`;
 
-  await publishActivity(bob, "claude", [
+  await sendMessage(cfg, target, "echoed from UI", { operatorThread: true });
+  await sendMessage(cfg, "bob", "echoed from peer inbox");
+  await sendMessage(cfg, "all", "echoed from broadcast");
+  assert.equal(await publishActivity(bob, "claude", [
     { type: "prompt", input: "typed in terminal" },
     { type: "prompt", input: "[ai-collab] machine text" },
     { type: "prompt", input: WAKE_PROMPT },
@@ -26,12 +30,9 @@ test("session chat shows typed terminal prompts as operator messages, skipping m
     { type: "prompt", input: "echoed from peer inbox" },
     { type: "prompt", input: "echoed from broadcast" },
     { type: "text", output: "agent reply in activity" },
-  ]);
-  await sendMessage(cfg, target, "echoed from UI", { operatorThread: true });
-  await sendMessage(cfg, "bob", "echoed from peer inbox");
-  await sendMessage(cfg, "all", "echoed from broadcast");
+  ]), 7);
 
-  const ui = createUi({ cfg });
+  const ui = createUi({ cfg, env });
   const ctrl = new AbortController();
   t.after(() => { ctrl.abort(); ui.close(); });
   const open = (query) => sse(ui.events(new Request(`${base}/api/events?${query}`, { signal: ctrl.signal })));
@@ -39,6 +40,7 @@ test("session chat shows typed terminal prompts as operator messages, skipping m
     for (;;) {
       const { value, done } = await stream.next();
       if (done) return undefined;
+      if (value.event === "problem") throw new Error(value.data.error);
       if (value.event === name) return value.data;
     }
   };

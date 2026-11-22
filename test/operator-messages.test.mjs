@@ -45,10 +45,11 @@ test("an answer message is an operator message to the asker, linked by replyTo",
   });
 });
 
-test("project and session chats show terminal prompts and operator answers once", async (t) => {
+test("project and session chats show terminal prompts and operator answers once", { timeout: 10000 }, async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const cfg = loadConfig(peerEnv(fake, { peer: "operator" }));
+  const env = peerEnv(fake, { peer: "operator" });
+  const cfg = loadConfig(env);
   const bob = { ...loadConfig(peerEnv(fake, { peer: "bob" })), session: "0000000000000001" };
   const target = `bob#${bob.session}`;
 
@@ -56,7 +57,7 @@ test("project and session chats show terminal prompts and operator answers once"
   const id = (await askQuestion(bob, "Which database?", { seconds: 0 })).id;
   await publish(cfg, broadcastTopic(cfg.project), `reply ${id} postgres`, { title: "Reply from operator" });
 
-  const ui = createUi({ cfg });
+  const ui = createUi({ cfg, env });
   const ctrl = new AbortController();
   t.after(() => { ctrl.abort(); ui.close(); });
   const open = (query) => sse(ui.events(new Request(`${base}/api/events?${query}`, { signal: ctrl.signal })));
@@ -64,6 +65,7 @@ test("project and session chats show terminal prompts and operator answers once"
     for (;;) {
       const { value, done } = await stream.next();
       if (done) return undefined;
+      if (value.event === "problem") throw new Error(value.data.error);
       if (value.event === name) return value.data;
     }
   };
@@ -79,16 +81,17 @@ test("project and session chats show terminal prompts and operator answers once"
   assert.deepEqual(chat.messages.filter(m => m.terminal).map(m => [m.from, m.to, m.body]), [["operator", target, "typed in terminal"]]);
 });
 
-test("a message the operator sent to all shows once in the project chat", async (t) => {
+test("a message the operator sent to all shows once in the project chat", { timeout: 10000 }, async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const cfg = loadConfig(peerEnv(fake, { peer: "operator" }));
+  const env = peerEnv(fake, { peer: "operator" });
+  const cfg = loadConfig(env);
   const bob = { ...loadConfig(peerEnv(fake, { peer: "bob" })), session: "0000000000000001" };
 
   await sendMessage(cfg, "all", "hello all");
   await publishActivity(bob, "claude", [{ type: "prompt", input: "hello all" }]);
 
-  const ui = createUi({ cfg });
+  const ui = createUi({ cfg, env });
   const ctrl = new AbortController();
   t.after(() => { ctrl.abort(); ui.close(); });
   const stream = sse(ui.events(new Request(`${base}/api/events`, { signal: ctrl.signal })));
