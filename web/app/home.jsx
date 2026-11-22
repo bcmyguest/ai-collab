@@ -10,6 +10,7 @@ import { runState, subagentLabel } from "@/lib/activity-rows";
 import { SUBAGENT_LABELS, subagentState } from "@/lib/subagent-state";
 import { pendingLabel } from "@/lib/pending-summary";
 import { contextMeter } from "@/lib/context-view";
+import { HARNESS_LABELS } from "@/lib/new-session";
 import { ActivityRow, GoToAgent } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
 import { Avatar, ago } from "./chat";
@@ -70,6 +71,7 @@ function SessionCard({ node, now, open, openAddress, act, answer, dispose, raw, 
           </span>
           <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
             <span className="font-mono">{short(node.id)}</span>
+            {node.harness && <span title="Agent type">· {HARNESS_LABELS[node.harness] || node.harness}</span>}
             {node.where && <span title="Where it runs">· {node.where}</span>}
             {showProject && <span>· {node.project}</span>}
             <span>· active {ago(Math.max(node.seenAt || 0, node.lastActivityAt || 0), now)}</span>
