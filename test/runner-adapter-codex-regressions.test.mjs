@@ -26,7 +26,7 @@ function openOptions(mode, extra = {}) {
 }
 
 test("a turn/start that times out is flagged as possibly started, so the caller never resends it", async () => {
-  const adapter = codexAdapter({ command, requestMs: 50 });
+  const adapter = codexAdapter({ command, requestMs: 500 });
   try {
     const handle = await adapter.open(openOptions("silent-turn"), fakeCtx());
     await assert.rejects(handle.send({ text: "hello" }), (error) => {
