@@ -32,10 +32,15 @@ const calls = (t) => (existsSync(t.env.FAKE_OPENSHELL_LOG)
   ? readFileSync(t.env.FAKE_OPENSHELL_LOG, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l))
   : []);
 
-test("sandboxName is lowercase, DNS-safe, and capped at 40 characters of project", () => {
-  assert.equal(sandboxName("My_Project.v2"), "ai-collab-my-project-v2");
+test("sandboxName fits OpenShell's 19-character limit and distinguishes long projects", () => {
+  assert.equal(sandboxName("My_Repo"), "ai-collab-my-repo");
   assert.equal(sandboxName("--x--"), "ai-collab-x");
-  assert.equal(sandboxName("a".repeat(80)), `ai-collab-${"a".repeat(40)}`);
+  assert.equal(sandboxName("123456789").length, 19);
+  assert.match(sandboxName("My_Project.v2"), /^ai-collab-[a-f0-9]{8}$/);
+  const longProject = "a".repeat(80);
+  assert.match(sandboxName(longProject), /^ai-collab-[a-f0-9]{8}$/);
+  assert.notEqual(sandboxName(longProject), sandboxName(`${longProject}b`));
+  assert.deepEqual(ownedSandboxNames(longProject), [sandboxName(longProject)]);
   assert.deepEqual(ownedSandboxNames("demo"), ["ai-collab-demo"]);
 });
 
