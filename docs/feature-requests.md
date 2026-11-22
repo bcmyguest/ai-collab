@@ -54,4 +54,7 @@ Operator requests from chat and the terminal, newest last. Status: done (merged 
 | Move off ntfy eventually, so attachments and links work | open (operator 2026-11-22) |
 | Scheduled jobs in the left panel | building |
 | Reply shows a quote of the replied message; reply-to visible in composer (quote bar: sender + first line) | building (operator 2026-11-22) |
+| Tap a notification opens the right view | building |
+| Notification filter: all / questions and replies / questions only / none | building |
+| Hosted multi-user: users reach only their own agents; agents from other users are identified as such | open (operator 2026-11-22; needs design: user identity, tenancy, agent credentials, cross-user policy) |
 | Record feature requests | this file |
