@@ -55,7 +55,7 @@ Import reads the status word of a status cell only when it ends the cell or prec
 
 The project view has a Tasks entry in the sidebar. The tab has two views:
 
-- **Board**: columns open, decided, building, blocked, done, stacked on a phone and side by side from 768 px, with a status filter. Each card shows the title, id, detail, owner with online or offline, run, blockers and the last progress line with its age. Tapping a card opens its owner's session timeline, or the active session of its team run when no owner is set.
+- **Board**: columns open, decided, building, blocked, done, stacked on a phone and side by side from 768 px, with a status filter. Each card shows the title, id, detail, owner with online or offline, run, blockers and the last progress line with its age. Tap a card to open the composer with `#<task-id> ` already entered. A task link in a chat message opens the matching card.
 - **Graph**: tasks as nodes, blockers as arrows, colour by status; done tasks collapse with a button. Under 600 px the graph is one node per row, in dependency order, with arcs in a left gutter. From 600 px it flows left to right, and an arrow that skips a layer routes around the nodes in between. The layout is `web/lib/task-graph.js`, self-contained, so a team-graph renderer can replace it.
 
 The store file is polled once a second, so CLI and agent edits reach open views. The UI resolves each project's backend when it starts watching the project, so a changed `tasks` setting in projects.json takes effect after a UI restart.
