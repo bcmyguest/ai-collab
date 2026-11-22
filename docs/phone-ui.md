@@ -56,8 +56,13 @@ After a deploy, an open page shows an "Update available" toast when it reconnect
 | AFK hold | online, AFK mode not `off`, the latest row is `turn ended`, and no `stop` status after it: the Stop hook is waiting |
 | Working | an open tool call or running subagent under 15 minutes old, or any activity in the last 60 seconds |
 | Idle / Offline | the registry PID check |
+| Dead | offline, and the card (or a session nested under it) was last active a day ago or more: kept, but behind one tap |
 
 Approvals, choices and questions are answered on the card. The browser opens `/api/events?view=home`; the server adds a `sessions` list to the pushed state and opens each project's status, broadcast and activity topics once on the shared hubs, so Home adds no polling. A project whose topics fail is listed as unavailable.
+
+A session whose card is dead is folded into a **Dead** section below Offline, closed by default; tapping its header shows the cards, and the choice is remembered per view like Offline. Only an offline session becomes dead, so a running one never hides.
+
+**Sessions whose worktree is gone are dropped.** When a session was started in a worktree under the project root (`<root>/.claude/worktrees/<name>`, or any `…/worktrees/<name>` path) and that folder no longer exists, an offline session's card is left out of Home, Sessions, the sidebar counts and the waiting count. Its registry entry is kept, so the session's activity, direct chat and `dispose` still work; only the card is hidden. A running session, a sandbox and a plain folder are never judged by this rule (`worktreeGone` in `lib/sessions.mjs`).
 
 ## Levels
 
