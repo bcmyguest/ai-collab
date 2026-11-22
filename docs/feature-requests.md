@@ -7,9 +7,6 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 <!-- tasks:start -->
 | Request | Priority | Status |
 |---|---|---|
-| Deploys break the live site: next build rewrites web/.next under the running server (missing chunks) until the restart; build to a fresh dir and switch on restart | P2 | building |
-| Job meters: sessions report real jobs (ai-collab job run); a running job counts as working, so 'building' claims are honest (HAPI idea, clean-room) | P2 | building builder builder-job-meters-sessions-report-real-jobs-ai failed: Recursive option not enabled, cannot copy a directory: /lib/x86_64-linux-gnu/libstdc++.so.6/ |
-| Codex exec builders in a fresh worktree: ai-collab hooks fail (SessionStart/UserPromptSubmit/PostToolUse 'Failed'), so the session never registers or shows in the UI | P2 | building |
 | Operator's pending messages in project chat | P2 | open |
 | Session view shows which agent is running now | P2 | open |
 | Inspect and edit teams in the UI | P2 | open |
@@ -21,7 +18,6 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Draft guard: hold a phone message while the terminal has unsent text; Send anyway row (HAPI idea, clean-room) | P2 | open |
 | Space to switch to local: a key in the terminal takes a phone-controlled session back to local control (as HAPI does) | P2 | open Design: /dev/shm/research/hapi-steal.md §2.1. HAPI is AGPL-3.0: clean-room, copy no code. |
 | PM tracked handoffs: builders start as runner-owned sessions linked to tasks (rides on team-runs/OpenShell) | P2 | open |
-| PM feedback loop: each run ends with a review; lessons go to openmem (substrate approved) and the mission file | P2 | open |
 | Code-mode workflows: inference decides, code executes — map to DOT teams, runner/DBOS, OpenShell sandbox | P2 | decided Research /dev/shm/research/code-mode.md; operator agreed 2026-11-22; split into tasks A, team-runs, B, cap-suspend |
 | cap/max_visits hit suspends the run for the operator instead of failing it (operator: yes, confirm) | P2 | open |
 | Code mode B now: compile team.dot to a runner durable workflow; agents keep pattern advance (operator: yes) | P2 | open |
@@ -31,6 +27,11 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Modern visual refresh of the whole UI | P2 | open (last; coordinator shows 2–3 design directions first; do not PM-dispatch) |
 | Move off ntfy eventually, so attachments and links work | P2 | open (operator 2026-11-22) |
 | Phone model switch: switch a runner-owned Claude session's model from the phone via SDK Query.setModel (sdk.d.ts:3227) | P2 | open deferred by operator |
+| Deploys break the live site: next build rewrites web/.next under the running server (missing chunks) until the restart; build to a fresh dir and switch on restart | P2 | done Committed 84cdfdc. Local webpack deploy verified old assets remain available and restart selects the new build. Required verification blocked in sandbox: mise Node 24.18.0 npm is absent, isolated node --test reports failures outside the new regression coverage, default Turbopack cannot resolve next/package.json, and smoke-ui cannot load its hard-coded host Playwright path. oncebitten passed. |
+| Codex exec builders in a fresh worktree: ai-collab hooks fail (SessionStart/UserPromptSubmit/PostToolUse 'Failed'), so the session never registers or shows in the UI | P2 | done |
+| PM feedback loop: each run ends with a review; lessons go to openmem (substrate approved) and the mission file | P2 | done |
+| Job meters: sessions report real jobs (ai-collab job run); a running job counts as working, so 'building' claims are honest (HAPI idea, clean-room) | P2 | done Implemented in d29b890 and focused tests pass. Required isolated-HOME full suite fails on builder, limit-alert, and runner process-group tests that reproduce on main in OpenShell, and the full run timed out. |
+| sandbox smoke test: claude builder adds one line | P2 | done throwaway smoke test of ai-collab builder start --harness claude; do not review or merge; branch deleted after the run |
 | Code mode A: ai-collab tool-API client for programs in the OpenShell sandbox; sandbox policy replaces per-call approval (operator: yes) | P2 | done Tool API committed and targeted tests pass. Required isolated npm test cannot pass here: npm is missing, registry access is denied, and node --test reproduces existing builder and limit-alert failures on the pre-change revision. |
 | Session view: hide dead sessions older than a day by default (one tap shows them), and drop sessions whose worktree is gone | P2 | done |
 | Scheduler card: a skipped extra trigger (previous run still going) must not replace the last real run's status | P2 | done |
