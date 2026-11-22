@@ -77,6 +77,8 @@ export function createDispatcher({
   const answers = new Map();
   const cursors = new Map();
   const backoff = new Map();
+  // Per (session, id) of an unconfirmed push: whether the whole range written after that push holds the message.
+  const rechecks = new Map();
   const watchers = new Set();
 
   const slot = (session, id) => `${session.id}\n${id}`;
@@ -91,7 +93,10 @@ export function createDispatcher({
   }
 
   function forget(session, ids) {
-    for (const id of ids) backoff.delete(slot(session, id));
+    for (const id of ids) {
+      backoff.delete(slot(session, id));
+      rechecks.delete(slot(session, id));
+    }
   }
 
   function pruneBackoff() {
@@ -113,9 +118,14 @@ export function createDispatcher({
   }
 
   // Keeps the reservation while a late confirmation is watched, then marks the messages delivered or releases them.
-  function watchLate(scfg, ids, watch) {
-    const job = watch()
-      .then((ok) => (ok ? markDelivered(scfg, ids) : releaseDelivery(scfg, ids)))
+  // A release keeps a whole-range check per id, run before the message is pushed again.
+  function watchLate(session, scfg, ids, result) {
+    const job = result.watch()
+      .then((ok) => {
+        if (ok) return markDelivered(scfg, ids);
+        for (const id of ids) rechecks.set(slot(session, id), () => result.confirmedSince?.(id) ?? false);
+        return releaseDelivery(scfg, ids);
+      })
       .catch(() => {})
       .finally(() => watchers.delete(job));
     watchers.add(job);
@@ -131,7 +141,7 @@ export function createDispatcher({
     }
     failed(session, ids);
     if (result.status === "unconfirmed") {
-      watchLate(scfg, ids, result.watch);
+      watchLate(session, scfg, ids, result);
       return "pending";
     }
     await releaseDelivery(scfg, ids).catch(() => {});
@@ -188,11 +198,20 @@ export function createDispatcher({
       const owned = new Set(await reserveDelivery(scfg, candidates.map((m) => m.id)));
       const waiting = candidates.filter((m) => owned.has(m.id));
       if (!waiting.length) continue;
-      const ids = waiting.map((m) => m.id);
-      const status = await dispatchIds(session, scfg, textFor(scfg, waiting), { urgent: waiting.some((m) => m.urgent), ids });
+      // A message released after an unconfirmed push is checked over the whole range first: a late confirmation settles it.
+      const late = waiting.filter((m) => rechecks.get(slot(session, m.id))?.());
+      if (late.length) {
+        await markDelivered(scfg, late.map((m) => m.id)).catch(() => {});
+        for (const m of late) forget(session, [m.id]);
+        counts.delivered += late.length;
+      }
+      const rest = waiting.filter((m) => !late.includes(m));
+      if (!rest.length) continue;
+      const ids = rest.map((m) => m.id);
+      const status = await dispatchIds(session, scfg, textFor(scfg, rest), { urgent: rest.some((m) => m.urgent), ids });
       if (status !== "delivered") continue;
-      counts.delivered += waiting.length;
-      for (const m of waiting) {
+      counts.delivered += rest.length;
+      for (const m of rest) {
         if (m.expectReply) entries[m.id] = { address: session.id, from: m.from, firstAt: now(), lastAt: now(), attempts: 1, message: m };
       }
     }

@@ -29,11 +29,12 @@ Operator requests from chat and the terminal, newest last. Status: done (merged 
 | Owned sessions: runner service, durable workflows, AG-UI event names, four harness adapters | building (runner: broadcasts, runtime mode, approval timeout, scheduled workflows merged 2026-11-21; harness adapters next) |
 | Copy T3 Code's code viewer (`@pierre/diffs`) for mobile and web | open |
 | Operator prompts and phone replies (ask_question answers) visible in session and project chat | building (operator: both chats) |
-| Context management and slash commands from the phone | open |
+| Context management and slash commands from the phone: Compact, Clear/new, Model switch, any typed /cmd; context meter plus loaded files | building |
 | Reviews by Cursor `deepseek-v41-flash-1017` | adopted for reviews |
 | Agent questions asked in the terminal (Claude AskUserQuestion, etc.) also appear in the UI in the same multiple-choice format and can be answered there | done (merged main 2026-11-21) |
 | Merge chat and activity: one session timeline; project chat for cross-session messages, completions, questions and live status; raw activity in the session menu | done (merged main 2026-11-21) |
 | A UI message to one session stays out of the project chat | decided |
 | Move to AG-UI end to end (official @ag-ui packages) | building (Codex gpt-6.2-sol, branch agui) |
 | Render questions, approvals and choice cards with A2UI over AG-UI | open; research first |
+| Message delivery as durable workflows in the runner (reserve, push, confirm, mark/release; durable backoff) instead of UI-server state | planned after the AG-UI merge |
 | Record feature requests | this file |
