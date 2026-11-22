@@ -54,7 +54,7 @@ import { answerMessage, answerText, terminalMessages } from "../lib/operator-mes
 import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a2ui.js";
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["messages", "send", "reply", "nudge", "queue", "compact", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide"];
+const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide"];
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
 const PARENT = /^[a-z0-9-]{1,24}#[a-f0-9]{16}$/;
@@ -369,7 +369,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   function addProject(item) {
     if (projects.has(item.project) || closed) return false;
     // Projects on the same ntfy server and account share one hub, hence one streaming subscription.
-    const key = item.url + "\n" + item.token;
+    const key = JSON.stringify([item.url, item.token]);
     if (!hubs.has(key)) {
       const hub = createHub(item, { keep: name => known.has(name) });
       hubs.set(key, hub);
@@ -400,13 +400,11 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     };
     for (const name of [project.topic, project.status, project.activity, project.receipts, ...project.inboxes.values()]) known.add(name);
     projects.set(item.project, project);
-    // The sender keeps every project's broadcast and inbox topics open, so notifications go out with no browser tab open.
-    if (notifier) {
-      const open = name => project.hub.open(name).catch(() => {
-        if (!closed) setTimeout(() => open(name), NOTIFY_RETRY_MS).unref?.();
-      });
-      for (const name of [project.topic, ...project.inboxes.values()]) open(name);
-    }
+    // Archive incoming events even while every browser tab is closed.
+    const open = name => project.hub.open(name, name === project.activity ? { tailBytes: ACTIVITY_TAIL_BYTES } : undefined).catch(() => {
+      if (!closed) setTimeout(() => open(name), NOTIFY_RETRY_MS).unref?.();
+    });
+    for (const name of [project.topic, project.status, project.activity, project.receipts, ...project.inboxes.values()]) open(name);
     broadcast();
     return true;
   }
@@ -640,7 +638,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const online = new Set(list.filter(agent => agent.online).map(agent => agent.id));
     const out = new Map();
     const add = (sender, item) => { if (!out.has(sender)) out.set(sender, []); out.get(sender).push(item); };
-    for (const item of entries(project, project.topic, e => e.kind === "Approval" || e.kind === "Question")) {
+    for (const item of entries(project.hub.events, project.topic, e => e.kind === "Approval" || e.kind === "Question")) {
       if (item.kind === "Approval") {
         const approval = approvalState(item.approval, ends, replies);
         if (approval.state !== "pending" || (approval.expiresAt && approval.expiresAt < Date.now())) continue;
@@ -707,7 +705,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // Ticks for an operator message: read when every recipient read it, delivered when one was online then or since.
-  function receiptOf(project, item, list) {
+  function receiptOf(project, item, list, reads) {
     // A start-only post has no recipient to wait on: its tag starts a session with no inbox position for it.
     if (item.startOnly) return "";
     const at = item.time * 1000;
@@ -719,7 +717,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       for (const id of project.recipients.keys()) { if (project.recipients.size <= RECIPIENTS_MAX) break; project.recipients.delete(id); }
     }
     const online = project.recipients.get(item.id);
-    const read = project.reads.get(item.id) || new Set();
+    const read = reads.get(item.id) || new Set();
     // Only a hook's read receipt moves a tick: being online says nothing about whether the agent has the message.
     if (session) return read.has(item.to) ? "read" : "sent";
     // A broadcast waits only for sessions online at send time; without any, for the sessions that read it.
@@ -728,18 +726,18 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return read.size ? "delivered" : "sent";
   }
 
-  function entries(project, name, keep) {
-    return project.hub.events(name).map(entry).filter(item => item && keep(item));
+  function entries(events, name, keep) {
+    return events(name).map(entry).filter(item => item && keep(item));
   }
 
   // Operator answers to questions and approvals on the project topic, each linked to the ask it answers (replyTo).
-  function answersOf(project, topic) {
+  function answersOf(events, topic) {
     const asks = new Map();
     for (const item of topic) {
       if (item.kind === "Question") asks.set(item.question, { asker: item.from });
       if (item.kind === "Approval") asks.set(item.approval.id, { asker: item.from, approval: item.approval });
     }
-    return project.hub.events(project.topic).flatMap(event => {
+    return events.flatMap(event => {
       const reply = parsePhoneReply(event.message);
       const ask = reply && asks.get(reply.id);
       if (!ask) return [];
@@ -755,9 +753,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // Zoom by sender: the whole project, one harness, or one session's direct thread.
-  function messages(project, { harness, session }, agentList) {
-    const topic = entries(project, project.topic, () => true);
-    const answers = answersOf(project, topic);
+  function messages(project, { harness, session }, agentList, { events = project.hub.events, archived = false } = {}) {
+    const reads = archived ? readReceipts(events(project.receipts), new Map(), Infinity) : project.reads;
+    const activity = (session) => activityList(project, session, events);
+    const sharedEvents = events(project.topic);
+    const topic = sharedEvents.map(entry).filter(Boolean);
+    const answers = answersOf(sharedEvents, topic);
     const answered = new Set(answers.map(answer => answer.question));
     // An answer shows as an operator message, so the ntfy Reply entry it came from goes.
     const shared = topic.filter(item => !(item.kind === "Reply" && answered.has(item.question)));
@@ -772,7 +773,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const state = states.get(item.to);
       const current = queuedMessage(item, state);
       if (!current) return [];
-      const queued = local.has(item.to) && !state.seen.includes(item.id) && !project.reads.get(item.id)?.has(item.to);
+      const queued = !archived && local.has(item.to) && !state.seen.includes(item.id) && !reads.get(item.id)?.has(item.to);
       return [queued ? { ...current, queued: true } : current];
     });
     let list;
@@ -780,22 +781,22 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       // A system message rides the operator's address, so it belongs in the operator's thread with that session.
       const fromOperator = item => item.from === "operator" || item.system === true;
       const thread = item => item.thread && ((fromOperator(item) && item.to === session) || (item.from === session && item.to === "operator"));
-      const direct = withQueue(entries(project, inboxOf(project, peerOf(session)), thread));
-      list = [...direct, ...terminalPrompts(project, session, direct),
+      const direct = withQueue(entries(events, inboxOf(project, peerOf(session)), thread));
+      list = [...direct, ...terminalPrompts(activity(session), direct),
         ...shared.filter(item => item.from === session).map(item => ({ ...item, scope: "all" })),
         ...answers.filter(answer => answer.asker === session).map(answerMessage)];
     } else if (harness) {
       const related = item => peerOf(item.from) === harness || peerOf(item.to) === harness || mentions(item.body, harness);
       list = [...shared.filter(related).map(item => ({ ...item, scope: "all" })),
-        ...withQueue(entries(project, inboxOf(project, harness), item => item.kind === "Message"))];
+        ...withQueue(entries(events, inboxOf(project, harness), item => item.kind === "Message"))];
     } else {
-      const peers = new Set([...project.inboxes.keys(), ...activityList(project).map(item => peerOf(item.agent))]);
-      const inbox = [...peers].flatMap(peer => entries(project, inboxOf(project, peer), () => true));
+      const peers = new Set([...project.inboxes.keys(), ...activity().map(item => peerOf(item.agent))]);
+      const inbox = [...peers].flatMap(peer => entries(events, inboxOf(project, peer), () => true));
       const sent = [...topic, ...withQueue(inbox)];
       // Inbox direct sends stay in session threads; they only suppress terminal echoes here.
-      list = [...shared, ...answers.map(answerMessage), ...terminalPrompts(project, null, sent)];
+      list = [...shared, ...answers.map(answerMessage), ...terminalPrompts(activity(), sent)];
     }
-    const { ends, replies, senders } = outcomes(project.hub.events(project.topic));
+    const { ends, replies, senders } = outcomes(sharedEvents);
     // A reply carries its replied message's sender and opening text, even when that message is off the page.
     const byId = new Map(list.map(item => [item.id, item]));
     const quoted = item => {
@@ -804,21 +805,21 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     };
     const sorted = list.sort((a, b) => a.time - b.time || a.id.localeCompare(b.id));
     const recent = new Set(sorted.slice(-MAX_MESSAGES));
-    return sorted.filter(item => recent.has(item) || (session && item.queued))
+    return sorted.filter(item => archived || recent.has(item) || (session && item.queued))
       .map(item => {
         if (item.kind === "Approval") return { ...item, approval: approvalState(item.approval, ends, replies, senders) };
         if (item.kind === "Question" && replies.has(item.question)) {
           const by = senders.get(item.question)[0];
           return { ...item, answer: replies.get(item.question)[0], ...(by ? { answeredBy: by } : {}) };
         }
-        const stated = item.from === "operator" && item.kind === "Message" && item.to && !item.terminal && !item.replyTo ? { ...item, receipt: receiptOf(project, item, agentList) } : item;
+        const stated = item.from === "operator" && item.kind === "Message" && item.to && !item.terminal && !item.replyTo ? { ...item, receipt: receiptOf(project, item, agentList, reads) } : item;
         return quoted(stated);
       });
   }
 
   // Prompts typed into one session's terminal (or every session's when session is null), as operator messages; machine text and echoes are skipped.
-  function terminalPrompts(project, session, sent) {
-    const prompts = activityList(project, session).filter(item => item.type === "prompt" && operatorPrompt(item.input));
+  function terminalPrompts(activity, sent) {
+    const prompts = activity.filter(item => item.type === "prompt" && operatorPrompt(item.input));
     return terminalMessages(prompts, sent);
   }
 
@@ -855,7 +856,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       answer = decision;
     }
     if (approval.tool === LIMIT_TOOL) return answerLimit(project, approval, answer);
-    await publish(project.cfg, project.topic, `reply ${id} ${answer}`, { title: replyTitle(project.cfg, by) });
+    await publish(project.cfg, project.topic, `reply ${id} ${answer}`, { title: replyTitle(project.cfg, by), onPublished: project.hub.record });
     return { sent: true, status: approval.questions ? "Answer sent" : decision === "allow" ? "Allow sent" : "Deny sent" };
   }
 
@@ -882,7 +883,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     if (!/^[a-f0-9]{12}$/.test(answer.question) || !text || text.length > 2000) reject(400, "Enter 1–2000 characters");
     const reply = `reply ${answer.question} ${text}`;
     if (Buffer.byteLength(reply) > NTFY_MESSAGE_MAX_BYTES) reject(400, "Reply exceeds the size limit");
-    await publish(project.cfg, project.topic, reply, { title: replyTitle(project.cfg, by) });
+    await publish(project.cfg, project.topic, reply, { title: replyTitle(project.cfg, by), onPublished: project.hub.record });
     return { sent: true };
   }
 
@@ -973,13 +974,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // One session's activity, or every allowed agent's for the project overview, oldest first.
-  function activityList(project, session) {
-    return scopedActivity(project, session).map(activityItem);
+  function activityList(project, session, events) {
+    return scopedActivity(project, session, events).map(activityItem);
   }
 
-  function scopedActivity(project, session) {
+  function scopedActivity(project, session, events = project.hub.events) {
     const { cfg } = project;
-    return project.hub.events(project.activity).filter(event => {
+    return events(project.activity).filter(event => {
       const item = activityItem(event);
       return item && (!cfg.peers.length || cfg.peers.includes(peerOf(item.agent))) && (!session || item.agent === session);
     });
@@ -1042,7 +1043,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       if (!client.activity) activity.catch(() => {});
       // Other inboxes feed last-message times and receipts feed ticks; a failure is tolerated. Opening all at once lets the hub subscribe once.
       const optional = Promise.allSettled([project.receipts, ...project.inboxes.values()].filter(name => !required.includes(name)).map(name => hub.open(name)));
-      await Promise.all([...required.map(name => hub.open(name)), client.activity || client.scope || client.session ? activity : null]);
+      const opened = await Promise.allSettled([...required.map(name => hub.open(name)), client.activity || client.scope || client.session ? activity : null]);
+      const failed = opened.find(result => result.status === "rejected");
+      if (failed && ![project.topic, project.activity, ...project.inboxes.values()].some(name => hub.history.events(name, 1).length)) throw failed.reason;
       await optional;
       // Home needs status, broadcast and activity of every other project; one that fails is listed as unavailable.
       if (client.scope === "home") {
@@ -1126,12 +1129,59 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     });
   }
 
+  // The archive endpoint remains usable while transport is down.
+  function history(request, by, body) {
+    const { project, harness, session } = view(new URL(request.url));
+    if (typeof body.query !== "string" || body.query.length > 200) reject(400, "Invalid search query");
+    if (hiddenProjects().has(project.cfg.project)) reject(404, "Project is closed");
+    const store = project.hub.history;
+    const conversation = JSON.stringify([project.cfg.project, harness, session]);
+    const reader = by?.toLowerCase() || "";
+    const topics = new Map();
+    const sequences = new Map();
+    function events(topic) {
+      if (!topics.has(topic)) {
+        const rows = store.events(topic);
+        for (const row of rows) sequences.set(row.id, row.sequence);
+        topics.set(topic, rows);
+      }
+      return topics.get(topic);
+    }
+    const list = messages(project, { harness, session }, agents(project, lastMessages(project)), { events, archived: true });
+    const incoming = new Map(list.filter(item => item.from !== "operator" && !item.system && item.kind !== "Reply")
+      .map(item => [item.id, sequences.get(item.id)]));
+    const query = body.query.trim().toLowerCase();
+    const matches = list.filter(item => !query || [item.body, item.sender, item.attachment?.name]
+      .some(value => typeof value === "string" && value.toLowerCase().includes(query)));
+    const before = body.before === undefined ? matches.length : matches.findIndex(item => item.id === body.before);
+    if (before < 0) reject(400, "Unknown history cursor");
+    if (body.read !== undefined) {
+      const sequence = incoming.get(body.read);
+      if (!sequence) reject(400, "Unknown message");
+      store.mark(conversation, reader, sequence);
+    }
+    const position = store.position(conversation, reader);
+    let unread = 0;
+    let newest = 0;
+    let latest;
+    for (const [id, sequence] of incoming) {
+      if (sequence > position) unread++;
+      if (sequence > newest) {
+        newest = sequence;
+        latest = id;
+      }
+    }
+    const page = matches.slice(Math.max(0, before - 50), before).reverse();
+    return json(200, { messages: page, next: before > 50 ? page.at(-1).id : null, unread, latest });
+  }
+
   async function handle(request, action) {
     try {
       if (request.method !== "POST" || !ACTIONS.includes(action)) reject(404, "Unknown route");
       const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
+      if (action === "history") return history(request, by, await payload(request));
       const { project: name, target, body, queueAction, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, sendAnyway, model, startMode, codeMode, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
@@ -1268,7 +1318,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         const inbox = inboxOf(project, peer);
         await project.hub.open(inbox);
         await project.hub.open(project.receipts);
-        const item = entries(project, inbox, item => item.id === id && item.to === target && queueEntry(item))[0];
+        const item = entries(project.hub.events, inbox, item => item.id === id && item.to === target && queueEntry(item))[0];
         if (!item) reject(404, "Queued message unavailable");
         if (item.by && item.by !== by) reject(403, "Only the sender can change this message");
         if (project.reads.get(id)?.has(target)) reject(409, "The agent already read this message");
@@ -1319,7 +1369,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (typeof question !== "string" || !/^[a-f0-9]{12}$/.test(question) || (target && target !== "all")) reject(400, "Invalid question");
         const reply = `reply ${question} ${body.trim()}`;
         if (body.trim().length > 2000 || Buffer.byteLength(reply) > NTFY_MESSAGE_MAX_BYTES) reject(400, "Reply exceeds the size limit");
-        await publish(cfg, topic, reply, { title: replyTitle(cfg, by) });
+        await publish(cfg, topic, reply, { title: replyTitle(cfg, by), onPublished: project.hub.record });
         return json(201, { sent: true });
       }
       recipient(cfg, target);
@@ -1353,7 +1403,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           const direct = action === "send" && to.includes("#");
           const envelopeReply = reply?.replyTo && (to === target || destinations.size === 1) ? { replyTo: reply.replyTo }
             : (!reply?.quoted && replyTo !== undefined && replyTo !== null && replyTo !== "" && to === target ? { replyTo } : {});
-          await sendMessage(sender, to, text, { operatorThread: direct, urgent: urgent === true, ...(startOnly && to === primary ? { startOnly: true } : {}), ...envelopeReply, ...(by && sender.peer === "operator" ? { by } : {}) });
+          await sendMessage(sender, to, text, { onPublished: project.hub.record, operatorThread: direct, urgent: urgent === true, ...(startOnly && to === primary ? { startOnly: true } : {}), ...envelopeReply, ...(by && sender.peer === "operator" ? { by } : {}) });
           if (direct) {
             const result = wakeAgent(project, to, listSessions(cfg).find(item => item.id === to));
             if (destinations.size === 1) wake = result;
@@ -1415,7 +1465,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     if (!text && !FILE_NAME.test(name)) return new Response("Not found", { status: 404 });
     for (const project of projects.values()) {
       const topics = text ? [project.activity] : [project.topic, ...project.inboxes.values()];
-      const found = topics.some(topic => project.hub.events(topic).some(event => attachmentOf(event, { text })?.file === name));
+      const found = topics.some(topic => project.hub.history.events(topic).some(event => attachmentOf(event, { text })?.file === name));
       if (!found) continue;
       let cached = cachedAttachment(project.cfg, name);
       if (!cached) {

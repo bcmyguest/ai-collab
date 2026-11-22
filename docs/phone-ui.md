@@ -40,7 +40,7 @@ Run `npm ci && npm run build` in the checkout before `systemctl --user restart a
 
 ## Live updates
 
-The browser reads one AG-UI SSE stream from `/api/events` using `@ag-ui/client`. A `STATE_SNAPSHOT` refreshes the chat and session view. In an Activity view (`view=activity`), the same stream replays activity events and then sends new ones as they arrive. See the [AG-UI event protocol](ag-ui.md). The server holds a single ntfy streaming subscription (`/<topic1>,<topic2>/json`) shared by all browsers and by every project on the same ntfy server and account. It fetches a topic's history once (`poll=1&since=all`) when a browser first opens that project (broadcast, status, and each session inbox), and reconnects with `since=<last id>` after a drop, backing off 30 seconds on HTTP 429. The activity topic's history keeps the newest 3 MB of the cache, and the hub keeps 500 events per topic.
+The browser reads one AG-UI SSE stream from `/api/events` using `@ag-ui/client`. A `STATE_SNAPSHOT` refreshes the chat and session view. In an Activity view (`view=activity`), the same stream replays activity events and then sends new ones as they arrive. See the [AG-UI event protocol](ag-ui.md). The server holds a single ntfy streaming subscription (`/<topic1>,<topic2>/json`) shared by all browsers and by every project on the same ntfy server and account. It fetches cached events (`poll=1&since=all`) when it loads a project and reconnects from the last observed timestamp with a one-second overlap, backing off 30 seconds on HTTP 429. The activity topic's history keeps the newest 3 MB of the cache, and the hub keeps 500 events per topic.
 
 On a phone, drag the list down from its top, or up from its bottom, past 70 px to refresh: the app reconnects its stream like **Retry** and shows the same toasts. The gesture uses touch events only and is ignored while text is selected or the composer has focus; the page keeps `overscroll-none`, so the browser's own reload never fires.
 
@@ -90,6 +90,12 @@ A session's **Timeline** interleaves its direct thread and broadcast posts with 
 Rows render by type: prompts as user bubbles, assistant text as Markdown, tool calls as an icon, the tool name, and a one-line summary (tap to see the input), results as a collapsed preview (tap to expand; **Full output** opens the attachment), and errors in red. A call and its result share a row when the harness supplies a call ID. A `compact` row marks a context compaction. **Working…** shows while an agent's latest event is a tool call without a result (for at most 15 minutes). The view follows the newest row like the chat and keeps the last 500 rows.
 
 `/api/file/<name>` serves a `text/plain` file only when an activity event in memory references it; chat topics still serve images only. Each file is downloaded into a local cache once and then read from disk, so reloads and extra devices cost no ntfy bandwidth ([one download per attachment](messaging.md#one-download-per-attachment)).
+
+### History and read state
+
+Open **History** in a conversation to browse older messages, search message text, senders, and attachment names, or mark incoming messages as read through the latest archived message. Read positions are saved per conversation and GitHub account. When GitHub sign-in is disabled, browsers share the operator's read position.
+
+The UI service archives events under its state directory while it runs, including when browsers are closed. After a restart or an ntfy outage, the history panel can still search events the service already archived. The first run can recover only the events still available from ntfy. Attachment downloads follow the existing attachment cache policy.
 
 ### Subagents
 

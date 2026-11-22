@@ -103,6 +103,54 @@ async function api(path, payload) {
   return result;
 }
 
+function ConversationHistory({ requested }) {
+  const [query, setQuery] = useState("");
+  const [result, setResult] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function load(search, extra = {}) {
+    setBusy(true);
+    setError("");
+    try {
+      const page = await api("history?" + requested, { query: search, ...extra });
+      setResult(current => ({
+        ...page, query: search,
+        messages: extra.before ? [...current.messages, ...page.messages] : page.messages,
+      }));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <details className="text-sm" onToggle={event => {
+    if (event.currentTarget.open && !busy) void load(query);
+  }}>
+    <summary className="cursor-pointer">History{result?.unread ? " · " + result.unread + " unread" : ""}</summary>
+    <div className="mt-2 max-h-[45vh] space-y-2 overflow-auto rounded-lg border p-2">
+      <form className="flex flex-wrap gap-2" onSubmit={event => { event.preventDefault(); void load(query); }}>
+        <input aria-label="Search conversation history" placeholder="Search history" maxLength={200} value={query}
+          onChange={event => setQuery(event.target.value)} className="min-w-0 flex-1 rounded-md border bg-background px-2"/>
+        <Button size="sm" disabled={busy}>Search</Button>
+        {!!result?.unread && !result.query && <Button type="button" size="sm" variant="outline" disabled={busy}
+          onClick={() => load("", { read: result.latest })}>Mark as read</Button>}
+      </form>
+      {error && <p role="alert">{error}</p>}
+      {busy && <p role="status">Loading history…</p>}
+      {result && !result.messages.length && <p>No matching messages.</p>}
+      {result?.messages.map(message => <div key={message.id} className="border-t pt-2">
+        <div className="text-xs text-muted-foreground">{message.by || message.sender || message.from} · {new Date(message.time * 1000).toLocaleString()}</div>
+        <p className="whitespace-pre-wrap break-words">{message.body}</p>
+        {message.attachment && <a className="underline" href={"/api/file/" + encodeURIComponent(message.attachment.file)}>{message.attachment.name}</a>}
+      </div>)}
+      {result?.next && <Button size="sm" variant="outline" disabled={busy}
+        onClick={() => load(result.query, { before: result.next })}>Load older</Button>}
+    </div>
+  </details>;
+}
+
 /** "msg 3m ago · active just now"; activity comes from the agent's hooks. */
 function seen(item, now) {
   return item.activeAt ? `msg ${ago(item.lastMessageAt, now)} · active ${ago(item.activeAt, now)}` : `msg ${ago(item.lastMessageAt, now)}`;
@@ -974,6 +1022,7 @@ function Console({ account }) {
               raw={openRaw} label={"Session actions for " + selected.session}/>
             <Button variant="outline" size="sm" className="h-9 rounded-full" aria-label="Compact" disabled={!ready || working}
               onClick={() => action("compact", { target: selected.session }, "Compaction requested")}><Minimize2/>Compact</Button></span>}/>}
+        {!home && !listing && !tasksView && !patterns && !subagents && !raw && !compactions && <ConversationHistory key={requested} requested={requested}/>}
       </header>
       <div className={cn("flex flex-col gap-2 px-3 empty:hidden", composing && "min-h-0 flex-1 justify-center pb-[20vh]")}>
         {composing && <NewAgentComposer key={project + ":" + (data.startable || []).join(",")} project={project} startable={data.startable || []} places={data.startPlaces || ["folder"]}
