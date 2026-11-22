@@ -1,3 +1,4 @@
+import { openHistory } from "./history.mjs";
 import { pollCached, streamEvents } from "../../lib/ntfy.mjs";
 
 export const HISTORY_LIMIT = 500;
@@ -9,19 +10,24 @@ const RATE_LIMIT_MS = 30_000;
 
 // One ntfy streaming subscription shared by every browser: history is fetched once per topic, then kept live.
 export function createHub(cfg, { keep = () => false } = {}) {
+  const history = openHistory(cfg);
   const topics = new Map();
   const listeners = new Set();
-  let cursor = String(Math.floor(Date.now() / 1000));
+  let latestTime = Math.floor(Date.now() / 1000);
   let stream = null;
   let timer = null;
   let retry = RETRY_MIN_MS;
   let closed = false;
 
-  function add(topic, events) {
+  function add(topic, events, { replay = false } = {}) {
     const entry = topics.get(topic);
-    if (!entry) return [];
-    const added = events.filter(ev => !entry.ids.has(ev.id));
-    for (const ev of added) {
+    if (closed) return [];
+    if (!replay) events = history.add(topic, events);
+    if (!entry?.loaded) return [];
+    const added = [];
+    for (const ev of events) {
+      if (entry.ids.has(ev.id)) continue;
+      added.push(ev);
       entry.ids.add(ev.id);
       entry.events.push(ev);
     }
@@ -49,9 +55,9 @@ export function createHub(cfg, { keep = () => false } = {}) {
     stream = ctrl;
     let limited = false;
     try {
-      for await (const ev of streamEvents(cfg, names, { since: cursor, signal: ctrl.signal, onOpen: () => { retry = RETRY_MIN_MS; } })) {
-        cursor = ev.id;
+      for await (const ev of streamEvents(cfg, names, { since: String(latestTime - 1), signal: ctrl.signal, onOpen: () => { retry = RETRY_MIN_MS; } })) {
         add(ev.topic, [ev]);
+        latestTime = Math.max(latestTime, ev.time);
       }
     } catch (error) {
       limited = error.ntfyStatus === 429;
@@ -67,15 +73,24 @@ export function createHub(cfg, { keep = () => false } = {}) {
     if (!entry) {
       entry = { events: [], ids: new Set(), loaded: false, used: 0 };
       topics.set(topic, entry);
-      entry.ready = pollCached(cfg, topic, "all", undefined, { tailBytes }).then(events => {
+      entry.ready = (async () => {
+        let events;
+        try {
+          events = await pollCached(cfg, topic, "all", undefined, { tailBytes });
+        } catch (error) {
+          if (closed) return;
+          if (!history.events(topic, 1).length) {
+            topics.delete(topic);
+            throw error;
+          }
+        }
+        if (closed) return;
+        if (events) history.add(topic, events);
         entry.loaded = true;
-        add(topic, events);
+        add(topic, history.events(topic, HISTORY_LIMIT), { replay: true });
         evict();
         schedule(RESUBSCRIBE_MS);
-      }, error => {
-        topics.delete(topic);
-        throw error;
-      });
+      })();
     }
     entry.used = Date.now();
     return entry.ready;
@@ -83,15 +98,19 @@ export function createHub(cfg, { keep = () => false } = {}) {
 
   return {
     open,
+    record: event => add(event.topic, [event]),
+    history,
     events: topic => topics.get(topic)?.events ?? [],
     listen(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
     close() {
+      if (closed) return;
       closed = true;
       clearTimeout(timer);
       stream?.abort();
+      history.close();
     },
   };
 }
