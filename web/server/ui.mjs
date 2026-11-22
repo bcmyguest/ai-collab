@@ -2,7 +2,7 @@ import { EventType } from "@ag-ui/core";
 import { operatorPrompt, publishMode as publishModeAll } from "../../lib/mode.mjs";
 import { buildEvent, envelopeToEvent, projectEvent, readWireRecord } from "../../lib/agui.mjs";
 import { ACTIVITY_BATCH, STREAM_ERROR } from "../lib/ui-events.js";
-import { mkdirSync, unwatchFile, watch, watchFile } from "node:fs";
+import { mkdirSync, watch } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
 import { buzzes, readAlertLevel, writeAlertLevel } from "../../lib/alerts.mjs";
 import { loadConfig, loadProjects, activityTopic, broadcastTopic, configDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.mjs";
@@ -24,7 +24,7 @@ import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
 import { closedProjectNames, createTeam, deleteTeam, listTeams, readProjectsFile, removeProject, setProjectClosed, teamTask } from "../../lib/teams.mjs";
 import { copyPattern, listPatterns, removableNames, removePattern, savePattern } from "../../lib/patterns.mjs";
-import { openTasks, taskStoreFile } from "../../lib/tasks.mjs";
+import { openTasks } from "../../lib/tasks.mjs";
 import { taskBoard } from "./task-board.mjs";
 import { advanceRun, listRuns, startRun } from "../../lib/pattern-runs.mjs";
 import { formatTeamOrchestrator } from "../../lib/format.mjs";
@@ -345,11 +345,11 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     mkdirSync(registry, { recursive: true, mode: 0o700 });
     const watcher = watch(registry, broadcast);
     watcher.unref();
-    // Task edits from the CLI or an agent reach open streams: the store file is polled once a second.
-    const store = taskStoreFile(item.project, env);
-    watchFile(store, { interval: 1000, persistent: false }, broadcast);
+    // Task edits from the CLI or an agent reach open streams through the backend's watch.
+    const tasks = tasksOf(item.project, env);
+    const unwatchTasks = tasks ? tasks.watch(broadcast) : () => {};
     const project = {
-      cfg: item, hub: hubs.get(key), watcher, store, tasks: tasksOf(item.project, env),
+      cfg: item, hub: hubs.get(key), watcher, tasks, unwatchTasks,
       operator: { ...item, peer: "operator", session: "" },
       topic: broadcastTopic(item.project), status: statusTopic(item.project), activity: activityTopic(item.project),
       receipts: receiptsTopic(item.project),
@@ -1234,7 +1234,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       clearTimeout(pushTimer);
       for (const project of projects.values()) {
         project.watcher.close();
-        if (project.store) unwatchFile(project.store, broadcast);
+        project.unwatchTasks();
       }
       for (const hub of hubs.values()) hub.close();
     },

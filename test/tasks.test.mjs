@@ -244,3 +244,14 @@ test("a title ending in a backslash round-trips through render and import", () =
   assert.equal(back.tasks[0].title, "Path C:\\dir\\");
   assert.equal(renderFeatureRequests(back, rendered), rendered);
 });
+
+test("the file backend reports store changes to its watcher and stops on request", async () => {
+  const backend = createFileBackend(tempFile());
+  let calls = 0;
+  const stop = backend.watch(() => { calls++; });
+  await backend.add({ id: "watched", title: "Watched" }, NOW);
+  const until = Date.now() + 5000;
+  while (calls === 0 && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.ok(calls > 0, "the watcher fired after the write");
+  stop();
+});
