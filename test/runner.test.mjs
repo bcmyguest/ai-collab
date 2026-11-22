@@ -14,6 +14,7 @@ import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { readOwned, standsDown } from "../lib/owned.mjs";
 import { listSessions } from "../lib/sessions.mjs";
 import { openTasks } from "../lib/tasks.mjs";
+import { builderPaths } from "../lib/builder.mjs";
 import { settleReceipts } from "../lib/receipts.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
@@ -619,5 +620,65 @@ test("live Cursor OpenShell turn through the runner service", {
       await fake.close();
       rmSync(ctx.home, { recursive: true, force: true });
     }
+  }
+});
+
+test("a stopped Codex builder can hand dirty work to Claude after a failed launch", async () => {
+  const fake = await startFakeNtfy();
+  const ctx = setup(fake);
+  const tasks = openTasks("demo", ctx.env);
+  const paths = builderPaths("handoff", ctx.env);
+  const git = (...args) => execFileSync("git", args, { cwd: ctx.root, stdio: "pipe" });
+  git("init", "-b", "main");
+  writeFileSync(path.join(ctx.root, "draft.txt"), "original\n");
+  git("add", "draft.txt");
+  git("-c", "user.name=Test", "-c", "user.email=test@example.org", "commit", "-m", "Initial");
+  git("worktree", "add", "-b", "builder/handoff", paths.worktree);
+  const draft = path.join(paths.worktree, "draft.txt");
+  writeFileSync(draft, "unfinished edit\n");
+  const owner = "codex#0123456789abcdef";
+  await tasks.add({ id: "handoff", title: "Finish draft", detail: "Keep the draft concise", owner, status: "blocked" });
+  await tasks.update("handoff", { owner });
+  mkdirSync(paths.dir, { recursive: true });
+  writeFileSync(paths.state, JSON.stringify({
+    id: "handoff", project: "demo", task: "handoff", harness: "codex", address: owner,
+    phase: "stopped", branch: "builder/handoff", worktree: paths.worktree,
+    oncebitten: 1, checkText: "Draft check fired",
+  }));
+  const claude = createFakeAdapter({ harness: "claude" });
+  let failOpen = true;
+  const adapter = wrapOpen(claude, async (options, context, open) => {
+    assert.equal(options.cwd, paths.worktree);
+    assert.equal(readFileSync(draft, "utf8"), "unfinished edit\n");
+    assert.equal(tasks.get("handoff").owner, owner);
+    if (failOpen) throw new Error("launch failed");
+    return open(options, context);
+  });
+  const runner = makeRunner(ctx, adapter);
+  await runner.boot();
+  const socket = path.join(ctx.home, "runner.sock");
+  const control = await listenControl(runner, socket);
+  try {
+    const client = runnerClient({ socket });
+    const input = { project: "demo", taskId: "handoff", harness: "claude" };
+    const before = tasks.get("handoff");
+    assert.equal((await client.continueBuilder(input)).status, 502);
+    assert.deepEqual(tasks.get("handoff"), before);
+    assert.equal(readFileSync(draft, "utf8"), "unfinished edit\n");
+    failOpen = false;
+    const result = await client.continueBuilder(input);
+    assert.equal(result.status, 201, JSON.stringify(result.body));
+    assert.equal(tasks.get("handoff").owner, result.body.session);
+    assert.equal(tasks.get("handoff").status, "building");
+    assert.equal((await client.continueBuilder({ ...input, harness: "codex" })).status, 409);
+    const prompt = await until(() => claude.calls.find(call => call.op === "send")?.text, "replacement prompt");
+    assert.match(prompt, /codex#0123456789abcdef/);
+    assert.match(prompt, /exit 1 Draft check fired/);
+    assert.match(prompt, /Keep the draft concise/);
+  } finally {
+    await control.close();
+    await runner.stop();
+    await fake.close();
+    rmSync(ctx.home, { recursive: true, force: true });
   }
 });

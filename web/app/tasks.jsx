@@ -33,7 +33,7 @@ function TaskMetadata({ task, fullId }) {
  * One task card. Memoized on the age string it prints (not the raw clock), so an unchanged task does not re-render and
  * re-layout while the list scrolls; the coarse clock in the board means that string rarely changes either.
  */
-const Card = memo(function Card({ task, age, compose, open, fullId }) {
+const Card = memo(function Card({ task, age, compose, open, fullId, continuation }) {
   const body = <>
     <TaskMetadata task={task} fullId={fullId}/>
     <span className="w-full font-medium leading-snug wrap-break-word">{task.title}</span>
@@ -57,8 +57,30 @@ const Card = memo(function Card({ task, age, compose, open, fullId }) {
   return <li className={LAZY}>
     <button type="button" aria-label={`Message about ${task.title}`} onClick={() => compose(task.id)} className={cn(CARD, "transition-colors hover:bg-accent")}>{body}</button>
     {task.owner && <Button type="button" size="sm" variant="ghost" onClick={() => open(task.owner)}>Open owner session</Button>}
+    {task.previousHarness && continuation && <ContinueBuilder task={task} {...continuation}/>}
   </li>;
 });
+
+function ContinueBuilder({ task, harnesses, launch }) {
+  const choices = harnesses.filter(harness => harness !== task.previousHarness);
+  const [selected, select] = useState("");
+  const [pending, setPending] = useState(false);
+  const harness = choices.includes(selected) ? selected : choices[0];
+  if (!harness) return null;
+  return <form className="flex flex-wrap items-center gap-2 px-2 pb-2" onSubmit={async event => {
+    event.preventDefault();
+    setPending(true);
+    try { await launch(task.id, harness); } finally { setPending(false); }
+  }}>
+    <select aria-label="Replacement harness" value={harness} disabled={pending} onChange={event => select(event.target.value)}>
+      {choices.map(choice => <option key={choice} value={choice}>{choice}</option>)}
+    </select>
+    <Button type="submit" size="sm" variant="outline" disabled={pending}>
+      {pending ? "Starting…" : "Continue with another agent"}
+    </Button>
+    <span className="text-xs text-muted-foreground">Runs locally in the existing worktree</span>
+  </form>;
+}
 
 /** A task question waiting on the operator: tap a choice or type an answer; it is stored on the task, no agent turn runs. */
 function Decision({ task, decide, compose, fullId }) {
@@ -92,18 +114,18 @@ function Decision({ task, decide, compose, fullId }) {
 }
 
 /** One status column: its count header and its cards; memoized so filtering or the clock does not rebuild unchanged columns. */
-const Column = memo(function Column({ status, list, now, compose, open, fullId }) {
+const Column = memo(function Column({ status, list, now, compose, open, fullId, continuation }) {
   return <section aria-label={status} className="flex min-w-0 flex-col gap-2">
     <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
       <span aria-hidden className={cn("inline-block size-2 rounded-full", DOT[status])}/>{statusLabel(status)} · {list.length}
     </h2>
-    {list.length ? <ul className="flex flex-col gap-2">{list.map(task => <Card key={task.id} task={task} age={task.last ? ageOf(task.last.at, now) : ""} compose={compose} open={open} fullId={fullId}/>)}</ul>
+    {list.length ? <ul className="flex flex-col gap-2">{list.map(task => <Card key={task.id} task={task} age={task.last ? ageOf(task.last.at, now) : ""} compose={compose} open={open} fullId={fullId} continuation={continuation}/>)}</ul>
       : <p className="text-xs text-muted-foreground">No {statusLabel(status)} tasks.</p>}
   </section>;
 });
 
 /** The status board: one column per status, stacked on a phone and side by side from md up, with a status filter. */
-export function TaskBoard({ board, now, open, compose, decide, taskId, back }) {
+export function TaskBoard({ board, now, open, compose, decide, taskId, back, continuation }) {
   const [filter, setFilter] = useState("all");
   const [view, setView] = useState("board");
   const tasks = board?.tasks || [];
@@ -125,7 +147,7 @@ export function TaskBoard({ board, now, open, compose, decide, taskId, back }) {
     {taskId ? <>
       <Button type="button" size="sm" variant="outline" className="self-start" onClick={back}>Back to board</Button>
       {task?.question && !task.question.answer && decide && <ul><Decision task={task} decide={decide} compose={message} fullId/></ul>}
-      {task ? <Column status={task.status} list={[task]} fullId now={clock} compose={message} open={openOwner}/>
+      {task ? <Column status={task.status} list={[task]} fullId now={clock} compose={message} open={openOwner} continuation={continuation}/>
         : board && !board.error && <p role="status">Task #{taskId} was not found.</p>}
     </> : <>
       {waiting.length > 0 && decide && <section aria-label="Needs your decision" className="flex flex-col gap-2">
@@ -146,7 +168,7 @@ export function TaskBoard({ board, now, open, compose, decide, taskId, back }) {
           </Button>)}
         </div>
         <div className="flex flex-col gap-4 md:grid md:grid-cols-5 md:items-start">
-          {columns.map(([status, list]) => <Column key={status} status={status} list={list} now={clock} compose={message} open={openOwner}/>)}
+          {columns.map(([status, list]) => <Column key={status} status={status} list={list} now={clock} compose={message} open={openOwner} continuation={continuation}/>)}
         </div>
       </>}
     </>}

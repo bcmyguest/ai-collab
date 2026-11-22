@@ -84,6 +84,12 @@ The login shell of `sandbox exec` sets `SSL_CERT_FILE` to the CA OpenShell termi
 
 The harness's own sandbox or permission prompts are off (`--sandbox disabled` for Cursor, `--dangerously-bypass-approvals-and-sandbox` for Codex, `--dangerously-skip-permissions` for Claude): OpenShell is the isolation. Codex also gets `--dangerously-bypass-hook-trust`, because a headless `codex exec` otherwise fires no hooks at all; it covers hooks from `$CODEX_HOME` and installed plugins, and hooks a repository ships in its own `.codex/` stay off in a sandbox project Codex has not marked trusted (see [Install](install.md#codex)).
 
+## Continue a stopped builder
+
+On the task card, choose another harness and select **Continue with another agent**. The runner opens a local session in the builder’s existing worktree, with the harness’s normal local permission mode. The replacement receives the task brief, recorded decision and check result, and the previous session address when available. Ownership transfers after the replacement opens. If the launch fails, the task and worktree remain available for retry.
+
+The action is available once the builder has exited and its work is available in the host worktree. If a stop leaves a retained sandbox or the branch cannot be fast-forwarded, recover the saved work first.
+
 ## Task status
 
 The task store is a host file, so `ai-collab` inside the sandbox is a shim: `task set` and `task progress` are recorded under `/sandbox/out/ai-collab`, `task show` prints a snapshot taken at start, and everything else exits 2. After the run, the host collects the branch, replays captures, checks the landed branch with oncebitten, and applies the recorded task fields and progress. The builder's own status assignments are requests.

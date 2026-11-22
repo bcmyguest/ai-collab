@@ -21,7 +21,7 @@ import { claudeConfirmedSince, claudeSnapshot, claudeWindowMs } from "../lib/cla
 import { ackTracker, direct, MAX_ATTEMPTS, PUSHED, pushSession, readDispatchLedger, readySession, writeDispatchLedger } from "../lib/deliver-push.mjs";
 import { sessionIdleState } from "../lib/idle.mjs";
 import { opencodeRequest } from "../lib/opencode-api.mjs";
-import { BUILDER_START_TIMEOUT_MS, ownedBuilder, stageOwnedBuilder, claimOwnedBuilder, finishOwnedBuilder } from "../lib/builder.mjs";
+import { BUILDER_START_TIMEOUT_MS, builderPaths, stoppedBuilder, ownedBuilder, stageOwnedBuilder, claimOwnedBuilder, finishOwnedBuilder } from "../lib/builder.mjs";
 import { childEnv, checkPrompt, findExecutable, modelShape, projectRoot, worktreeNames } from "../lib/start.mjs";
 import { parseCodeMode, resolveCodeMode } from "../lib/code-mode.mjs";
 import { openTasks } from "../lib/tasks.mjs";
@@ -110,6 +110,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   const manualAt = new Map();
   const sessions = new Map();
   const claims = new Map();
+  const continuing = new Set();
   // The wake gate per closed session address: a wake runs after the previous wake of that session.
   const wakeTail = new Map();
   const watchers = new AbortController();
@@ -309,7 +310,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
 
   // The durable session workflow: place → open → claim, then one run.send/run.wait pair per input until closed.
   async function sessionWorkflow(wf, input) {
-    const { project, harness, place, permissionMode, model, codeMode, taskId, patternRun, builder } = input;
+    const { project, harness, place, permissionMode, model, codeMode, taskId, patternRun, builder, continuation } = input;
     checkOpenShellLaunch(harness, place, builder);
     const adapter = adapterOf(harness);
     const holder = { s: null, live: null };
@@ -324,11 +325,13 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       await wf.step("builder.fail", () => finishOwnedBuilder(builder, null, 1, env, log, staged.failed));
       return { ended: staged.failed };
     }
-    const cwd = await wf.step("place", () => builder ? builder.worktree : placeCwd(project, harness, place, patternRun));
+    const cwd = await wf.step("place", () => builder?.worktree ?? continuation?.worktree ?? placeCwd(project, harness, place, patternRun));
     const opened = await wf.step("open", async () => {
       // An adapter that starts its child before returning (Claude) calls beforeStart with the native id: the owned record exists first.
+      let openingLabel;
       const beforeStart = (nativeId) => {
         const childLabel = sessionLabel(nativeId);
+        openingLabel = childLabel;
         writeOwned(sessionCfg(project, harness, childLabel), {
           v: 1, label: childLabel, address: `${harness}#${childLabel}`, workflowId: wf.id, harness, nativeId, project, cwd, place, permissionMode,
           ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode), ...(taskId ? { taskId } : {}), status: "starting", run: null, approvals: [], createdAt: now(),
@@ -338,7 +341,12 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       try {
         holder.live = await adapter.open(staged ? { ...options, cwd: staged.workdir, sandboxArgv: staged.argv } : options, contextFor(holder, harness, wf.signal));
       } catch (error) {
-        if (builder) return { failed: error.message };
+        if (continuation && openingLabel) {
+          const cfg = sessionCfg(project, harness, openingLabel);
+          const record = readOwned(cfg, openingLabel);
+          if (record) writeOwned(cfg, { ...record, status: "ended" });
+        }
+        if (builder || continuation) return { failed: error.message };
         throw error;
       }
       return { nativeId: holder.live.nativeId };
@@ -355,20 +363,23 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode), ...(taskId ? { taskId } : {}), status: "idle", run: null, approvals: [], createdAt: now(),
       };
       try {
+        if (continuation) wf.signal.throwIfAborted();
         if (builder) {
           await claimOwnedBuilder(builder, record.address, env);
           record.builder = builder.id;
         }
         writeOwned(cfg, record);
+        if (continuation) await openTasks(project, env).update(taskId, { owner: record.address, status: "building" });
       } catch (error) {
-        if (builder) return { failed: error.message };
+        if (continuation) writeOwned(cfg, { ...record, status: "ended" });
+        if (builder || continuation) return { failed: error.message };
         throw error;
       }
       return null;
     });
     if (claim?.failed) {
       await holder.live?.close().catch(() => {});
-      await wf.step("builder.fail", () => finishOwnedBuilder(builder, staged, 1, env, log, claim.failed));
+      if (builder) await wf.step("builder.fail", () => finishOwnedBuilder(builder, staged, 1, env, log, claim.failed));
       return { ended: claim.failed };
     }
     const s = runtime(wf, readOwned(cfg, label) || fail(500, "owned record missing"), holder);
@@ -718,7 +729,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   durable.register("session", sessionWorkflow);
 
   /** Starts an owned session; resolves {status:"started", session, nativeId, workflowId, detail}. */
-  async function start({ project, harness, prompt, model, place = "folder", permissionMode, codeMode, taskId, builder: builderId } = {}, patternRun) {
+  async function start({ project, harness, prompt, model, place = "folder", permissionMode, codeMode, taskId, builder: builderId } = {}, patternRun, continuation) {
     if (!configs.has(project)) fail(400, "Unknown project");
     const adapter = adapterOf(harness);
     if (!PLACES.includes(place)) fail(400, "Unknown start place");
@@ -749,7 +760,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     const timer = new AbortController();
     const timeout = builder ? BUILDER_START_TIMEOUT_MS : START_TIMEOUT_MS;
     try {
-      const run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, ...(builder ? { builder } : {}), ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), codeMode: resolveCodeMode(codeMode, env) });
+      const run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, ...(continuation ? { continuation } : {}), ...(builder ? { builder } : {}), ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), codeMode: resolveCodeMode(codeMode, env) });
       const ended = run.then((out) => fail(502, `${harness} session ended at once: ${out?.ended || "no reason"}`));
       ended.catch(() => {});
       const s = await Promise.race([
@@ -759,11 +770,46 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       ]);
       return { status: "started", session: s.record.address, nativeId: s.record.nativeId, workflowId, ...(taskId ? { taskId } : {}), detail: `${harness} owned session started` };
     } catch (error) {
+      if (continuation && error.status === 504) durable.cancel(workflowId);
       if (error.status) throw error;
       throw Object.assign(new Error(`${harness} failed to start: ${error.message}`), { status: 502 });
     } finally {
       timer.abort();
       claims.delete(workflowId);
+    }
+  }
+
+  async function continueBuilder({ project, taskId, harness }) {
+    if (!configs.has(project)) fail(400, "Unknown project");
+    if (typeof taskId !== "string" || !taskId) fail(400, "Invalid task id");
+    const task = openTasks(project, env).list().find(task => task.id === taskId);
+    const previous = task && stoppedBuilder(project, task, env);
+    if (!previous) fail(409, "No stopped builder with a recoverable worktree");
+    const address = task.owner || previous.address;
+    const previousHarness = address?.split("#")[0] || previous.harness;
+    if (harness === previousHarness) fail(400, "Choose a different harness");
+    const key = previous.worktree;
+    if (continuing.has(key) || [...sessions.values()].some(({ record }) => record.status !== "ended" && (record.cwd === key || record.address === address))) {
+      fail(409, "A replacement is already starting or using this worktree");
+    }
+    let originalBrief = "";
+    try { originalBrief = readFileSync(builderPaths(previous.id, env).brief, "utf8").split("\n## Builder sandbox\n")[0]; } catch { /* Older records may lack a brief. */ }
+    const prompt = [
+      `Continue task #${task.id} on branch ${previous.branch}. Inspect git status and preserve existing changes.`,
+      `Previous session: ${address || previous.unit}`,
+      `Latest recorded oncebitten result: ${previous.oncebitten == null ? "unavailable" : "exit " + previous.oncebitten} ${previous.checkText || ""}`,
+      `Task: ${task.title}`,
+      task.detail,
+      task.question?.answer && `Operator decision: ${task.question.text} → ${task.question.answer.text}`,
+      `Read the full task history with ai-collab task show ${task.id}. Verify your changes and update the task when finished.`,
+      originalBrief,
+      ...task.progress.slice(-5).map(entry => entry.text),
+    ].filter(Boolean).join("\n").slice(0, 4000);
+    continuing.add(key);
+    try {
+      return await start({ project, taskId, harness, prompt }, undefined, { worktree: key });
+    } finally {
+      continuing.delete(key);
     }
   }
 
@@ -1143,7 +1189,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   };
 
   return {
-    start, startPattern, advancePattern, send, interrupt, compact, respond, setModel, setMode, close, boot, stop, harnesses, deliveries, pump: pumpDeliveries,
+    start, continueBuilder, startPattern, advancePattern, send, interrupt, compact, respond, setModel, setMode, close, boot, stop, harnesses, deliveries, pump: pumpDeliveries,
     list: () => [...sessions.values()].map(view),
     // Each schedule with the command and folder its schedules.json entry names, and the session it resumes.
     schedules: () => ({ schedules: durable.schedules().map((s) => ({ ...s, ...entryOf(s.name) })), configError: scheduleErrors }),
