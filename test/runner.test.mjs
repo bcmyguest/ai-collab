@@ -306,6 +306,33 @@ test("project-chat broadcasts reach every owned session; a session's own broadca
   }
 });
 
+test("a start-only post (only @harness:model tags) reaches no owned session", async () => {
+  const fake = await startFakeNtfy();
+  const ctx = setup(fake);
+  const adapter = createFakeAdapter({ harness: "codex" });
+  const runner = makeRunner(ctx, adapter, { watch: true });
+  await runner.boot();
+  try {
+    await new Promise((r) => setTimeout(r, 50));
+    const a = await runner.start({ project: "demo", harness: "codex", prompt: "first a" });
+    const b = await runner.start({ project: "demo", harness: "codex", prompt: "first b" });
+    await until(() => runner.get(a.session).status === "idle" && runner.get(b.session).status === "idle", "both idle");
+    const sends = () => adapter.calls.filter((c) => c.op === "send");
+    const startOnly = JSON.stringify({
+      v: 1, kind: "msg", from: "operator", to: "all", startOnly: true, ts: new Date().toISOString(), body: "@codex:gpt-5-codex build it",
+    });
+    fake.inject(BROADCAST, startOnly);
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(sends().filter((c) => /build it/.test(c.text)).length, 0, "a start-only post reaches no owned session");
+    // The same post without the mark is an ordinary broadcast and still reaches both.
+    fake.inject(BROADCAST, JSON.stringify({ v: 1, kind: "msg", from: "operator", to: "all", ts: new Date().toISOString(), body: "build it" }));
+    await until(() => sends().filter((c) => /build it/.test(c.text)).length === 2, "ordinary broadcast to both");
+  } finally {
+    await runner.stop();
+    await fake.close();
+  }
+});
+
 test("an unanswered owned approval is denied after the timeout", async () => {
   const fake = await startFakeNtfy();
   const ctx = setup(fake);

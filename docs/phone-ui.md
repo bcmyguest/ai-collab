@@ -11,7 +11,6 @@ The server serves every project in `~/.config/ai-collab/projects.json`, each res
 | `AI_COLLAB_UI_WORKSPACE` | current directory | Fallback project directory, used only when `projects.json` lists no usable project |
 | `AI_COLLAB_UI_PORT` | `8795` | Loopback port for `npm run ui` |
 | `AI_COLLAB_UI_ORIGIN` | — | HTTPS origin allowed to post, e.g. `https://ai-collab-ui.<tailnet>.ts.net` (no trailing slash) |
-| `AI_COLLAB_SCOPE` | — | `on` or `off` for the systemd scope around a started session or a scheduled command (see [Start a session from the phone](#start-a-session-from-the-phone)); unset decides from the host |
 
 The UI has no login unless you add [GitHub sign-in](github-sign-in.md). Access control is the loopback bind plus Tailscale. Every `POST /api/*` must come from the UI's own origin (`AI_COLLAB_UI_ORIGIN`, or `http://127.0.0.1:<port>` locally), which blocks cross-site request forgery. Pages carry a per-request script nonce in their Content Security Policy.
 
@@ -99,10 +98,8 @@ On 2026-11-21 the `ai-collab-ai-collab--activity` topic held only `tool_result` 
 
 ## Composer
 
-Type `@` or tap **Mention** to tag a session or harness in a post. A tagged session also gets the post in its direct chat. A tagged harness (`@codex`) gets it in each of its running sessions; with none running, the UI starts one in the project folder with the post as its first prompt, at most one start per 10 seconds. The picker matches fuzzily on address, session name, harness and model, and lists `harness:model` options: `@codex:gpt-5-codex` always starts a new session with that model, if the harness lists it (else the toast says `unknown model`). The toast says what each tag did. Tap a session in the sidebar (the menu on a phone) to chat directly. A direct message its session has not read yet shows **queued** with **Send now**, which makes the session's next hook (its next tool call) poll at once. Tap **Reply from the composer** under a question to answer an MCP question on the broadcast topic. Mention options, the session picker, and the sidebar show when each session and harness last sent a `msg` envelope (`3m ago`, `never`), computed from history the server already holds.
+Type `@` or tap **Mention** to tag a session or harness in a post. A tagged session also gets the post in its direct chat. A tagged harness (`@codex`) gets it in each of its running sessions; with none running, the UI starts one in the project folder with the post as its first prompt, at most one start per 10 seconds. The picker matches fuzzily on address, session name, harness and model, and lists `harness:model` options: `@codex:gpt-5-codex` always starts a new session with that model, if the harness lists it (else the toast says `unknown model`). A post whose tags are **all** `harness:model` starts those sessions and reaches nobody already running: its envelope carries `startOnly`, so no hook, waiter or runner delivers it to a running session (a post that also tags a plain harness, a session or a team is an ordinary post). The toast says what each tag did. Tap a session in the sidebar (the menu on a phone) to chat directly. A direct message its session has not read yet shows **queued** with **Send now**, which makes the session's next hook (its next tool call) poll at once. Tap **Reply from the composer** under a question to answer an MCP question on the broadcast topic. Mention options, the session picker, and the sidebar show when each session and harness last sent a `msg` envelope (`3m ago`, `never`), computed from history the server already holds.
 The picker also lists each open subagent run as `@session/run`; the post goes to its session with `for_subagent`, and the session relays it to the run.
-
-Tap a task card to open the composer with `#<task-id> ` prefilled. A post with a task tag goes directly to the task's current owner and wakes an offline owner. An unowned task routes to the project chat. With several task tags, each destination receives one copy. Tap a task tag in a message to open its card.
 
 ## Teams
 
@@ -152,8 +149,6 @@ The start request body is `{project, harness, prompt, model?, startMode?, place?
 Any other value is rejected with 400 before anything is spawned.
 
 The prompt is one argv element, 1-4000 characters, and may not start with `-`. No flag skips permissions or trust (`--force`, `--trust`, `--dangerously-bypass-hook-trust` are never passed). Output goes to `$AI_COLLAB_STATE_DIR/<project>/starts/<time>-<harness>.log`. The child gets no `AI_COLLAB_*` settings, so its hooks find the project from `projects.json` by its cwd, like any session; it gets `AI_COLLAB_WAKE=1`, so its first prompt is not mistaken for the operator at a terminal. The server waits up to 15 seconds for the id the CLI prints (Claude: a UUID in its output; Codex: `thread.started` `thread_id`; Cursor: `session_id`; OpenCode: `sessionID` on its JSON events) and returns the session's public address `harness#label`; the raw id stays in the log. The UI links the session once its `SessionStart` status arrives. For Codex, the result warns when `config.toml` has no trust entry for the plugin's hooks; trust them in `/hooks`.
-
-The UI unit's default `KillMode=control-group` kills every process in its cgroup on a restart, so a session started from the phone would die with the UI. To prevent that, `lib/scope.mjs` wraps the harness argv in a transient systemd user scope (`systemd-run --user --scope --collect --unit ai-collab-session-<harness>-<UTC stamp>-<random> -- <argv>`) whenever `systemd-run` is installed, a user manager answers on the session bus, and the process itself was started by systemd (`INVOCATION_ID`). A scope is a sibling cgroup, not a child, so restarting or stopping the UI's unit leaves the session running. The scope execs the harness, so its output still goes to the log file, its exit code still reaches the server, and the 15-second id wait is unchanged. One throwaway scoped command is run once per process as a probe, so a `systemd-run` that cannot reach its manager falls back too. `AI_COLLAB_SCOPE=off` turns the wrapper off; `AI_COLLAB_SCOPE=on` asks for it where `INVOCATION_ID` is missing. Without a scope the harness is spawned detached exactly as before.
 
 **Where to start.** A second picker offers only the places the server can use:
 
@@ -354,17 +349,15 @@ Privacy: the server encrypts each payload end to end for the subscribed browser 
 
 ## Sidebar, projects, and notifications
 
-**Agents** is its own sidebar section above **Sessions**: each session that called `set_identity` with a `name` appears there by that name, the PM first and the rest alphabetically, with its activity line and address. Tapping one opens its direct chat. A session that only has a harness title or a fallback name stays under **Sessions**. The name is the registry's `identityName` field, which a later hook's title does not overwrite (`lib/sessions.mjs`).
-
 A session row shows **N running** when it has running subagents, and the session header shows the same count. Subagent runs nest under their session in the sidebar; a run idle for more than 30 minutes (`IDLE_HIDE_MS` in `web/lib/subagent-state.js`) sits behind **Show N idle**. A subagent that resumes after its stop counts as running again on its next row.
 
 The session view's **Working now** line names each agent running now: the session with an open tool call (`harness#label (session)`) and each running subagent (`<kind> subagent in <address>`). The activity data carries no model name, so the line shows no `:model`. Timeline groups and texts show the address of the agent that produced them.
 
 Each project has a **⋯** menu. **Close** hides the project from the sidebar and Home; **Closed projects** lists them with **Reopen**. A closed project is a `"closed": true` flag on its `projects.json` entry. **Delete** asks first and removes the entry only; repo files, worktrees and ntfy history stay. The UI hides a deleted project until it restarts. Projects found by auto-join have no entry, so they cannot be closed or deleted here.
 
-**Scheduled jobs** lists the runner's schedules read-only: name, interval, command, last run, next run; tap a job for its recent runs. With no runner socket it shows **runner offline**. A job is its schedule entry, not the agent it runs: when its command resumes a session the row says `resumes cursor#…` and the job's detail sheet carries the same **Resumes** row, while the agent itself is listed under **Agents**.
+**Scheduled** lists the runner's schedules read-only: name, interval, command, last run, next run; tap a job for its recent runs. With no runner socket it shows **runner offline**.
 
-A reply shows the replied message as a quote above its body (sender and the first 80 characters); tap it to scroll to the original. The composer shows the same quote with a × to cancel. A plain @mention shows no quote. When the server cannot carry the reply's message id (id longer than 64 characters, or with punctuation), the reply is still sent, as plain text whose first line quotes the original's first and last six words (`web/lib/reply-quote.js`); the toast says so instead of an **Invalid reply** error.
+A reply shows the replied message as a quote above its body (sender and the first 80 characters); tap it to scroll to the original. The composer shows the same quote with a × to cancel. A plain @mention shows no quote.
 
 Notifications carry a link: ntfy's `click` field, built from `AI_COLLAB_UI_URL` (`lib/deep-link.mjs`). Without that variable no link is sent. An agent's reply opens its session thread; questions, approvals and broadcasts open the project chat.
 

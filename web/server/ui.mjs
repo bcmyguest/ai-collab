@@ -185,7 +185,7 @@ function baseEntry(event) {
     const to = envelope.toSession ? `${envelope.to}#${envelope.toSession}` : envelope.to;
     const by = envelope.from === "operator" && isGithubLogin(envelope.by) ? { by: envelope.by } : {};
     // A reply to a message names it as replyOf; replyTo stays the answer link to a question.
-    return { id, time, kind: "Message", sender, from: sender, to, body: envelope.body, thread: envelope.operatorThread === true, ...(envelope.urgent === true ? { urgent: true } : {}), ...(typeof envelope.replyTo === "string" && envelope.replyTo ? { replyOf: envelope.replyTo } : {}), ...by };
+    return { id, time, kind: "Message", sender, from: sender, to, body: envelope.body, thread: envelope.operatorThread === true, ...(envelope.urgent === true ? { urgent: true } : {}), ...(envelope.startOnly === true ? { startOnly: true } : {}), ...(typeof envelope.replyTo === "string" && envelope.replyTo ? { replyOf: envelope.replyTo } : {}), ...by };
   }
   const reply = parsePhoneReply(message);
   const by = replyBy(event);
@@ -238,6 +238,15 @@ export function mentionedNames(body, peers = [], teams = []) {
     const peer = name.split(/[#:]/)[0];
     return peer !== "operator" && peer !== "all" && (!peers.length || peers.includes(peer));
   });
+}
+
+/**
+ * True when a post addresses only the sessions its tags start: at least one @harness:model tag, every tag a model start,
+ * and no team or pattern tagged. Such a post must not reach, or wake, a session that is already running.
+ */
+export function startOnlyMentions(body, peers = [], otherNames = []) {
+  const names = mentionedNames(body, peers, otherNames);
+  return names.length > 0 && names.every((name) => name.includes(":")) && !otherNames.some((name) => mentions(body, name));
 }
 
 /** Team names tagged with @ in a post. */
@@ -695,6 +704,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
 
   // Ticks for an operator message: read when every recipient read it, delivered when one was online then or since.
   function receiptOf(project, item, list) {
+    // A start-only post has no recipient to wait on: its tag starts a session with no inbox position for it.
+    if (item.startOnly) return "";
     const at = item.time * 1000;
     const [peer, session] = item.to.split("#");
     const targets = list.filter(agent => agent.session && (peer === "all" || agent.peer === peer) && (!session || agent.session === session));
@@ -1236,6 +1247,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const tagged = ids.size ? project.tasks.list().filter(task => ids.has(task.id)) : [];
       const destinations = new Set(tagged.length ? tagged.map(task => task.owner || "all") : [target]);
       const [primary] = destinations;
+      // A post tagged only @harness:model starts sessions; it names nobody running, so no running session takes it.
+      const startOnly = action === "send" && !reply?.quoted && destinations.size === 1 && primary === "all"
+        && startOnlyMentions(text, cfg.peers, [...Object.keys(listTeams(cfg, env)), ...Object.keys(listPatterns(cfg, env))]);
       const notes = [];
       let wake;
       try {
@@ -1248,7 +1262,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           const direct = action === "send" && to.includes("#");
           const envelopeReply = reply?.replyTo && (to === target || destinations.size === 1) ? { replyTo: reply.replyTo }
             : (!reply?.quoted && replyTo !== undefined && replyTo !== null && replyTo !== "" && to === target ? { replyTo } : {});
-          await sendMessage(sender, to, text, { operatorThread: direct, urgent: urgent === true, ...envelopeReply, ...(by && sender.peer === "operator" ? { by } : {}) });
+          await sendMessage(sender, to, text, { operatorThread: direct, urgent: urgent === true, ...(startOnly && to === primary ? { startOnly: true } : {}), ...envelopeReply, ...(by && sender.peer === "operator" ? { by } : {}) });
           if (direct) {
             const result = wakeAgent(project, to, listSessions(cfg).find(item => item.id === to));
             if (destinations.size === 1) wake = result;
