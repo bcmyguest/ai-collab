@@ -64,6 +64,10 @@ export async function route(runner, method, url, input) {
     if (b === "commands") return [200, { commands: await runner.commands(a, url.searchParams.get("project") || "") }];
     fail(404, "Not found");
   }
+  if (area === "deliveries") {
+    if (method !== "GET") fail(405, "Method not allowed");
+    return [200, runner.deliveries()];
+  }
   if (area !== "sessions") fail(404, "Not found");
   if (!a) {
     if (method === "GET") return [200, { sessions: runner.list() }];

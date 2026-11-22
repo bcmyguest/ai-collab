@@ -5,22 +5,34 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { EventType } from "@ag-ui/core";
-import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, sessionLabel } from "../lib/config.mjs";
-import { parseEnvelope } from "../lib/inbox.mjs";
+import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, receiptsTopic, sessionLabel } from "../lib/config.mjs";
+import { claimInbox, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery } from "../lib/inbox.mjs";
 import { parsePhoneReply, parseQuestionText } from "../lib/questions.mjs";
 import { replyDecision, APPROVAL_ID } from "../lib/approvals.mjs";
-import { formatInbox } from "../lib/format.mjs";
+import { formatInbox, identityLine } from "../lib/format.mjs";
 import { streamEvents } from "../lib/ntfy.mjs";
-import { recordSession } from "../lib/sessions.mjs";
+import { listSessions, recordSession } from "../lib/sessions.mjs";
+import { claudeConfirmedSince, claudeSnapshot } from "../lib/claude-socket.mjs";
+import { ackTracker, direct, MAX_ATTEMPTS, PUSHED, pushSession, readySession } from "../lib/deliver-push.mjs";
+import { sessionIdleState } from "../lib/idle.mjs";
+import { opencodeRequest } from "../lib/opencode-api.mjs";
 import { childEnv, checkPrompt, findExecutable, projectRoot, worktreeNames } from "../lib/start.mjs";
 import { readOwned, writeOwned } from "../lib/owned.mjs";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, permissionSettings } from "./contract.mjs";
+import { DELIVERY, deliveryWorkflow } from "./delivery.mjs";
 import { publishApproval, publishApprovalEnd, publishEnded, publishEvent, publishReceipts } from "./publish.mjs";
 
 export const START_TIMEOUT_MS = 60_000;
 export const START_GAP_MS = 10_000;
 export const CLOSE_WAIT_MS = 10_000;
 export const MANUAL_RUN_GAP_MS = 10_000;
+export const WAKE = "wake";
+// How often the runner looks for direct messages to live sessions that have no delivery workflow yet.
+export const PUMP_MS = 5000;
+// Finished delivery and wake workflows older than this are deleted, checked once an hour.
+export const PRUNE_AFTER_MS = 7 * 24 * 3_600_000;
+const PRUNE_EVERY_MS = 3_600_000;
+const CLAIM_LIMIT = 4;
 const STREAM_RETRY_MAX_MS = 30_000;
 const TEXT_MAX = 4000;
 const MODEL = /^[a-zA-Z0-9][a-zA-Z0-9._:/[\]-]{0,119}$/;
@@ -55,14 +67,18 @@ function view(s) {
 }
 
 /** Creates the runner over project configs, a Map harness → Adapter and a durable log (runner/durable.mjs). */
-export function createRunner({ projects, adapters, durable, env = process.env, git = runGit, now = Date.now, startGapMs = START_GAP_MS, approvalMs = approvalTimeoutMs(env), watch = true, log = () => {}, scheduleErrors = [] }) {
+export function createRunner({ projects, adapters, durable, env = process.env, git = runGit, now = Date.now, startGapMs = START_GAP_MS, approvalMs = approvalTimeoutMs(env), watch = true, log = () => {}, scheduleErrors = [], pumpMs = PUMP_MS, delivery = {} }) {
   const configs = new Map(projects.map((cfg) => [cfg.project, cfg]));
   const manualAt = new Map();
   const sessions = new Map();
   const claims = new Map();
+  // The wake gate per closed session address: a wake runs after the previous wake of that session.
+  const wakeTail = new Map();
   const watchers = new AbortController();
   const proc = selfProcess();
   let lastStartAt = 0;
+  let pumpTimer = null;
+  let lastPruneAt = -Infinity;
 
   const sessionCfg = (project, harness, label) => ({ ...configs.get(project), peer: harness, session: label });
   const adapterOf = (harness) => adapters.get(harness) || fail(400, `No ${harness} adapter is loaded`);
@@ -278,6 +294,175 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     return wf.step("close", () => endSession(s, "closed by the operator"));
   }
 
+  // The owned record an adopted session gets from its registry entry: closed until the wake runs.
+  function adoptedRecord(workflowId, project, label, a) {
+    return {
+      v: 1, label, address: `${a.harness}#${label}`, workflowId, harness: a.harness, nativeId: a.nativeId, project, cwd: a.cwd,
+      place: "folder", permissionMode: defaultPermission(a.harness, "folder"), ...(a.model ? { model: a.model } : {}),
+      status: "ended", run: null, approvals: [], createdAt: now(),
+    };
+  }
+
+  // Wakes a closed session for one direct message: resume, send, wait for the run, close again. An adopted session (closed,
+  // not owned yet) gets its owned record from its registry entry first. Wakes of one address run one after another.
+  async function wakeWorkflow(wf, input) {
+    const { project, address, text, messageIds, adopt = null } = input;
+    const [harness, label] = address.split("#");
+    if (!adapters.has(harness)) return { status: "no-adapter", error: `no ${harness} adapter yet` };
+    const previous = wakeTail.get(address);
+    const gate = { release: () => {}, done: null };
+    gate.done = new Promise((resolve) => { gate.release = resolve; });
+    wakeTail.set(address, gate);
+    try {
+      if (previous) await previous.done;
+      const cfg = sessionCfg(project, harness, label);
+      const scfg = { ...configs.get(project), peer: harness, session: label };
+      if (adopt) {
+        // Reserved first, so the hooks and the waiter cannot take the message while the wake runs.
+        const owned = await wf.step("adopt.reserve", () => reserveDelivery(scfg, messageIds));
+        if (!owned.length) return { status: "skipped" };
+        await wf.step("adopt", () => {
+          if (!readOwned(cfg, label)) writeOwned(cfg, adoptedRecord(wf.id, project, label, { ...adopt, harness }));
+          return null;
+        });
+      }
+      const record = readOwned(cfg, label) || fail(500, `no owned record for ${address}`);
+      const holder = { s: null, live: null };
+      const s = runtime(wf, record, holder);
+      const sent = await wf.step("wake.send", async () => {
+        try {
+          s.record.status = "idle";
+          await recordSession(cfg, { id: record.nativeId, cwd: record.cwd, harness, event: "owned", proc }).catch(() => {});
+          const handle = await liveHandle(s);
+          s.record.status = "running";
+          save(s);
+          const { runId } = await handle.send({ text, messageIds });
+          if (adopt) await markDelivered(scfg, messageIds);
+          publishReceipts(cfg, messageIds);
+          return { runId };
+        } catch (error) {
+          if (s.signal.aborted) throw error;
+          s.record.status = "ended";
+          save(s);
+          if (adopt) await releaseDelivery(scfg, messageIds);
+          await enqueuePublish(s, () => publishEvent(cfg, harness, { type: EventType.CUSTOM, name: ERROR, value: `woken session did not take the message: ${error.message}` }));
+          return { error: error.message };
+        }
+      }, {
+        // Never resent: a cut wake marks its run interrupted, the session closed again, and the message delivered.
+        onCut: async () => {
+          const out = await cutRun(s, null, "runner restarted before the harness accepted the message");
+          s.record.status = "ended";
+          save(s);
+          if (adopt) await markDelivered(scfg, messageIds);
+          return out;
+        },
+      });
+      if (sent.runId) await wf.step("wake.wait", () => waitRun(s, sent.runId), { onCut: () => cutRun(s, sent.runId, "runner restarted") });
+      return await wf.step("wake.close", () => endSession(s, "closed again after a message"));
+    } finally {
+      gate.release();
+      if (wakeTail.get(address) === gate) wakeTail.delete(address);
+    }
+  }
+
+  // Delivery to live sessions the runner does not own: the deps of runner/delivery.mjs, each overridable through `delivery`.
+  const acks = ackTracker();
+  // Claude confirmation handles of unconfirmed pushes, by message id, while this runner lives.
+  const inflight = new Map();
+  const openCodeActive = async () => {
+    const probe = await opencodeRequest("GET", "/api/session/active", { env });
+    return probe.ok ? new Set(Object.keys(probe.body?.data ?? probe.body ?? {})) : null;
+  };
+  const deliveryDeps = {
+    now,
+    claim: claimInbox,
+    scfgOf: (project, session) => ({ ...configs.get(project), peer: session.peer, session: session.session }),
+    sessionOf: (project, address) => {
+      const cfg = configs.get(project);
+      return (cfg && listSessions(cfg).find((s) => s.id === address && s.online)) || null;
+    },
+    ready: async (session) => readySession(session, session.harness === "opencode" ? await openCodeActive() : null, { env, idle: sessionIdleState }),
+    reserve: (scfg, ids, opts) => reserveDelivery(scfg, ids, opts),
+    release: (scfg, ids) => releaseDelivery(scfg, ids),
+    markDelivered: (scfg, ids) => markDelivered(scfg, ids),
+    snapshot: (session) => (session.harness === "claude" ? claudeSnapshot(session, { env }) : null),
+    push: async (session, { text, urgent, ids }) => {
+      const result = await pushSession(session, text, { urgent, ids }, { env });
+      if (result.status === "unconfirmed") inflight.set(ids[0], result);
+      return { status: result.status };
+    },
+    awaitConfirm: (id, session, snap) => {
+      const result = inflight.get(id);
+      inflight.delete(id);
+      return result?.watch ? result.watch() : claudeConfirmedSince(snap, [id]);
+    },
+    confirmedSince: (session, ids, snap) => (session.harness === "claude" ? claudeConfirmedSince(snap, ids) : false),
+    acked: async (project, address, message) => {
+      const topics = new Set([receiptsTopic(project), broadcastTopic(project), inboxTopic(project, address.split("#")[0])]);
+      if (typeof message.from === "string" && message.from) topics.add(inboxTopic(project, message.from.split("#")[0]));
+      await acks.refresh(configs.get(project), topics);
+      return acks.acked(message.id, address);
+    },
+    textFor: (scfg, message, attemptNo) => {
+      const shown = attemptNo > 1 ? { ...message, attempt: attemptNo, attempts: MAX_ATTEMPTS } : message;
+      return [identityLine(scfg), formatInbox([shown], { session: scfg.session })].filter(Boolean).join("\n");
+    },
+  };
+  const deps = { ...deliveryDeps, ...delivery };
+  durable.register(DELIVERY, deliveryWorkflow(deps));
+  durable.register(WAKE, wakeWorkflow);
+
+  /**
+   * Starts a delivery workflow per direct message to each live, non-owned session, and a wake per direct message to each
+   * closed, non-owned session (adopting it). Finished workflows older than PRUNE_AFTER_MS are pruned hourly.
+   * Resolves the started workflow ids.
+   */
+  async function pumpDeliveries() {
+    const started = [];
+    if (now() - lastPruneAt >= PRUNE_EVERY_MS) {
+      lastPruneAt = now();
+      durable.prune([DELIVERY, WAKE], now() - PRUNE_AFTER_MS);
+    }
+    for (const cfg of configs.values()) {
+      if (!cfg.enabled) continue;
+      for (const session of listSessions(cfg)) {
+        if (sessions.has(session.id)) continue;
+        const scfg = deps.scfgOf(cfg.project, session);
+        if (session.online) {
+          if (!PUSHED.has(session.harness)) continue;
+          const fresh = (m) => !durable.status(`delivery:${session.id}:${m.id}`);
+          const messages = await deps.claim(scfg, { commit: false, limit: CLAIM_LIMIT, accept: (m) => direct(m) && fresh(m) }).catch(() => []);
+          for (const message of messages) {
+            const id = `delivery:${session.id}:${message.id}`;
+            const run = durable.startWorkflowOnce(DELIVERY, id, { project: cfg.project, address: session.id, message });
+            if (run) { run.catch(() => {}); started.push(id); }
+          }
+          continue;
+        }
+        const fresh = (m) => !durable.status(`wake:${session.id}:${m.id}`);
+        const messages = await deps.claim(scfg, { commit: false, limit: CLAIM_LIMIT, accept: (m) => direct(m) && fresh(m) }).catch(() => []);
+        for (const message of messages) {
+          const id = `wake:${session.id}:${message.id}`;
+          const text = formatInbox([message], { session: session.session });
+          const adopt = { nativeId: session.sessionId, cwd: session.cwd, ...(session.model ? { model: session.model } : {}) };
+          const run = durable.startWorkflowOnce(WAKE, id, { project: cfg.project, address: session.id, text, messageIds: [message.id], adopt });
+          if (run) { run.catch(() => {}); started.push(id); }
+        }
+      }
+    }
+    return started;
+  }
+
+  /** Delivery and wake workflows, newest first, for the UI and the operator. */
+  function deliveries() {
+    const rows = [...durable.listNamed(DELIVERY, 100), ...durable.listNamed(WAKE, 100)].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 100);
+    return { deliveries: rows.map((r) => ({
+      id: r.id, kind: r.name === WAKE ? "wake" : "delivery", status: r.status, address: r.input?.address ?? null,
+      messageId: r.input?.message?.id ?? r.input?.messageIds?.[0] ?? null, outcome: r.output?.status ?? null, error: r.error ?? null, updatedAt: r.updatedAt,
+    })) };
+  }
+
   durable.register("session", sessionWorkflow);
 
   /** Starts an owned session; resolves {status:"started", session, nativeId, workflowId, detail}. */
@@ -401,6 +586,10 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     timer.abort();
     for (const id of sessionIds) claims.delete(id);
     if (watch) for (const cfg of configs.values()) watchProject(cfg);
+    if (watch && pumpMs > 0) {
+      pumpTimer = setInterval(() => pumpDeliveries().catch((error) => log(`delivery pump failed: ${error.message}`)), pumpMs);
+      pumpTimer.unref();
+    }
     return ids.filter(isSession);
   }
 
@@ -443,7 +632,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       // A direct message or @mention for one owned session.
       if (!SESSION_LABEL.test(m.toSession)) return;
       const s = sessions.get(`${m.to}#${m.toSession}`);
-      if (s) await deliver(cfg, s, item(s), m.urgent === true, m.from, sender);
+      if (s) await deliver(cfg, s, item(s), m.urgent === true, m.from, sender, true);
     } else if (broadcast && m.to === "all") {
       // A project-chat broadcast reaches every owned session of the project.
       for (const s of sessions.values()) await deliver(cfg, s, item(s), m.urgent === true, m.from, sender);
@@ -459,10 +648,21 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     }
   }
 
-  // Queues one inbox item as the session's next input; skips other projects, ended sessions and the session's own messages.
-  async function deliver(cfg, s, message, urgent, from, sender) {
-    if (s.record.project !== cfg.project || s.record.status === "ended") return;
+  // A direct message to a closed session starts a wake (one turn per message); other messages to it are skipped.
+  function wake(cfg, s, message) {
+    const r = s.record;
+    const text = formatInbox([message], { session: r.label });
+    durable.startWorkflowOnce(WAKE, `wake:${r.address}:${message.id}`, { project: cfg.project, address: r.address, text, messageIds: [message.id] });
+  }
+
+  // Queues one inbox item as the session's next input; skips other projects and the session's own messages.
+  async function deliver(cfg, s, message, urgent, from, sender, isDirect = false) {
+    if (s.record.project !== cfg.project) return;
     if (from === s.record.harness && (!sender || sender === s.record.label)) return;
+    if (s.record.status === "ended" || wakeTail.has(s.record.address)) {
+      if (isDirect) wake(cfg, s, message);
+      return;
+    }
     const text = formatInbox([message], { session: s.record.label });
     await send(s.record.address, { text, steer: urgent, messageIds: [message.id], dedupe: `ntfy:${message.id}:${s.record.label}` }).catch((error) => log(`delivery failed: ${error.message}`));
   }
@@ -489,6 +689,8 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
 
   /** Stops watching, aborts workflows where they wait (open steps are cut at the next boot), closes handles. */
   async function stop() {
+    clearInterval(pumpTimer);
+    pumpTimer = null;
     watchers.abort();
     await durable.close();
     for (const s of sessions.values()) {
@@ -506,7 +708,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   }
 
   return {
-    start, send, interrupt, respond, setMode, close, boot, stop, harnesses,
+    start, send, interrupt, respond, setMode, close, boot, stop, harnesses, deliveries, pump: pumpDeliveries,
     list: () => [...sessions.values()].map(view),
     schedules: () => ({ schedules: durable.schedules(), configError: scheduleErrors }),
     runSchedule,
