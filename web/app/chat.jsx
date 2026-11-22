@@ -542,23 +542,32 @@ function ContextChip({ context, rows }) {
   const read = filesRead(rows);
   const tone = meter.level === "full" ? "border-destructive text-destructive" : meter.level === "warn" ? "border-amber-500 text-amber-600" : "text-muted-foreground";
   const warning = meter.level === "full" ? " · full" : meter.level === "warn" ? " · near full" : "";
-  return <details className="relative">
-    <summary title="Context used, and the files in it" className={cn("flex cursor-pointer list-none items-center gap-1 rounded-full border px-2.5 py-1 text-xs", tone)}>
-      Context{meter.text && " " + meter.text}{warning}</summary>
-    <div className="absolute right-0 z-30 mt-1 max-h-72 w-[min(90vw,360px)] overflow-y-auto rounded-2xl border bg-popover p-3 text-xs text-popover-foreground shadow-lg">
-      <p className="font-medium">Files in context</p>
-      {loaded.length ? <ul>{loaded.map(entry => <li key={entry.path} className="truncate font-mono" title={entry.path}>{entry.path}
-        <span className="text-muted-foreground"> · {entry.memory} · {entry.load.replace(/_/g, " ")}</span></li>)}</ul>
-        : <p className="text-muted-foreground">None recorded. Claude reports them through its InstructionsLoaded hook.</p>}
-      {/* Shown only once activity rows have loaded; before that, no reads are known, so the section stays out. */}
-      {rows.length > 0 && <>
-        <p className="mt-2 font-medium">Files read</p>
-        {read.length ? <ul>{read.map(entry => <li key={entry.path} className="truncate font-mono" title={entry.path}>{entry.path}
-          <span className="text-muted-foreground"> · {entry.count}×</span></li>)}</ul>
-          : <p className="text-muted-foreground">No file reads in the loaded activity.</p>}
-      </>}
-    </div>
-  </details>;
+  const [open, setOpen] = useState(false);
+  // A sheet fits any phone width; a popover anchored to the chip ran off the left edge at 390px.
+  return <>
+    <button type="button" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}
+      className={cn("flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs", tone)}>
+      Context{meter.text && " " + meter.text}{warning}</button>
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto break-words p-0">
+        <div className="flex flex-col gap-3 px-4 pb-6 pt-4 text-xs">
+          <SheetTitle className="text-base">Context</SheetTitle>
+          <SheetDescription className="text-xs">{meter.text ? "Tokens in context: " + meter.text : "No usage reported yet."}</SheetDescription>
+          <p className="font-medium">Files in context</p>
+          {loaded.length ? <ul className="flex flex-col gap-1.5">{loaded.map(entry => <li key={entry.path} className="min-w-0 break-all font-mono" title={entry.path}>{entry.path}
+            <span className="block text-muted-foreground">{entry.memory} · {entry.load.replace(/_/g, " ")}</span></li>)}</ul>
+            : <p className="text-muted-foreground">None recorded. Claude reports them through its InstructionsLoaded hook.</p>}
+          {/* Shown only once activity rows have loaded; before that, no reads are known, so the section stays out. */}
+          {rows.length > 0 && <>
+            <p className="font-medium">Files read</p>
+            {read.length ? <ul className="flex flex-col gap-1.5">{read.map(entry => <li key={entry.path} className="min-w-0 break-all font-mono" title={entry.path}>{entry.path}
+              <span className="text-muted-foreground"> · {entry.count}×</span></li>)}</ul>
+              : <p className="text-muted-foreground">No file reads in the loaded activity.</p>}
+          </>}
+        </div>
+      </SheetContent>
+    </Sheet>
+  </>;
 }
 
 // A session's finished turn(s) in the project chat: the first line of the final reply; tap opens the session.
