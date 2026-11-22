@@ -1,7 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { loadConfig } from "../lib/config.mjs";
-import { LIMIT_TOOL, WAIT_LABEL, alertLimit, limitLine, replacementOptions, resetClock } from "../lib/limit-alert.mjs";
+import { LIMIT_TOOL, WAIT_LABEL, alertLimit, limitLine, replacementOptions, resetClock, roleFallback } from "../lib/limit-alert.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 
@@ -71,4 +73,19 @@ test("alertLimit publishes a second card after the known reset passes", async (t
   await alertLimit(cfg, { harness: "claude", limit: FIVE_HOUR, now: FIVE_HOUR.resetsAt - 60_000, ...deps });
   assert.equal((await alertLimit(cfg, { harness: "claude", limit: FIVE_HOUR, now: FIVE_HOUR.resetsAt + 1, ...deps })).status, "sent");
   assert.equal(cards(fake).length, 2);
+});
+
+test("a session in a pattern run puts its role's fallback first on the card", async (t) => {
+  const { fake, cfg } = await setup(t);
+  const runs = join(cfg.stateDir, cfg.project, "pattern-runs");
+  mkdirSync(runs, { recursive: true });
+  const run = { id: "run42a", definition: { roles: [{ id: "reviewer", harness: "claude", responsibility: "Review", fallback: "codex:gpt-5" }] }, sessions: { reviewer: `alice#${SESSION}` } };
+  writeFileSync(join(runs, "run42a.json"), JSON.stringify(run));
+  assert.equal(roleFallback(cfg, `alice#${SESSION}`), "codex:gpt-5");
+  assert.equal(roleFallback(cfg, "alice#ffffffffffffffff"), undefined);
+  const sessionCfg = { ...cfg, session: SESSION };
+  await alertLimit(sessionCfg, { harness: "claude", limit: FIVE_HOUR, listed: async () => LISTED, available: () => ["cursor"] });
+  const [card] = cards(fake);
+  assert.deepEqual(card.questions[0].options.map((o) => o.label), ["codex:gpt-5", "cursor:auto", WAIT_LABEL]);
+  assert.equal(card.questions[0].options[0].description, "Role fallback");
 });
