@@ -11,6 +11,7 @@ import {
   briefNotes, builderPaths, builderSandbox, builderPolicy, captureHooks, harnessCommand, hostCaptureEvents, parseRecordedCall, replayable, sharedLibs,
 } from "../lib/builder.mjs";
 import { taskStoreFile } from "../lib/tasks.mjs";
+import { saveTeamText } from "../lib/patterns.mjs";
 import { loadConfig } from "../lib/config.mjs";
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import { openDurable } from "../runner/durable.mjs";
@@ -240,14 +241,27 @@ test("Codex builder runs through the control socket and links its task before se
   await withTask(l);
   writeFileSync(l.brief, "hang");
   const cfg = loadConfig(l.env, { cwd: l.root });
+  const hostLog = path.join(l.home, "host-codex.log");
+  const hostCodex = path.join(l.home, "bin", "codex");
+  writeFileSync(hostCodex, '#!/bin/sh\nprintf "launched\\n" >> "$1"\nexit 1\n', { mode: 0o755 });
   const durable = openDurable(path.join(l.home, "runner.db"));
   const runner = createRunner({
-    projects: [cfg], adapters: new Map([["codex", codexAdapter()]]),
+    projects: [cfg], adapters: new Map([["codex", codexAdapter({ command: { file: hostCodex, args: [hostLog] } })]]),
     durable, env: l.env, watch: false,
   });
   t.after(() => runner.stop());
   const control = await listenControl(runner, l.env.AI_COLLAB_RUNNER_SOCKET);
   t.after(() => control.close());
+  const worktrees = l.git("worktree", "list", "--porcelain");
+  await assert.rejects(runner.start({ project: "demo", harness: "codex", place: "openshell", prompt: "Build" }),
+    { status: 400, message: /require a tracked builder/ });
+  await saveTeamText(cfg, "sandboxrole", 'digraph sandboxrole { worker [agent=codex, prompt="Build"]; worker -> done [on="ready"]; }', l.env, {});
+  await assert.rejects(runner.startPattern({ project: "demo", name: "sandboxrole", task: "Build" }),
+    { status: 400, message: /require a tracked builder/ });
+  assert.equal(l.git("worktree", "list", "--porcelain"), worktrees);
+  assert.deepEqual(runner.list(), []);
+  assert.equal(existsSync(hostLog), false);
+  assert.deepEqual(readJsonLines(l.env.FAKE_OPENSHELL_LOG), []);
   const res = await l.cli("builder", "start", "--task", "smoke-task", "--harness", "codex", "--run", "run123", "--brief", l.brief);
   assert.equal(res.code, 0, res.err);
   const address = res.out.split("\t")[0];
@@ -263,6 +277,10 @@ test("Codex builder runs through the control socket and links its task before se
     await new Promise(resolve => setTimeout(resolve, 20));
   }
   const turn = readJsonLines(l.env.FAKE_CODEX_LOG).find(row => row.method === "turn/start");
+  const launches = readJsonLines(l.env.FAKE_OPENSHELL_LOG).filter(args => args[1] === "exec" && args.includes("app-server"));
+  assert.equal(launches.length, 1);
+  assert.equal(launches[0][launches[0].indexOf("-n") + 1], SANDBOX);
+  assert.equal(existsSync(hostLog), false);
   assert.match(turn?.params.input[0].text, /^hang[\s\S]*oncebitten check --base main/);
   const stopped = await l.cli("builder", "stop", "smoke-task");
   assert.equal(stopped.code, 0, stopped.err);

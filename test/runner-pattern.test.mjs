@@ -20,12 +20,12 @@ test("a DOT pattern resumes after runner restart and accepts agent and operator 
     git("init");
     git("-c", "user.name=Tests", "-c", "user.email=tests@example.test", "commit", "--allow-empty", "-m", "initial");
     const pattern = await saveTeamText(ctx.cfg, "durable", `digraph durable {
-      builder [agent=codex, prompt="Build"];
-      reviewer [agent=codex, prompt="Review", code_mode=off];
+      builder [agent=claude, prompt="Build"];
+      reviewer [agent=claude, prompt="Review", code_mode=off];
       builder -> reviewer [on="ready", required=true];
       reviewer -> done [on="approved"];
     }`, ctx.env, {});
-    const adapter = createFakeAdapter({ harness: "codex", capabilities: { places: ["openshell"] } });
+    const adapter = createFakeAdapter({ harness: "claude", capabilities: { places: ["openshell"] } });
     const open = adapter.open;
     adapter.open = (options, context) => open(options, {
       ...context,
@@ -46,8 +46,8 @@ test("a DOT pattern resumes after runner restart and accepts agent and operator 
     await boot();
     const started = await startRun(ctx.cfg, "durable", "Ship it", ctx.env);
     assert.equal(started.status, "running");
-    assert.match(started.session, /^codex#/);
-    await assert.rejects(advanceRun(ctx.cfg, started.id, "ready", { env: ctx.env, caller: "codex#other" }), /only the active role/);
+    assert.match(started.session, /^claude#/);
+    await assert.rejects(advanceRun(ctx.cfg, started.id, "ready", { env: ctx.env, caller: "claude#other" }), /only the active role/);
     await control.close();
     await runner.stop();
 

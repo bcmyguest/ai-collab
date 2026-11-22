@@ -301,9 +301,16 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     return cwd;
   }
 
+  function checkOpenShellLaunch(harness, place, builder) {
+    if (harness === "codex" && place === "openshell" && !builder) {
+      fail(400, "Codex OpenShell starts require a tracked builder to prepare the launcher");
+    }
+  }
+
   // The durable session workflow: place → open → claim, then one run.send/run.wait pair per input until closed.
   async function sessionWorkflow(wf, input) {
     const { project, harness, place, permissionMode, model, codeMode, taskId, patternRun, builder } = input;
+    checkOpenShellLaunch(harness, place, builder);
     const adapter = adapterOf(harness);
     const holder = { s: null, live: null };
     const staged = builder && await wf.step("builder.stage", async () => {
@@ -734,6 +741,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       try { builder = ownedBuilder(project, builderId, env); } catch (error) { fail(400, error.message); }
       if (builder.task !== taskId || builder.phase !== "starting") fail(409, "Builder already started or task mismatch");
     }
+    checkOpenShellLaunch(harness, place, builder);
     if (!patternRun && !builder && now() - lastStartAt < startGapMs) fail(429, "Wait 10 seconds between starts");
     if (!patternRun && !builder) lastStartAt = now();
     const workflowId = `session-${randomUUID()}`;
@@ -833,6 +841,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       if (!pattern.file && pattern.source !== "built-in") throw new Error("A team.dot pattern is required");
       initial = { ...(await preparePatternRun(cfg, pattern, task, env, { now, openshell: true })), runner: true };
       for (const { harness } of initial.definition.roles) {
+        checkOpenShellLaunch(harness, "openshell");
         if (!adapterOf(harness).capabilities.places?.includes("openshell")) throw new Error(harness + " does not support OpenShell team roles");
       }
     } catch (error) {
