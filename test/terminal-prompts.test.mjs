@@ -65,5 +65,5 @@ test("session chat shows typed terminal prompts as operator messages, skipping m
   assert.deepEqual(times, [...times].sort((a, b) => a - b), "messages stay in time order");
 
   const chat = await next(open(""), "state");
-  assert.equal(chat.messages.some(m => m.terminal), false, "the all-messages view has no terminal prompts");
+  assert.deepEqual(chat.messages.filter(m => m.terminal).map(m => [m.from, m.to, m.body]), [["operator", target, "typed in terminal"]], "the all-messages view shows terminal prompts with their session");
 });

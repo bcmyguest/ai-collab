@@ -225,7 +225,7 @@ test("UI streams activity per session and as a project overview, never as chat, 
 
   const chat = open("");
   const chatState = await next(chat, "state");
-  assert.deepEqual(chatState.messages.map((m) => m.body), ["chat only"]);
+  assert.deepEqual(chatState.messages.map((m) => m.body), ["carol prompt", "chat only"]);
 
   const big = "result line\n".repeat(1000);
   await publishActivity(bob, "claude", [{ type: "tool_result", tool: "Bash", output: big, callId: "t1" }]);
@@ -249,7 +249,7 @@ test("UI streams activity per session and as a project overview, never as chat, 
   await publish(bob, "ai-collab-demo--to--all", JSON.stringify({ v: 1, kind: "msg", from: "bob", to: "all", body: "notes" }),
     { attach: { filename: "notes.txt", data: Buffer.from("chat text file") } });
   const withText = await next(chat, "state");
-  assert.deepEqual(withText.messages.map((m) => [m.body, m.attachment]), [["chat only", undefined], ["notes", undefined]]);
+  assert.deepEqual(withText.messages.map((m) => [m.body, m.attachment]), [["carol prompt", undefined], ["chat only", undefined], ["notes", undefined]]);
   assert.equal((await ui.file("f2.txt")).status, 404, "a text file on a chat topic is never served");
 
   const rows = activityRows([...first.items, ...live.items]);

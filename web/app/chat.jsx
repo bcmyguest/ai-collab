@@ -339,6 +339,7 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
         {detail && <span data-agent-detail className="text-[11px] text-muted-foreground/80">{"· " + detail}</span>}
         {message.to && message.to !== "all" && <span title={message.to}>→ {short(message.to)}</span>}
         {message.terminal && <Badge variant="outline" data-terminal title="Typed in the agent's terminal" className="h-4 px-1.5 text-[10px]">terminal</Badge>}
+        {message.replyTo && <Badge variant="outline" data-answer title={"Answers question " + message.replyTo} className="h-4 px-1.5 text-[10px]">answer</Badge>}
         {at > 0 && <time dateTime={new Date(at).toISOString()} title={clock.format(at)}>{ago(at, now)}</time>}
         {replyFrom && message.kind !== "Approval" && <button type="button" aria-label={"Reply to " + sender} title="Reply" onClick={() => replyFrom({ id: message.id, sender, prefill })}
           className="rounded-full p-0.5 hover:bg-muted hover:text-foreground"><Reply className="size-3.5"/></button>}
