@@ -240,7 +240,7 @@ test("builder list shows live builders and stop ends only builders it started", 
   assert.ok(!readJsonLines(l.env.FAKE_SYSTEMD_LOG).some((a) => a[0] === "systemctl" && a.includes("stop")));
   const stop = await l.cli("builder", "stop", "smoke-task");
   assert.equal(stop.code, 0);
-  assert.equal(stop.out, "builder-smoke-task\tstopped\n");
+  assert.equal(stop.out, "builder-smoke-task\tstopped\tsandbox deleted\n");
   assert.ok(readJsonLines(l.env.FAKE_SYSTEMD_LOG).some((a) => a[0] === "systemctl" && a.join(" ") === "systemctl --user stop builder-smoke-task"));
 });
 
