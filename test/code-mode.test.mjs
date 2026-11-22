@@ -54,8 +54,8 @@ test("each harness gets its own switch: Claude flag settings, Codex features.cod
   assert.deepEqual(claudeCodeModeSettings(false), { env: { CLAUDE_CODE_EXPERIMENTAL_CODE_MODE: "0" } });
   assert.deepEqual(codexCodeModeArgs(true), ["-c", "features.code_mode=true"]);
   assert.equal(CODEX_CODE_MODE_KEY, "features.code_mode");
-  assert.deepEqual(startCommand("codex", "/r", "hi", { codeMode: true }), ["codex", ["exec", "--json", "-c", "features.code_mode=true", "hi"]]);
-  assert.deepEqual(startCommand("codex", "/r", "hi", { codeMode: false, mode: "plan" }), ["codex", ["exec", "--json", "-c", "features.code_mode=false", "-s", "read-only", "hi"]]);
+  assert.deepEqual(startCommand("codex", "/r", "hi", { codeMode: true }), ["codex", ["exec", "--json", "--dangerously-bypass-hook-trust", "-c", "features.code_mode=true", "hi"]]);
+  assert.deepEqual(startCommand("codex", "/r", "hi", { codeMode: false, mode: "plan" }), ["codex", ["exec", "--json", "--dangerously-bypass-hook-trust", "-c", "features.code_mode=false", "-s", "read-only", "hi"]]);
   // Claude --bg refuses code mode, so its UI start argv is unchanged; Cursor and OpenCode have no native mode.
   assert.deepEqual(startCommand("claude", "/r", "hi", { codeMode: true }), startCommand("claude", "/r", "hi"));
   assert.deepEqual(startCommand("cursor", "/r", "hi", { codeMode: true }), startCommand("cursor", "/r", "hi"));

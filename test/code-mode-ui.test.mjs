@@ -50,11 +50,11 @@ test("a start's codeMode=false reaches the codex argv; a non-boolean codeMode is
   assert.equal((await post({ project: "demo", harness: "codex", prompt: "go", codeMode: "yes" })).status, 400);
   const response = await post({ project: "demo", harness: "codex", prompt: "go", codeMode: false });
   assert.equal(response.status, 201);
-  assert.deepEqual(await argv(), ["exec", "--json", "-c", "features.code_mode=false", "go"]);
+  assert.deepEqual(await argv(), ["exec", "--json", "--dangerously-bypass-hook-trust", "-c", "features.code_mode=false", "go"]);
 });
 
 test("defaults.json codeMode=false turns code mode off for a start that names none", async (t) => {
   const { post, argv } = await setup(t, { codeMode: false });
   assert.equal((await post({ project: "demo", harness: "codex", prompt: "go" })).status, 201);
-  assert.deepEqual(await argv(), ["exec", "--json", "-c", "features.code_mode=false", "go"]);
+  assert.deepEqual(await argv(), ["exec", "--json", "--dangerously-bypass-hook-trust", "-c", "features.code_mode=false", "go"]);
 });

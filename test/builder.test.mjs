@@ -173,7 +173,7 @@ test("builder list shows live builders and stop ends only builders it started", 
 test("builder start refuses a bad harness, a missing task and an existing worktree", async () => {
   const l = lab();
   await withTask(l);
-  assert.equal((await l.cli("builder", "start", "--task", "smoke-task", "--harness", "claude", "--brief", l.brief)).code, 1);
+  assert.equal((await l.cli("builder", "start", "--task", "smoke-task", "--harness", "opencode", "--brief", l.brief)).code, 1);
   assert.match((await l.cli("builder", "start", "--task", "nope", "--harness", "cursor", "--brief", l.brief)).err, /no task nope/);
   mkdirSync(path.join(l.home, "ai-collab-wt-smoke-task"));
   assert.match((await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief)).err, /already exists/);
