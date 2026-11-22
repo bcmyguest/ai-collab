@@ -535,8 +535,8 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       durable.prune([DELIVERY, WAKE], now() - PRUNE_AFTER_MS);
     }
     let wakes = 0;
-    // One poll per topic and read position per tick, shared by every session that reads it; a 429 skips its topic for the tick.
-    const memo = { poll: new Map(), limited };
+    // One poll per topic and read position per tick, shared by every session that reads it; a 429 skips its topic for the tick. One tick time keeps first reads on one position.
+    const memo = { poll: new Map(), limited, now: now() };
     const live = { ...memo, peek: { cursors: pumpPeeks, lane: "live" } };
     const wake = { ...memo, peek: { cursors: pumpPeeks, lane: "wake" } };
     const known = new Set();
