@@ -61,7 +61,7 @@ test("validatePattern rejects broken shapes", () => {
     { from: "lead", to: "doer", on: "scope", required: "yes" },
     { from: "doer", to: "done", on: "finished", required: true },
   ] })), /required true or false/);
-  assert.throws(() => validatePattern(pair({ name: "operator" })), /cannot be/);
+  assert.throws(() => validatePattern(pair({ name: "operator" }), ["operator"]), /reserved/);
 });
 
 test("legacyPattern turns each team member into one role without handoffs", () => {
