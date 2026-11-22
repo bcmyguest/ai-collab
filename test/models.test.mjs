@@ -43,7 +43,7 @@ function home() {
 
 test("model flags in each harness's argv; malformed names give no command", () => {
   assert.deepEqual(startCommand("claude", "/r", "hi", { model: "opus" }), ["claude", ["--bg", "--model", "opus", "hi"]]);
-  assert.deepEqual(startCommand("codex", "/r", "hi", { model: "gpt-6.2-sol" }), ["codex", ["exec", "--json", "-m", "gpt-6.2-sol", "hi"]]);
+  assert.deepEqual(startCommand("codex", "/r", "hi", { model: "gpt-6.2-sol" }), ["codex", ["exec", "--json", "--dangerously-bypass-hook-trust", "-m", "gpt-6.2-sol", "hi"]]);
   assert.deepEqual(startCommand("cursor", "/r", "hi", { model: "auto" }), ["cursor-agent", ["-p", "--trust", "--output-format", "stream-json", "--workspace", "/r", "--model", "auto", "hi"]]);
   for (const bad of ["--yolo", "a b", "", 7, "x;rm"]) assert.equal(startCommand("claude", "/r", "hi", { model: bad }), null, String(bad));
 });

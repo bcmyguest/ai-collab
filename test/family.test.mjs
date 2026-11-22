@@ -91,7 +91,7 @@ test("parent exports its address, the child greets it once, and both can message
   out.length = 0;
   assert.equal(await runCli(["sessions"], { ...io, env: { ...env, AI_COLLAB_PEER: undefined } }), 0);
   const line = out.join("").split("\n").find(l => l.startsWith(CHILD));
-  assert.match(line, new RegExp(`codex\\t(online|offline)\\tactive \\S+\\tparent ${PARENT}\\t/tmp/proj\\tcodex exec resume ${CHILD_ID}`));
+  assert.match(line, new RegExp(`codex\\t(online|offline)\\tactive \\S+\\tparent ${PARENT}\\t/tmp/proj\\tcodex exec --dangerously-bypass-hook-trust --skip-git-repo-check resume ${CHILD_ID}`));
 
   const mcp = spawn(process.execPath, [MCP, "codex"], { env: childEnv, stdio: ["pipe", "pipe", "inherit"] });
   t.after(() => mcp.kill());

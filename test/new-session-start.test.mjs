@@ -73,7 +73,7 @@ test("the dialogue opens on the configured default when it can start here", () =
 
 test("the mode reaches the harness's argv, and an unsupported mode is refused before spawning", () => {
   assert.deepEqual(startCommand("claude", "/r", "hi", { mode: "plan" }), ["claude", ["--bg", "--permission-mode", "plan", "hi"]]);
-  assert.deepEqual(startCommand("codex", "/r", "hi", { mode: "plan", model: "gpt-5.6-sol" }), ["codex", ["exec", "--json", "-s", "read-only", "-m", "gpt-5.6-sol", "hi"]]);
+  assert.deepEqual(startCommand("codex", "/r", "hi", { mode: "plan", model: "gpt-5.6-sol" }), ["codex", ["exec", "--json", "--dangerously-bypass-hook-trust", "-s", "read-only", "-m", "gpt-5.6-sol", "hi"]]);
   assert.deepEqual(startCommand("cursor", "/r", "hi", { mode: "ask" }), ["cursor-agent", ["-p", "--trust", "--output-format", "stream-json", "--workspace", "/r", "--mode", "ask", "hi"]]);
   assert.deepEqual(startCommand("cursor", "/r", "hi", { mode: "plan", worktree: "w" }), ["cursor-agent", ["-p", "--trust", "--output-format", "stream-json", "--workspace", "/r", "--mode", "plan", "hi"]]);
   assert.deepEqual(startCommand("claude", "/r", "hi", { mode: "agent" }), startCommand("claude", "/r", "hi"), "agent adds no flag");
@@ -105,5 +105,5 @@ test("an unnamed mode starts the harness's normal editing mode, and the model pi
   // An empty startMode is the same as none, so an older client keeps working.
   const second = await setup(t);
   await (await second.post({ project: "demo", harness: "codex", prompt: "ship it", startMode: "" })).json();
-  assert.deepEqual((await recorded(second.record, "codex")).argv, ["exec", "--json", "-c", "features.code_mode=true", "ship it"]);
+  assert.deepEqual((await recorded(second.record, "codex")).argv, ["exec", "--json", "--dangerously-bypass-hook-trust", "-c", "features.code_mode=true", "ship it"]);
 });

@@ -34,6 +34,8 @@ Update with `codex plugin marketplace upgrade`. Codex copies the marketplace fol
 
 Restart Codex and check `/hooks` to trust the enabled plugin hooks; trust again after each update. The manifest is `.codex-plugin/plugin.json` and points to `hooks/codex-hooks.json`.
 
+**Headless runs.** Codex runs a plugin's hooks only when that trust is persisted in `config.toml`, and only the interactive `/hooks` review writes it (measured on codex-cli 0.171.0). So `codex exec` in a fresh worktree fires no `SessionStart`, `UserPromptSubmit` or `PostToolUse` hooks at all: the session never registers, and the UI never shows it. Codex has no non-interactive trust command, so every `codex exec` this project starts carries `--dangerously-bypass-hook-trust`, which asks for the same thing once for that invocation ("run enabled hooks without requiring persisted hook trust; intended only for automation that already vets hook sources"). It does not widen what may run: hooks a repository ships in its own `.codex/` stay off in a project Codex has not marked trusted, which is every worktree and sandbox this project creates. Hooks from `$CODEX_HOME` and from installed plugins run. Resuming a session by hand needs the same flag: `codex exec --dangerously-bypass-hook-trust resume <id> "<prompt>"`.
+
 ## Cursor
 
 ```sh

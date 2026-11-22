@@ -181,8 +181,9 @@ test("builder start refuses a bad harness, a missing task and an existing worktr
 });
 
 test("harness argv, policy, hooks and recorded calls", () => {
+  // Codex gets the hook-trust flag: without it a headless run in a fresh worktree fires no hooks at all.
   assert.deepEqual(harnessCommand({ harness: "codex", model: "gpt-6.2-sol", brief: "b", workdir: "/sandbox/work/x" }),
-    ["codex", "exec", "-m", "gpt-6.2-sol", "--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check", "-C", "/sandbox/work/x", "b"]);
+    ["codex", "exec", "-m", "gpt-6.2-sol", "--dangerously-bypass-approvals-and-sandbox", "--dangerously-bypass-hook-trust", "--skip-git-repo-check", "-C", "/sandbox/work/x", "b"]);
   const policy = builderPolicy({ harness: "codex", binaries: ["/sandbox/codex/r/bin/codex"], ntfyBinaries: ["/sandbox/tools/node/bin/node"] });
   assert.ok(policy.network_policies.codex.endpoints.some((e) => e.host === "chatgpt.com"));
   assert.deepEqual(policy.network_policies.ai_collab.binaries.map((b) => b.path), ["/sandbox/codex/r/bin/codex", "/sandbox/tools/node/bin/node"]);

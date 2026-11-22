@@ -71,7 +71,7 @@ The auth file goes through a 0600 temp copy and a single-file upload; it never a
 
 The login shell of `sandbox exec` sets `SSL_CERT_FILE` to the CA OpenShell terminates TLS with, so the unit never overrides it.
 
-The harness's own sandbox is off (`--sandbox disabled` for Cursor, `--dangerously-bypass-approvals-and-sandbox` for Codex): OpenShell is the isolation.
+The harness's own sandbox is off (`--sandbox disabled` for Cursor, `--dangerously-bypass-approvals-and-sandbox` for Codex): OpenShell is the isolation. Codex also gets `--dangerously-bypass-hook-trust`, because a headless `codex exec` otherwise fires no hooks at all; it covers hooks from `$CODEX_HOME` and installed plugins, and hooks a repository ships in its own `.codex/` stay off in a sandbox project Codex has not marked trusted (see [Install](install.md#codex)).
 
 ## Task status
 

@@ -17,6 +17,12 @@ Both causes are hook or packaging bugs. Neither needs owned sessions.
 - Codex never injected inbox messages, but the hook had already claimed them and sent read receipts: the messages were silently lost.
 - Fixed: `hookOutput` in `lib/format.mjs` gives Codex `hookSpecificOutput` only.
 
+**C. A headless run never runs the hooks at all.** Found 2026-11-22, measured on codex-cli 0.171.0.
+- Codex runs a plugin's hooks only when their trust is persisted under `[hooks.state."<plugin>:<manifest>:<event>:<i>:<j>"]` in `config.toml`. Only the interactive `/hooks` review writes that (`plugin_trust.rs`, `hook trust verification timed out`, `codex/config/batchWrite failed while updating hook trust in TUI`).
+- So in a fresh worktree `codex exec` fired no `SessionStart`, `UserPromptSubmit` or `PostToolUse` at all, trusted project or not, and the session never registered. Reproduced: an isolated `CODEX_HOME` with `hooks.json` and a trusted project fires nothing.
+- Fixed: every `codex exec` this project starts carries `--dangerously-bypass-hook-trust` ("run enabled hooks without requiring persisted hook trust for this invocation"). Reproduced firing all three events with it, and none without. `codex exec resume` needs it too, placed before the subcommand.
+- Not widened: hooks a repository ships in its own `.codex/` still need the project to be trusted. In an untrusted project the flag ran `$CODEX_HOME` hooks and left the repository's off (measured). Hook output shape: only `hookSpecificOutput.additionalContext` reaches the model, landing as a `developer` message with `content_item_kinds: ["hooks.additional_context"]`; the other shapes are dropped silently.
+
 ## Claims checked
 
 **Confirmed:**
@@ -27,6 +33,7 @@ Both causes are hook or packaging bugs. Neither needs owned sessions.
 - The Codex daemon socket exists.
 - The OpenCode 2.3.2 endpoints are as stated.
 - The Claude Agent SDK `^0.3.330` is a dependency.
+- Cause C above: hook execution needs persisted trust, which only the TUI writes.
 
 **Wrong or stale:**
 - `service.json` is mode 0600, so it is checked, not "not checked".

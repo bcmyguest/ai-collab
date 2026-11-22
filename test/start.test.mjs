@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { loadProjects, sessionLabel } from "../lib/config.mjs";
-import { checkPrompt, codexHooksTrusted, outputId, startCommand } from "../lib/start.mjs";
+import { checkPrompt, outputId, startCommand } from "../lib/start.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 
@@ -64,7 +64,7 @@ async function recorded(record, harness) {
 
 test("argv templates, prompt checks, and id parsing", () => {
   assert.deepEqual(startCommand("claude", "/r", "hi"), ["claude", ["--bg", "hi"]]);
-  assert.deepEqual(startCommand("codex", "/r", "hi"), ["codex", ["exec", "--json", "hi"]]);
+  assert.deepEqual(startCommand("codex", "/r", "hi"), ["codex", ["exec", "--json", "--dangerously-bypass-hook-trust", "hi"]]);
   assert.deepEqual(startCommand("cursor", "/r", "hi"), ["cursor-agent", ["-p", "--trust", "--output-format", "stream-json", "--workspace", "/r", "hi"]]);
   assert.equal(startCommand("bash", "/r", "hi"), null);
   assert.equal(checkPrompt("  fix it  ").text, "fix it");
@@ -74,13 +74,15 @@ test("argv templates, prompt checks, and id parsing", () => {
   assert.equal(outputId("claude", "no id here\n"), "");
 });
 
-test("Codex hook trust is read from config.toml", () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-codex-"));
-  assert.equal(codexHooksTrusted({ CODEX_HOME: home }), null);
-  writeFileSync(path.join(home, "config.toml"), "[features]\nhooks = true\n");
-  assert.equal(codexHooksTrusted({ CODEX_HOME: home }), false);
-  writeFileSync(path.join(home, "config.toml"), '[hooks.state."ai-collab@ai-collab:hooks/codex-hooks.json:session_start:0:0"]\ntrusted_hash = "sha256:x"\n');
-  assert.equal(codexHooksTrusted({ CODEX_HOME: home }), true);
+test("a headless Codex run asks for hook trust, since only the TUI can persist it", () => {
+  // The flag is on every codex exec argv a start builds, including a sandbox-mode (plan) start and a model start.
+  assert.deepEqual(startCommand("codex", "/r", "hi", { model: "gpt-6.2-sol" }),
+    ["codex", ["exec", "--json", "--dangerously-bypass-hook-trust", "-m", "gpt-6.2-sol", "hi"]]);
+  assert.deepEqual(startCommand("codex", "/r", "hi", { mode: "plan" }),
+    ["codex", ["exec", "--json", "--dangerously-bypass-hook-trust", "-s", "read-only", "hi"]]);
+  // Nothing else gets a flag that skips trust or permissions.
+  assert.ok(!startCommand("claude", "/r", "hi").flat().some((a) => /dangerously|skip-permissions|--force/.test(a)));
+  assert.ok(!startCommand("opencode", "/r", "hi").flat().some((a) => /dangerously|skip-permissions|--force/.test(a)));
 });
 
 test("each harness starts in the registered folder with the exact argv and a literal prompt", async (t) => {
@@ -102,17 +104,17 @@ test("each harness starts in the registered folder with the exact argv and a lit
   assert.equal((await post({ project: "demo", harness: "codex", prompt: "second" })).status, 429, "one start per 10 s");
 });
 
-test("codex and cursor argv, and a warning when Codex has not trusted the hooks", async (t) => {
+test("codex argv carries the hook-trust flag; the other harnesses get no trust-skipping flag", async (t) => {
   for (const harness of ["codex", "cursor"]) {
-    const { post, root, record, home } = await setup(t);
-    mkdirSync(path.join(home, ".codex"));
-    writeFileSync(path.join(home, ".codex", "config.toml"), "[features]\nhooks = true\n");
+    const { post, root, record } = await setup(t);
     const result = await (await post({ project: "demo", harness, prompt: "hello there" })).json();
     assert.equal(result.session, `${harness}#${sessionLabel(IDS[harness])}`);
     const run = await recorded(record, harness);
-    assert.deepEqual(run.argv, harness === "codex" ? ["exec", "--json", "-c", "features.code_mode=true", "hello there"] : ["-p", "--trust", "--output-format", "stream-json", "--workspace", root, "hello there"]);
+    assert.deepEqual(run.argv, harness === "codex"
+      ? ["exec", "--json", "--dangerously-bypass-hook-trust", "-c", "features.code_mode=true", "hello there"]
+      : ["-p", "--trust", "--output-format", "stream-json", "--workspace", root, "hello there"]);
     assert.equal(run.cwd, root);
-    assert.equal(Boolean(result.warning), harness === "codex", "untrusted Codex hooks are reported");
+    assert.equal(result.warning, undefined, "no hook-trust warning: the flag makes the hooks run");
   }
 });
 
