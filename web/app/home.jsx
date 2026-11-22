@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { Bot, ChevronRight, CircleHelp, CornerLeftUp, LoaderCircle, MoreHorizontal } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
@@ -42,25 +43,43 @@ function Action({ action }) {
 }
 
 /** A session's actions menu; Dispose waits until the session is offline and registered. */
-export function SessionMenu({ node, disabled, dispose, raw, map, label = "Actions for " + node.id }) {
+export function SessionMenu({ node, disabled, dispose, raw, map, detailsAction, label = "Actions for " + node.id }) {
   return <DropdownMenu>
-    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8 shrink-0" aria-label={label}><MoreHorizontal className="size-4"/></Button></DropdownMenuTrigger>
+    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className={cn("shrink-0", detailsAction ? "size-11" : "size-8")} aria-label={label}><MoreHorizontal className="size-4"/></Button></DropdownMenuTrigger>
     <DropdownMenuContent align="end">
+      {detailsAction}
       {raw && <DropdownMenuItem onSelect={() => raw(node)}>Raw activity</DropdownMenuItem>}
       {map && <DropdownMenuItem onSelect={() => map(node)}>Compaction map</DropdownMenuItem>}
-      <DropdownMenuItem disabled={disabled || node.online || !node.registered} onSelect={() => dispose(node)}>Dispose</DropdownMenuItem>
+      {dispose && <DropdownMenuItem disabled={disabled || node.online || !node.registered} onSelect={() => dispose(node)}>Dispose</DropdownMenuItem>}
     </DropdownMenuContent>
   </DropdownMenu>;
 }
 
 // One session: identity, state, last action, running subagents, pending cards or their compact count, and nested child sessions.
 function SessionCard({ node, now, open, openAddress, act, answer, dispose, raw, disabled, showProject, compact }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const name = (!node.generatedName && node.name) || short(node.id);
+  const folder = node.folder && node.folder !== node.project ? node.folder : "";
+  const activity = ago(Math.max(node.seenAt || 0, node.lastActivityAt || 0), now);
   const running = node.subagents.filter(run => runState(run, now) === "running");
   const label = running.length ? running.length + " subagent" + (running.length === 1 ? "" : "s") : "";
   const meter = contextMeter(node.context || {});
   return <li data-session={node.id} className="flex min-w-0 flex-col gap-2">
     <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border bg-card px-3 py-2.5 text-sm shadow-xs">
-      <div className="flex min-w-0 items-start gap-1">
+      {compact ? <div className="flex min-w-0 items-center gap-1">
+        <button type="button" onClick={() => open(node)} aria-label={"Open " + name}
+          className="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-md text-left hover:bg-accent">
+          <span className="w-full truncate font-medium" title={name}>{name}</span>
+          <span className="flex w-full min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="min-w-0 truncate" title={[node.project, folder].filter(Boolean).join(" · ")}>{node.project}{folder && " · " + folder}</span>
+            <StateChip state={node.state}/>
+            <span className="shrink-0">{activity}</span>
+          </span>
+        </button>
+        <SessionMenu node={node} disabled={disabled} dispose={dispose} raw={raw} detailsAction={
+          <DropdownMenuItem onSelect={() => setDetailsOpen(value => !value)}>{detailsOpen ? "Hide session details" : "Show session details"}</DropdownMenuItem>
+        }/>
+      </div> : <div className="flex min-w-0 items-start gap-1">
       <button type="button" onClick={() => open(node)} aria-label={"Open " + node.id + (node.name ? " · " + node.name : "")}
         className="flex min-w-0 flex-1 items-start gap-2.5 text-left">
         <Avatar address={node.id} className="size-8 text-[11px]"/>
@@ -75,7 +94,7 @@ function SessionCard({ node, now, open, openAddress, act, answer, dispose, raw, 
             {node.harness && <span title="Agent type">· {HARNESS_LABELS[node.harness] || node.harness}</span>}
             {node.where && <span title="Where it runs">· {node.where}</span>}
             {showProject && <span>· {node.project}</span>}
-            <span>· active {ago(Math.max(node.seenAt || 0, node.lastActivityAt || 0), now)}</span>
+            <span>· active {activity}</span>
             {meter.text && <span data-context={meter.level} title="Context used"
               className={cn(meter.level === "full" && "text-destructive", meter.level === "warn" && "text-amber-600")}>· context {meter.text}</span>}
             {label && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]" title="Running subagents">{label}</Badge>}
@@ -84,8 +103,16 @@ function SessionCard({ node, now, open, openAddress, act, answer, dispose, raw, 
       </button>
       <GoToAgent onClick={() => open(node)}/>
       {dispose && <SessionMenu node={node} disabled={disabled} dispose={dispose} raw={raw}/>}
-      </div>
-      {node.parent && <p className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+      </div>}
+      {compact && detailsOpen && <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+        <span className="break-all font-mono">{node.id}</span>
+        {meter.text && <span data-context={meter.level} title="Context used"
+          className={cn(meter.level === "full" && "text-destructive", meter.level === "warn" && "text-amber-600")}>Context {meter.text}</span>}
+        {node.owner && <span title="Agent owner">@{node.owner}</span>}
+        {node.harness && <span title="Agent type">{HARNESS_LABELS[node.harness] || node.harness}</span>}
+        {node.where && <span title="Where it runs">{node.where}</span>}
+      </div>}
+      {(!compact || detailsOpen) && node.parent && <p className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
         <span className="min-w-0 truncate">started by {short(node.parent)}</span>
         <GoToAgent label={"Go to parent " + node.parent} onClick={() => openAddress(node.parent, node.project)} className="size-6"/>
       </p>}

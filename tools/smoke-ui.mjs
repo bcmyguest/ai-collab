@@ -1,4 +1,4 @@
-// Loads the UI at phone width. Pass --decisions or --composer to exercise the built app against fixture projects.
+// Loads the UI at phone width. Pass --decisions, --composer, or --home-sessions to exercise fixture projects.
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -9,14 +9,14 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 
-async function phoneFixture() {
+async function phoneFixture(homeSessions) {
   const { createUi, installUi } = await import("../web/server/ui.mjs");
   const { broadcastTopic, inboxTopic, loadProjects, sessionLabel } = await import("../lib/config.mjs");
   const { addTask, taskStoreFile, writeStore } = await import("../lib/tasks.mjs");
   const { startFakeNtfy } = await import("../test/helpers/fake-ntfy.mjs");
   const fake = await startFakeNtfy();
   const dir = mkdtempSync(join(tmpdir(), "ai-collab-decisions-"));
-  const names = ["decision-first", "decision-second"];
+  const names = [homeSessions ? "jev-debugger" : "decision-first", "decision-second"];
   const ids = ["123456789abc", "abcdef123456"];
   const env = { PATH: process.env.PATH, HOME: dir, XDG_CONFIG_HOME: join(dir, ".config"),
     XDG_DATA_HOME: join(dir, "data"), AI_COLLAB_STATE_DIR: join(dir, "state") };
@@ -43,6 +43,21 @@ async function phoneFixture() {
   writeState(join(cfg.stateDir, cfg.project, "registry", address + ".json"), {
     id: address, sessionId, cwd: projectsConfig[0].root, harness: "claude", seenAt: Date.now(),
   });
+  const sessions = [];
+  if (homeSessions) {
+    const { processStart } = await import("../lib/process.mjs");
+    for (const [index, name] of ["Trace reconnect", "", ""].entries()) {
+      const sessionId = "jev-debugger-fixture-" + index;
+      const id = "claude#" + sessionLabel(sessionId);
+      const cwd = index === 2 ? join(projectsConfig[0].root, "repro") : projectsConfig[0].root;
+      mkdirSync(cwd, { recursive: true });
+      writeState(join(cfg.stateDir, cfg.project, "registry", id + ".json"), {
+        id, sessionId, cwd, name, harness: "claude", seenAt: Date.now() - 120_000,
+        pid: process.pid, pidStart: processStart(process.pid),
+      });
+      sessions.push({ id, title: name || id.slice(0, 15), metadata: index === 2 ? "jev-debugger · repro" : "jev-debugger" });
+    }
+  }
   const ui = installUi(createUi({ projects, env, hasDraft: async () => false,
     control: async () => ({ status: "requested" }) }));
   const next = createRequire(import.meta.url)("next");
@@ -52,7 +67,7 @@ async function phoneFixture() {
   await once(server, "listening");
   return {
     url: `http://127.0.0.1:${server.address().port}`,
-    project: cfg.project, address,
+    project: cfg.project, address, sessions,
     messageDeliveries: body => fake.state.publishes.flatMap(post => {
       const message = parseEnvelope(post.message);
       return message?.kind === "msg" && message.body === body ? [[post.topic, message.toSession]] : [];
@@ -127,14 +142,43 @@ async function checkComposer(page, fixture) {
   await send("Direct session message", direct, [fixture.direct]);
 }
 
+async function checkHomeSessions(page, fixture) {
+  const idle = page.getByRole("region", { name: "Idle", exact: true });
+  await idle.getByRole("listitem").first().waitFor();
+  assert.equal(await idle.getByRole("listitem").count(), 3);
+  for (const { id, title, metadata } of fixture.sessions) {
+    const card = idle.locator(`[data-session="${id}"]`);
+    const open = card.getByRole("button", { name: "Open " + title, exact: true });
+    const overflow = card.getByRole("button", { name: "Actions for " + id, exact: true });
+    for (const line of [open.getByText(title, { exact: true }), open.getByText(metadata, { exact: true })]) {
+      assert.equal(await line.evaluate(node => node.clientWidth > 0 && node.scrollWidth <= node.clientWidth), true);
+    }
+    assert.equal(await card.getByText(id, { exact: true }).count(), 0);
+    const a = await open.boundingBox();
+    const b = await overflow.boundingBox();
+    assert.ok(a.width >= 44 && a.height >= 44 && b.width >= 44 && b.height >= 44);
+    assert.ok(a.x + a.width <= b.x && b.x + b.width <= 390);
+  }
+  const { id, title } = fixture.sessions[0];
+  const card = idle.locator(`[data-session="${id}"]`);
+  const home = page.url();
+  await card.getByRole("button", { name: "Actions for " + id }).tap();
+  await page.getByRole("menuitem", { name: "Show session details" }).tap();
+  await card.getByText(id, { exact: true }).waitFor();
+  assert.equal(page.url(), home);
+  await card.getByRole("button", { name: "Open " + title }).tap();
+  await page.waitForURL(url => new URLSearchParams(url.hash.slice(1)).get("session") === id);
+}
+
 const deployedChrome = "/home/b/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome";
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || (existsSync(deployedChrome) ? deployedChrome : undefined) });
 let fixture;
 try {
   const composer = process.argv.includes("--composer");
   const decisions = process.argv.includes("--decisions");
-  if (composer || decisions) fixture = await phoneFixture();
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, ...(composer ? { isMobile: true, hasTouch: true } : {}) });
+  const homeSessions = process.argv.includes("--home-sessions");
+  if (composer || decisions || homeSessions) fixture = await phoneFixture(homeSessions);
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, ...(composer || homeSessions ? { isMobile: true, hasTouch: true } : {}) });
   const errors = [];
   page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
   page.on("pageerror", error => errors.push("pageerror: " + error.message));
@@ -142,6 +186,7 @@ try {
   await page.goto(fixture?.url || process.argv[2] || "http://127.0.0.1:8795/", { waitUntil: "domcontentloaded", timeout: 20000 });
   if (composer) await checkComposer(page, fixture);
   else if (decisions) await checkDecisions(page, fixture);
+  else if (homeSessions) await checkHomeSessions(page, fixture);
   else await page.waitForTimeout(6000);
   console.log(errors.slice(0, 15).join("\n") || "no errors");
   console.log("text:", (await page.innerText("body")).slice(0, 300).replace(/\n+/g, " | "));

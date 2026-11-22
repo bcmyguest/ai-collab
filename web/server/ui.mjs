@@ -592,7 +592,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       // Without a harness name: the folder and the first prompt's words, from activity in memory.
       if (!data.name) {
         const name = fallbackName(data.folder || "", prompts.get(id));
-        if (name) data.name = name;
+        if (name) {
+          data.name = name;
+          data.generatedName = true;
+        }
       }
       const wake = visibleWake(wakes.get(id), { ...data, statusAt: Date.parse(statuses.get(id)?.ts) || 0 });
       if (wake) data.wake = wake;
