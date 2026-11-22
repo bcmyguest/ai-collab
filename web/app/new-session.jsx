@@ -6,7 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Textarea } from "@/components/ui/textarea";
 import { HarnessLogo } from "./logos";
 import { cn } from "@/lib/utils";
-import { activeModel, flatModels, modeChoice, modeOptions, modelGroups, modelLabel, moveActive, placeOptions } from "@/lib/new-session";
+import { CODE_MODE_START_HARNESSES, activeModel, codeModeField, flatModels, modeChoice, modeOptions, modelGroups, modelLabel, moveActive, placeOptions } from "@/lib/new-session";
 import { initialChoice } from "@/lib/start-default";
 
 export const PROMPT_PLACEHOLDER = "Plan, search, build anything";
@@ -132,6 +132,17 @@ function ModelPill({ choice, startable, models, set }) {
   </Popover>;
 }
 
+/** Native code mode on or off for this start; shown only for a harness whose start can use it. */
+function CodeModePill({ harness, on, set }) {
+  if (!CODE_MODE_START_HARNESSES.includes(harness)) return null;
+  const label = "Code mode: " + (on ? "on" : "off");
+  return <button type="button" aria-label={label} title={label} aria-pressed={on} onClick={() => set(!on)}
+    className={cn("flex h-7 shrink-0 items-center gap-1 rounded-full px-1.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+      on && "text-foreground")}>
+    {"{}"}<span className="truncate">{on ? "Code" : "Code off"}</span>
+  </button>;
+}
+
 function PlacePill({ place, places, set }) {
   const [open, setOpen] = useState(false);
   const options = placeOptions(places);
@@ -167,8 +178,9 @@ function PlacePill({ place, places, set }) {
  * The new-agent dialogue, shaped like Cursor's composer: the prompt first, then one pill row (mode, model, place) with
  * a round send button at its end. The harness comes from the chosen model, never from text typed into the prompt.
  */
-export function NewAgentComposer({ project, agents = [], startable = [], places = ["folder"], models = {}, startDefault, disabled, start, close, open }) {
+export function NewAgentComposer({ project, agents = [], startable = [], places = ["folder"], models = {}, startDefault, codeModeDefault = true, disabled, start, close, open }) {
   const [choice, setChoice] = useState(() => initialChoice({ startable, models, setting: startDefault }));
+  const [codeMode, setCodeMode] = useState(codeModeDefault !== false);
   const [mode, setMode] = useState(() => modeChoice("agent", choice.harness));
   const [place, setPlace] = useState(() => (places.includes("folder") ? "folder" : places[0] || "folder"));
   const [result, setResult] = useState(null);
@@ -207,7 +219,7 @@ export function NewAgentComposer({ project, agents = [], startable = [], places 
     setPosting(true);
     setResult(null);
     try {
-      const payload = { harness: choice.harness, prompt, startMode: mode, ...(place !== "folder" ? { place } : {}), ...(choice.model ? { model: choice.model } : {}) };
+      const payload = { harness: choice.harness, prompt, startMode: mode, ...(place !== "folder" ? { place } : {}), ...(choice.model ? { model: choice.model } : {}), ...codeModeField(choice.harness, codeMode) };
       const next = await start(payload);
       setResult(next);
       if (next?.status === "started") setDraft("");
@@ -241,6 +253,7 @@ export function NewAgentComposer({ project, agents = [], startable = [], places 
             <ModePill mode={mode} harness={choice.harness} set={setMode}/>
             <ModelPill choice={choice} startable={startable} models={models} set={item => { picked.current = true; setChoice(item); }}/>
             <PlacePill place={place} places={places} set={setPlace}/>
+            <CodeModePill harness={choice.harness} on={codeMode} set={setCodeMode}/>
             <Button type="button" size="icon" aria-label="Start session" disabled={!canSend} onClick={submit}
               className="ml-auto size-8 shrink-0 rounded-full"><ArrowUp/></Button>
           </div>

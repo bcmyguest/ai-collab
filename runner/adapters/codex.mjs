@@ -5,6 +5,7 @@ import { createInterface } from "node:readline";
 import { EventType } from "@ag-ui/core";
 import { sessionLabel } from "../../lib/config.mjs";
 import { CLIENT } from "../../lib/codex-compact.mjs";
+import { codexThreadConfig } from "../../lib/code-mode.mjs";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, NOTICE, PERMISSION_MODES, permissionSettings } from "../contract.mjs";
 
 export const APP_SERVER_ARGS = ["app-server", "-c", "thread_unload_delay_secs=0"];
@@ -33,6 +34,9 @@ const turnPolicy = (settings) => ({
   approvalsReviewer: settings.approvalsReviewer,
   sandboxPolicy: settings.sandboxPolicy,
 });
+
+/** The thread `config` override for a session's code-mode setting; none when the setting is unknown (older records). */
+const threadConfig = (codeMode) => (typeof codeMode === "boolean" ? { config: codexThreadConfig(codeMode) } : {});
 
 const userInput = (input) => [{ type: "text", text: input.text, text_elements: [] }];
 const text = (value) => (typeof value === "string" ? value : "");
@@ -352,6 +356,7 @@ async function attach(session) {
   try {
     await server.request("thread/resume", {
       threadId: session.nativeId, excludeTurns: true, cwd: session.cwd, ...(session.model ? { model: session.model } : {}), ...threadPolicy(session.settings),
+      ...threadConfig(session.codeMode),
     });
   } catch (error) {
     server.sessions.delete(session.nativeId);
@@ -360,8 +365,8 @@ async function attach(session) {
   session.server = server;
 }
 
-function newSession({ pool, ctx, env, cwd, place, mode, model, settings }) {
-  return { pool, ctx, env, cwd, place, mode, model, settings, nativeId: "", address: "", server: null, prompt: "", turnId: null, approvals: new Map(), usage: null, compactWait: null };
+function newSession({ pool, ctx, env, cwd, place, mode, model, settings, codeMode }) {
+  return { pool, ctx, env, cwd, place, mode, model, settings, codeMode, nativeId: "", address: "", server: null, prompt: "", turnId: null, approvals: new Map(), usage: null, compactWait: null };
 }
 
 /** Default export of runner/adapters/codex.mjs. `command` overrides the child argv; requestMs the RPC timeout (tests). */
@@ -379,9 +384,10 @@ export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND, requ
     },
     async open(options, ctx) {
       const server = await currentServer(pool, options.env);
-      const session = newSession({ pool, ctx, env: options.env, cwd: options.cwd, place: options.place, mode: options.permissionMode, model: options.model, settings: options.permission });
+      const session = newSession({ pool, ctx, env: options.env, cwd: options.cwd, place: options.place, mode: options.permissionMode, model: options.model, settings: options.permission, codeMode: options.codeMode });
       const { thread } = await server.request("thread/start", {
         cwd: options.cwd, ephemeral: false, ...threadPolicy(options.permission), ...(options.model ? { model: options.model } : {}),
+        ...threadConfig(options.codeMode),
       });
       session.nativeId = thread.id;
       session.address = `codex#${sessionLabel(thread.id)}`;
@@ -392,7 +398,7 @@ export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND, requ
     async resume(record, ctx, resumeEnv) {
       const { settings, error } = permissionSettings("codex", record.permissionMode, record.place);
       if (error) throw new Error(error);
-      const session = newSession({ pool, ctx, env: resumeEnv, cwd: record.cwd, place: record.place, mode: record.permissionMode, model: record.model, settings });
+      const session = newSession({ pool, ctx, env: resumeEnv, cwd: record.cwd, place: record.place, mode: record.permissionMode, model: record.model, settings, codeMode: record.codeMode });
       session.nativeId = record.nativeId;
       session.address = record.address;
       await attach(session);

@@ -19,6 +19,7 @@ import { ackTracker, direct, MAX_ATTEMPTS, PUSHED, pushSession, readDispatchLedg
 import { sessionIdleState } from "../lib/idle.mjs";
 import { opencodeRequest } from "../lib/opencode-api.mjs";
 import { childEnv, checkPrompt, findExecutable, projectRoot, worktreeNames } from "../lib/start.mjs";
+import { parseCodeMode, resolveCodeMode } from "../lib/code-mode.mjs";
 import { ownedFile, readOwned, writeOwned } from "../lib/owned.mjs";
 import { limitFromRunError } from "../lib/limits.mjs";
 import { alertLimit } from "../lib/limit-alert.mjs";
@@ -73,13 +74,15 @@ function runGit(file, args, options) {
 
 // Queued inputs as one run: texts joined, message ids merged.
 const merge = (batch) => ({ text: batch.map((i) => i.text).join("\n\n"), messageIds: batch.flatMap((i) => i.messageIds || []) });
+// The code-mode setting a record and adapter options carry; omitted when unknown (records from before the setting).
+const codeModeField = (codeMode) => (typeof codeMode === "boolean" ? { codeMode } : {});
 
 /** Public view of a session for the control API. */
 function view(s) {
   const r = s.record;
   return {
     session: r.address, harness: r.harness, project: r.project, nativeId: r.nativeId, workflowId: r.workflowId, cwd: r.cwd,
-    place: r.place, status: r.status, permissionMode: r.permissionMode, ...(r.model ? { model: r.model } : {}), run: r.run,
+    place: r.place, status: r.status, permissionMode: r.permissionMode, ...(r.model ? { model: r.model } : {}), ...codeModeField(r.codeMode), run: r.run,
     approvals: r.approvals.map(({ id, tool, summary }) => ({ id, tool, summary })), ...(r.cut ? { cut: r.cut } : {}),
   };
 }
@@ -267,7 +270,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
 
   // The durable session workflow: place → open → claim, then one run.send/run.wait pair per input until closed.
   async function sessionWorkflow(wf, input) {
-    const { project, harness, place, permissionMode, model } = input;
+    const { project, harness, place, permissionMode, model, codeMode } = input;
     const adapter = adapterOf(harness);
     const holder = { s: null, live: null };
     const cwd = await wf.step("place", () => placeCwd(project, harness, place));
@@ -277,10 +280,10 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         const childLabel = sessionLabel(nativeId);
         writeOwned(sessionCfg(project, harness, childLabel), {
           v: 1, label: childLabel, address: `${harness}#${childLabel}`, workflowId: wf.id, harness, nativeId, project, cwd, place, permissionMode,
-          ...(model ? { model } : {}), status: "starting", run: null, approvals: [], createdAt: now(),
+          ...(model ? { model } : {}), ...codeModeField(codeMode), status: "starting", run: null, approvals: [], createdAt: now(),
         });
       };
-      const options = { project, cwd, place, permissionMode, permission: permissionSettings(harness, permissionMode, place).settings, env: ownedEnv(), beforeStart, ...(model ? { model } : {}) };
+      const options = { project, cwd, place, permissionMode, permission: permissionSettings(harness, permissionMode, place).settings, env: ownedEnv(), beforeStart, ...(model ? { model } : {}), ...codeModeField(codeMode) };
       holder.live = await adapter.open(options, contextFor(holder, harness, wf.signal));
       return { nativeId: holder.live.nativeId };
     }, { onCut: () => ({ failed: "the runner stopped while the session opened" }) });
@@ -290,7 +293,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     await wf.step("claim", async () => {
       const record = {
         v: 1, label, address: `${harness}#${label}`, workflowId: wf.id, harness, nativeId: opened.nativeId, project, cwd, place, permissionMode,
-        ...(model ? { model } : {}), status: "idle", run: null, approvals: [], createdAt: now(),
+        ...(model ? { model } : {}), ...codeModeField(codeMode), status: "idle", run: null, approvals: [], createdAt: now(),
       };
       writeOwned(cfg, record);
       return null;
@@ -621,7 +624,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   durable.register("session", sessionWorkflow);
 
   /** Starts an owned session; resolves {status:"started", session, nativeId, workflowId, detail}. */
-  async function start({ project, harness, prompt, model, place = "folder", permissionMode } = {}) {
+  async function start({ project, harness, prompt, model, place = "folder", permissionMode, codeMode } = {}) {
     if (!configs.has(project)) fail(400, "Unknown project");
     const adapter = adapterOf(harness);
     if (!PLACES.includes(place)) fail(400, "Unknown start place");
@@ -632,13 +635,14 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     const checked = checkPrompt(prompt);
     if (checked.error) fail(400, checked.error);
     if (model !== undefined && (typeof model !== "string" || !MODEL.test(model))) fail(400, "Invalid model name");
+    if (codeMode !== undefined && parseCodeMode(codeMode) === undefined) fail(400, "codeMode must be on or off");
     if (now() - lastStartAt < startGapMs) fail(429, "Wait 10 seconds between starts");
     lastStartAt = now();
     const workflowId = `session-${randomUUID()}`;
     const claimed = new Promise((resolve) => claims.set(workflowId, resolve));
     const timer = new AbortController();
     try {
-      const run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, ...(model ? { model } : {}) });
+      const run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, ...(model ? { model } : {}), codeMode: resolveCodeMode(codeMode, env) });
       const ended = run.then((out) => fail(502, `${harness} session ended at once: ${out?.ended || "no reason"}`));
       ended.catch(() => {});
       const s = await Promise.race([
