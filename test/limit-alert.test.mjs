@@ -55,7 +55,7 @@ test("alertLimit publishes one choice card and skips the same window", async (t)
   assert.equal(card.harness, "claude");
   assert.equal(card.summary, "Limit reached · claude · 5-hour · resets 18:00");
   assert.deepEqual(card.questions[0].options.map((o) => o.label), ["codex:gpt-5", WAIT_LABEL]);
-  assert.equal(fake.state.publishes.at(-1).topic, ALL);
+  assert.ok(fake.state.publishes.some((p) => p.topic === ALL));
 
   assert.deepEqual(await alertLimit(cfg, { harness: "claude", limit: FIVE_HOUR, ...deps }), { status: "duplicate" });
   assert.equal(cards(fake).length, 1);

@@ -66,7 +66,7 @@ test("an option that is not on the card, or an unknown card, starts nothing", as
 test("the UI answers a limit card through the choice surface and starts the replacement", async (t) => {
   const { fake, sessionCfg, cfg } = await setup(t);
   const sent = await alertLimit(sessionCfg, { harness: "claude", limit: LIMIT, listed: async () => LISTED, available: () => ["codex"] });
-  assert.equal(fake.state.publishes.at(-1).topic, broadcastTopic(cfg.project));
+  assert.ok(fake.state.publishes.some((p) => p.topic === broadcastTopic(cfg.project)));
   const calls = [];
   const ui = createUi({ cfg, start: startOk(calls) });
   const ctrl = new AbortController();
@@ -88,4 +88,22 @@ test("the UI answers a limit card through the choice surface and starts the repl
   assert.equal((await post([["codex:gpt-5"]])).status, 201);
   assert.equal(calls.length, 1);
   assert.equal((await post([["codex:gpt-5"]])).status, 409);
+});
+
+const rowsOf = (fake, type) => fake.state.publishes.flatMap((p) => { try { const m = JSON.parse(p.message); return m.kind === "activity" && m.type === type ? [m] : []; } catch { return []; } });
+
+test("a limit leaves a timeline row, and a pick links the original and the replacement", async (t) => {
+  const { fake, sessionCfg, cfg } = await setup(t);
+  const sent = await alertLimit(sessionCfg, { harness: "claude", limit: LIMIT, listed: async () => LISTED, available: () => ["codex"] });
+  const [limitRow] = rowsOf(fake, "limit");
+  assert.equal(limitRow.input, "Limit reached · claude · 5-hour · reset time unknown");
+  assert.equal(limitRow.session, SESSION);
+  assert.equal(limitRow.harness, "claude");
+  await chooseLimit(cfg, { id: sent.id, label: "codex:gpt-5", start: startOk([]) });
+  const [origin, replacement] = rowsOf(fake, "handoff");
+  assert.equal(origin.session, SESSION);
+  assert.equal(origin.input, "Replacement started: codex#0123456789abcdef");
+  assert.equal(replacement.session, "0123456789abcdef");
+  assert.equal(replacement.harness, "codex");
+  assert.equal(replacement.input, "Continues alice#aabbccddeeff0011 after a limit");
 });

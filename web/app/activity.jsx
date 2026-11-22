@@ -1,5 +1,5 @@
 "use client";
-import { Bot, ChevronRight, CirclePlay, CircleStop, Eraser, FileText, Globe, ListTodo, LoaderCircle, Minimize2, Paperclip, Pencil, Plug, Search, SquareArrowOutUpRight, Terminal, TriangleAlert, Wrench } from "lucide-react";
+import { ArrowRightLeft, Bot, ChevronRight, CircleAlert, CirclePlay, CircleStop, Eraser, FileText, Globe, ListTodo, LoaderCircle, Minimize2, Paperclip, Pencil, Plug, Search, SquareArrowOutUpRight, Terminal, TriangleAlert, Wrench } from "lucide-react";
 import { useMemo, useState } from "react";
 import { CodeBlockCode } from "@/components/ui/code-block";
 import { MessageContent } from "@/components/ui/message";
@@ -117,7 +117,7 @@ function Body({ item }) {
       // A result without its call names the tool and its command inside its own box.
       return <Result item={item} input={item.input} header={Boolean(item.tool)} summary={summarize(item.input)}/>;
     default: {
-      const Icon = { start: CirclePlay, compact: Minimize2, clear: Eraser, model: Bot }[item.type] || CircleStop;
+      const Icon = { start: CirclePlay, compact: Minimize2, clear: Eraser, model: Bot, limit: CircleAlert, handoff: ArrowRightLeft }[item.type] || CircleStop;
       const label = item.type === "clear" ? clearText(item.clear) : item.type === "model" && item.modelSwitch ? modelText(item.modelSwitch)
         : compactionText(item.compaction) || item.input || item.type;
       return <>
