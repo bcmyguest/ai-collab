@@ -176,24 +176,26 @@ test("claimInbox never reads the activity topic and ignores activity envelopes e
   assert.ok(fake.state.polls.every((p) => p.topic !== TOPIC));
 });
 
-test("UI streams activity per session and as a project overview, never as chat, and serves a large result's attachment", async (t) => {
+test("UI streams activity per session and as a project overview, never as chat, and serves a large result's attachment", { timeout: 10000 }, async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const cfg = loadConfig(peerEnv(fake, { peer: "operator" }));
+  const env = peerEnv(fake, { peer: "operator" });
+  const cfg = loadConfig(env);
   const bob = { ...loadConfig(peerEnv(fake, { peer: "bob" })), session: "0000000000000001" };
   const carol = { ...loadConfig(peerEnv(fake, { peer: "carol" })), session: "0000000000000003" };
   await publishActivity(bob, "claude", [{ type: "tool_call", tool: "Bash", input: { command: "ls" }, callId: "t1" }]);
   await publishActivity(carol, "codex", [{ type: "prompt", input: "carol prompt" }]);
   await sendMessage(bob, "all", "chat only");
-  const ui = createUi({ cfg });
+  const ui = createUi({ cfg, env });
   const ctrl = new AbortController();
   t.after(() => { ctrl.abort(); ui.close(); });
   const open = (query) => sse(ui.events(new Request(`${base}/api/events?${query}`, { signal: ctrl.signal })));
-  const next = async (stream, name) => {
+  const next = async (stream, name, matches = () => true) => {
     for (;;) {
       const { value, done } = await stream.next();
       if (done) return undefined;
-      if (value.event === name) return value.data;
+      if (value.event === "problem") throw new Error(value.data.error);
+      if (value.event === name && matches(value.data)) return value.data;
     }
   };
 
@@ -213,7 +215,7 @@ test("UI streams activity per session and as a project overview, never as chat, 
   assert.deepEqual(chatState.messages.map((m) => m.body), ["carol prompt", "chat only"]);
 
   const big = "result line\n".repeat(1000);
-  await publishActivity(bob, "claude", [{ type: "tool_result", tool: "Bash", output: big, callId: "t1" }]);
+  assert.equal(await publishActivity(bob, "claude", [{ type: "tool_result", tool: "Bash", output: big, callId: "t1" }]), 1);
   const live = await next(session, "activity");
   assert.equal(live.reset, false);
   const [result] = live.items;
@@ -233,7 +235,7 @@ test("UI streams activity per session and as a project overview, never as chat, 
   // A text file sent on a chat topic is never served, and images are never served from the activity topic.
   await publish(bob, "ai-collab-demo--to--all", JSON.stringify({ v: 1, kind: "msg", from: "bob", to: "all", body: "notes" }),
     { attach: { filename: "notes.txt", data: Buffer.from("chat text file") } });
-  const withText = await next(chat, "state");
+  const withText = await next(chat, "state", ({ messages }) => messages.some(({ body }) => body === "notes"));
   assert.deepEqual(withText.messages.map((m) => [m.body, m.attachment]), [["carol prompt", undefined], ["chat only", undefined], ["notes", undefined]]);
   assert.equal((await ui.file("f2.txt")).status, 404, "a text file on a chat topic is never served");
 

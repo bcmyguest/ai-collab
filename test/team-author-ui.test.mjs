@@ -31,7 +31,7 @@ function fakeAuthor(home, { answer = `\`\`\`dot\n${DOT}\`\`\``, fail = false, na
   return bin;
 }
 
-function setup({ answer, fail, name, onlyBin, peers = "claude,codex,cursor" } = {}) {
+function setup({ answer, fail, name, peers = "claude,codex,cursor" } = {}) {
   const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-team-author-ui-"));
   const root = path.join(home, "repo");
   mkdirSync(root);
@@ -41,16 +41,16 @@ function setup({ answer, fail, name, onlyBin, peers = "claude,codex,cursor" } = 
   ]));
   const bin = fakeAuthor(home, { answer, fail, name });
   const env = {
-    HOME: home, XDG_CONFIG_HOME: path.join(home, ".config"), PATH: `${bin}${onlyBin ? "" : path.delimiter + process.env.PATH}`,
+    HOME: home, XDG_CONFIG_HOME: path.join(home, ".config"), PATH: bin,
     AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "operator", AI_COLLAB_PEERS: peers, AI_COLLAB_URL: "http://127.0.0.1:9",
   };
   return { home, root, env, cfg: loadConfig(env) };
 }
 
-async function ui(t, { answer, fail, name, onlyBin, peers } = {}) {
+async function ui(t, { answer, fail, name, peers } = {}) {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const made = setup({ answer, fail, name, onlyBin, peers });
+  const made = setup({ answer, fail, name, peers });
   const cfg = loadConfig({ ...made.env, AI_COLLAB_URL: fake.url });
   const server = createUi({ cfg, env: made.env, models: async () => ({ claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] }) });
   t.after(() => server.close());
@@ -61,7 +61,7 @@ async function ui(t, { answer, fail, name, onlyBin, peers } = {}) {
 }
 
 test("describe-a-team drafts DOT through a writing agent and saves it only when asked", async (t) => {
-  const { post, root } = await ui(t);
+  const { post, root } = await ui(t, { name: "agent" });
   const made = await post({ authorRequest: "Find something, then write it up.", team: "scout", authorScope: "project" });
   assert.equal(made.status, 201);
   assert.equal(made.body.status, "answered");
@@ -105,7 +105,7 @@ test("a writing agent that fails reports the failure and writes nothing", async 
 test("a project with no cursor-agent drafts through a harness it can run", async (t) => {
   // Only a fake claude is on PATH, so the default writer (cursor) is not installed and claude writes instead, with no
   // model (the deepseek name belongs to cursor). The test's own PATH keeps the real cursor-agent out of reach.
-  const { post, root } = await ui(t, { name: "claude", onlyBin: true });
+  const { post, root } = await ui(t, { name: "claude" });
   const made = await post({ authorRequest: "Find something, then write it up.", team: "scout" });
   assert.equal(made.body.status, "answered", JSON.stringify(made.body));
   assert.equal(made.body.ok, true);
