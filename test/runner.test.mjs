@@ -351,7 +351,8 @@ test("main serves the control socket with no adapters and exits on SIGTERM", asy
   const fake = await startFakeNtfy();
   const ctx = setup(fake);
   const socket = path.join(ctx.home, "run", "runner.sock");
-  const child = spawn(process.execPath, [path.join(ROOT, "runner", "main.mjs")], { env: { ...ctx.env, AI_COLLAB_RUNNER_SOCKET: socket, AI_COLLAB_RUNNER_DB: ctx.db } });
+  // "codex" has no adapter file; an empty value would mean every harness.
+  const child = spawn(process.execPath, [path.join(ROOT, "runner", "main.mjs")], { env: { ...ctx.env, AI_COLLAB_RUNNER_SOCKET: socket, AI_COLLAB_RUNNER_DB: ctx.db, AI_COLLAB_RUNNER_HARNESSES: "codex" } });
   let stderr = "";
   child.stderr.on("data", (c) => { stderr += c; });
   const exited = new Promise((resolve) => child.on("exit", (code) => resolve(code)));
