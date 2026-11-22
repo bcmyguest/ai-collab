@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EventType } from "@ag-ui/core";
 import { sessionLabel } from "../lib/config.mjs";
@@ -92,7 +92,13 @@ test("full-access maps to the granular policy and danger-full-access", async () 
 test("an OpenShell session runs with no approvals (never) and full access, so it needs no experimental granular policy", async () => {
   const { adapter, ctx, logFile, env } = setup();
   try {
-    const handle = await adapter.open(modeOptions(env, "full-access", "openshell"), ctx);
+    const options = modeOptions(env, "full-access", "openshell");
+    await assert.rejects(adapter.open(options, ctx), /prepared OpenShell launcher/);
+    await assert.rejects(adapter.open({ ...options, sandboxArgv: [process.execPath, FAKE] }, ctx), /prepared OpenShell launcher/);
+    assert.deepEqual(starts(logFile), []);
+    const openshell = fileURLToPath(new URL("./helpers/fake-openshell.mjs", import.meta.url));
+    const sandboxArgv = [openshell, "sandbox", "exec", "--no-tty", "-n", "fake", "--", "node", relative(process.cwd(), FAKE), ...APP_SERVER_ARGS];
+    const handle = await adapter.open({ ...options, sandboxArgv }, ctx);
     const [start] = requests(logFile, "thread/start");
     assert.equal(start.params.approvalPolicy, "never");
     assert.equal(start.params.sandbox, "danger-full-access");
@@ -100,6 +106,7 @@ test("an OpenShell session runs with no approvals (never) and full access, so it
     const [turn] = await until(() => { const t = requests(logFile, "turn/start"); return t.length ? t : null; });
     assert.equal(turn.params.approvalPolicy, "never");
     assert.deepEqual(turn.params.sandboxPolicy, { type: "dangerFullAccess" });
+    await handle.close();
   } finally {
     await adapter.shutdown();
   }

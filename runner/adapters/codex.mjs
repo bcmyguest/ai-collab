@@ -402,6 +402,10 @@ export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND, requ
     },
     async open(options, ctx) {
       const [file, ...args] = options.sandboxArgv || [];
+      const commandAt = args.indexOf("--") + 1;
+      if (options.place === "openshell" && (!file || args[0] !== "sandbox" || args[1] !== "exec" || !commandAt || !args[commandAt])) {
+        throw new Error("Codex OpenShell sessions require a prepared OpenShell launcher");
+      }
       const sessionPool = file ? { command: { file, args }, requestMs } : pool;
       const opened = options.place === "openshell" ? { ...options, permission: openshellPermission(options.permission) } : options;
       try {
