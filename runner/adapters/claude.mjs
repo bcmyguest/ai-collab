@@ -10,6 +10,7 @@ import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, PERMISSION_MODES, permissionSett
 // Env marker on the CLI child; hooks stand down by the owned record, this names the harness that spawned the child.
 export const OWNED_ENV = "AI_COLLAB_OWNED";
 const ASK_QUESTION = "AskUserQuestion";
+const HANDSHAKE_MS = 60_000;
 
 /** A push-based async iterable: the SDK reads user messages from it, and end() closes it. */
 export function inputQueue() {
@@ -226,13 +227,21 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
   return { handle, q };
 }
 
-/** Waits for the CLI handshake, so a missing or unauthenticated CLI fails at open or resume. */
-async function attach(session, label) {
+/** Waits for the CLI handshake within handshakeMs, so a missing, unauthenticated or hung CLI fails at open or resume. */
+async function attach(session, label, handshakeMs) {
+  let timer;
   try {
-    await session.q.initializationResult();
+    await Promise.race([
+      session.q.initializationResult(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`no response from the CLI within ${handshakeMs / 1000} s`)), handshakeMs);
+      }),
+    ]);
   } catch (error) {
     await session.handle.close();
     throw new Error(`${label} failed to start: ${error.message}`);
+  } finally {
+    clearTimeout(timer);
   }
   return session.handle;
 }
@@ -249,8 +258,11 @@ async function probe(query, options, read) {
   }
 }
 
-/** The Claude adapter with an injected query function (tests pass a fake; the default export uses the SDK). */
-export function createClaudeAdapter({ query = sdkQuery } = {}) {
+/**
+ * The Claude adapter with an injected query function (tests pass a fake; the default export uses the SDK).
+ * handshakeMs bounds the CLI handshake at open and resume.
+ */
+export function createClaudeAdapter({ query = sdkQuery, handshakeMs = HANDSHAKE_MS } = {}) {
   return {
     harness: "claude",
     capabilities: { steer: true, images: true, resume: "transcript", permissionModes: PERMISSION_MODES },
@@ -259,18 +271,21 @@ export function createClaudeAdapter({ query = sdkQuery } = {}) {
       return path ? { ok: true, detail: path } : { ok: false, detail: "claude is not on PATH" };
     },
     // The session id is chosen here, so the native id is known before the first prompt.
+    // options.beforeStart(nativeId) runs before the CLI child starts, so its owned record stands down the child's hooks.
     async open(options, ctx) {
+      const nativeId = randomUUID();
+      await options.beforeStart?.(nativeId);
       const session = startSession({
-        query, ctx, nativeId: randomUUID(), cwd: options.cwd, model: options.model, permission: options.permission, env: options.env,
+        query, ctx, nativeId, cwd: options.cwd, model: options.model, permission: options.permission, env: options.env,
       });
-      return attach(session, "claude session");
+      return attach(session, "claude session", handshakeMs);
     },
     async resume(record, ctx, childVars) {
       const { settings } = permissionSettings("claude", record.permissionMode, record.place);
       const session = startSession({
         query, ctx, nativeId: record.nativeId, cwd: record.cwd, model: record.model, permission: settings, env: childVars, resume: true,
       });
-      return attach(session, "claude resume");
+      return attach(session, "claude resume", handshakeMs);
     },
     async listModels(childVars) {
       return probe(query, { env: childEnv(childVars) }, (init) => init.models.map((m) => ({ id: m.value, label: m.displayName })));
