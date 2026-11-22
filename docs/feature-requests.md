@@ -7,6 +7,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 <!-- tasks:start -->
 | Request | Priority | Status |
 |---|---|---|
+| Notification settings lost after UI rebuild: alert level and/or browser push not surviving deploy | P2 | building |
 | #task tags: tapping a task opens a message tagged #<id>; it goes direct to the task's owner agent, else to the project chat | P2 | building |
 | Reply to any message: when the server can't accept a reply id, send it as text quoting the first/last bit of the original instead of failing 'Invalid reply' | P2 | building |
 | Left panel lists named agents (PM and other set_identity names); tapping one opens a direct chat, no address needed | P2 | building |
@@ -30,7 +31,6 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | PM tracked handoffs: builders start as runner-owned sessions linked to tasks (rides on team-runs/OpenShell) | P2 | open |
 | PM feedback loop: each run ends with a review; lessons go to openmem (substrate approved) and the mission file | P2 | open |
 | PM mission file: a file the PM owns and edits (mission, goals, rules), versioned in git, read each tick | P2 | open |
-| Notification settings lost after UI rebuild: alert level and/or browser push not surviving deploy | P2 | open |
 | Code-mode workflows: inference decides, code executes — map to DOT teams, runner/DBOS, OpenShell sandbox | P2 | decided Research /dev/shm/research/code-mode.md; operator agreed 2026-11-22; split into tasks A, team-runs, B, cap-suspend |
 | cap/max_visits hit suspends the run for the operator instead of failing it (operator: yes, confirm) | P2 | open |
 | Code mode B now: compile team.dot to a runner durable workflow; agents keep pattern advance (operator: yes) | P2 | open |
