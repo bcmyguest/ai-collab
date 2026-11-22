@@ -18,7 +18,8 @@ import { fuzzyRank } from "@/lib/fuzzy";
 import { agentDetail } from "@/lib/agent-detail";
 import { withMentions } from "@/lib/mentions";
 import { chatThread } from "@/lib/chat-turns";
-import { liveRows, projectThread } from "@/lib/project-feed";
+import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
+import { TABS, parseSelection } from "@/lib/selection";
 import { ActivityRow, GoToAgent, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
 import { NotifyToggle } from "./notify";
@@ -31,9 +32,6 @@ const initial = { projects: [], harnesses: [], agents: [], messages: [] };
 const ACTIVITY_MAX = 500;
 const PULL_THRESHOLD_PX = 70;
 const PULL_MAX_PX = 110;
-const LEVELS = [["project", "Project"], ["session", "Sessions"]];
-// Views each level accepts in the hash: a session's timeline (activity), its subagents and raw activity; the project has one chat.
-const TABS = { project: [], session: ["activity", "subagents", "raw"] };
 const PLACES = { folder: "In the project folder", worktree: "In a new git worktree", openshell: "In the openshell sandbox" };
 const HARNESS_COLORS = {
   claude: "[&_[data-slot=avatar-fallback]]:bg-claude", codex: "[&_[data-slot=avatar-fallback]]:bg-codex",
@@ -54,22 +52,7 @@ const clock = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyl
 const AUTH_CHECK = "ai-collab:auth-check";
 
 function selection() {
-  const params = new URLSearchParams(location.hash.slice(1));
-  const level = params.get("level");
-  // An empty hash, #home, or level=home opens the Home overview of every project.
-  if (!location.hash.slice(1) || params.has("home") || level === "home") return { project: "", level: "home", harness: "", session: "", tab: "chat", run: "" };
-  const tab = params.get("tab");
-  const at = LEVELS.some(([id]) => id === level) ? level : "project";
-  // Old links with tab=chat or tab=activity open a session's timeline.
-  const sessionTab = TABS.session.includes(tab) ? tab : "activity";
-  return {
-    project: params.get("project") || "",
-    level: at,
-    harness: params.get("harness") || "",
-    session: params.get("session") || "",
-    tab: at === "session" ? sessionTab : "chat",
-    run: at === "session" && tab === "subagents" ? params.get("run") || "" : "",
-  };
+  return parseSelection(location.hash.slice(1));
 }
 
 /** The /api/events query for a selection, and which view it shows. */
@@ -763,12 +746,15 @@ function Console({ account }) {
   // The raw view keeps every tool call as its own row; the timeline and subagents fold them into turns and runs.
   const rows = useMemo(() => watching || inline || subagents ? groupSubagents(activityRows(activity)) : raw ? activityRows(activity) : [], [activity, watching, inline, subagents, raw]);
   const goRun = row => navigate({ project, level: "session", harness: peerOf(row.agent), session: row.agent, tab: "subagents", run: row.run });
+  // Answers whose card is listed show in the card, so their bubbles stay out of both threads.
+  const visible = useMemo(() => withoutAnswered(data.messages), [data.messages]);
+  const turns = useMemo(() => sessionTurns(rows), [rows]);
   // The project chat shows finished turns and busy sessions, not every tool call.
-  const live = watching ? liveRows(rows, now) : [];
-  const thread = inline ? chatThread(data.messages, rows, selected.session)
-    : watching ? projectThread(data.messages, rows)
+  const live = useMemo(() => watching ? liveRows(turns, rows, now) : [], [turns, rows, watching, now]);
+  const thread = useMemo(() => inline ? chatThread(visible, rows, selected.session)
+    : watching ? projectThread(visible, turns)
     : raw ? rows.map(activity => ({ activity }))
-    : data.messages.map(message => ({ message }));
+    : visible.map(message => ({ message })), [visible, turns, rows, inline, watching, raw, selected.session]);
   const newSession = id => { setCreating(id); if (id !== project || level !== "project") navigate({ project: id, level: "project" }); else setNavOpen(false); };
   async function startSession(payload) {
     try { return await api("start", { project, ...payload }); } catch (err) { return { status: "failed", detail: err.message }; }
