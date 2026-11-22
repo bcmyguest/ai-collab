@@ -26,6 +26,7 @@ Operator requests from chat and the terminal, newest last. Status: done (merged 
 | MCP `interrupt` tool | done |
 | Messages appear in the Claude terminal immediately (socket delivery, like Pulsar) | done (merged main 2026-11-21: `claude-socket.mjs`, dispatcher confirm + wait) |
 | Wake closed sessions on a message (durable, DBOS-like) | done in the runner (adapters merged main 2026-11-22; live wake verification open) |
+| Live wake verification for durable delivery across harness adapters | open |
 | Owned sessions: runner service, durable workflows, AG-UI event names, four harness adapters | building (operator yes 2026-11-22; adapters merged e63a06f; integration hardening — coordinator starting) |
 | Copy T3 Code's code viewer (`@pierre/diffs`) for mobile and web | done (file edits render as diffs) |
 | Operator prompts and phone replies (ask_question answers) visible in session and project chat | done (merged main 2026-11-21; coordinator confirmed) |
@@ -44,17 +45,19 @@ Operator requests from chat and the terminal, newest last. Status: done (merged 
 | Compaction in all agents: compact every harness, before/after tokens per compaction, a cross-agent compaction map, one compaction event model | building (operator 2026-11-22) |
 | Structured task list (tasks.json) with status board, dependency graph and live links to agents | building (operator 2026-11-22) |
 | Clear and model/provider switch tracked like compaction, phone commands for every harness | building (operator 2026-11-22) |
-| Running-subagent count; hide long-idle subagents; fix 2 shown of 4 running | building |
+| Running-subagent count; hide long-idle subagents; fix 2 shown of 4 running | done (UI merge 21a47722, deployed 2026-11-22) |
 | Session view shows which agent is running now | building |
-| Close or delete a project | building |
+| Close or delete a project | done (UI merge 21a47722, deployed 2026-11-22) |
 | Operator's pending messages in project chat | building |
-| Sidebar projects show running/inactive counts, not harness types | building |
+| Sidebar projects show running/inactive counts, not harness types | done (UI merge 21a47722, deployed 2026-11-22) |
 | Subscription limits: phone alert with a choice card to pick the replacement model; no auto-switch | decided (operator 2026-11-22: alert only; 9router rejected, proxies subscription OAuth) |
-| Fallback instructions per team role (e.g. a `fallback` attribute in team.dot that agents follow on a limit) | open (operator 2026-11-22) |
+| Fallback instructions per team role (e.g. a `fallback` attribute in team.dot that agents follow on a limit) | building (DOT teams agent; operator 2026-11-22) |
 | Move off ntfy eventually, so attachments and links work | open (operator 2026-11-22) |
-| Scheduled jobs in the left panel | building |
-| Reply shows a quote of the replied message; reply-to visible in composer (quote bar: sender + first line) | building (operator 2026-11-22) |
-| Tap a notification opens the right view | building |
-| Notification filter: all / questions and replies / questions only / none | building |
+| Scheduled jobs in the left panel | done (UI merge 21a47722; detail view still building) |
+| Tap a scheduled job for read-only detail (schedule, next run, command/prompt, recent runs) | building (operator 2026-11-22) |
+| Reply shows a quote of the replied message; reply-to visible in composer (quote bar: sender + first line) | done (UI merge 21a47722, deployed 2026-11-22) |
+| Tap a notification opens the right view | done (UI merge 21a47722, deployed 2026-11-22) |
+| Notification filter: all / questions and replies / questions only / none | done (UI merge 21a47722; sidebar alert level, deployed 2026-11-22) |
+| Fix-and-review team: lead/reviewer uses deepseek (reviews policy) | building (operator 2026-11-22) |
 | Hosted multi-user: users reach only their own agents; agents from other users are identified as such | open (operator 2026-11-22; needs design: user identity, tenancy, agent credentials, cross-user policy) |
 | Record feature requests | this file |
