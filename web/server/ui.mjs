@@ -32,6 +32,7 @@ import { createAuth } from "./auth.mjs";
 import { createHub } from "./hub.mjs";
 import { createPush, notice } from "./push.mjs";
 import { createDispatcher } from "./dispatch.mjs";
+import { runnerUp } from "../../runner/client.mjs";
 import { answerMessage, answerText, terminalMessages } from "../lib/operator-messages.js";
 import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a2ui.js";
 
@@ -1170,9 +1171,10 @@ export function ui() {
     // Repos that auto-join after start-up appear within one refresh interval.
     setInterval(() => instance.refresh(loadProjects(process.env, { host: "operator" })), REFRESH_MS).unref();
     globalThis[INSTANCE] = instance;
-    // Pushes direct messages into Codex and OpenCode sessions; AI_COLLAB_DISPATCH=off turns it off.
+    // Pushes direct messages into Codex, OpenCode and Claude sessions; it stands down while the runner delivers.
+    // AI_COLLAB_DISPATCH=off turns it off.
     if (process.env.AI_COLLAB_DISPATCH !== "off") {
-      const dispatcher = createDispatcher({ projects: () => loadProjects(process.env, { host: "operator" }).filter(item => item.enabled) });
+      const dispatcher = createDispatcher({ projects: () => loadProjects(process.env, { host: "operator" }).filter(item => item.enabled), skip: runnerUp });
       dispatcher.start();
     }
   }

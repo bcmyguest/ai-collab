@@ -1,26 +1,44 @@
 // Runner core: one durable "session" workflow per owned session; control calls and ntfy input become durable messages.
 import { randomBytes, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { EventType } from "@ag-ui/core";
-import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, sessionLabel } from "../lib/config.mjs";
-import { parseEnvelope } from "../lib/inbox.mjs";
+import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, receiptsTopic, sessionLabel } from "../lib/config.mjs";
+import { RESERVE_MS, claimInbox, markDelivered, parseEnvelope, releaseOwned, reserveOwned } from "../lib/inbox.mjs";
 import { parsePhoneReply, parseQuestionText } from "../lib/questions.mjs";
 import { replyDecision, APPROVAL_ID } from "../lib/approvals.mjs";
-import { formatInbox } from "../lib/format.mjs";
+import { formatInbox, identityLine } from "../lib/format.mjs";
 import { streamEvents } from "../lib/ntfy.mjs";
-import { recordSession } from "../lib/sessions.mjs";
+import { listSessions, recordSession } from "../lib/sessions.mjs";
+import { claudeConfirmedSince, claudeSnapshot, claudeWindowMs } from "../lib/claude-socket.mjs";
+import { ackTracker, direct, MAX_ATTEMPTS, PUSHED, pushSession, readDispatchLedger, readySession, writeDispatchLedger } from "../lib/deliver-push.mjs";
+import { sessionIdleState } from "../lib/idle.mjs";
+import { opencodeRequest } from "../lib/opencode-api.mjs";
 import { childEnv, checkPrompt, findExecutable, projectRoot, worktreeNames } from "../lib/start.mjs";
-import { readOwned, writeOwned } from "../lib/owned.mjs";
+import { ownedFile, readOwned, writeOwned } from "../lib/owned.mjs";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, permissionSettings } from "./contract.mjs";
+import { DELIVERY, deliveryWorkflow } from "./delivery.mjs";
 import { publishApproval, publishApprovalEnd, publishEnded, publishEvent, publishReceipts } from "./publish.mjs";
 
 export const START_TIMEOUT_MS = 60_000;
 export const START_GAP_MS = 10_000;
 export const CLOSE_WAIT_MS = 10_000;
 export const MANUAL_RUN_GAP_MS = 10_000;
+export const WAKE = "wake";
+// How often the runner looks for direct messages to live sessions that have no delivery workflow yet.
+export const PUMP_MS = 5000;
+// Steps and messages of finished workflows older than the ntfy cache window (at most 720 min) are pruned hourly;
+// the workflow row stays as a tombstone.
+export const PRUNE_AFTER_MS = 12 * 3_600_000;
+const PRUNE_EVERY_MS = 3_600_000;
+const CLAIM_LIMIT = 4;
+const WAKE_BATCH = 20;
+const WAKES_PER_TICK = 2;
+const SEEN_WITHIN_MS = 7 * 24 * 3_600_000;
+const CONFIRM_POLL_MS = 500;
+const WAKE_TOPIC = "wake";
 const STREAM_RETRY_MAX_MS = 30_000;
 const TEXT_MAX = 4000;
 const MODEL = /^[a-zA-Z0-9][a-zA-Z0-9._:/[\]-]{0,119}$/;
@@ -55,14 +73,18 @@ function view(s) {
 }
 
 /** Creates the runner over project configs, a Map harness → Adapter and a durable log (runner/durable.mjs). */
-export function createRunner({ projects, adapters, durable, env = process.env, git = runGit, now = Date.now, startGapMs = START_GAP_MS, approvalMs = approvalTimeoutMs(env), watch = true, log = () => {}, scheduleErrors = [] }) {
+export function createRunner({ projects, adapters, durable, env = process.env, git = runGit, now = Date.now, startGapMs = START_GAP_MS, approvalMs = approvalTimeoutMs(env), watch = true, log = () => {}, scheduleErrors = [], pumpMs = PUMP_MS, delivery = {} }) {
   const configs = new Map(projects.map((cfg) => [cfg.project, cfg]));
   const manualAt = new Map();
   const sessions = new Map();
   const claims = new Map();
+  // The wake gate per closed session address: a wake runs after the previous wake of that session.
+  const wakeTail = new Map();
   const watchers = new AbortController();
   const proc = selfProcess();
   let lastStartAt = 0;
+  let pumpTimer = null;
+  let lastPruneAt = -Infinity;
 
   const sessionCfg = (project, harness, label) => ({ ...configs.get(project), peer: harness, session: label });
   const adapterOf = (harness) => adapters.get(harness) || fail(400, `No ${harness} adapter is loaded`);
@@ -278,6 +300,244 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     return wf.step("close", () => endSession(s, "closed by the operator"));
   }
 
+  // A registry entry online in a process other than this runner: the user resumed the session outside the runner.
+  const outsideOnline = (entry) => entry.online === true && entry.pid !== proc?.pid;
+  const seenOutside = (cfg, address) => listSessions(cfg).some((e) => e.id === address && outsideOnline(e));
+
+  // The owned record an adopted session gets from its registry entry: closed until the wake runs.
+  function adoptedRecord(workflowId, project, label, a) {
+    return {
+      v: 1, label, address: `${a.harness}#${label}`, workflowId, harness: a.harness, nativeId: a.nativeId, project, cwd: a.cwd,
+      place: "folder", permissionMode: defaultPermission(a.harness, "folder"), ...(a.model ? { model: a.model } : {}),
+      status: "ended", run: null, approvals: [], createdAt: now(),
+    };
+  }
+
+  // Starts a wake for messages to one closed session; messages that arrive while it runs join its queue instead.
+  function startWake(project, address, messages, { adopt = null } = {}) {
+    const id = `${WAKE}:${address}:${messages.at(-1).id}`;
+    const run = durable.startWorkflowOnce(WAKE, id, { project, address, messages, ...(adopt ? { adopt } : {}) });
+    if (run) run.catch(() => {});
+    return run ? id : null;
+  }
+
+  // Wakes a closed session for its queued direct messages: one run takes every unseen message queued before it starts.
+  // An adopted session (closed, not owned yet) gets its owned record from its registry entry first. Wakes of one address
+  // run one after another; messages that arrive during a run take one more run, so one run covers each batch.
+  async function wakeWorkflow(wf, input) {
+    const { project, address, messages: first, adopt = null } = input;
+    const [harness, label] = address.split("#");
+    if (!adapters.has(harness)) return { status: "no-adapter", error: `no ${harness} adapter yet` };
+    const previous = wakeTail.get(address);
+    const gate = { id: wf.id, release: () => {}, done: null };
+    gate.done = new Promise((resolve) => { gate.release = resolve; });
+    wakeTail.set(address, gate);
+    let finished = false;
+    try {
+      if (previous) await previous.done;
+      const cfg = sessionCfg(project, harness, label);
+      const scfg = { ...configs.get(project), peer: harness, session: label };
+      if (adopt) {
+        // Seen online outside the runner: the user resumed the session, so the hooks and live delivery take its messages.
+        if (await wf.step("adopt.check", () => seenOutside(cfg, address))) return { status: "skipped-online" };
+        await wf.step("adopt", () => {
+          if (!readOwned(cfg, label)) writeOwned(cfg, adoptedRecord(wf.id, project, label, { ...adopt, harness }));
+          return null;
+        });
+      }
+      const record = readOwned(cfg, label) || fail(500, `no owned record for ${address}`);
+      const holder = { s: null, live: null };
+      const s = runtime(wf, record, holder);
+      for (let batch = first; ; ) {
+        // Reserved under this workflow's id before the turn: the hooks and the waiter skip these messages.
+        let got;
+        for (let tries = 0; ; tries += 1) {
+          got = await wf.step("wake.reserve", () => reserveOwned(scfg, batch.map((m) => m.id), { owner: wf.id }));
+          if (!got.busy || tries >= 4) break;
+          await wf.sleep(1000);
+        }
+        batch = batch.filter((m) => got.owned.includes(m.id));
+        if (!batch.length) break;
+        const text = formatInbox(batch, { session: label });
+        const messageIds = batch.map((m) => m.id);
+        const sent = await wf.step("wake.send", async () => {
+          try {
+            s.record.status = "idle";
+            await recordSession(cfg, { id: record.nativeId, cwd: record.cwd, harness, event: "owned", proc }).catch(() => {});
+            const handle = await liveHandle(s);
+            s.record.status = "running";
+            save(s);
+            const { runId } = await handle.send({ text, messageIds });
+            await markDelivered(scfg, messageIds);
+            publishReceipts(cfg, messageIds);
+            return { runId };
+          } catch (error) {
+            if (s.signal.aborted) throw error;
+            s.record.status = "ended";
+            save(s);
+            await releaseOwned(scfg, messageIds, wf.id);
+            await enqueuePublish(s, () => publishEvent(cfg, harness, { type: EventType.CUSTOM, name: ERROR, value: `woken session did not take the message: ${error.message}` }));
+            return { error: error.message };
+          }
+        }, {
+          // Never resent: a cut wake marks its run interrupted, closes the session, and releases its messages to the hooks.
+          onCut: async () => {
+            const out = await cutRun(s, null, "runner restarted before the harness accepted the message");
+            s.record.status = "ended";
+            save(s);
+            await releaseOwned(scfg, messageIds, wf.id);
+            return out;
+          },
+        });
+        if (!sent.runId) break;
+        await wf.step("wake.wait", () => waitRun(s, sent.runId), { onCut: () => cutRun(s, sent.runId, "runner restarted") });
+        const more = await wf.step("wake.more", () => durable.pendingCount(wf.id, WAKE_TOPIC) > 0);
+        if (!more) break;
+        batch = await wf.recv(WAKE_TOPIC, { all: true });
+      }
+      const result = await wf.step("wake.close", () => endSession(s, "closed again after a message"));
+      finished = true;
+      return result;
+    } finally {
+      gate.release();
+      if (wakeTail.get(address) === gate) wakeTail.delete(address);
+      // A finished wake hands any message that arrived after its last check to a new wake.
+      if (finished) {
+        const late = durable.drain(wf.id, WAKE_TOPIC);
+        if (late.length) startWake(input.project, address, late, { adopt: input.adopt ?? null });
+      }
+    }
+  }
+
+  // Delivery to live sessions the runner does not own: the deps of runner/delivery.mjs, each overridable through `delivery`.
+  const acks = ackTracker();
+  // Claude confirmation handles of unconfirmed pushes, by message id, while this runner lives.
+  const inflight = new Map();
+  const openCodeActive = async () => {
+    const probe = await opencodeRequest("GET", "/api/session/active", { env });
+    return probe.ok ? new Set(Object.keys(probe.body?.data ?? probe.body ?? {})) : null;
+  };
+  // A reservation outlives the Claude watch window, so the watch never runs on an expired reservation.
+  const reserveTtlMs = Math.max(RESERVE_MS, claudeWindowMs(env) + 30_000);
+  const deliveryDeps = {
+    now,
+    claim: claimInbox,
+    scfgOf: (project, session) => ({ ...configs.get(project), peer: session.peer, session: session.session }),
+    sessionOf: (project, address) => {
+      const cfg = configs.get(project);
+      return (cfg && listSessions(cfg).find((s) => s.id === address && s.online)) || null;
+    },
+    ready: async (session) => readySession(session, session.harness === "opencode" ? await openCodeActive() : null, { env, idle: sessionIdleState }),
+    reserve: (scfg, ids, { owner, allowSeen = false }) => reserveOwned(scfg, ids, { owner, allowSeen, ttlMs: reserveTtlMs }),
+    release: (scfg, ids, owner) => releaseOwned(scfg, ids, owner),
+    markDelivered: (scfg, ids) => markDelivered(scfg, ids),
+    snapshot: (session) => (session.harness === "claude" ? claudeSnapshot(session, { env }) : null),
+    push: async (session, { text, urgent, ids }) => {
+      const result = await pushSession(session, text, { urgent, ids }, { env });
+      if (result.status === "unconfirmed") inflight.set(ids[0], result);
+      return { status: result.status };
+    },
+    awaitConfirm: (id, session, snap) => {
+      const result = inflight.get(id);
+      inflight.delete(id);
+      return result?.watch ? result.watch() : claudeConfirmedSince(snap, [id]);
+    },
+    // Polls the transcript for the whole confirm and watch window; Claude only, other harnesses never confirm.
+    waitConfirmed: async (session, ids, snap) => {
+      if (session.harness !== "claude") return false;
+      const until = Date.now() + claudeWindowMs(env);
+      for (;;) {
+        if (claudeConfirmedSince(snap, ids)) return true;
+        if (Date.now() >= until) return false;
+        await delay(CONFIRM_POLL_MS);
+      }
+    },
+    confirmedSince: (session, ids, snap) => (session.harness === "claude" ? claudeConfirmedSince(snap, ids) : false),
+    acked: async (project, address, message) => {
+      const topics = new Set([receiptsTopic(project), broadcastTopic(project), inboxTopic(project, address.split("#")[0])]);
+      if (typeof message.from === "string" && message.from) topics.add(inboxTopic(project, message.from.split("#")[0]));
+      await acks.refresh(configs.get(project), topics);
+      return acks.acked(message.id, address);
+    },
+    textFor: (scfg, message, attemptNo) => {
+      const shown = attemptNo > 1 ? { ...message, attempt: attemptNo, attempts: MAX_ATTEMPTS } : message;
+      return [identityLine(scfg), formatInbox([shown], { session: scfg.session })].filter(Boolean).join("\n");
+    },
+  };
+  const deps = { ...deliveryDeps, ...delivery };
+  durable.register(DELIVERY, deliveryWorkflow(deps));
+  durable.register(WAKE, wakeWorkflow);
+
+  // An expect-reply message the dispatcher delivered keeps its redelivery: its ledger entry becomes a delivery workflow.
+  function migrateLedger(cfg, started) {
+    const entries = readDispatchLedger(cfg);
+    const left = { ...entries };
+    for (const [msgId, e] of Object.entries(entries)) {
+      if (!e || typeof e !== "object" || !e.message || typeof e.address !== "string") continue;
+      const id = `${DELIVERY}:${e.address}:${msgId}`;
+      const run = durable.startWorkflowOnce(DELIVERY, id, { project: cfg.project, address: e.address, message: e.message, redeliver: { pushes: e.attempts ?? 1, firstAt: e.firstAt } });
+      if (run) { run.catch(() => {}); started.push(id); }
+      if (run || durable.status(id)) delete left[msgId];
+    }
+    if (Object.keys(left).length !== Object.keys(entries).length) writeDispatchLedger(cfg, left);
+  }
+
+  /**
+   * Starts a delivery workflow per direct message to each live, non-owned session, and at most WAKES_PER_TICK wakes per
+   * tick for closed, non-owned sessions seen in the last 7 days. Finished workflows older than PRUNE_AFTER_MS are pruned
+   * hourly. Resolves the started workflow ids.
+   */
+  async function pumpDeliveries() {
+    const started = [];
+    if (now() - lastPruneAt >= PRUNE_EVERY_MS) {
+      lastPruneAt = now();
+      durable.prune([DELIVERY, WAKE], now() - PRUNE_AFTER_MS);
+    }
+    let wakes = 0;
+    for (const cfg of configs.values()) {
+      if (!cfg.enabled) continue;
+      migrateLedger(cfg, started);
+      for (const session of listSessions(cfg)) {
+        const owned = sessions.get(session.id);
+        // An adopted session that its user resumed outside the runner loses its owned record; live delivery serves it.
+        if (owned && session.online && outsideOnline(session) && owned.record.workflowId?.startsWith(`${WAKE}:`) && owned.record.status === "ended") {
+          sessions.delete(session.id);
+          rmSync(ownedFile(cfg, owned.record.label), { force: true });
+        }
+        if (sessions.has(session.id)) continue;
+        const scfg = deps.scfgOf(cfg.project, session);
+        if (session.online) {
+          if (!PUSHED.has(session.harness)) continue;
+          const fresh = (m) => !durable.status(`${DELIVERY}:${session.id}:${m.id}`);
+          const messages = await deps.claim(scfg, { commit: false, limit: CLAIM_LIMIT, accept: (m) => direct(m) && fresh(m) }).catch(() => []);
+          for (const message of messages) {
+            const id = `${DELIVERY}:${session.id}:${message.id}`;
+            const run = durable.startWorkflowOnce(DELIVERY, id, { project: cfg.project, address: session.id, message });
+            if (run) { run.catch(() => {}); started.push(id); }
+          }
+          continue;
+        }
+        // Only the exact session's messages wake it: a message to the peer as a whole never does.
+        if (!PUSHED.has(session.harness) || session.seenAt < now() - SEEN_WITHIN_MS || wakes >= WAKES_PER_TICK || wakeTail.has(session.id)) continue;
+        const messages = await deps.claim(scfg, { commit: false, limit: WAKE_BATCH, accept: (m) => direct(m) && m.to === session.id }).catch(() => []);
+        if (!messages.length) continue;
+        const adopt = { nativeId: session.sessionId, cwd: session.cwd, ...(session.model ? { model: session.model } : {}) };
+        const id = startWake(cfg.project, session.id, messages, { adopt });
+        if (id) { started.push(id); wakes += 1; }
+      }
+    }
+    return started;
+  }
+
+  /** Delivery and wake workflows, newest first, for the UI and the operator. */
+  function deliveries() {
+    const rows = [...durable.listNamed(DELIVERY, 100), ...durable.listNamed(WAKE, 100)].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 100);
+    return { deliveries: rows.map((r) => ({
+      id: r.id, kind: r.name === WAKE ? "wake" : "delivery", status: r.status, address: r.input?.address ?? null,
+      messageId: r.input?.message?.id ?? r.input?.messages?.at(-1)?.id ?? null, outcome: r.output?.status ?? null, error: r.error ?? null, updatedAt: r.updatedAt,
+    })) };
+  }
+
   durable.register("session", sessionWorkflow);
 
   /** Starts an owned session; resolves {status:"started", session, nativeId, workflowId, detail}. */
@@ -401,6 +661,10 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     timer.abort();
     for (const id of sessionIds) claims.delete(id);
     if (watch) for (const cfg of configs.values()) watchProject(cfg);
+    if (watch && pumpMs > 0) {
+      pumpTimer = setInterval(() => pumpDeliveries().catch((error) => log(`delivery pump failed: ${error.message}`)), pumpMs);
+      pumpTimer.unref();
+    }
     return ids.filter(isSession);
   }
 
@@ -443,7 +707,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       // A direct message or @mention for one owned session.
       if (!SESSION_LABEL.test(m.toSession)) return;
       const s = sessions.get(`${m.to}#${m.toSession}`);
-      if (s) await deliver(cfg, s, item(s), m.urgent === true, m.from, sender);
+      if (s) await deliver(cfg, s, item(s), m.urgent === true, m.from, sender, true);
     } else if (broadcast && m.to === "all") {
       // A project-chat broadcast reaches every owned session of the project.
       for (const s of sessions.values()) await deliver(cfg, s, item(s), m.urgent === true, m.from, sender);
@@ -459,10 +723,27 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     }
   }
 
-  // Queues one inbox item as the session's next input; skips other projects, ended sessions and the session's own messages.
-  async function deliver(cfg, s, message, urgent, from, sender) {
-    if (s.record.project !== cfg.project || s.record.status === "ended") return;
+  // A direct message to a closed owned session wakes it. While a wake runs, the message joins that wake's queue.
+  // A session seen online outside the runner is left to the hooks and live delivery.
+  function wake(cfg, s, message) {
+    const address = s.record.address;
+    if (seenOutside(cfg, address)) return;
+    const inflight = wakeTail.get(address);
+    if (inflight) {
+      durable.send(inflight.id, WAKE_TOPIC, message, { dedupe: `ntfy:${message.id}` });
+      return;
+    }
+    startWake(cfg.project, address, [message]);
+  }
+
+  // Queues one inbox item as the session's next input; skips other projects and the session's own messages.
+  async function deliver(cfg, s, message, urgent, from, sender, isDirect = false) {
+    if (s.record.project !== cfg.project) return;
     if (from === s.record.harness && (!sender || sender === s.record.label)) return;
+    if (s.record.status === "ended" || wakeTail.has(s.record.address)) {
+      if (isDirect) wake(cfg, s, message);
+      return;
+    }
     const text = formatInbox([message], { session: s.record.label });
     await send(s.record.address, { text, steer: urgent, messageIds: [message.id], dedupe: `ntfy:${message.id}:${s.record.label}` }).catch((error) => log(`delivery failed: ${error.message}`));
   }
@@ -489,6 +770,8 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
 
   /** Stops watching, aborts workflows where they wait (open steps are cut at the next boot), closes handles. */
   async function stop() {
+    clearInterval(pumpTimer);
+    pumpTimer = null;
     watchers.abort();
     await durable.close();
     for (const s of sessions.values()) {
@@ -506,7 +789,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   }
 
   return {
-    start, send, interrupt, respond, setMode, close, boot, stop, harnesses,
+    start, send, interrupt, respond, setMode, close, boot, stop, harnesses, deliveries, pump: pumpDeliveries,
     list: () => [...sessions.values()].map(view),
     schedules: () => ({ schedules: durable.schedules(), configError: scheduleErrors }),
     runSchedule,

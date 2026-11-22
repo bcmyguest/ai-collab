@@ -35,6 +35,7 @@ export const runnerClient = (options = {}) => ({
   models: (harness) => runnerRequest("GET", `/v1/harnesses/${encodeURIComponent(harness)}/models`, undefined, options),
   commands: (harness, project) => runnerRequest("GET", `/v1/harnesses/${encodeURIComponent(harness)}/commands?project=${encodeURIComponent(project)}`, undefined, options),
   sessions: () => runnerRequest("GET", "/v1/sessions", undefined, options),
+  deliveries: () => runnerRequest("GET", "/v1/deliveries", undefined, options),
   schedules: () => runnerRequest("GET", "/v1/schedules", undefined, options),
   runSchedule: (name, caller = "client") => runnerRequest("POST", `/v1/schedules/${encodeURIComponent(name)}/run?caller=${encodeURIComponent(caller)}`, {}, options),
   start: (input) => runnerRequest("POST", "/v1/sessions", input, options),
@@ -46,3 +47,12 @@ export const runnerClient = (options = {}) => ({
   context: (address) => runnerRequest("GET", `${sessionPath(address)}/context`, undefined, options),
   close: (address) => runnerRequest("DELETE", sessionPath(address), undefined, options),
 });
+
+/** True when the runner answers its control socket; the UI dispatcher stands down while it does. */
+export async function runnerUp(options = {}) {
+  try {
+    return (await runnerClient({ timeoutMs: 1000, ...options }).health()).status === 200;
+  } catch {
+    return false;
+  }
+}

@@ -137,6 +137,84 @@ The runner takes `runner.lock` beside `runner.db`; a second live runner on the s
 
 Control socket only (operator): `GET /v1/schedules` returns `{schedules: [{name, everyMs, nextRun, last: {id, status, scheduledTime, output, error}}], configError: [...]}`; `POST /v1/schedules/:name/run?caller=<label>` runs a tick now. Neither route is on MCP or ntfy.
 
+## Delivery and wake workflows
+
+Delivery of direct messages runs in the runner. The UI dispatcher stands down while the runner answers its control socket (`runnerUp()` in `runner/client.mjs`) and resumes when it does not. Both use the same inbox reservations, so a message goes out once. Code: `runner/delivery.mjs` (`deliveryWorkflow`), `lib/deliver-push.mjs` (the live push paths shared with the dispatcher), `wakeWorkflow` and `pumpDeliveries` in `runner/runner.mjs`.
+
+### Delivery to live sessions
+
+One workflow per (session, message), id `delivery:<address>:<message id>`, name `delivery`, input `{project, address, message, redeliver?}`. `pumpDeliveries` starts it every 5 s for each direct message to a live Claude, Codex or OpenCode session the runner does not own. Owned sessions take input through their session workflow. `redeliver` is set for an expect-reply message the UI dispatcher delivered: the runner takes its `dispatch.json` entry over (`migrateLedger`) and resumes the redelivery with the entry's `attempts` and `firstAt`.
+
+Reservations are owned by the workflow id (`reserveOwned`, `{until, owner}` in the inbox state): the same owner re-acquires its reservation after a restart, and another owner (the hooks, the waiter, the dispatcher) skips the message until release or expiry. The reservation lasts as long as the Claude watch window plus 30 s.
+
+| Step | Does | When cut |
+|---|---|---|
+| `start` | Records the first execution's time (or the migrated `firstAt`); the 24 h TTL counts from it | re-executes (done rows replay) |
+| *(wait)* | Polls without a checkpoint, every 5 s, until the session is live and ready | waits again |
+| `snapshot` | Claude: the transcript size before the **first** push; kept for every later attempt | re-executes |
+| `recheck` | Before each resend after the first: `confirmedSince(first snapshot)`; a landed write counts as delivered | re-executes |
+| `reserve` | `reserveOwned` for this workflow; **busy** (lock held) is a failed attempt with backoff, not a skip; an empty answer without busy ends `skipped` | re-executes (the owner re-acquires) |
+| `push` | `pushSession`: `delivered`, `unsent`, or `unconfirmed` (Claude) | polls the transcript for the full confirm and watch window: landed → delivered; not landed → `cut` |
+| `renew` | Re-reserves before the Claude watch so the reservation outlives it | re-executes |
+| `confirm` | Waits for the Claude watch to confirm the write | polls the full window; not confirmed → `cut` |
+| `late` | `confirmedSince` before any resend after an unconfirmed watch | re-executes |
+| `mark` | `markDelivered`: only after a confirmation | re-executes |
+| `release` | `release` with this owner: after `unsent`, after an unconfirmed watch, or after a cut that did not land | re-executes |
+| `sleep`, `sleep.wait` | Durable backoff after a failed attempt: 5 s, doubling, up to 10 min | the deadline is kept |
+
+A `cut` push is never sent again by the runner. Its message is released, not marked seen, so the session's hooks inject it as context; the delivery row stays, so the pump never starts a second delivery for it.
+
+Outcomes (the workflow output's `status`): `delivered`, `skipped`, `cut`, `answered`, `dropped`, `expired`.
+
+Expect-reply: after the first delivery the workflow sleeps 10 min (durable), checks for a read receipt or reply from the address, and stops if one came. Otherwise it pushes again as `attempt N of 5`, up to 5 pushes and until the 24 h TTL. Then `dropped` or `expired`.
+
+### Wake of closed sessions
+
+One workflow per wake, id `wake:<address>:<last message id>`, name `wake`, input `{project, address, messages, adopt?}`. `messages` is the batch of direct messages queued for the session when the wake starts. Broadcasts and messages addressed to the peer as a whole never wake: only `to` equal to the session's address. A wake starts from:
+
+- the ntfy route, for a direct message to a closed owned session; while a wake for that session runs, the message joins the running wake's queue (`wake` topic, deduplicated by ntfy id) instead;
+- `pumpDeliveries`, for a direct message to a closed session the runner does not own, seen in the registry within the last 7 days; `adopt` carries `nativeId`, `cwd` and `model`. At most 2 such wakes start per pump tick.
+
+One run takes every message in the batch, so a burst costs one paid turn. Messages that arrive while a run is in flight take one more run.
+
+| Step | Does | When cut |
+|---|---|---|
+| *(adapter check)* | No loaded adapter for the harness: output `{status: "no-adapter", error: "no <harness> adapter yet"}`; the hooks take the messages | not checkpointed |
+| `adopt.check` | Adoption only: a registry entry online in another process (the user resumed the session) ends the wake `skipped-online`; the hooks and live delivery take the messages | re-executes |
+| `adopt` | Adoption only: writes an owned record (`status: "ended"`, `workflowId` = the wake id) when none exists | re-executes (idempotent) |
+| `wake.reserve` | `reserveOwned` for the batch under this wake's id (busy: retried after 1 s, up to 5 tries); messages another owner holds drop out of the batch | re-executes (the owner re-acquires) |
+| `wake.send` | Resumes the native session through `adapter.resume`, `handle.send` of the batch; on success the batch is marked seen and receipts go out; on error the batch is released | `onCut`: `cutRun` marks the run interrupted, the session ends again, the batch is released (never resent) |
+| `wake.wait` | Waits for `RUN_FINISHED` or `RUN_ERROR` | `onCut` marks the run interrupted |
+| `wake.more` | Whether the `wake` queue holds messages that arrived during the run | re-executes |
+| `wake.close` | `endSession`: the session is `ended` again | re-executes |
+
+Wakes of one address run in sequence (a gate per address). A woken session is owned by the runner: its events, approvals and receipts go through the same publish path as an owned session. When the wake finishes, messages that reached its queue after its last check start a new wake (`drain`), so none wait without a run.
+
+A session the user resumed outside the runner: the pump drops the adopted owned record of a session seen online in another process and serves it as live; a wake for a session seen online outside is skipped.
+
+Harness adapters: `runner/adapters/<harness>.mjs` is not built for claude, codex, cursor or opencode. Until one is built, `loadAdapters` logs `no <harness> adapter yet`, and wakes for that harness record `no-adapter`. The fake adapter drives the tests.
+
+### Pruning
+
+Hourly, `pumpDeliveries` deletes the steps and messages of delivery and wake workflows that are not `PENDING` and were last updated more than 12 h ago (the ntfy cache window, at most 720 min). The workflow row stays as a tombstone, so a message the log knows is never started again. Rows are a few bytes each.
+
+### Restart rules for delivery and wake
+
+| Situation at restart | Result |
+|---|---|
+| Cut during `push`, transcript shows the message within the window | `delivered`; the push is not sent again |
+| Cut during `push`, transcript does not show it within the window | `cut`; released to the hooks, never sent again by the runner |
+| Cut during `confirm` | Polls the full window; confirmed → delivered; else `cut` as above |
+| Cut during `reserve` | Re-acquires its reservation (same owner); the step runs again |
+| Cut during `wake.send` | Run marked interrupted; session ended; batch released to the hooks; not resent |
+| Cut during `wake.wait` | Run marked interrupted; session ended |
+| Waiting in a backoff or redelivery sleep | Waits the rest of the deadline |
+| Waiting for a ready target | Waits again (not checkpointed) |
+
+### Control route
+
+`GET /v1/deliveries` returns `{deliveries: [{id, kind: "delivery" | "wake", status, address, messageId, outcome, error, updatedAt}]}`: the 100 newest of each kind, by `updatedAt`. `outcome` is the workflow output's `status`. The UI can show delivery state from this route; the phone view does not yet. The route returns message bodies to the operator's socket.
+
 ## Adapter interface
 
 The native calls below come from the research doc; each adapter agent verifies its own column against the harness before relying on it.
@@ -239,6 +317,7 @@ HTTP/1.1 JSON over a unix socket: `AI_COLLAB_RUNNER_SOCKET`, else `$XDG_RUNTIME_
 | `GET /v1/sessions/:harness/:label/context` | | `{context: {tokens, window?} \| null}` |
 | `DELETE /v1/sessions/:harness/:label` | | `{status: "ended"\|"closing"}` |
 | `GET /v1/schedules` | | `{schedules: [{name, everyMs, nextRun, last}]}`; see [Scheduled workflows](#scheduled-workflows) |
+| `GET /v1/deliveries` | | `{deliveries: [{id, kind, status, address, messageId, outcome, error, updatedAt}]}`; see [Delivery and wake workflows](#delivery-and-wake-workflows) |
 | `POST /v1/schedules/:name/run?caller=` | | 202 `{id, status: "started"\|"skipped"}`; 404 for an unknown schedule; 429 within 10 s of the last manual run |
 
 How a UI start reaches the runner (the UI change comes with the first adapter, not in this skeleton):
@@ -288,7 +367,9 @@ Cursor's `full-access` needs OpenShell. OpenCode replies are always `once`, neve
 | `runner/control.mjs`, `runner/client.mjs` | Control socket server and client |
 | `runner/main.mjs` | Service entry (`npm run runner`) |
 | `runner/adapters/fake.mjs` | Scripted adapter for tests and a template for real adapters |
-| `runner/adapters/<harness>.mjs` | Real adapters, one per agent (not written yet) |
+| `runner/adapters/<harness>.mjs` | Real adapters, one per agent (not written yet; `loadAdapters` logs `no <harness> adapter yet`) |
+| `runner/delivery.mjs` | Delivery workflow: reserve, push, confirm, mark or release, expect-reply redelivery |
+| `lib/deliver-push.mjs` | Live push paths (socket, `codex queue`, OpenCode HTTP) and the ack tracker, shared with the UI dispatcher |
 | `lib/owned.mjs` | Owned-record read/write and `standsDown` |
 | `deploy/ai-collab-runner.service` | User unit template; not installed |
 | `test/runner*.test.mjs` | Tests with the fake adapter and fake ntfy |

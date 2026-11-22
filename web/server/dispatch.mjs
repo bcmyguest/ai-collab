@@ -9,13 +9,11 @@
  * A message sent with expectReply is redelivered when the target has not answered (respond or read receipt):
  * after REDELIVER_MS, at most MAX_ATTEMPTS attempts, until TTL_MS after the first one. Cursor stays hook-only.
  */
-import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { broadcastTopic, inboxTopic, receiptsTopic } from "../../lib/config.mjs";
-import { claudeTarget, deliverToClaude } from "../../lib/claude-socket.mjs";
-import { nativeSessionId, harnessEnv } from "../../lib/controls.mjs";
-import { formatInbox, identityLine } from "../../lib/format.mjs";
+import { BACKOFF_BASE_MS, BACKOFF_MAX_MS, MAX_ATTEMPTS, PUSHED, REDELIVER_MS, TTL_MS, direct, pushSession, readySession, runCommand } from "../../lib/deliver-push.mjs";
+import { identityLine, formatInbox } from "../../lib/format.mjs";
 import { sessionIdleState } from "../../lib/idle.mjs";
 import { claimInbox, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery } from "../../lib/inbox.mjs";
 import { pollCached } from "../../lib/ntfy.mjs";
@@ -24,19 +22,10 @@ import { readReceipts } from "../../lib/receipts.mjs";
 import { listSessions } from "../../lib/sessions.mjs";
 import { writeState } from "../../lib/state.mjs";
 
-export const REDELIVER_MS = 10 * 60_000;
-export const MAX_ATTEMPTS = 5;
-export const TTL_MS = 24 * 3_600_000;
+export { MAX_ATTEMPTS, REDELIVER_MS, TTL_MS };
 const TICK_MS = 5000;
 const CLAIM_LIMIT = 4;
 const ANSWERS_MAX = 5000;
-const CODEX_TIMEOUT_MS = 30_000;
-const BACKOFF_BASE_MS = 5000;
-const BACKOFF_MAX_MS = 10 * 60_000;
-const PUSHED = new Set(["claude", "codex", "opencode"]);
-
-// A direct, non-broadcast message that is not fyi: the only kind pushed.
-const direct = (m) => m.priority !== "fyi" && m.from !== "ntfy" && m.to !== "all";
 
 function ledgerFile(cfg) {
   return join(cfg.stateDir, cfg.project, "dispatch.json");
@@ -55,21 +44,15 @@ function writeLedger(cfg, entries) {
   writeState(ledgerFile(cfg), { entries });
 }
 
-// Runs a command and resolves its exit code (null on a spawn error or timeout).
-function runCommand(file, args, { env }) {
-  return new Promise((resolve) => {
-    execFile(file, args, { env, timeout: CODEX_TIMEOUT_MS, stdio: "ignore" }, (error) => resolve(error ? (typeof error.code === "number" ? error.code : null) : 0));
-  });
-}
-
 /**
  * Builds the dispatcher. projects() returns the enabled project configs; run, opencode, idle, claude, claim, now and env
  * are injectable. tick() makes one pass over every project and resolves the delivery counts; start() runs it every TICK_MS;
- * drain() resolves once the background confirmations of unconfirmed Claude pushes have ended.
+ * drain() resolves once the background confirmations of unconfirmed Claude pushes have ended. skip() true makes a tick
+ * do nothing (the runner delivers while it is up).
  */
 export function createDispatcher({
   projects, run = runCommand, opencode = opencodeRequest, idle = sessionIdleState, now = Date.now, env = process.env, claim = claimInbox,
-  claude = deliverToClaude,
+  claude = undefined, skip = () => false,
 } = {}) {
   let timer = null;
   let running = false;
@@ -104,17 +87,8 @@ export function createDispatcher({
   }
 
   // Delivers text to one session through its harness's API. Resolves {status}: "delivered", "unsent" or "unconfirmed" (Claude only).
-  async function push(session, text, { urgent, ids }) {
-    if (!nativeSessionId(session.harness, session.sessionId)) return { status: "unsent" };
-    if (session.harness === "claude") return await claude(session, { text, urgent, ids }, { env });
-    if (session.harness === "codex") {
-      const ok = await run("codex", ["queue", "--thread", session.sessionId, "--message", text, "--resume"], { env: harnessEnv() }) === 0;
-      return { status: ok ? "delivered" : "unsent" };
-    }
-    const r = await opencode("POST", `/api/session/${encodeURIComponent(session.sessionId)}/prompt`, {
-      body: { text, delivery: urgent ? "steer" : "queue", resume: true }, env,
-    });
-    return { status: r.ok ? "delivered" : "unsent" };
+  function push(session, text, { urgent, ids }) {
+    return pushSession(session, text, { urgent, ids }, { env, run, opencode, ...(claude ? { claude } : {}) });
   }
 
   // Keeps the reservation while a late confirmation is watched, then marks the messages delivered or releases them.
@@ -152,10 +126,8 @@ export function createDispatcher({
   const textFor = (scfg, messages) => [identityLine(scfg), formatInbox(messages, { session: scfg.session })].filter(Boolean).join("\n");
 
   // Claude takes a socket message in any state, when its gate is open; Codex waits for an idle session; OpenCode takes a queued or steering prompt in any state.
-  async function ready(session, active) {
-    if (session.harness === "claude") return claudeTarget(session, { env }) !== null;
-    if (session.harness === "opencode") return active !== null;
-    return await idle(session, { env }) === "idle";
+  function ready(session, active) {
+    return readySession(session, active, { env, idle });
   }
 
   // Folds new receipts and replies to this ledger's messages into reads and answers.
@@ -245,7 +217,7 @@ export function createDispatcher({
 
   async function tick() {
     const total = { delivered: 0, redelivered: 0, dropped: 0 };
-    if (running) return total;
+    if (running || await Promise.resolve().then(skip).catch(() => false)) return total;
     running = true;
     try {
       pruneBackoff();

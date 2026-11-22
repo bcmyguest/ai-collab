@@ -92,6 +92,18 @@ A hook runs only while its agent runs a turn, so an idle session would otherwise
 
 The dispatcher polls every 5 s, only for online Claude (with an open gate), Codex and OpenCode sessions, and only for direct messages: broadcasts and `fyi` messages stay in the inbox. After a push it marks the message seen for that session (`markDelivered`), so the session's hooks skip it. A failed push leaves the message for the hooks. `AI_COLLAB_DISPATCH=off` stops the dispatcher. Native session ids come from the registry (`lib/sessions.mjs`).
 
+While the runner is up (its control socket answers `runnerUp()` in `runner/client.mjs`), the UI dispatcher stands down and the runner delivers instead, one durable workflow per message (see [Delivery and wake workflows](owned-sessions-contract.md#delivery-and-wake-workflows)). The dispatcher runs again once the runner is down. Both write the same inbox reservations, so a message goes out once.
+
+### Closed sessions
+
+A direct message to a closed session wakes it: the runner resumes the session through its adapter, sends the message as one run, and closes the session again. Broadcasts never wake a closed session.
+
+- An owned session (started by the runner) is woken in place.
+- A session the runner does not own yet is adopted: the runner creates an owned record from its registry entry (native session id, harness, cwd, model), then wakes it the same way.
+- A harness with no loaded adapter records `no <harness> adapter yet` for that delivery and leaves the message for the hooks.
+
+One paid turn covers every unseen direct message queued for the session when the turn starts; messages that arrive during a turn take one more turn. Only a message addressed to the session wakes it: a message to the peer as a whole does not. A session seen online outside the runner (the user resumed it) is not woken. A closed session not seen in the last 7 days is not adopted. At most two sessions wake per runner tick. Wakes of one session run one after another.
+
 ### Claude messaging socket
 
 For a direct message to a Claude session, the dispatcher writes the message to the session's messaging socket and then confirms it in the transcript. A confirmed message appears as a user turn, and an urgent one lands mid-turn. The socket is used only when every check below passes; otherwise the message stays unread for the hooks and the waiter.
@@ -132,7 +144,7 @@ A socket delivery with `expect_reply` is redelivered like any other push (see be
 - at most 5 attempts, and no later than 24 h after the first;
 - until the target acknowledges: a `respond` of any state (`working`, `reply`, `done`, `declined`) or a read receipt from that session.
 
-Redelivery covers sessions the dispatcher serves (Claude with an open gate, Codex, OpenCode). It sends no notice to the sender when it gives up. Claude's waiter and hooks deliver once.
+Redelivery covers sessions the runner or the dispatcher serves (Claude with an open gate, Codex, OpenCode). The runner keeps a redelivering message in its delivery workflow. When the runner starts, it takes over the dispatcher's `dispatch.json` entries, so their redelivery continues. It sends no notice to the sender when it gives up. Claude's waiter and hooks deliver once.
 
 ### Interrupt
 
