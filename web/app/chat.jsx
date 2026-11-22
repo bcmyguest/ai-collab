@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { HarnessLogo, hasLogo } from "./logos";
-import { Activity, Square, ArrowLeft, ArrowUp, AtSign, Bell, BellOff, Bot, Check, CheckCheck, CircleCheck, Coffee, CornerLeftUp, FolderGit2, LoaderCircle, Menu, Minimize2, Monitor, Moon, Plus, Reply, RotateCw, Sun, X, Zap } from "lucide-react";
+import { Activity, Square, ArrowLeft, ArrowUp, AtSign, Bot, Check, CheckCheck, CircleCheck, Coffee, CornerLeftUp, FolderGit2, LoaderCircle, Menu, Minimize2, Monitor, Moon, Plus, Reply, RotateCw, Sun, VolumeX, X, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatContainerContent, ChatContainerRoot, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
@@ -29,7 +29,6 @@ import { ActivityRow, GoToAgent, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
 import { SurfaceContext } from "@/components/a2ui/surface";
 import { NotifyToggle } from "./notify";
-import { AlertLevel } from "./alert-level";
 import { SessionList, SessionMenu, SubagentList } from "./home";
 import { RunningCount, SubagentRuns } from "./subagent-runs";
 import { ClosedProjects, ProjectMenu } from "./project-menu";
@@ -57,7 +56,7 @@ const QUIET_RETRY_MS = 500;
 const RECONNECT_GRACE_MS = 3_000;
 const STALE_AFTER_MS = 20_000;
 const TICK_MS = 1000;
-const AFK_MODES = [["off", "Off", Bell], ["on", "On", Coffee], ["quiet", "Quiet", BellOff]];
+const AFK_MODES = [["off", "Off", Monitor], ["on", "On", Coffee], ["quiet", "Quiet", VolumeX]];
 const HARNESS_NAMES = { claude: "Claude Code", codex: "Codex", cursor: "Cursor", opencode: "OpenCode" };
 const RECEIPTS = { sent: ["Sent", Check], delivered: ["Read by some sessions", CheckCheck], read: ["Read", CheckCheck] };
 const clock = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -146,10 +145,10 @@ function Dot({ online }) {
 
 // Operator away mode, broadcast to every project's agents.
 function AfkToggle({ mode, disabled, set }) {
-  const Icon = AFK_MODES.find(([id]) => id === mode)?.[2] || Bell;
+  const Icon = AFK_MODES.find(([id]) => id === mode)?.[2] || Monitor;
   return <DropdownMenu>
     <DropdownMenuTrigger asChild>
-      <Button variant={mode === "off" ? "ghost" : "secondary"} size="sm" className="rounded-full" aria-label={"AFK mode: " + mode} disabled={disabled}>
+      <Button variant={mode === "off" ? "ghost" : "secondary"} size="sm" className="rounded-full" aria-label={"AFK mode: " + mode} title={"AFK mode: " + mode} disabled={disabled}>
         <Icon/><span className="text-xs">{mode === "off" ? "AFK" : "AFK " + mode}</span>
       </Button>
     </DropdownMenuTrigger>
@@ -542,23 +541,32 @@ function ContextChip({ context, rows }) {
   const read = filesRead(rows);
   const tone = meter.level === "full" ? "border-destructive text-destructive" : meter.level === "warn" ? "border-amber-500 text-amber-600" : "text-muted-foreground";
   const warning = meter.level === "full" ? " · full" : meter.level === "warn" ? " · near full" : "";
-  return <details className="relative">
-    <summary title="Context used, and the files in it" className={cn("flex cursor-pointer list-none items-center gap-1 rounded-full border px-2.5 py-1 text-xs", tone)}>
-      Context{meter.text && " " + meter.text}{warning}</summary>
-    <div className="absolute right-0 z-30 mt-1 max-h-72 w-[min(90vw,360px)] overflow-y-auto rounded-2xl border bg-popover p-3 text-xs text-popover-foreground shadow-lg">
-      <p className="font-medium">Files in context</p>
-      {loaded.length ? <ul>{loaded.map(entry => <li key={entry.path} className="truncate font-mono" title={entry.path}>{entry.path}
-        <span className="text-muted-foreground"> · {entry.memory} · {entry.load.replace(/_/g, " ")}</span></li>)}</ul>
-        : <p className="text-muted-foreground">None recorded. Claude reports them through its InstructionsLoaded hook.</p>}
-      {/* Shown only once activity rows have loaded; before that, no reads are known, so the section stays out. */}
-      {rows.length > 0 && <>
-        <p className="mt-2 font-medium">Files read</p>
-        {read.length ? <ul>{read.map(entry => <li key={entry.path} className="truncate font-mono" title={entry.path}>{entry.path}
-          <span className="text-muted-foreground"> · {entry.count}×</span></li>)}</ul>
-          : <p className="text-muted-foreground">No file reads in the loaded activity.</p>}
-      </>}
-    </div>
-  </details>;
+  const [open, setOpen] = useState(false);
+  // A sheet fits any phone width; a popover anchored to the chip ran off the left edge at 390px.
+  return <>
+    <button type="button" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}
+      className={cn("flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs", tone)}>
+      Context{meter.text && " " + meter.text}{warning}</button>
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto break-words p-0">
+        <div className="flex flex-col gap-3 px-4 pb-6 pt-4 text-xs">
+          <SheetTitle className="text-base">Context</SheetTitle>
+          <SheetDescription className="text-xs">{meter.text ? "Tokens in context: " + meter.text : "No usage reported yet."}</SheetDescription>
+          <p className="font-medium">Files in context</p>
+          {loaded.length ? <ul className="flex flex-col gap-1.5">{loaded.map(entry => <li key={entry.path} className="min-w-0 break-all font-mono" title={entry.path}>{entry.path}
+            <span className="block text-muted-foreground">{entry.memory} · {entry.load.replace(/_/g, " ")}</span></li>)}</ul>
+            : <p className="text-muted-foreground">None recorded. Claude reports them through its InstructionsLoaded hook.</p>}
+          {/* Shown only once activity rows have loaded; before that, no reads are known, so the section stays out. */}
+          {rows.length > 0 && <>
+            <p className="font-medium">Files read</p>
+            {read.length ? <ul className="flex flex-col gap-1.5">{read.map(entry => <li key={entry.path} className="min-w-0 break-all font-mono" title={entry.path}>{entry.path}
+              <span className="text-muted-foreground"> · {entry.count}×</span></li>)}</ul>
+              : <p className="text-muted-foreground">No file reads in the loaded activity.</p>}
+          </>}
+        </div>
+      </SheetContent>
+    </Sheet>
+  </>;
 }
 
 // A session's finished turn(s) in the project chat: the first line of the final reply; tap opens the session.
@@ -904,8 +912,7 @@ function Console({ account }) {
             <Dot online={agent.online}/><span className="hidden sm:inline">{agent.online ? "online" : "offline"}</span></span>}
           {level === "session" && agent && <RunningCount runs={agent.subagents} now={now}/>}
           <AfkToggle mode={data.mode || "off"} disabled={!ready || working} set={mode => action("afk", { mode }, "AFK " + mode)}/>
-          <AlertLevel level={data.alerts || "all"} disabled={!ready || working} set={level => action("alerts", { level }, "Alerts set")}/>
-          <NotifyToggle/>
+          <NotifyToggle level={data.alerts || "all"} levelDisabled={!ready || working} setLevel={level => action("alerts", { level }, "Alerts set")}/>
           <ThemeToggle/>
         </div>
         {account.user && <p className="-mt-1 truncate text-right text-[11px] text-muted-foreground" data-account={account.user.login}>

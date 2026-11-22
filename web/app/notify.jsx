@@ -4,6 +4,7 @@ import { Bell, BellOff, BellRing } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ALERT_LEVELS, AlertLevelItems } from "./alert-level";
 
 const STATES = {
   loading: ["checking", Bell], off: ["off", Bell], on: ["on", BellRing],
@@ -37,8 +38,8 @@ async function call(method, path, body) {
   return result;
 }
 
-// Header bell: shows the push state, asks permission only on tap, subscribes, unsubscribes, and sends a test.
-export function NotifyToggle() {
+// Header bell: one Notifications menu with the browser push state, its actions, and the phone alert level.
+export function NotifyToggle({ level = "all", levelDisabled = false, setLevel }) {
   const [state, setState] = useState("loading");
   const [busy, setBusy] = useState(false);
 
@@ -118,12 +119,14 @@ export function NotifyToggle() {
   }
 
   const [label, Icon] = STATES[state];
+  const alerts = ALERT_LEVELS.find(([id]) => id === level)?.[1] || "All";
+  const summary = "Notifications: " + label + " · phone alerts " + alerts;
   return <DropdownMenu>
     <DropdownMenuTrigger asChild>
-      <Button variant="ghost" size="icon" aria-label={"Notifications: " + label} title={"Notifications: " + label} data-state-push={state}><Icon/></Button>
+      <Button variant="ghost" size="icon" aria-label={summary} title={summary} data-state-push={state} disabled={levelDisabled}><Icon/></Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end" className="w-64">
-      <DropdownMenuLabel>Notifications · {label}</DropdownMenuLabel>
+      <DropdownMenuLabel>Browser push · {label}</DropdownMenuLabel>
       <DropdownMenuSeparator/>
       {state === "off" && <DropdownMenuItem disabled={busy} onSelect={enable}>Turn on</DropdownMenuItem>}
       {state === "on" && <>
@@ -131,6 +134,7 @@ export function NotifyToggle() {
         <DropdownMenuItem disabled={busy} onSelect={disable}>Turn off</DropdownMenuItem>
       </>}
       {HINTS[state] && <p className="px-2 py-1.5 text-xs text-muted-foreground">{HINTS[state]}</p>}
+      <AlertLevelItems level={level} set={setLevel}/>
     </DropdownMenuContent>
   </DropdownMenu>;
 }
