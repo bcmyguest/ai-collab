@@ -36,7 +36,7 @@ UMask=0077
 WantedBy=default.target
 ```
 
-Run `npm ci && npm run build` in the checkout before `systemctl --user restart ai-collab-ui`. `next build` records the absolute path of `web/server/ui.mjs`; rebuild after moving the checkout.
+Run `npm ci && npm run build` in the checkout before `systemctl --user restart ai-collab-ui`. Each successful build publishes a fresh directory under `web/.next-builds/`. The running service keeps using its original directory until restart. After restarting, you can remove older build directories once no server uses them. Keep the directory named in `web/.next-builds/current`. `next build` records the absolute path of `web/server/ui.mjs`; rebuild after moving the checkout.
 
 ## Live updates
 

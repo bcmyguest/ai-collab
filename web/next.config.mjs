@@ -1,17 +1,24 @@
 import { fileURLToPath } from "node:url";
 
+import { PHASE_PRODUCTION_SERVER } from "next/constants.js";
+import { productionDistDir } from "../lib/ui-build-output.mjs";
+
 const root = fileURLToPath(new URL("..", import.meta.url));
 const server = fileURLToPath(new URL("server/ui.mjs", import.meta.url));
 // One id per build; the page compares its own with the server's to offer a reload after a deploy.
 const build = Date.now().toString(36);
 
-export default {
+let serverDistDir;
+
+export default (phase) => ({
   turbopack: { root },
   outputFileTracingRoot: root,
   env: { AI_COLLAB_UI_SERVER: server, AI_COLLAB_BUILD: build },
   generateBuildId: () => build,
-  // The demo recorder builds into its own folder so it never replaces the build the live service serves.
-  distDir: process.env.AI_COLLAB_NEXT_DIST || ".next",
+  // Pin the actual directory for this server process, even when Next loads config more than once.
+  distDir: phase === PHASE_PRODUCTION_SERVER
+    ? (serverDistDir ??= productionDistDir())
+    : process.env.AI_COLLAB_NEXT_DIST || ".next",
   poweredByHeader: false,
   async headers() {
     return [
@@ -23,4 +30,4 @@ export default {
       ] },
     ];
   },
-};
+});

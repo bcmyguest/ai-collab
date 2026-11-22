@@ -2,6 +2,7 @@ node_modules/
 *.tmp
 web/.next/
 web/.next-demo/
+web/.next-builds/
 .claude/worktrees/
 .cursor/cli.json
 .claude/settings.local.json
