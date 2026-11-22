@@ -52,10 +52,11 @@ Messages ai-collab sends on its own initiative travel under the operator's addre
 
 ### One download per attachment
 
-ntfy bills attachment downloads against a daily bandwidth quota, so nothing here fetches a file twice. Both the UI and the agents read one cache under `<state dir>/<project>/attachments/` (`lib/attachment-cache.mjs`): whichever asks first downloads the file into a temporary name and renames it, under a lock that makes concurrent readers (two tabs, a hook and the UI, two sessions) share the one download. Every later request is served from disk, including a browser reload or a second device.
+ntfy bills attachment downloads against a daily bandwidth quota, so concurrent readers share one download while the file is cached. Both the UI and the agents read one cache under `<state dir>/<project>/attachments/` (`lib/attachment-cache.mjs`): when the sender and reader share that cache, a successful upload seeds it with the original bytes. Otherwise, whichever asks first downloads the file into a temporary name and renames it, under a lock that makes concurrent readers (two tabs, a hook and the UI, two sessions) share the one download. Every later request is served from disk, including a browser reload or a second device.
 
-An agent is told the cached path. `claimInbox`, the dispatcher's push and the runner's delivery all cache a message's attachment (within a 4-second budget, never failing the message) and `formatInbox` then prints `attachment="shot.png" local_path="/…/attachments/f1.png"`, so the agent reads the file instead of fetching it. A message that arrives before any copy exists carries the attachment name only. The cache keeps files for 7 days and the newest 200; a pruned file is downloaded again on the next request, which also works after ntfy's own 12-hour expiry. A download that fails or exceeds the size limit writes nothing.
+An agent is told the cached path. `claimInbox`, the dispatcher's push and the runner's delivery all cache a message's attachment (within a 4-second budget, never failing the message) and `formatInbox` then prints `attachment="shot.png" local_path="/…/attachments/f1.png"`, so the agent reads the file instead of fetching it. A message that arrives before any copy exists carries the attachment name only. The cache keeps files for 7 days and the newest 200; a pruned file is downloaded again on the next request, if ntfy still has it. A download that fails or exceeds the size limit writes nothing.
 
+See the [transport design spike](research/message-transport.md) for options to extend attachment lifetime and remove chat's dependency on ntfy upload limits.
 
 ## Stop continuation
 

@@ -426,8 +426,10 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
         : <MessageContent markdown taskLinks={taskLinks} className={cn("bubble max-w-full rounded-2xl px-3.5 py-2 text-[15px] leading-relaxed shadow-xs [overflow-wrap:anywhere]",
         outgoing ? "rounded-tr-md border border-primary/25 bg-primary/10 text-foreground" : "rounded-tl-md border bg-card text-card-foreground",
         message.kind === "Question" && "border-amber-500/50")}>{withMentions(message.body)}</MessageContent>}
-      {message.attachment && <a href={"/api/file/" + message.attachment.file} target="_blank" rel="noreferrer" className="block max-w-full overflow-hidden rounded-2xl border bg-card">
-        <img src={"/api/file/" + message.attachment.file} alt={message.attachment.name} loading="lazy" className="block max-h-96 w-auto max-w-full object-contain"/>
+      {message.attachment && <a href={"/api/file/" + encodeURIComponent(message.attachment.file)} target="_blank" rel="noreferrer" className="block max-w-full overflow-hidden rounded-2xl border bg-card">
+        <img src={"/api/file/" + encodeURIComponent(message.attachment.file)} alt="" loading="lazy" onError={event => { event.currentTarget.hidden = true; }}
+          className="max-h-96 w-auto max-w-full object-contain"/>
+        <span className="block break-all px-3 py-1.5 text-sm underline">{message.attachment.name}</span>
       </a>}
       {message.kind === "Question" && message.question && !message.answer && <Button variant="ghost" size="sm" className="rounded-full text-xs" onClick={() => reply(message.question)}>Reply from the composer</Button>}
     </div>

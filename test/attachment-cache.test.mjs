@@ -85,7 +85,7 @@ test("an agent that sees a screenshot first downloads it once, and the UI then s
 
   const stream = sse(ui.events(new Request("http://127.0.0.1:8795/api/events", { signal: ctrl.signal })));
   await stream.next();
-  await sendMessage({ ...agent, peer: "bob" }, "all", "from bob", { attachment: tempPng() });
+  await sendMessage(loadConfig(peerEnv(fake, { peer: "bob" })), "all", "from bob", { attachment: tempPng() });
 
   const [claimed] = (await claimInbox(agent)).filter((m) => m.body === "from bob");
   assert.ok(claimed.attachment?.local_path, "the agent cached the file it was handed");
@@ -101,7 +101,7 @@ test("two concurrent first reads share one download", async (t) => {
   const fake = await startFakeNtfy();
   const cfg = loadConfig(peerEnv(fake, { peer: "operator" }));
   t.after(() => fake.close());
-  const source = { ...loadConfig(peerEnv(fake, { peer: "alice", stateDir: cfg.stateDir })), session: "00000000000000bb" };
+  const source = { ...loadConfig(peerEnv(fake, { peer: "alice" })), session: "00000000000000bb" };
 
   await sendMessage(source, "all", "concurrent", { attachment: tempPng() });
   const [upload] = fake.state.publishes;
@@ -163,7 +163,7 @@ test("channel history names a screenshot's local copy once this machine has it, 
   const fake = await startFakeNtfy();
   const cfg = loadConfig(peerEnv(fake, { peer: "operator" }));
   t.after(() => fake.close());
-  const bob = { ...loadConfig(peerEnv(fake, { peer: "bob", stateDir: cfg.stateDir })), session: "00000000000000cc" };
+  const bob = { ...loadConfig(peerEnv(fake, { peer: "bob" })), session: "00000000000000cc" };
   await sendMessage(bob, "all", "look at this", { attachment: tempPng() });
   const [upload] = fake.state.publishes;
   assert.ok(upload.attachment);

@@ -1,0 +1,15 @@
+# Message transport and attachment storage
+
+Today, ntfy handles publication, catch-up polling, and live streams for chat and activity. It also hosts uploaded screenshots and long tool output. The local history archive retains message metadata and the UI resolves attachments through a history-gated file route. An archived message can still point at bytes that have expired upstream or been pruned locally. Notification click URLs are generated separately from links in the message body.
+
+| Option | Benefits | Costs |
+| --- | --- | --- |
+| Keep ntfy and store attachments on the ai-collab host | Removes the upload and download quota from the attachment path once clients can resolve host references. Keeps current topic delivery and notification setup. | Text still has ntfy's envelope limit. Remote peers need authenticated access to the host. The host owns quotas, retention and cleanup. |
+| Use an ai-collab HTTP API with a durable store and a live event stream | Can use stable IDs, explicit replay cursors and per-project access checks for both messages and files. Fits the existing browser API. | Requires a publisher and subscription migration, server availability for agent traffic, and explicit handling of retries, ordering and missed events. |
+| Use an external durable broker with a separate blob store | Moves fan-out and replay infrastructure out of the application host. | Adds services and credentials. The application still owns attachment authorization, browser delivery and notification links. |
+
+The first increment keeps the existing wire format and endpoints. The publishing host seeds its bounded cache from successful uploads when the publish response identifies the attachment. Hosts with separate state directories still download on demand. This removes a redundant download for co-located readers and keeps their attachment available after upstream expiry for as long as the local copy and its history entry survive. Attachment notifications retain the configured click link and priority, and chat exposes a named link even if the preview fails. Upload quotas and message size limits still apply.
+
+A follow-up can introduce host-managed blobs behind the existing history-gated file route. Give each blob an immutable ID and associate it with a project and message. Set byte and retention budgets, check membership before serving, and reclaim staged blobs whose messages never publish. Keep reading legacy ntfy attachment metadata while newer senders emit a versioned reference. Verify reconnect, history replay, expired files, and cross-project access before switching the default. Host-based storage would also give a later chat transport stable attachment references that survive a delivery migration.
+
+Evaluate replacing chat publication and subscription only after that storage path works for co-located and remote peers. Document cursor and deduplication semantics before migrating live traffic. Keep notification delivery independently configurable so clients can continue receiving ntfy alerts and opening the same UI deep links during the transition.
