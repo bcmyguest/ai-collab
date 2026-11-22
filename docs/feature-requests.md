@@ -7,6 +7,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 <!-- tasks:start -->
 | Request | Priority | Status |
 |---|---|---|
+| Posts that only @harness:model-start a session still wake running agents (ui.mjs routeMentions) | P2 | building |
 | Notification settings lost after UI rebuild: alert level and/or browser push not surviving deploy | P2 | building |
 | #task tags: tapping a task opens a message tagged #<id>; it goes direct to the task's owner agent, else to the project chat | P2 | building |
 | Reply to any message: when the server can't accept a reply id, send it as text quoting the first/last bit of the original instead of failing 'Invalid reply' | P2 | building |
@@ -36,7 +37,6 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Code mode B now: compile team.dot to a runner durable workflow; agents keep pattern advance (operator: yes) | P2 | open |
 | Team runs live in the runner and run in OpenShell, not the project folder (operator: yes) | P2 | open |
 | Code mode A: ai-collab tool-API client for programs in the OpenShell sandbox; sandbox policy replaces per-call approval (operator: yes) | P2 | open |
-| Posts that only @harness:model-start a session still wake running agents (ui.mjs routeMentions) | P2 | open |
 | System messages (compact request etc.) render as from operator; give them a system sender | P2 | open |
 | Hosted multi-user: users reach only their own agents; agents from other users are identified as such | P2 | open shelved by operator 2026-11-22; draft + Opus review on branch worktree-agent-ae3bb980a5eec65ea, unmerged |
 | task add treats --help as a title; add help output and a remove command | P2 | open |
