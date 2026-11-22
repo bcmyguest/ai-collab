@@ -5,6 +5,7 @@ import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { EventType } from "@ag-ui/core";
+import { statePath } from "../lib/state.mjs";
 import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, receiptsTopic, sessionLabel } from "../lib/config.mjs";
 import { RESERVE_MS, claimInbox, markDelivered, parseEnvelope, releaseOwned, reserveOwned } from "../lib/inbox.mjs";
 import { parsePhoneReply, parseQuestionText } from "../lib/questions.mjs";
@@ -39,6 +40,8 @@ const WAKES_PER_TICK = 2;
 const SEEN_WITHIN_MS = 7 * 24 * 3_600_000;
 const CONFIRM_POLL_MS = 500;
 const WAKE_TOPIC = "wake";
+// Longest pause, in pump ticks, after a tick that met a 429 from ntfy.
+const PUMP_BACKOFF_MAX_TICKS = 6;
 const STREAM_RETRY_MAX_MS = 30_000;
 const TEXT_MAX = 4000;
 const MODEL = /^[a-zA-Z0-9][a-zA-Z0-9._:/[\]-]{0,119}$/;
@@ -85,6 +88,11 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   let lastStartAt = 0;
   let pumpTimer = null;
   let lastPruneAt = -Infinity;
+  // In-memory read positions of the pump's peeks, keyed by lane, state file and topic; see recordPeek in lib/inbox.mjs.
+  const pumpPeeks = new Map();
+  let pumping = false;
+  let pumpSkipTicks = 0;
+  let pumpLimitStreak = 0;
 
   const sessionCfg = (project, harness, label) => ({ ...configs.get(project), peer: harness, session: label });
   const adapterOf = (harness) => adapters.get(harness) || fail(400, `No ${harness} adapter is loaded`);
@@ -502,16 +510,42 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
    * hourly. Resolves the started workflow ids.
    */
   async function pumpDeliveries() {
+    // Ticks never overlap; after a tick that met a 429 the pump skips 1, 2, 4 ... ticks, up to PUMP_BACKOFF_MAX_TICKS.
+    if (pumping) return [];
+    if (pumpSkipTicks > 0) {
+      pumpSkipTicks -= 1;
+      return [];
+    }
+    pumping = true;
+    try {
+      const limited = new Set();
+      const started = await pumpTick(limited);
+      pumpLimitStreak = limited.size ? pumpLimitStreak + 1 : 0;
+      pumpSkipTicks = limited.size ? Math.min(2 ** (pumpLimitStreak - 1), PUMP_BACKOFF_MAX_TICKS) : 0;
+      return started;
+    } finally {
+      pumping = false;
+    }
+  }
+
+  async function pumpTick(limited) {
     const started = [];
     if (now() - lastPruneAt >= PRUNE_EVERY_MS) {
       lastPruneAt = now();
       durable.prune([DELIVERY, WAKE], now() - PRUNE_AFTER_MS);
     }
     let wakes = 0;
+    // One poll per topic and read position per tick, shared by every session that reads it; a 429 skips its topic for the tick.
+    const memo = { poll: new Map(), limited };
+    const live = { ...memo, peek: { cursors: pumpPeeks, lane: "live" } };
+    const wake = { ...memo, peek: { cursors: pumpPeeks, lane: "wake" } };
+    const known = new Set();
     for (const cfg of configs.values()) {
       if (!cfg.enabled) continue;
       migrateLedger(cfg, started);
+      known.add(statePath(cfg));
       for (const session of listSessions(cfg)) {
+        known.add(statePath({ ...cfg, peer: session.peer, session: session.session }));
         const owned = sessions.get(session.id);
         // An adopted session that its user resumed outside the runner loses its owned record; live delivery serves it.
         if (owned && session.online && outsideOnline(session) && owned.record.workflowId?.startsWith(`${WAKE}:`) && owned.record.status === "ended") {
@@ -523,7 +557,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         if (session.online) {
           if (!PUSHED.has(session.harness)) continue;
           const fresh = (m) => !durable.status(`${DELIVERY}:${session.id}:${m.id}`);
-          const messages = await deps.claim(scfg, { commit: false, limit: CLAIM_LIMIT, accept: (m) => direct(m) && fresh(m) }).catch(() => []);
+          const messages = await deps.claim(scfg, { commit: false, limit: CLAIM_LIMIT, accept: (m) => direct(m) && fresh(m), ...live }).catch(() => []);
           for (const message of messages) {
             const id = `${DELIVERY}:${session.id}:${message.id}`;
             const run = durable.startWorkflowOnce(DELIVERY, id, { project: cfg.project, address: session.id, message });
@@ -533,13 +567,15 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         }
         // Only the exact session's messages wake it: a message to the peer as a whole never does.
         if (!PUSHED.has(session.harness) || session.seenAt < now() - SEEN_WITHIN_MS || wakes >= WAKES_PER_TICK || wakeTail.has(session.id)) continue;
-        const messages = await deps.claim(scfg, { commit: false, limit: WAKE_BATCH, accept: (m) => direct(m) && m.to === session.id }).catch(() => []);
+        const messages = await deps.claim(scfg, { commit: false, limit: WAKE_BATCH, accept: (m) => direct(m) && m.to === session.id, ...wake }).catch(() => []);
         if (!messages.length) continue;
         const adopt = { nativeId: session.sessionId, cwd: session.cwd, ...(session.model ? { model: session.model } : {}) };
         const id = startWake(cfg.project, session.id, messages, { adopt });
         if (id) { started.push(id); wakes += 1; }
       }
     }
+    // Read positions of sessions that are gone are dropped; a session that comes back re-reads from its committed cursor.
+    for (const key of pumpPeeks.keys()) if (!known.has(key.split("\n")[1])) pumpPeeks.delete(key);
     return started;
   }
 

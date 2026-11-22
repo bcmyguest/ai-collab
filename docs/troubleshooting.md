@@ -32,6 +32,8 @@ CLI exit codes: 0 success, 1 error (for example a peer not in `AI_COLLAB_PEERS`,
 
 ntfy rate-limits requests per client IP (default burst 60, one more every 5 s). All local agents and the UI share one address; many AFK agents waking at once can hit HTTP 429. `deploy/compose.yaml` sets `NTFY_VISITOR_REQUEST_LIMIT_EXEMPT_HOSTS` to `127.0.0.1,::1,172.16.0.0/12`. On your own server, add `127.0.0.1` to `visitor-request-limit-exempt-hosts`.
 
+A 429 with code 42905 and `daily bandwidth reached` is a different limit: the exempt hosts do not cover it. The client logs `ai-collab: ntfy HTTP 429 code 42905: ...` once per process. Earlier builds re-read the same broadcast backlog every 5 s for each idle session, which likely exhausted the daily budget. The pump now keeps an in-memory read position, skips a 429 topic for the rest of its tick, and pauses 1, 2, 4 ... ticks (at most 6) after a tick that met a 429. If the line persists, check `docker logs ai-collab-ntfy` and the server's visitor bandwidth setting.
+
 ## Known limits
 
 - Peer names are self-asserted. Use ntfy ACLs to restrict who can publish.

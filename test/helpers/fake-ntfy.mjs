@@ -17,6 +17,7 @@ export async function startFakeNtfy({ token = "" } = {}) {
     subscribes: [],
     requests: 0,
     failNext: 0,
+    limitNext: 0,
     delayMs: 0,
     files: new Map(),
   };
@@ -122,6 +123,11 @@ export async function startFakeNtfy({ token = "" } = {}) {
       const topic = decodeURIComponent(m[1]);
       const since = url.searchParams.get("since") || "all";
       state.polls.push({ topic, since, poll: url.searchParams.get("poll") });
+      if (state.limitNext > 0) {
+        state.limitNext -= 1;
+        res.writeHead(429, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ code: 42905, http: 429, error: "limit reached: daily bandwidth reached" }));
+      }
       const all = topics.get(topic) || [];
       let out;
       if (since === "all" || /^\d+h$/.test(since)) out = all;
