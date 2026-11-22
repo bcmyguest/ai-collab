@@ -21,17 +21,22 @@ const CARD = "flex w-full min-w-0 flex-col gap-1.5 rounded-xl border bg-card p-3
 // the scrollbar stable until a card has been laid out once (auto remembers the real height after that).
 const LAZY = "[content-visibility:auto] [contain-intrinsic-size:auto_7rem]";
 
+function TaskMetadata({ task, fullId }) {
+  const priority = priorityOf(task);
+  return <div className="flex w-full min-w-0 items-start gap-2">
+    <Badge variant="outline" aria-label={`priority ${priority}`} className={cn("shrink-0 font-mono text-[10px]", PRIORITY_BADGE[priority])}>{priority}</Badge>
+    <span className={cn("min-w-0 font-mono text-[11px] text-muted-foreground", fullId ? "wrap-anywhere" : "truncate")}>{task.id}</span>
+  </div>;
+}
+
 /**
  * One task card. Memoized on the age string it prints (not the raw clock), so an unchanged task does not re-render and
  * re-layout while the list scrolls; the coarse clock in the board means that string rarely changes either.
  */
-const Card = memo(function Card({ task, age, compose, open }) {
+const Card = memo(function Card({ task, age, compose, open, fullId }) {
   const body = <>
-    <div className="flex min-w-0 items-start gap-2">
-      <Badge variant="outline" aria-label={`priority ${priorityOf(task)}`} className={cn("shrink-0 font-mono text-[10px]", PRIORITY_BADGE[priorityOf(task)])}>{priorityOf(task)}</Badge>
-      <span className="min-w-0 flex-1 font-medium leading-snug break-words">{task.title}</span>
-      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{task.id}</span>
-    </div>
+    <TaskMetadata task={task} fullId={fullId}/>
+    <span className="w-full font-medium leading-snug wrap-break-word">{task.title}</span>
     {task.detail && <p className="text-xs text-muted-foreground break-words">{task.detail}</p>}
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
       {task.owner ? <span className="flex min-w-0 items-center gap-1.5 font-mono">
@@ -56,7 +61,7 @@ const Card = memo(function Card({ task, age, compose, open }) {
 });
 
 /** A task question waiting on the operator: tap a choice or type an answer; it is stored on the task, no agent turn runs. */
-function Decision({ task, decide, compose }) {
+function Decision({ task, decide, compose, fullId }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const send = async answer => {
@@ -69,11 +74,8 @@ function Decision({ task, decide, compose }) {
   };
   const q = task.question;
   return <li className="flex min-w-0 flex-col gap-2 rounded-xl border border-amber-500/50 bg-amber-500/5 p-3 text-sm">
-    <div className="flex min-w-0 items-start gap-2">
-      <Badge variant="outline" className={cn("shrink-0 font-mono text-[10px]", PRIORITY_BADGE[priorityOf(task)])}>{priorityOf(task)}</Badge>
-      <button type="button" onClick={() => compose(task.id)} className="min-w-0 flex-1 text-left font-medium leading-snug break-words hover:underline">{task.title}</button>
-      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{task.id}</span>
-    </div>
+    <TaskMetadata task={task} fullId={fullId}/>
+    <button type="button" onClick={() => compose(task.id)} className="w-full text-left font-medium leading-snug wrap-break-word hover:underline">{task.title}</button>
     <p className="break-words">{q.text}</p>
     <p className="text-xs text-muted-foreground">asked by <span className="font-mono">{q.by}</span></p>
     {q.options?.length > 0 && <div role="group" aria-label="Choices" className="flex flex-wrap gap-2">
@@ -90,12 +92,12 @@ function Decision({ task, decide, compose }) {
 }
 
 /** One status column: its count header and its cards; memoized so filtering or the clock does not rebuild unchanged columns. */
-const Column = memo(function Column({ status, list, now, compose, open }) {
+const Column = memo(function Column({ status, list, now, compose, open, fullId }) {
   return <section aria-label={status} className="flex min-w-0 flex-col gap-2">
     <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
       <span aria-hidden className={cn("inline-block size-2 rounded-full", DOT[status])}/>{statusLabel(status)} · {list.length}
     </h2>
-    {list.length ? <ul className="flex flex-col gap-2">{list.map(task => <Card key={task.id} task={task} age={task.last ? ageOf(task.last.at, now) : ""} compose={compose} open={open}/>)}</ul>
+    {list.length ? <ul className="flex flex-col gap-2">{list.map(task => <Card key={task.id} task={task} age={task.last ? ageOf(task.last.at, now) : ""} compose={compose} open={open} fullId={fullId}/>)}</ul>
       : <p className="text-xs text-muted-foreground">No {statusLabel(status)} tasks.</p>}
   </section>;
 });
@@ -122,8 +124,8 @@ export function TaskBoard({ board, now, open, compose, decide, taskId, back }) {
     {board?.error && <p role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">Task store is invalid: {board.error}</p>}
     {taskId ? <>
       <Button type="button" size="sm" variant="outline" className="self-start" onClick={back}>Back to board</Button>
-      {task?.question && !task.question.answer && decide && <ul><Decision task={task} decide={decide} compose={message}/></ul>}
-      {task ? <Column status={task.status} list={[task]} now={clock} compose={message} open={openOwner}/>
+      {task?.question && !task.question.answer && decide && <ul><Decision task={task} decide={decide} compose={message} fullId/></ul>}
+      {task ? <Column status={task.status} list={[task]} fullId now={clock} compose={message} open={openOwner}/>
         : board && !board.error && <p role="status">Task #{taskId} was not found.</p>}
     </> : <>
       {waiting.length > 0 && decide && <section aria-label="Needs your decision" className="flex flex-col gap-2">
