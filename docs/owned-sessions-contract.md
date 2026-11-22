@@ -192,8 +192,7 @@ Wakes of one address run in sequence (a gate per address). A woken session is ow
 
 A session the user resumed outside the runner: the pump drops the adopted owned record of a session seen online in another process and serves it as live; a wake for a session seen online outside is skipped.
 
-Harness adapters: `runner/adapters/<harness>.mjs` is not built for claude, codex or opencode. Until one is built, `loadAdapters` logs `no <harness> adapter yet`, and wakes for that harness record `no-adapter`. The Cursor adapter is built (see [Cursor adapter](#cursor-adapter)). The fake adapter drives the tests.
-Harness adapters: `runner/adapters/<harness>.mjs` is built for claude only; codex, cursor and opencode are not. Until one is built, `loadAdapters` logs `no <harness> adapter yet`, and wakes for that harness record `no-adapter`. The fake adapter drives the tests.
+Harness adapters: all four are built (`claude`, `codex`, `cursor`, `opencode`); each is checked against fakes only, and its unverified protocol facts are listed in its status section. A harness whose adapter fails to load logs `no <harness> adapter yet`, and wakes for it record `no-adapter`; the message stays for hooks.
 
 ### Pruning
 
@@ -452,21 +451,17 @@ Unsolved:
 | `runner/main.mjs` | Service entry (`npm run runner`) |
 | `runner/adapters/fake.mjs` | Scripted adapter for tests and a template for real adapters |
 | `runner/adapters/codex.mjs` | Codex adapter: one `codex app-server` child per runner (`-c thread_unload_delay_secs=0`, env `AI_COLLAB_OWNED=codex`); tests in `test/runner-adapter-codex.test.mjs` drive `test/helpers/fake-codex-app-server.mjs` |
-| `runner/adapters/<harness>.mjs` | Real adapters, one per agent (Claude, Cursor, OpenCode not written yet; `loadAdapters` logs `no <harness> adapter yet`) |
+| `runner/adapters/claude.mjs` | Claude adapter: Agent SDK `query()` with an input queue, `canUseTool` → approval cards |
+| `runner/adapters/opencode.mjs` | OpenCode adapter: local OpenCode 2 HTTP service and its `/api/event` SSE stream |
 | `runner/adapters/cursor.mjs` | Cursor adapter: ACP over stdio, optional OpenShell exec |
-| `runner/adapters/<harness>.mjs` | Real adapters, one per agent; claude, codex and opencode not written yet (`loadAdapters` logs `no <harness> adapter yet`) |
 | `test/runner-adapter-cursor.test.mjs`, `test/helpers/fake-cursor-agent.mjs`, `test/helpers/fake-openshell.mjs` | Cursor adapter tests; fake ACP child and fake openshell |
-| `runner/adapters/<harness>.mjs` | Real adapters, one per agent. `opencode.mjs` exists; claude, codex and cursor are not written yet (`loadAdapters` logs `no <harness> adapter yet`) |
-| `runner/adapters/<harness>.mjs` | Real adapters, one per agent: `claude.mjs` is built; codex, cursor and opencode are not (`loadAdapters` logs `no <harness> adapter yet`) |
 | `runner/delivery.mjs` | Delivery workflow: reserve, push, confirm, mark or release, expect-reply redelivery |
 | `lib/deliver-push.mjs` | Live push paths (socket, `codex queue`, OpenCode HTTP) and the ack tracker, shared with the UI dispatcher |
 | `lib/owned.mjs` | Owned-record read/write and `standsDown` |
 | `deploy/ai-collab-runner.service` | User unit template; not installed |
 | `test/runner*.test.mjs` | Tests with the fake adapter and fake ntfy |
 
-Environment: `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (minutes before an unanswered owned approval is denied; default 30), `AI_COLLAB_RUNNER_SOCKET`, `AI_COLLAB_RUNNER_DB` (default `$AI_COLLAB_STATE_DIR/runner.db`), `AI_COLLAB_RUNNER_HARNESSES` (comma list), `AI_COLLAB_RUNNER_ADAPTER_DIR` (directory the adapters load from; default `runner/adapters`), `AI_COLLAB_SCHEDULES` (path of `schedules.json`), and the usual `AI_COLLAB_*` project settings, read through `loadProjects`.
 Environment: `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (minutes before an unanswered owned approval is denied; default 30), `AI_COLLAB_RUNNER_SOCKET`, `AI_COLLAB_RUNNER_DB` (default `$AI_COLLAB_STATE_DIR/runner.db`), `AI_COLLAB_RUNNER_HARNESSES` (comma list; `none` loads no adapter; unset loads all four), `AI_COLLAB_RUNNER_ADAPTER_DIR` (directory the adapter modules load from; default `runner/adapters`), `AI_COLLAB_SCHEDULES` (path of `schedules.json`), and the usual `AI_COLLAB_*` project settings, read through `loadProjects`.
-Environment: `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (minutes before an unanswered owned approval is denied; default 30), `AI_COLLAB_RUNNER_SOCKET`, `AI_COLLAB_RUNNER_DB` (default `$AI_COLLAB_STATE_DIR/runner.db`), `AI_COLLAB_RUNNER_HARNESSES` (comma list; empty means all four; `none` loads no adapter), `AI_COLLAB_SCHEDULES` (path of `schedules.json`), and the usual `AI_COLLAB_*` project settings, read through `loadProjects`.
 
 ## Operator decisions (2026-11-21)
 
