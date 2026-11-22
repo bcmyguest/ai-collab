@@ -75,6 +75,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Cursor limit detection drops error.code/data and exit-path text (runner/adapters/cursor.mjs:109,95) | done branch cursor-verify-fixes (Cursor deepseek, started 16:23); do not dispatch |
 | OpenCode 429 branch unreachable: status not forwarded (lib/limits.mjs:81, opencode.mjs:165) | done branch cursor-verify-fixes (Cursor deepseek, started 16:23); do not dispatch |
 | onOverage true on overageEnabled even when overageStatus rejected (lib/limits.mjs:37-38) | done branch cursor-verify-fixes (Cursor deepseek, started 16:23); do not dispatch |
-| DOT prompt optional in parser but required by validatePattern (lib/dot.mjs:150-155) | blocked Strict parseDot breaks 15 tests in test/dot.test.mjs; alternative: report missing prompt in checkTeamText |
+| DOT prompt optional in parser but required by validatePattern (lib/dot.mjs:150-155) | done Team check reports the missing prompt with its line; parser unchanged |
 | System messages (compact request etc.) render as from operator; give them a system sender | open |
+| Posts that only @harness:model-start a session still wake running agents (ui.mjs routeMentions) | open |
 <!-- tasks:end -->
