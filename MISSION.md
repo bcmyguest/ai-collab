@@ -9,7 +9,7 @@ Give the operator one place to run, watch and steer a coding agents from a phone
 - [x] Task board, priorities, and builder units
 - [x] OpenShell sandbox for every new builder (ai-collab builder start)
 - [x] Code-mode A tool client in sandbox
-- [ ] Honest job meters for building status
+- [x] Honest job meters for building status
 
 ## Rules
 
