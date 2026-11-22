@@ -37,4 +37,6 @@ Operator requests from chat and the terminal, newest last. Status: done (merged 
 | Move to AG-UI end to end (official @ag-ui packages) | done; ntfy wire switch AI_COLLAB_WIRE=agui pending plugin rollout (awaiting operator: all sessions on plugin 0.11.0 first) |
 | Render questions, approvals and choice cards with A2UI over AG-UI | done (A2UI v0.9.1 until @a2ui/react binds v1.0) |
 | Message delivery as durable workflows in the runner (reserve, push, confirm, mark/release; durable backoff) instead of UI-server state | done (runner owns delivery; UI dispatcher stands down while it runs) |
+| Cursor-style tool groups between assistant messages in the session timeline | done |
+| Modern visual refresh of the whole UI | queued: last, after the harness adapters merge |
 | Record feature requests | this file |
