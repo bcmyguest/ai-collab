@@ -776,6 +776,8 @@ function Console({ account }) {
     list.addEventListener("scroll", save, { passive: true });
     return () => list.removeEventListener("scroll", save);
   }, [ready, requested, memoryKey]);
+  const [seenDecisions, setSeenDecisions] = useState(() => new Set());
+  const markDecisionSeen = key => setSeenDecisions(seen => new Set(seen).add(key));
   const [inactiveOpen, setInactiveOpen] = useState(false);
   useEffect(() => {
     try { setInactiveOpen(localStorage.getItem("ai-collab:show-inactive") === "true"); } catch {}
@@ -1105,7 +1107,7 @@ function Console({ account }) {
           {ready && (home || listing) && <>
             {home && data.unavailable?.length > 0 && <p role="alert" className="text-xs text-destructive">Unavailable: {data.unavailable.join(", ")}</p>}
             {home && <DecisionQueue decisions={data.decisions} inbox={inbox} now={now} disabled={working} action={action}
-              openInbox={() => navigate({ level: "inbox" })}/>}
+              seen={seenDecisions} markSeen={markDecisionSeen} openInbox={() => navigate({ level: "inbox" })}/>}
             {!inbox && <SessionList sessions={data.sessions} now={now} open={openCard} raw={openRaw} disabled={working} showProject={home} compact={home}
               inactiveOpen={inactiveOpen} onInactiveToggle={rememberInactive}
               deadOpen={Boolean(views.get(memoryKey, {}).dead)} onDeadToggle={rememberDead}

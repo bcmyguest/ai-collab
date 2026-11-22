@@ -6,7 +6,7 @@ import { taskLink } from "@/lib/task-tags";
 import { selectionHash } from "@/lib/selection";
 import { LegacyApprovalCard, LegacyQuestionCard, SuspensionCard } from "./cards";
 
-export function DecisionQueue({ decisions = [], inbox, now, disabled, action, openInbox }) {
+export function DecisionQueue({ decisions = [], inbox, now, disabled, action, seen, markSeen, openInbox }) {
   const groups = new Map();
   for (const item of [...decisions].sort((a, b) => a.time - b.time)) {
     if (item.expiresAt && item.expiresAt < now) continue;
@@ -28,6 +28,9 @@ export function DecisionQueue({ decisions = [], inbox, now, disabled, action, op
           {project}{task && <> · <a className="underline" href={taskLink(project, task.id)}>{task.title || task.id}</a> · {task.priority}</>}
         </h3>
         {items.map(item => <div key={item.key} className="flex min-w-0 flex-col gap-1.5">
+          {!seen.has(JSON.stringify([project, item.key])) && <button type="button" aria-label="Mark new decision as seen"
+            className="w-fit rounded-full border border-orange-500/60 bg-orange-500/15 px-2 py-0.5 text-xs font-medium text-orange-800 hover:bg-orange-500/25 dark:text-orange-300"
+            onClick={() => markSeen(JSON.stringify([project, item.key]))}>New</button>}
           <p className="text-xs text-muted-foreground">
             {item.from.includes("#") ? <a className="underline" href={"#" + selectionHash({ project, level: "session", session: item.from })}>{item.agentName || item.from}</a>
               : item.agentName || item.from}
