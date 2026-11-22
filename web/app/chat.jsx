@@ -494,12 +494,12 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
   </div>;
 }
 
-// A session's finished turn in the project chat: its first line of the final message; tap opens the session.
+// A session's finished turn(s) in the project chat: the first line of the final reply; tap opens the session.
 function CompletionRow({ row, when, open }) {
   return <button type="button" data-type="completion" onClick={() => open(row.agent)} title={row.agent}
     className="flex min-w-0 items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent">
     <CircleCheck className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400"/>
-    <span className="min-w-0 flex-1 truncate"><span className="font-mono text-foreground">{short(row.agent)}</span> finished{row.text && " · " + row.text}</span>
+    <span className="min-w-0 flex-1 truncate"><span className="font-mono text-foreground">{short(row.agent)}</span> finished{row.turns > 1 ? " " + row.turns + " turns" : ""}{row.text && " · " + row.text}</span>
     {row.time > 0 && <time className="shrink-0 text-xs" dateTime={new Date(row.time * 1000).toISOString()}>{when(row.time * 1000)}</time>}
   </button>;
 }
@@ -509,7 +509,7 @@ function LiveRow({ row, open }) {
   return <button type="button" data-type="live" onClick={() => open(row.agent)} title={row.agent}
     className="flex min-w-0 items-center gap-2 rounded-xl border border-dashed bg-card px-2.5 py-1.5 text-left text-sm">
     <LoaderCircle className="size-4 shrink-0 animate-spin text-muted-foreground"/>
-    <span className="min-w-0 flex-1 truncate"><span className="font-mono">{short(row.agent)}</span> · working on {row.summary}</span>
+    <span className="min-w-0 flex-1 truncate"><span className="font-mono">{short(row.agent)}</span> · working{row.summary && " on " + row.summary}</span>
   </button>;
 }
 

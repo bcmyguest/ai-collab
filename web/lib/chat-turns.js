@@ -1,17 +1,25 @@
 // Pure grouping of a session's activity rows into chat turns: a finished turn folds into one row plus its final message.
 import { interleave, readableText, summarize } from "./activity-rows.js";
+import { operatorPrompt } from "../../lib/machine-prompt.mjs";
 
 const SUMMARY_CHARS = 60;
 // Seconds around a turn in which a chat message from the agent counts as the same text as its final row.
 export const SLACK_S = 30;
+// The browser has no environment; the wake flag is a server-side concern.
+const NO_ENV = {};
 
 const isStep = row => row.type === "tool_call" || row.type === "subagent" || ((row.type === "tool_result" || row.type === "error") && Boolean(row.tool));
 const oneLine = text => text.replace(/\s+/g, " ").trim();
 const clip = text => text.length > SUMMARY_CHARS ? text.slice(0, SUMMARY_CHARS - 1).trimEnd() + "…" : text;
 
-/** Short subject of a turn: its prompt's first line, else its first tool's summary, else "the task". */
+/** One line of text, clipped to the summary width. */
+export function clipSummary(text) {
+  return clip(oneLine(String(text || "")));
+}
+
+/** Short subject of a turn: the operator's typed prompt's first line, else its first tool's summary, else "the task". */
 export function turnSummary(prompt, body) {
-  const asked = prompt ? oneLine(readableText(prompt.input).text) : "";
+  const asked = prompt && operatorPrompt(prompt.input, NO_ENV) ? oneLine(readableText(prompt.input).text) : "";
   if (asked) return clip(asked);
   const first = body.find(row => row.type === "tool_call");
   return clip(oneLine(first ? summarize(first.input) : "")) || "the task";
