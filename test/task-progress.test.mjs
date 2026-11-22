@@ -44,14 +44,35 @@ test("a progress post from the owner session lands on its building task only", {
     return JSON.parse(result.content[0].text);
   }
 
-  assert.equal((await call("send_to_all", { body: "step one done", session: LABEL, progress: true })).sent, true);
+  const posted = await call("send_to_all", { body: "step one done", session: LABEL, progress: true });
+  assert.equal(posted.sent, true);
+  assert.equal(posted.notes, undefined);
+  // The attach runs after the post, so the tool result returns before the store changes.
+  await waitFor(() => readStore(store).tasks.find((t) => t.id === "mine").progress.length === 1);
   const after = readStore(store).tasks;
-  assert.equal(after.find((t) => t.id === "mine").progress.length, 1);
   assert.equal(after.find((t) => t.id === "mine").progress[0].text, "step one done");
   assert.deepEqual(after.find((t) => t.id === "theirs").progress, []);
   assert.deepEqual(after.find((t) => t.id === "queued").progress, []);
 
+  // A long note is clipped on the task and the result says so.
+  const long = await call("send_to_all", { body: "y".repeat(600), session: LABEL, progress: true });
+  assert.match(long.notes[0], /clipped to 500 characters/);
+  await waitFor(() => readStore(store).tasks.find((t) => t.id === "mine").progress.length === 2);
+  assert.equal([...readStore(store).tasks.find((t) => t.id === "mine").progress[1].text].length, 500);
+
+  // A session that owns no building task gets a note instead of silence.
+  const orphan = await call("send_to_all", { body: "nothing owned", session: "9999999999999999", progress: true });
+  assert.match(orphan.notes[0], /no building task is owned/);
+
   // A plain post (not progress) leaves the task alone.
   await call("send_to_all", { body: "an answer", session: LABEL });
-  assert.equal(readStore(store).tasks.find((t) => t.id === "mine").progress.length, 1);
+  assert.equal(readStore(store).tasks.find((t) => t.id === "mine").progress.length, 2);
 });
+
+async function waitFor(check, ms = 5000) {
+  const until = Date.now() + ms;
+  while (!check()) {
+    if (Date.now() > until) throw new Error("timed out waiting for the store");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
