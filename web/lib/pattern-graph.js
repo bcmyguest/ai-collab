@@ -1,12 +1,13 @@
 // Pattern graphs: an adapter from a listed pattern to the wteam-shaped graph, its DOT text, and the SVG layout the renderer draws.
 export const DONE_ID = "done";
 export const DEFAULT_KIND = "pair";
-export const NODE_W = 136;
+export const NODE_W = 120;
 export const NODE_H = 48;
 export const SLOT_GAP = 176;
 export const DEPTH_GAP = 100;
 export const PAD = 16;
-export const LABEL_MAX = 18;
+export const LABEL_MAX = 12;
+export const LANE_GAP = 26;
 const CHAR_W = 6.6;
 
 /**
@@ -36,12 +37,12 @@ export function toDot(graph, name) {
   for (const node of graph.nodes) {
     const fields = [`agent=${quote(node.agent)}`, `count=${node.count}`];
     if (node.skill) fields.push(`skill=${quote(node.skill)}`);
-    lines.push(`  ${node.id} [${fields.join(", ")}];`);
+    lines.push(`  ${quote(node.id)} [${fields.join(", ")}];`);
   }
   for (const edge of graph.edges) {
     const fields = [`on=${quote(edge.on)}`, `kind=${quote(edge.kind)}`, `required=${edge.required ? "true" : "false"}`];
     if (edge.cap !== undefined) fields.push(`cap=${edge.cap}`);
-    lines.push(`  ${edge.from} -> ${edge.to} [${fields.join(", ")}];`);
+    lines.push(`  ${quote(edge.from)} -> ${quote(edge.to)} [${fields.join(", ")}];`);
   }
   lines.push("}");
   return lines.join("\n");
@@ -65,15 +66,15 @@ function depthsOf(graph) {
   return depth;
 }
 
-/** Width an edge label takes at 11px mono, with room for a cap or count suffix. */
+/** Width of an edge label's widest line at 11px mono, plus padding. */
 function labelWidth(edge) {
-  return edgeLabel(edge).length * CHAR_W + 28;
+  return Math.max(...edgeLines(edge).map(line => line.length)) * CHAR_W + 14;
 }
 
 /**
  * Vertical layout: the first node at the top, one row per depth, nodes side by side within a row, done last.
- * Forward edges run down, their labels to the right of the arrow. An edge that goes up or stays in its row loops out
- * to the left, its label ending at the loop; the layout shifts right when a loop needs room.
+ * An edge one row down runs straight; an edge that goes up, stays in its row, or skips rows loops out to the left,
+ * in its own lane. A skipping edge's label sits in the gap above its target, clear of the rows it passes.
  */
 export function layoutGraph(graph) {
   if (!graph.nodes.length) return { nodes: [], edges: [], width: 2 * PAD, height: 2 * PAD };
@@ -87,44 +88,46 @@ export function layoutGraph(graph) {
   });
   const doneDepth = Math.max(...nodes.map(node => node.depth)) + 1;
   if (graph.edges.some(edge => edge.to === DONE_ID)) nodes.push({ id: DONE_ID, agent: "", count: 1, skill: "", depth: doneDepth, slot: 0, done: true });
-  const isLoop = edge => depth.get(edge.to) === undefined ? false : (edge.to === DONE_ID ? false : depth.get(edge.to) <= depth.get(edge.from));
+  const rowOf = new Map(nodes.map(node => [node.id, node.depth]));
+  const sideRoute = edge => rowOf.get(edge.to) - rowOf.get(edge.from) !== 1;
   const unshifted = new Map(nodes.map(node => [node.id, PAD + node.slot * SLOT_GAP]));
   let offset = 0;
-  let loops = 0;
+  let lanes = 0;
   for (const edge of graph.edges) {
-    if (!isLoop(edge)) continue;
-    const bulge = Math.min(unshifted.get(edge.from), unshifted.get(edge.to)) - 40 - loops * 30;
-    loops += 1;
+    if (!sideRoute(edge)) continue;
+    const bulge = Math.min(unshifted.get(edge.from), unshifted.get(edge.to)) - 40 - lanes * LANE_GAP;
+    lanes += 1;
     offset = Math.max(offset, PAD - (bulge - 4 - labelWidth(edge)));
   }
   const place = nodes.map(node => ({ ...node, x: offset + PAD + node.slot * SLOT_GAP, y: PAD + node.depth * DEPTH_GAP }));
   const at = new Map(place.map(node => [node.id, node]));
-  loops = 0;
+  lanes = 0;
   let right = 0;
   const edges = graph.edges.map((edge, index) => {
     const src = at.get(edge.from);
     const dst = at.get(edge.to);
     const base = { ...edge, index };
-    if (!isLoop(edge)) {
+    if (!sideRoute(edge)) {
       const x1 = src.x + NODE_W / 2;
       const y1 = src.y + NODE_H;
       const x2 = dst.x + NODE_W / 2;
       const y2 = dst.y;
       const c = (y2 - y1) / 2;
-      const lx = (x1 + x2) / 2 + 8;
-      right = Math.max(right, lx + labelWidth(edge));
-      return { ...base, loop: false, path: `M${x1},${y1} C${x1},${y1 + c} ${x2},${y2 - c} ${x2},${y2}`, lx, ly: (y1 + y2) / 2, anchor: "start" };
+      // The label sits centred on its arrow, in the gap between the rows; it adds no width.
+      const lx = (x1 + x2) / 2;
+      return { ...base, loop: false, path: `M${x1},${y1} C${x1},${y1 + c} ${x2},${y2 - c} ${x2},${y2}`, lx, ly: (y1 + y2) / 2, anchor: "middle" };
     }
     const x1 = src.x;
     const y1 = src.y + NODE_H / 2;
     const x2 = dst.x;
     const y2 = dst.y + NODE_H / 2;
-    const bulge = Math.min(x1, x2) - 40 - loops * 30;
-    loops += 1;
+    const bulge = Math.min(x1, x2) - 40 - lanes * LANE_GAP;
+    lanes += 1;
     right = Math.max(right, src.x + NODE_W, dst.x + NODE_W);
+    const skips = rowOf.get(edge.to) - rowOf.get(edge.from) > 1;
     return {
       ...base, loop: true, path: `M${x1},${y1} C${bulge},${y1} ${bulge},${y2} ${x2},${y2}`,
-      lx: 0.125 * x1 + 0.75 * bulge + 0.125 * x2 - 4, ly: (y1 + y2) / 2, anchor: "end",
+      lx: 0.125 * x1 + 0.75 * bulge + 0.125 * x2 - 4, ly: skips ? dst.y - DEPTH_GAP / 2 : (y1 + y2) / 2, anchor: "end",
     };
   });
   const maxSlots = Math.max(...place.map(node => node.slot)) + 1;
@@ -135,15 +138,15 @@ export function layoutGraph(graph) {
 }
 
 /**
- * Edge label: the event (cut to LABEL_MAX), the kind, then the cap as "max N" or, in a run, "used/N".
- * An uncapped edge fired in a run reads "×N".
+ * Edge label as two lines: the event (cut to LABEL_MAX), then the kind with the cap as "max N" or, in a run, "used/N".
+ * An uncapped edge fired in a run adds "×N". Long events are cut here and shown in full in the handoff list.
  */
-export function edgeLabel(edge, used = null) {
+export function edgeLines(edge, used = null) {
   const on = edge.on.length > LABEL_MAX ? `${edge.on.slice(0, LABEL_MAX - 1)}…` : edge.on;
-  const parts = [on, edge.kind];
-  if (edge.cap === undefined) { if (used) parts.push(`×${used}`); }
-  else parts.push(used === null ? `max ${edge.cap}` : `${used}/${edge.cap}`);
-  return parts.filter(Boolean).join(" · ");
+  const meta = [edge.kind];
+  if (edge.cap === undefined) { if (used) meta.push(`×${used}`); }
+  else meta.push(used === null ? `max ${edge.cap}` : `${used}/${edge.cap}`);
+  return [on, meta.filter(Boolean).join(" · ")];
 }
 
 /** The node's first line: its id, with ×count when a role runs more than once. */

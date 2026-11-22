@@ -1,9 +1,9 @@
 // Pattern list, inspect and run views: which actions a listed entry allows, and what a run can take next.
 export const SCOPE_LABELS = { "built-in": "built-in", global: "global", project: "project", team: "team" };
 
-/** Project patterns and project teams can be deleted here; built-in and global entries are read-only. */
-export function canEdit(source) {
-  return source === "project" || source === "team";
+/** Delete is offered for the project's own patterns and teams: the server's removable flag (global teams live in teams.json). */
+export function canDelete(pattern) {
+  return pattern.removable === true;
 }
 
 /** Built-in and global patterns copy into the project. */

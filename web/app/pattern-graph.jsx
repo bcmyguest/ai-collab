@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { NODE_H, NODE_W, edgeLabel, layoutGraph, nodeTitle } from "@/lib/pattern-graph";
+import { NODE_H, NODE_W, edgeLines, layoutGraph, nodeTitle } from "@/lib/pattern-graph";
 import { firedCounts } from "@/lib/pattern-view";
 
 // Nodes are roles, arrows are handoffs: solid when required, dashed for guidance. `used` is a run; `active` names the node it is on.
@@ -16,15 +16,17 @@ export function RoleGraph({ graph, active = "", used = null, label = "Pattern gr
       </marker>
     </defs>
     {geo.edges.map(edge => {
-      const text = edgeLabel(edge, fired ? fired(edge) : null);
-      const width = text.length * 6.6 + 12;
-      const left = edge.anchor === "end" ? edge.lx - width + 4 : edge.lx - 4;
+      const [first, second] = edgeLines(edge, fired ? fired(edge) : null);
+      const width = Math.max(first.length, second.length) * 6.6 + 14;
+      const left = edge.anchor === "end" ? edge.lx - width + 4 : edge.anchor === "middle" ? edge.lx - width / 2 : edge.lx - 4;
+      const x = edge.anchor === "start" ? edge.lx + 4 : edge.lx;
       return <g key={edge.index}>
         <path d={edge.path} fill="none" className="stroke-current" strokeWidth="1.5" strokeDasharray={edge.required ? undefined : "5 4"} markerEnd={`url(#${markerId})`}>
           <title>{`${edge.from} → ${edge.to}: "${edge.on}" (${edge.required ? "required" : "guidance"}, ${edge.kind})`}</title>
         </path>
-        <rect x={left} y={edge.ly - 9} width={width} height={18} rx={9} className="fill-background stroke-border" strokeWidth="1"/>
-        <text x={edge.anchor === "end" ? edge.lx : edge.lx + 4} y={edge.ly + 4} textAnchor={edge.anchor} fontSize="11" className="fill-foreground font-mono">{text}</text>
+        <rect x={left} y={edge.ly - 15} width={width} height={30} rx={8} className="fill-background stroke-border" strokeWidth="1"/>
+        <text x={x} y={edge.ly - 2} textAnchor={edge.anchor} fontSize="11" className="fill-foreground font-mono">{first}</text>
+        <text x={x} y={edge.ly + 11} textAnchor={edge.anchor} fontSize="10" className="fill-muted-foreground font-mono">{second}</text>
       </g>;
     })}
     {geo.nodes.map(node => {
@@ -62,7 +64,7 @@ export function HandoffDiagram({ handoffs }) {
 export function ConfirmButton({ label, question, confirmLabel, onConfirm, disabled, variant = "outline" }) {
   const [asking, setAsking] = useState(false);
   if (!asking) return <Button type="button" size="sm" variant={variant} disabled={disabled} onClick={() => setAsking(true)}>{label}</Button>;
-  return <span role="alert" className="flex flex-wrap items-center gap-2 text-xs">
+  return <span className="flex flex-wrap items-center gap-2 text-xs">
     <span>{question}</span>
     <Button type="button" size="sm" variant="destructive" disabled={disabled} onClick={() => { setAsking(false); onConfirm(); }}>{confirmLabel}</Button>
     <Button type="button" size="sm" variant="ghost" onClick={() => setAsking(false)}>Keep</Button>

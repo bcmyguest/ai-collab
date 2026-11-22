@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
-import { BUILT_IN_PATTERNS, copyPattern, createPattern, listPatterns, removePattern, savePattern, validatePattern } from "../lib/patterns.mjs";
+import { BUILT_IN_PATTERNS, copyPattern, createPattern, listPatterns, removableNames, removePattern, savePattern, validatePattern } from "../lib/patterns.mjs";
 import { createTeam, listTeams } from "../lib/teams.mjs";
 
 const MODELS = { claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] };

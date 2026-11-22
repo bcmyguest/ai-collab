@@ -22,7 +22,7 @@ import { availableHarnesses, availablePlaces, projectRoot, checkPrompt, startSes
 import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
 import { createTeam, deleteTeam, listTeams, teamTask } from "../../lib/teams.mjs";
-import { copyPattern, listPatterns, removePattern, savePattern } from "../../lib/patterns.mjs";
+import { copyPattern, listPatterns, removableNames, removePattern, savePattern } from "../../lib/patterns.mjs";
 import { advanceRun, listRuns, startRun } from "../../lib/pattern-runs.mjs";
 import { formatTeamOrchestrator } from "../../lib/format.mjs";
 import { activityRows, groupSubagents, summarize } from "../lib/activity-rows.js";
@@ -803,9 +803,17 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       startable: startable(project),
       startPlaces: startPlaces(project),
       teams: Object.entries(listTeams(project.cfg, env)).map(([id, members]) => ({ id, members })),
-      patterns: Object.values(listPatterns(project.cfg, env)).map(({ name, source, legacy, invalid, description, roles, handoffs }) => ({ name, source, legacy: legacy === true, ...(invalid ? { invalid } : {}), ...(description ? { description } : {}), roles, handoffs })),
+      patterns: patternRows(project.cfg, env),
       runs: listRuns(project.cfg).slice(0, 20),
     };
+  }
+
+  // Listed patterns for the Patterns page; removable marks the project's own patterns and teams (global teams stay in teams.json).
+  function patternRows(cfg, env) {
+    const removable = removableNames(cfg, env);
+    return Object.values(listPatterns(cfg, env)).map(({ name, source, legacy, invalid, description, roles, handoffs }) => ({
+      name, source, legacy: legacy === true, removable: removable.has(name), ...(invalid ? { invalid } : {}), ...(description ? { description } : {}), roles, handoffs,
+    }));
   }
 
   // One session's activity, or every allowed agent's for the project overview, oldest first.

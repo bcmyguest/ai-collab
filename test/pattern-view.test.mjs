@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DEFAULT_KIND, LABEL_MAX, edgeLabel, layoutGraph, nodeTitle, toDot, toGraph } from "../web/lib/pattern-graph.js";
-import { canCopy, canEdit, firedCounts, pendingEvents, runsOf } from "../web/lib/pattern-view.js";
+import { DEFAULT_KIND, LABEL_MAX, edgeLines, layoutGraph, nodeTitle, toDot, toGraph } from "../web/lib/pattern-graph.js";
+import { canCopy, canDelete, firedCounts, pendingEvents, runsOf } from "../web/lib/pattern-view.js";
 import { parseSelection } from "../web/lib/selection.js";
 
 const fixOne = {
@@ -29,11 +29,12 @@ test("the patterns level keeps its pattern, raw flag and run in the selection", 
   assert.equal(parseSelection("level=patterns&project=demo").raw, false);
 });
 
-test("built-in and global patterns copy to the project; project patterns and teams can be deleted", () => {
-  assert.equal(canEdit("project"), true);
-  assert.equal(canEdit("team"), true);
-  assert.equal(canEdit("built-in"), false);
-  assert.equal(canEdit("global"), false);
+test("delete is offered only for removable entries; built-in and global patterns copy to the project", () => {
+  assert.equal(canDelete({ source: "project", removable: true }), true);
+  assert.equal(canDelete({ source: "team", removable: true }), true);
+  assert.equal(canDelete({ source: "team", removable: false }), false);
+  assert.equal(canDelete({ source: "global" }), false);
+  assert.equal(canDelete({ source: "built-in" }), false);
   assert.equal(canCopy("built-in"), true);
   assert.equal(canCopy("global"), true);
   assert.equal(canCopy("project"), false);
@@ -72,15 +73,32 @@ test("toDot writes the definition as DOT with node and edge attributes", () => {
   assert.equal(dot, [
     'digraph "fix-and-review" {',
     '  graph [description="Scope, implement, and review one change."];',
-    '  lead [agent="claude:claude-haiku-5-5", count=1];',
-    '  lead -> done [on="say \\"done\\"", kind="pair", required=true];',
+    '  "lead" [agent="claude:claude-haiku-5-5", count=1];',
+    '  "lead" -> "done" [on="say \\"done\\"", kind="pair", required=true];',
     "}",
   ].join("\n"));
 });
 
+test("toDot quotes ids that DOT would misread: hyphens, dots and keywords", () => {
+  const graph = {
+    description: "",
+    nodes: [{ id: "claude-1", agent: "claude", count: 1, skill: "" }, { id: "code-reviewer", agent: "codex", count: 1, skill: "" }, { id: "node", agent: "claude", count: 1, skill: "" }],
+    edges: [
+      { from: "claude-1", to: "code-reviewer", on: "ready", kind: "pair", required: true },
+      { from: "code-reviewer", to: "node", on: "ok", kind: "pair", required: false },
+    ],
+    maxVisits: null,
+  };
+  const dot = toDot(graph, "fix");
+  assert.match(dot, /^ {2}"claude-1" \[agent="claude", count=1\];$/m);
+  assert.match(dot, /^ {2}"node" \[agent="claude", count=1\];$/m);
+  assert.match(dot, /^ {2}"claude-1" -> "code-reviewer" \[on="ready", kind="pair", required=true\];$/m);
+  assert.match(dot, /^ {2}"code-reviewer" -> "node" \[on="ok", kind="pair", required=false\];$/m);
+});
+
 test("toDot adds max_visits and skill when the graph carries them", () => {
   const graph = { description: "", nodes: [{ id: "worker", agent: "codex", count: 2, skill: "review" }], edges: [], maxVisits: 4 };
-  assert.equal(toDot(graph, "t"), 'digraph "t" {\n  graph [max_visits=4];\n  worker [agent="codex", count=2, skill="review"];\n}');
+  assert.equal(toDot(graph, "t"), 'digraph "t" {\n  graph [max_visits=4];\n  "worker" [agent="codex", count=2, skill="review"];\n}');
 });
 
 test("the layout puts the entry first, the reviewer below it, and done last", () => {
@@ -93,11 +111,19 @@ test("the layout puts the entry first, the reviewer below it, and done last", ()
   assert.equal(geo.edges.length, 5);
 });
 
-test("backward and same-row edges loop out to the side; forward edges run down", () => {
+test("backward, same-row and row-skipping edges loop out to the side; one-row forward edges run down", () => {
   const geo = layoutGraph(toGraph(fixOne));
   const loops = geo.edges.filter((edge) => edge.loop).map((edge) => `${edge.from}->${edge.to}`).sort();
-  assert.deepEqual(loops, ["reviewer->implementer", "reviewer->lead"]);
+  assert.deepEqual(loops, ["lead->done", "reviewer->implementer", "reviewer->lead"]);
   assert.equal(geo.edges.find((edge) => edge.from === "lead" && edge.to === "implementer").loop, false);
+});
+
+test("a row-skipping edge labels in the gap above its target, clear of the rows it passes", () => {
+  const geo = layoutGraph(toGraph(fixOne));
+  const skip = geo.edges.find((edge) => edge.from === "lead" && edge.to === "done");
+  const done = geo.nodes.find((node) => node.id === "done");
+  const reviewer = geo.nodes.find((node) => node.id === "reviewer");
+  assert.ok(skip.ly > reviewer.y + 48 && skip.ly < done.y);
 });
 
 test("a node counted twice shows its count", () => {
@@ -105,12 +131,13 @@ test("a node counted twice shows its count", () => {
   assert.equal(nodeTitle({ id: "worker", count: 1 }), "worker");
 });
 
-test("an edge label shows the event, its kind, and the cap or the used count", () => {
+test("an edge label is two lines: the event cut to LABEL_MAX, then the kind with the cap or the used count", () => {
   const capped = toGraph(fixOne).edges[2];
-  assert.equal(edgeLabel(capped), "changes requested · pair · max 3");
-  assert.equal(edgeLabel(capped, 2), "changes requested · pair · 2/3");
-  assert.equal(edgeLabel(toGraph(fixOne).edges[0], 2), "scope · pair · ×2");
-  assert.equal(edgeLabel({ on: "x".repeat(40), kind: "fan-in" }).split(" · ")[0].length, LABEL_MAX);
+  const cut = "changes requested".slice(0, LABEL_MAX - 1) + "…";
+  assert.deepEqual(edgeLines(capped), [cut, "pair · max 3"]);
+  assert.deepEqual(edgeLines(capped, 2), [cut, "pair · 2/3"]);
+  assert.deepEqual(edgeLines(toGraph(fixOne).edges[0], 2), ["scope", "pair · ×2"]);
+  assert.equal(edgeLines({ on: "x".repeat(40), kind: "fan-in" })[0].length, LABEL_MAX);
 });
 
 test("firedCounts counts handoffs by from, to and event", () => {

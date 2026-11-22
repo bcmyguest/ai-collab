@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toDot, toGraph } from "@/lib/pattern-graph";
-import { SCOPE_LABELS, canCopy, canEdit, handoffLine, firedCounts, pendingEvents, runsOf } from "@/lib/pattern-view";
+import { SCOPE_LABELS, canCopy, canDelete, handoffLine, firedCounts, pendingEvents, runsOf } from "@/lib/pattern-view";
 import { ConfirmButton, HandoffDiagram, RoleGraph } from "./pattern-graph";
 
 const clock = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -42,7 +42,8 @@ function PatternInspect({ pattern, own, go, act, busy, disabled, notice, raw }) 
     </div>
     <p className="text-muted-foreground">{describe(pattern)}</p>
     {pattern.invalid && <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">{pattern.invalid}</p>}
-    {!canEdit(pattern.source) && <p className="text-xs text-muted-foreground">Read-only. Copy it to the project to change it.</p>}
+    {canCopy(pattern.source) && <p className="text-xs text-muted-foreground">Read-only. Copy it to the project to change it.</p>}
+    {pattern.source === "team" && !pattern.removable && <p className="text-xs text-muted-foreground">Global team: remove it from teams.json.</p>}
 
     <section className="flex flex-col gap-2">
       <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Roles</h3>
@@ -79,7 +80,7 @@ function PatternInspect({ pattern, own, go, act, busy, disabled, notice, raw }) 
     <div className="flex flex-wrap gap-2">
       {canCopy(pattern.source) && <Button type="button" size="sm" disabled={disabled || Boolean(busy)} onClick={() => act("copy", { copyPattern: pattern.name }, () => go({ pattern: pattern.name }))}>
         Copy to project</Button>}
-      {canEdit(pattern.source) && <ConfirmButton label="Delete" question={`Delete ${pattern.legacy ? "team" : "pattern"} ${pattern.name}?`} confirmLabel="Delete" disabled={disabled || Boolean(busy)}
+      {canDelete(pattern) && <ConfirmButton label="Delete" question={`Delete ${pattern.legacy ? "team" : "pattern"} ${pattern.name}?`} confirmLabel="Delete" disabled={disabled || Boolean(busy)}
         onConfirm={() => act("delete", { deletePattern: pattern.name }, () => go({}))}/>}
     </div>
   </div>;
@@ -91,6 +92,9 @@ export function PatternsPage({ data, project, selected, navigate, call, disabled
   const patterns = [...(data.patterns ?? [])].sort((a, b) => a.name.localeCompare(b.name));
   const runs = data.runs ?? [];
   const go = next => navigate({ project, level: "patterns", ...next });
+  // A notice or a pending action belongs to the view it began in; moving to another pattern or run clears both.
+  const view = selected.run || selected.pattern || "";
+  useEffect(() => { setNotice(""); setBusy(""); }, [view]);
 
   async function act(label, payload, after) {
     setBusy(label); setNotice("");
@@ -103,7 +107,8 @@ export function PatternsPage({ data, project, selected, navigate, call, disabled
   if (selected.run) {
     const run = runs.find(item => item.id === selected.run);
     if (!run) return <p className="py-16 text-center text-sm text-muted-foreground">Run {selected.run} is not in the last 20 runs.</p>;
-    return <RunView run={run} data={data} go={go} act={act} busy={busy} disabled={disabled} notice={notice}/>;
+    // Keyed on the handoff count so the operator's chosen event resets after each advance.
+    return <RunView key={run.id + ":" + (run.handoffs?.length ?? 0)} run={run} data={data} go={go} act={act} busy={busy} disabled={disabled} notice={notice}/>;
   }
 
   if (selected.pattern) {
