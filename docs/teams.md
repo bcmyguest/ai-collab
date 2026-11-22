@@ -48,7 +48,18 @@ Edge attributes (a handoff; `done` is the only node that is not declared):
 
 Checks: unknown attributes, kinds, harnesses and models, and edges to undeclared nodes fail with the line number. A pair edge needs both roles to have the same `count`. The digraph name is the team name and must match its folder. The first node is the entry role; every role must be reachable from it, and at least one edge must reach `done`.
 
-Not supported: `$variables` in `count`, `node`/`edge`/`subgraph` defaults, gate shapes, `label` and `shape`. A file that uses them shows `invalid` with the line.
+### What loads from wteam files
+
+Loads: `digraph` with `graph [...]`, node and edge statements, `//` and `/* */` comments, node ids of letters, digits, `_` and `-` (quoted when they contain `-`). Attributes as in the tables above.
+
+Warnings, not errors (the parser reports each with its line; the editor lists them above the text, and the file keeps them as written): `shape`, `label`, `handoff_tokens`, `continue`.
+
+Does not load (the file shows `invalid` with the line):
+- `count="$pairs"` or any `$variable`; `count` takes a whole number 1-8.
+- `node`, `edge` and `subgraph` defaults.
+- Gate nodes: a node with no `agent`.
+- An unquoted id containing `-` (`quote ids containing -`).
+- Role-to-agent mapping. A role's `agent` is written in the file.
 
 ## Enforcement
 

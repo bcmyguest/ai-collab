@@ -58,6 +58,31 @@ test("a prompt longer than 1000 characters is refused, the same limit validatePa
   assert.equal(parseDot(`digraph t {\n  a [agent="codex", prompt="${"x".repeat(1000)}"];\n}`).nodes[0].prompt.length, 1000);
 });
 
+test("node ids may contain an underscore", () => {
+  const team = parseDot('digraph t { my_role [agent="codex"]; my_role -> done [on="x"]; }');
+  assert.equal(team.nodes[0].id, "my_role");
+  assert.deepEqual(parseDot(serializeDot(team)), team);
+});
+
+test("wteam display attributes load with a warning per attribute, not an error", () => {
+  const team = parseDot(`digraph t {
+  graph [handoff_tokens=150000];
+  a [agent="claude", shape="box", label="Planner", continue=true, prompt="A."];
+  b [agent="codex", prompt="B."];
+  a -> b [on="go", label="ship"];
+  b -> done [on="finish"];
+}
+`);
+  assert.equal(team.nodes[0].prompt, "A.");
+  assert.deepEqual(team.warnings.map((item) => item.line), [2, 3, 3, 3, 5]);
+  assert.match(team.warnings[1].message, /ignored node attribute "shape"/);
+  assert.match(team.warnings[4].message, /ignored edge attribute "label"/);
+});
+
+test("an unquoted id with a dash asks for quotes", () => {
+  expectError('digraph t {\n  fan-in [agent="codex"];\n}', /quote ids containing -/, 2);
+});
+
 test("defaults count to 1, kind to pair and required to false", () => {
   const team = parseDot('digraph t { a [agent="codex"]; a -> done [on="finish"]; }');
   assert.equal(team.nodes[0].count, 1);
@@ -84,7 +109,7 @@ test("rejects an edge to an undeclared node", () => {
 });
 
 test("rejects unknown node, edge and graph attributes", () => {
-  expectError('digraph t {\n  a [agent="codex", label="x"];\n}', /unknown node attribute "label"/, 2);
+  expectError('digraph t {\n  a [agent="codex", colour="x"];\n}', /unknown node attribute "colour"/, 2);
   expectError('digraph t {\n  a [agent="codex"];\n  a -> done [on="x", weight=2];\n}', /unknown edge attribute "weight"/, 3);
   expectError('digraph t {\n  graph [rankdir="LR"];\n  a [agent="codex"];\n}', /unknown graph attribute "rankdir"/, 2);
 });

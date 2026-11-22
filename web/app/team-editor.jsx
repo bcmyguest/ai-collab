@@ -75,6 +75,7 @@ export function TeamEditor({ pattern, templates, project, call, go, disabled }) 
         {check.line && <code className="block overflow-x-auto font-mono">{sourceLine(text, check.line)}</code>}
       </div>}
       {!error && check?.ok && <p className="text-xs text-muted-foreground">Valid. Save writes {name}/team.dot in the project.</p>}
+      {!error && check?.warnings?.length > 0 && <p className="text-xs text-muted-foreground">Ignored: {check.warnings.map(item => `line ${item.line}: ${item.message}`).join("; ")}</p>}
       <textarea aria-label="Team definition" spellCheck={false} rows={12} value={text} onChange={e => setText(e.target.value)}
         className="min-h-56 w-full rounded-xl border bg-background p-3 font-mono text-xs leading-relaxed"/>
       {notice && <p role="alert" className="text-xs text-destructive">{notice}</p>}
