@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ACTIVITY_MAX_BYTES, activityEvents, buildActivity } from "../lib/activity.mjs";
@@ -29,7 +30,7 @@ test("a result with a huge input still fits the ntfy cap and keeps its output", 
   const cfg = { peer: "alice", session: "aabbccddeeff0011" };
   const { message } = buildActivity(cfg, "claude", event);
   assert.ok(Buffer.byteLength(message) <= ACTIVITY_MAX_BYTES);
-  const envelope = JSON.parse(message);
+  const envelope = parseWireEnvelope(message);
   assert.equal(envelope.output, "done");
   assert.match(envelope.input, /truncated/);
 });

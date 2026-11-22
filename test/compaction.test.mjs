@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { createClaudeAdapter } from "../runner/adapters/claude.mjs";
 import { activityFor } from "../runner/publish.mjs";
 import { compactionFields } from "../lib/compaction.mjs";
-import { envelopeToEvent, eventToEnvelope } from "../lib/agui.mjs";
+import { envelopeToEvent, eventToEnvelope, parseWireEnvelope } from "../lib/agui.mjs";
 
 const step = (stepName, metadata) => ({ type: EventType.STEP_FINISHED, stepName, ...(metadata ? { metadata: { aiCollab: { compaction: metadata } } } : {}) });
 
@@ -89,5 +89,5 @@ test("a compact row's compaction fields reach the published envelope", async () 
   const { buildActivity } = await import("../lib/activity.mjs");
   const cfg = { peer: "claude", session: "abc123", wire: "legacy" };
   const { message } = buildActivity(cfg, "claude", { type: "compact", input: "compacted · auto", compaction: { trigger: "auto", phase: "finished", tokensBefore: 182000, tokensAfter: 31000, junk: 1 } }, "2026-11-22T10:00:00.000Z");
-  assert.deepEqual(JSON.parse(message).compaction, { trigger: "auto", phase: "finished", tokensBefore: 182000, tokensAfter: 31000 });
+  assert.deepEqual(parseWireEnvelope(message).compaction, { trigger: "auto", phase: "finished", tokensBefore: 182000, tokensAfter: 31000 });
 });

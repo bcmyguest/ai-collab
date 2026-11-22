@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -28,7 +29,7 @@ test("send to a peer goes to its inbox topic with bearer auth and a small envelo
   const p = fake.state.publishes[0];
   assert.equal(p.topic, "ai-collab-demo--to--bob");
   assert.equal(p.auth, `Bearer ${TOKEN}`);
-  const env = JSON.parse(p.message);
+  const env = parseWireEnvelope(p.message);
   assert.deepEqual(Object.keys(env).sort(), ["body", "from", "kind", "to", "ts", "v"]);
   assert.equal(env.from, "alice");
   assert.equal(env.to, "bob");
@@ -145,7 +146,7 @@ test("peek does not advance cursors or write state", async (t) => {
 test("status is metadata only and is readable by peers", async (t) => {
   const { fake, alice, bob } = await setup(t);
   await publishStatus(alice, { event: "start", harness: "claude" });
-  const status = JSON.parse(fake.state.publishes[0].message);
+  const status = parseWireEnvelope(fake.state.publishes[0].message);
   assert.deepEqual(Object.keys(status).sort(), ["event", "from", "harness", "kind", "ts", "v"]);
   assert.equal(fake.state.publishes[0].topic, "ai-collab-demo--status");
   const seen = await readStatuses(bob);

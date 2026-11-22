@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -104,7 +105,7 @@ test("MCP: version comes from package.json; send_to_all replies to broadcasts an
   assert.equal(ask.inputSchema.properties.important.type, "boolean");
 
   assert.deepEqual(await call("send_to_all", { body: "Done with step 1", session, reply_to: "m00000001" }), { sent: true, mode: "off" });
-  const reply = JSON.parse(fake.state.publishes.at(-1).message);
+  const reply = parseWireEnvelope(fake.state.publishes.at(-1).message);
   assert.equal(fake.state.publishes.at(-1).topic, "ai-collab-demo--to--all");
   assert.deepEqual([reply.from, reply.session, reply.to, reply.replyTo, reply.body], ["alice", session, "all", "m00000001", "Done with step 1"]);
 

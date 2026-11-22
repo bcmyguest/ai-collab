@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
@@ -17,7 +18,7 @@ function ui(t, fake) {
   }), "send");
 }
 
-const lastEnvelope = (fake) => JSON.parse(fake.state.publishes.at(-1).message);
+const lastEnvelope = (fake) => parseWireEnvelope(fake.state.publishes.at(-1).message);
 
 test("a reply id the server cannot carry goes out as plain text quoting the original's ends", async (t) => {
   const fake = await startFakeNtfy();

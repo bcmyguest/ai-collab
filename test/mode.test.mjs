@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -93,7 +94,7 @@ test("publishMode and `ai-collab afk` reach every project in projects.json", asy
   assert.deepEqual(cfgs.map((c) => [c.project, c.peer]), [["one", "operator"], ["two", "operator"]]);
 
   assert.deepEqual(await publishMode(cfgs, "on", { now: 42 }), [{ project: "one", ok: true }, { project: "two", ok: true }]);
-  assert.deepEqual(fake.state.publishes.map((p) => [p.topic, JSON.parse(p.message)]), [
+  assert.deepEqual(fake.state.publishes.map((p) => [p.topic, parseWireEnvelope(p.message)]), [
     ["ai-collab-one--to--all", { v: 1, kind: "mode", from: "operator", mode: "on", ts: 42 }],
     ["ai-collab-two--to--all", { v: 1, kind: "mode", from: "operator", mode: "on", ts: 42 }],
   ]);

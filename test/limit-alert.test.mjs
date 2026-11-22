@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -20,7 +21,7 @@ async function setup(t) {
   return { fake, env, cfg: { ...loadConfig(env), session: SESSION } };
 }
 
-const cards = (fake) => fake.state.publishes.flatMap((p) => { try { const m = JSON.parse(p.message); return m.kind === "approval" ? [m] : []; } catch { return []; } });
+const cards = (fake) => fake.state.publishes.flatMap((p) => { try { const m = parseWireEnvelope(p.message); return m.kind === "approval" ? [m] : []; } catch { return []; } });
 
 test("resetClock formats a local HH:MM and is empty without a time", () => {
   assert.equal(resetClock(new Date(2026, 10, 22, 18, 0).getTime()), "18:00");
@@ -51,7 +52,7 @@ test("replacementOptions ignores a malformed fallback and caps the list at four"
 
 test("alertLimit publishes one choice card and skips the same window", async (t) => {
   const { fake, cfg } = await setup(t);
-  const deps = { listed: async () => LISTED, available: () => ["claude", "codex"] };
+  const deps = { now: FIVE_HOUR.resetsAt - 60_000, listed: async () => LISTED, available: () => ["claude", "codex"] };
   const first = await alertLimit(cfg, { harness: "claude", limit: FIVE_HOUR, ...deps });
   assert.equal(first.status, "sent");
   const [card] = cards(fake);
@@ -113,7 +114,7 @@ test("a limit card expires at its reset, or 5 hours after the first alert when t
 
 test("two sessions in one typed window share a card that lists both, and the first card closes", async (t) => {
   const { fake, cfg } = await setup(t);
-  const deps = { listed: async () => LISTED, available: () => ["codex"] };
+  const deps = { now: FIVE_HOUR.resetsAt - 60_000, listed: async () => LISTED, available: () => ["codex"] };
   const other = "1111222233334444";
   const first = await alertLimit({ ...cfg, session: SESSION }, { harness: "claude", limit: FIVE_HOUR, ...deps });
   const second = await alertLimit({ ...cfg, session: other }, { harness: "claude", limit: FIVE_HOUR, ...deps });
@@ -122,12 +123,12 @@ test("two sessions in one typed window share a card that lists both, and the fir
   const published = cards(fake);
   assert.equal(published.length, 2);
   assert.match(published[1].summary, new RegExp(`Sessions: alice#${SESSION}, alice#${other}`));
-  const ends = fake.state.publishes.flatMap((p) => { try { const m = JSON.parse(p.message); return m.kind === "approval-end" ? [m] : []; } catch { return []; } });
+  const ends = fake.state.publishes.flatMap((p) => { try { const m = parseWireEnvelope(p.message); return m.kind === "approval-end" ? [m] : []; } catch { return []; } });
   assert.deepEqual(ends.map((m) => [m.id, m.reason]), [[first.id, "cancelled"]]);
 });
 
 test("one limit reported by the hook and the runner yields one card, whichever arrives first", async (t) => {
-  const deps = { listed: async () => LISTED, available: () => ["codex"] };
+  const deps = { now: FIVE_HOUR.resetsAt - 60_000, listed: async () => LISTED, available: () => ["codex"] };
   const untyped = { window: null, windowName: null, resetsAt: null, wording: true, verified: true, source: "test" };
   const typed = FIVE_HOUR;
   const first = await setup(t);

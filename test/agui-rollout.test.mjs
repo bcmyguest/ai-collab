@@ -3,8 +3,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { EventSchema } from "@ag-ui/core/schemas";
 import { buildActivity, publishActivity } from "../lib/activity.mjs";
-import { parseEvent } from "../lib/agui.mjs";
+import { parseEvent, parseWireEnvelope } from "../lib/agui.mjs";
 import { approvalMessage } from "../lib/approvals.mjs";
 import { loadConfig } from "../lib/config.mjs";
 import { publishStatus, sendMessage } from "../lib/inbox.mjs";
@@ -20,46 +21,49 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 
 const SESSION = "aabbccddeeff0011";
 
-test("main's readers recognize the default writers and plain questions", async t => {
-  const fake = await startFakeNtfy();
-  t.after(() => fake.close());
-  const cfg = { ...loadConfig(peerEnv(fake, { peer: "alice" })), session: SESSION };
-  await sendMessage(cfg, "bob", "direct");
-  await sendMessage(cfg, "all", "broadcast");
-  await publishStatus(cfg, { harness: "claude", event: "start" });
-  await publishActivity(cfg, "claude", [{ type: "prompt", input: "test" }]);
-  await publishMode([cfg], "quiet", { now: 123 });
-  await reportContext(cfg, 250_000);
-  sendReceipts(cfg, ["message-1"]);
-  await settleReceipts();
-  const approved = { id: "aabbccddeeff", tool: "Read", summary: "test" };
-  const card = approvalMessage(cfg, "claude", approved, { id: approved.id, expiresAt: 1000 });
-  const owned = ownedApprovalMessage(cfg, "claude", approved);
-  const closed = approvalEndMessage(cfg, approved.id, "allowed");
-  const wires = fake.state.publishes.map(p => p.message);
-  const messages = [...wires, card, owned, closed].map(parseEnvelope);
-  assert.deepEqual(messages.map(m => m?.kind), ["msg", "msg", "status", "activity", "mode", "alert", "receipt", "approval", "approval", "approval-end"]);
-  assert.deepEqual(messages.slice(0, 2).map(m => [m.to, m.body]), [["bob", "direct"], ["all", "broadcast"]]);
-  assert.deepEqual(parseMode(wires[4]), { mode: "quiet", ts: 123 });
-  assert.equal(messages.at(-2).owned, true);
-  for (const wire of ["legacy", "agui"]) {
-    const question = await askQuestion({ ...cfg, wire }, "Which option?", { seconds: 0 });
+for (const wire of [undefined, "legacy"]) {
+  test(`structured publishers use ${wire ?? "AG-UI by default"} and keep plain questions`, async t => {
+    const fake = await startFakeNtfy();
+    t.after(() => fake.close());
+    const cfg = { ...loadConfig(peerEnv(fake, { peer: "alice", AI_COLLAB_WIRE: wire })), session: SESSION };
+    await sendMessage(cfg, "bob", "direct");
+    await sendMessage(cfg, "all", "broadcast");
+    await publishStatus(cfg, { harness: "claude", event: "start" });
+    await publishActivity(cfg, "claude", [{ type: "prompt", input: "test" }]);
+    await publishMode([cfg], "quiet", { now: 123 });
+    await reportContext(cfg, 250_000);
+    sendReceipts(cfg, ["message-1"]);
+    await settleReceipts();
+    const approved = { id: "aabbccddeeff", tool: "Read", summary: "test" };
+    const card = approvalMessage(cfg, "claude", approved, { id: approved.id, expiresAt: 1000 });
+    const owned = ownedApprovalMessage(cfg, "claude", approved);
+    const closed = approvalEndMessage(cfg, approved.id, "allowed");
+    const wires = fake.state.publishes.map(p => p.message);
+    const payloads = [...wires, card, owned, closed];
+    if (!wire) {
+      for (const payload of payloads) EventSchema.parse(JSON.parse(payload));
+    }
+    const messages = payloads.map(wire ? parseEnvelope : parseWireEnvelope);
+    assert.deepEqual(messages.map(m => m?.kind), ["msg", "msg", "status", "activity", "mode", "alert", "receipt", "approval", "approval", "approval-end"]);
+    assert.deepEqual(messages.slice(0, 2).map(m => [m.to, m.body]), [["bob", "direct"], ["all", "broadcast"]]);
+    assert.deepEqual(wire ? parseMode(wires[4]) : { mode: messages[4].mode, ts: messages[4].ts }, { mode: "quiet", ts: 123 });
+    assert.equal(messages.at(-2).owned, true);
+    const question = await askQuestion(cfg, "Which option?", { seconds: 0 });
     assert.deepEqual(parseQuestionText(fake.state.publishes.at(-1).message), { sender: `alice#${SESSION}`, id: question.id });
-  }
-});
+  });
+}
 
-test("wire opt-in follows the project config and env and keeps distinct tool-result IDs", async t => {
+test("wire follows the project config and env and keeps distinct tool-result IDs", async t => {
   const dir = mkdtempSync(join(tmpdir(), "ai-collab-wire-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   mkdirSync(join(dir, "ai-collab"));
-  writeFileSync(join(dir, "ai-collab", "projects.json"), JSON.stringify([{ root: dir, project: "demo", wire: "agui" }]));
+  writeFileSync(join(dir, "ai-collab", "projects.json"), JSON.stringify([{ root: dir, project: "demo", wire: "legacy" }]));
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
   const env = peerEnv(fake, { peer: "alice", XDG_CONFIG_HOME: dir });
-  const config = loadConfig(env, { cwd: dir });
+  assert.equal(loadConfig(env, { cwd: dir }).wire, "legacy");
+  const config = loadConfig({ ...env, AI_COLLAB_WIRE: "agui" }, { cwd: dir });
   assert.equal(config.wire, "agui");
-  assert.equal(loadConfig({ ...env, AI_COLLAB_WIRE: "legacy" }, { cwd: dir }).wire, "legacy");
-  assert.equal(loadConfig({ ...env, AI_COLLAB_WIRE: "agui" }, { cwd: tmpdir() }).wire, "agui");
   await sendMessage(config, "bob", "one copy");
   assert.equal(fake.state.publishes.length, 1);
   assert.equal(parseEvent(fake.state.publishes[0].message)?.name, "ai-collab.msg");

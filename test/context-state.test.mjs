@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -35,7 +36,7 @@ test("recordInstructions rejects a relative path, an unknown memory type or load
 
 test("reportContext persists the token count and window without changing the alert", async () => {
   const sent = [];
-  const send = async (_cfg, topic, message) => { sent.push(JSON.parse(message)); };
+  const send = async (_cfg, topic, message) => { sent.push(parseWireEnvelope(message)); };
   assert.deepEqual(await reportContext(cfg, 12_000, { send, window: 258_400 }), { alerted: false });
   const view = readContext(cfg);
   assert.equal(view.tokens, 12_000);

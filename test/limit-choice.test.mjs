@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { broadcastTopic, loadConfig } from "../lib/config.mjs";
@@ -84,13 +85,13 @@ test("the UI answers a limit card through the choice surface and starts the repl
     break;
   }
   assert.equal(calls.length, 1);
-  const ends = fake.state.publishes.flatMap((p) => { try { const m = JSON.parse(p.message); return m.kind === "approval-end" ? [m] : []; } catch { return []; } });
+  const ends = fake.state.publishes.flatMap((p) => { try { const m = parseWireEnvelope(p.message); return m.kind === "approval-end" ? [m] : []; } catch { return []; } });
   assert.deepEqual(ends.map((m) => [m.id, m.reason]), [[sent.id, "answered"]]);
   assert.equal((await post([["codex:gpt-5"]])).status, 409);
   assert.equal(calls.length, 1);
 });
 
-const rowsOf = (fake, type) => fake.state.publishes.flatMap((p) => { try { const m = JSON.parse(p.message); return m.kind === "activity" && m.type === type ? [m] : []; } catch { return []; } });
+const rowsOf = (fake, type) => fake.state.publishes.flatMap((p) => { try { const m = parseWireEnvelope(p.message); return m.kind === "activity" && m.type === type ? [m] : []; } catch { return []; } });
 
 test("a limit leaves a timeline row, and a pick links the original and the replacement", async (t) => {
   const { fake, sessionCfg, cfg } = await setup(t);

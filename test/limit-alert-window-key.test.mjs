@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 // One limit card per harness and window: a known-reset report and an unknown-reset report for the same harness and window, from
 // different sessions, share one card and the known reset upgrades it in place instead of opening a second card.
 import assert from "node:assert/strict";
@@ -23,8 +24,8 @@ async function setup(t) {
   return { fake, env, cfg: loadConfig(env) };
 }
 
-const cards = (fake) => fake.state.publishes.flatMap((p) => { try { const m = JSON.parse(p.message); return m.kind === "approval" ? [m] : []; } catch { return []; } });
-const ends = (fake) => fake.state.publishes.flatMap((p) => { try { const m = JSON.parse(p.message); return m.kind === "approval-end" ? [m] : []; } catch { return []; } });
+const cards = (fake) => fake.state.publishes.flatMap((p) => { try { const m = parseWireEnvelope(p.message); return m.kind === "approval" ? [m] : []; } catch { return []; } });
+const ends = (fake) => fake.state.publishes.flatMap((p) => { try { const m = parseWireEnvelope(p.message); return m.kind === "approval-end" ? [m] : []; } catch { return []; } });
 const indexOf = (cfg) => JSON.parse(readFileSync(join(cfg.stateDir, cfg.project, "limit-windows.json"), "utf8"));
 const deps = { listed: async () => LISTED, available: () => ["codex"] };
 

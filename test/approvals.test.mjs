@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -19,7 +20,7 @@ const QUESTIONS = [{
 }];
 
 const setMode = (fake, mode) => fake.inject(ALL, JSON.stringify({ v: 1, kind: "mode", from: "operator", mode, ts: Date.now() }));
-const envelopes = (fake, kind) => fake.state.publishes.map(p => { try { return { ...JSON.parse(p.message), topic: p.topic, title: p.title }; } catch { return null; } })
+const envelopes = (fake, kind) => fake.state.publishes.map(p => { try { return { ...parseWireEnvelope(p.message), topic: p.topic, title: p.title }; } catch { return null; } })
   .filter(m => m?.kind === kind);
 
 async function published(fake, kind) {
@@ -82,7 +83,7 @@ test("an approval envelope stays within ntfy's limit by shrinking previews", () 
   const req = approvalRequest("claude", "permissionrequest", { tool_name: "AskUserQuestion", tool_input: { questions: big } });
   const message = approvalMessage(cfg, "claude", req, { id: "0123456789ab", expiresAt: 1 });
   assert.ok(Buffer.byteLength(message) <= 4095);
-  assert.equal(JSON.parse(message).questions[0].options.length, 4);
+  assert.equal(parseWireEnvelope(message).questions[0].options.length, 4);
 });
 
 test("AFK off: no publish and no decision, so the terminal prompt shows", async (t) => {
