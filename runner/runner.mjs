@@ -39,6 +39,11 @@ const PRUNE_EVERY_MS = 3_600_000;
 const CLAIM_LIMIT = 4;
 const WAKE_BATCH = 20;
 const WAKES_PER_TICK = 2;
+// A wake send that certainly did not start a turn and says it is transient (a codex thread still closing) is retried:
+// WAKE_SEND_ATTEMPTS tries in all, pausing WAKE_SEND_BACKOFF_MS doubling, capped at WAKE_SEND_BACKOFF_MAX_MS.
+export const WAKE_SEND_ATTEMPTS = 3;
+export const WAKE_SEND_BACKOFF_MS = 500;
+export const WAKE_SEND_BACKOFF_MAX_MS = 4000;
 const SEEN_WITHIN_MS = 7 * 24 * 3_600_000;
 const CONFIRM_POLL_MS = 500;
 const WAKE_TOPIC = "wake";
@@ -382,29 +387,43 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         const text = formatInbox(batch, { session: label });
         const messageIds = batch.map((m) => m.id);
         const sent = await wf.step("wake.send", async () => {
-          try {
-            s.record.status = "idle";
-            await recordSession(cfg, { id: record.nativeId, cwd: record.cwd, harness, event: "owned", proc }).catch(() => {});
-            const handle = await liveHandle(s);
-            s.record.status = "running";
-            save(s);
-            const { runId } = await handle.send({ text, messageIds });
-            await markDelivered(scfg, messageIds);
-            publishReceipts(cfg, messageIds);
-            return { runId };
-          } catch (error) {
-            if (s.signal.aborted) throw error;
-            s.record.status = "ended";
-            save(s);
-            if (error.mayHaveStarted) {
-              // The harness may have taken the turn: the batch is delivered, never resent.
+          // A harness that refused the turn without starting it and says the session is still closing (a codex thread
+          // unloading just after the session ended) gets bounded retries, each on a freshly resumed handle. Not
+          // checkpointed: a cut during a retry runs the normal onCut, which releases the batch for the hooks.
+          for (let attempt = 1; ; attempt += 1) {
+            try {
+              s.record.status = "idle";
+              await recordSession(cfg, { id: record.nativeId, cwd: record.cwd, harness, event: "owned", proc }).catch(() => {});
+              const handle = await liveHandle(s);
+              s.record.status = "running";
+              save(s);
+              const { runId } = await handle.send({ text, messageIds });
               await markDelivered(scfg, messageIds);
-              await enqueuePublish(s, () => publishEvent(cfg, harness, { type: EventType.CUSTOM, name: ERROR, value: `woken session may have taken the message; not resent: ${error.message}` }));
-            } else {
-              await releaseOwned(scfg, messageIds, wf.id);
-              await enqueuePublish(s, () => publishEvent(cfg, harness, { type: EventType.CUSTOM, name: ERROR, value: `woken session did not take the message: ${error.message}` }));
+              publishReceipts(cfg, messageIds);
+              return { runId, ...(attempt > 1 ? { attempts: attempt } : {}) };
+            } catch (error) {
+              if (s.signal.aborted) throw error;
+              s.record.status = "ended";
+              save(s);
+              const retry = !error.mayHaveStarted && error.retryable === true && attempt < WAKE_SEND_ATTEMPTS;
+              if (retry) {
+                // A refused handle is bound to the thread that refused: drop it and let the next attempt resume afresh.
+                s.live = null;
+                log(`${harness}: wake send attempt ${attempt} refused, retrying: ${error.message}`);
+                await wf.pause(Math.min(WAKE_SEND_BACKOFF_MS * 2 ** (attempt - 1), WAKE_SEND_BACKOFF_MAX_MS));
+                continue;
+              }
+              if (error.mayHaveStarted) {
+                // The harness may have taken the turn: the batch is delivered, never resent.
+                await markDelivered(scfg, messageIds);
+                await enqueuePublish(s, () => publishEvent(cfg, harness, { type: EventType.CUSTOM, name: ERROR, value: `woken session may have taken the message; not resent: ${error.message}` }));
+              } else {
+                await releaseOwned(scfg, messageIds, wf.id);
+                const tried = attempt > 1 ? ` after ${attempt} attempts` : "";
+                await enqueuePublish(s, () => publishEvent(cfg, harness, { type: EventType.CUSTOM, name: ERROR, value: `woken session did not take the message${tried}: ${error.message}` }));
+              }
+              return { error: error.message, ...(attempt > 1 ? { attempts: attempt } : {}) };
             }
-            return { error: error.message };
           }
         }, {
           // Never resent: a cut wake marks its run interrupted, closes the session, and releases its messages to the hooks.

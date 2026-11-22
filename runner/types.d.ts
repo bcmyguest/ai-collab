@@ -84,6 +84,8 @@ export interface SessionHandle {
   // Known when open() resolves, before any prompt reaches the harness.
   nativeId: string;
   // Starts a run on an idle session; resolves with its runId once the harness accepted the input.
+  // A rejection may carry: mayHaveStarted (the harness may have taken the input; never resent), or retryable
+  // (the harness refused the request and ran nothing; the caller may retry it).
   send(input: UserInput): Promise<{ runId: string }>;
   // Adds input to the running run; only when capabilities.steer.
   steer?(input: UserInput): Promise<void>;

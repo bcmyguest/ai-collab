@@ -96,7 +96,12 @@ function route(server, line) {
   const waiter = server.pending.get(message.id);
   if (!waiter) return;
   server.pending.delete(message.id);
-  if (message.error) waiter.reject(new Error(message.error.message || "codex app-server error"));
+  if (message.error) {
+    // An error response means the server refused the request and ran nothing, so the caller may retry it safely.
+    // The case that matters: a wake right after a session ended can reach a thread that is still closing.
+    const error = Object.assign(new Error(message.error.message || "codex app-server error"), { retryable: true });
+    waiter.reject(error);
+  }
   else waiter.resolve(message.result);
 }
 
@@ -225,6 +230,7 @@ function makeHandle(session) {
       await attach(session);
       session.prompt = input.text;
       // A timed-out turn/start may still have started: the error says so, and the caller never resends.
+      // An error response means the server refused the turn, so a retry cannot run it twice (see route()).
       const { turn } = await session.server.request("turn/start", {
         threadId: session.nativeId, input: userInput(input), cwd: session.cwd, ...turnPolicy(session.settings),
         ...(session.model ? { model: session.model } : {}),

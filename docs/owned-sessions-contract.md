@@ -183,7 +183,7 @@ One run takes every message in the batch, so a burst costs one paid turn. Messag
 | `adopt.check` | Adoption only: a registry entry online in another process (the user resumed the session) ends the wake `skipped-online`; the hooks and live delivery take the messages | re-executes |
 | `adopt` | Adoption only: writes an owned record (`status: "ended"`, `workflowId` = the wake id) when none exists | re-executes (idempotent) |
 | `wake.reserve` | `reserveOwned` for the batch under this wake's id (busy: retried after 1 s, up to 5 tries); messages another owner holds drop out of the batch | re-executes (the owner re-acquires) |
-| `wake.send` | Resumes the native session through `adapter.resume`, `handle.send` of the batch; on success the batch is marked seen and receipts go out; on error the batch is released, except an error with `mayHaveStarted` (a codex `turn/start` timeout): the batch is marked delivered and an error notice says it was not resent | `onCut`: `cutRun` marks the run interrupted, the session ends again, the batch is released (never resent) |
+| `wake.send` | Resumes the native session through `adapter.resume`, `handle.send` of the batch; on success the batch is marked seen and receipts go out. A send error with `retryable: true` and no `mayHaveStarted` is retried on a fresh resume, at most `WAKE_SEND_ATTEMPTS` (3) tries with `WAKE_SEND_BACKOFF_MS` doubling from 500 ms; the case is a codex thread still closing after its session ended. On error the batch is released, except an error with `mayHaveStarted` (a codex `turn/start` timeout): the batch is marked delivered and an error notice says it was not resent | `onCut`: `cutRun` marks the run interrupted, the session ends again, the batch is released (never resent) |
 | `wake.wait` | Waits for `RUN_FINISHED` or `RUN_ERROR` | `onCut` marks the run interrupted |
 | `wake.more` | Whether the `wake` queue holds messages that arrived during the run | re-executes |
 | `wake.close` | `endSession`: the session is `ended` again | re-executes |
@@ -207,6 +207,7 @@ Hourly, `pumpDeliveries` deletes the steps and messages of delivery and wake wor
 | Cut during `confirm` | Polls the full window; confirmed → delivered; else `cut` as above |
 | Cut during `reserve` | Re-acquires its reservation (same owner); the step runs again |
 | Cut during `wake.send` | Run marked interrupted; session ended; batch released to the hooks; not resent |
+| Cut during a `wake.send` retry | Same as a cut during `wake.send`; the retries are not checkpointed |
 | Cut during `wake.wait` | Run marked interrupted; session ended |
 | Waiting in a backoff or redelivery sleep | Waits the rest of the deadline |
 | Waiting for a ready target | Waits again (not checkpointed) |
@@ -249,6 +250,7 @@ Rules for every adapter:
 - Reject `open` with an `Error` whose message the operator can act on. Never print secrets into it.
 - `open` may call `options.beforeStart(nativeId)` once the adapter has chosen the native id and before the child starts; the runner writes the owned record there (status `starting`), so the child's hooks stand down.
 - A send error with `mayHaveStarted: true` means the harness may have taken the input: the runner marks it delivered and never resends it. Only a send error that certainly did not start releases the batch.
+- A send error with `retryable: true` and no `mayHaveStarted` means the harness refused the request and ran nothing: the wake send retries it a bounded number of times (see `wake.send` above). An adapter sets it from proven provenance, not from message text — the codex adapter sets it when the app-server answers with a JSON-RPC error, because an error response means `turn/start` (or `thread/resume`) was refused.
 - No real CLI runs in tests: drive the adapter against a fake transport (a stub JSON-RPC peer, a stub HTTP server) plus `test/helpers/fake-ntfy.mjs`.
 
 ### OpenCode adapter facts (`runner/adapters/opencode.mjs`)
@@ -273,7 +275,7 @@ Verified means the string appears in the local OpenCode 2.2.5 binary (`strings`)
 | Not implemented | `contextUsage`, `setModel`, question forms (`/form` replies), `resumeData` | |
 ### Codex adapter status
 
-`runner/adapters/codex.mjs` bounds each RPC at 60 s. A timed-out `turn/start` carries `mayHaveStarted`, so the runner never resends it. `shutdown()` also kills a child still in its `initialize` handshake. `steer` and `interrupt` after the child is gone (or the session closed) throw `the codex app-server is not running` instead of a `TypeError`. Tested against `test/helpers/fake-codex-silent-app-server.mjs` (`test/runner-adapter-codex-regressions.test.mjs`); nothing ran against the real app-server.
+`runner/adapters/codex.mjs` bounds each RPC at 60 s. A timed-out `turn/start` carries `mayHaveStarted`, so the runner never resends it. A `turn/start` or `thread/resume` the app-server answers with a JSON-RPC error carries `retryable`, because the server refused it and ran nothing: this is the "thread is closing" case, where a wake resumes a thread whose unload from the session's close is still in flight, and the runner retries it with backoff. `shutdown()` also kills a child still in its `initialize` handshake. `steer` and `interrupt` after the child is gone (or the session closed) throw `the codex app-server is not running` instead of a `TypeError`. Tested against `test/helpers/fake-codex-silent-app-server.mjs` (`test/runner-adapter-codex-regressions.test.mjs`) and `test/helpers/fake-codex-app-server.mjs` (`test/runner-wake-retry.test.mjs`); nothing ran against the real app-server, and the real error text for a closing thread is UNVERIFIED — the retry keys on the JSON-RPC error, not on the text.
 
 ### Claude adapter status
 
