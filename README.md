@@ -45,6 +45,7 @@ Then open the UI on your phone: [Quick start](https://bcmyguest.github.io/ai-col
 | [Phone UI](https://bcmyguest.github.io/ai-collab/phone-ui/) | Home, chat, task tags, activity, starting sessions, push |
 | [AFK mode](https://bcmyguest.github.io/ai-collab/afk/) | Progress posts and phone questions while you are away |
 | [Approvals and questions](https://bcmyguest.github.io/ai-collab/approvals/) | Permission prompts answered from the phone |
+| [Builders](docs/builders.md) | One builder agent per task, each in its own OpenShell sandbox |
 | [Security model](https://bcmyguest.github.io/ai-collab/security/) | What is sent and what is trusted |
 | [Troubleshooting](https://bcmyguest.github.io/ai-collab/troubleshooting/) | Known limits and fixes |
 | [Development](https://bcmyguest.github.io/ai-collab/development/) | Tests, CI, releases, the demo |
