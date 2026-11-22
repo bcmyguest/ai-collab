@@ -10,9 +10,11 @@ Give the operator one place to run, watch and steer a coding agents from a phone
 - [x] OpenShell sandbox for every new builder (ai-collab builder start)
 - [x] Code-mode A tool client in sandbox
 - [x] Honest job meters for building status
+- [ ] Standing goal, never done: work the backlog. Every tick, keep 4 builders running (`ai-collab builder list`). Start new ones from Ready tasks first, then open tasks the operator already approved ("operator: yes" in the title, HAPI ideas), highest priority first. A tick that merges must still top up to 4 before it ends.
 
 ## Rules
 
+- Every tick ends with a send_to_all status line: merged, started, running count, and what is waiting on the operator.
 - New builders: `ai-collab builder start --task <id> --harness codex --brief <file>` (OpenShell sandbox). Do not start builders on the host. Leave existing host builders alone until they finish.
 - Gate merges on isolated HOME: `H=$(mktemp -d); PATH=… HOME=$H CODEX_HOME=$H/.codex TMPDIR=$(mktemp -d -p /dev/shm) npm test`.
 - Update test assertions when behaviour changes; never weaken tests. No ask_question for test edits.
