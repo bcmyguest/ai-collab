@@ -80,4 +80,5 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Posts that only @harness:model-start a session still wake running agents (ui.mjs routeMentions) | open |
 | Operator @mention of the PM wakes its schedule at once (runner has no run-now) | done An @session tag in any chat wakes that idle session (ui.mjs routeMentions) |
 | Code-mode workflows: inference decides, code executes — map to DOT teams, runner/DBOS, OpenShell sandbox | open |
+| CI prek gate fails on main: end-of-file newlines in lib/compaction.mjs, lib/teams.mjs, test/teams.test.mjs, test/teams-mentions.test.mjs | done |
 <!-- tasks:end -->
