@@ -1,4 +1,4 @@
-// Maps normalized RunnerEvents onto the existing ntfy envelopes: activity, status, approval, approval-end, receipt, alert.
+// Publishes runner activity as AG-UI and sends status, approvals, receipts and alerts on their existing topics.
 import { NTFY_MESSAGE_MAX_BYTES, broadcastTopic } from "../lib/config.mjs";
 import { publish } from "../lib/ntfy.mjs";
 import { publishStatus } from "../lib/inbox.mjs";
@@ -62,7 +62,7 @@ export async function publishApprovalEnd(cfg, id, reason) {
 export async function publishEvent(cfg, harness, e) {
   try {
     const rows = activityFor(e);
-    if (rows.length) await publishActivity(cfg, harness, rows, { timeoutMs: PUBLISH_TIMEOUT_MS });
+    if (rows.length) await publishActivity(cfg, harness, rows, { timeoutMs: PUBLISH_TIMEOUT_MS, run: e });
     if (e.type === "RUN_STARTED") await publishStatus(cfg, { event: "start", harness });
     if (e.type === "RUN_FINISHED" || e.type === "RUN_ERROR") await publishStatus(cfg, { event: "stop", harness });
     const tokens = e.type === "STATE_DELTA" ? e.delta.find((op) => op.path === "/contextTokens")?.value : undefined;

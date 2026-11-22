@@ -28,4 +28,6 @@ Approvals and questions can suspend harness work within the same turn. The appro
 
 ## Rollout
 
+The activity topic now carries AG-UI events from hooks and the runner. Readers accept both formats on ntfy. Chat, status, approvals, receipts, mode, and alert publishers still send their existing envelopes.
+
 Deploy readers that accept both `{v:1, kind, ...}` and AG-UI before switching writers to AG-UI. Translate cached legacy records at the read boundary and preserve ntfy IDs, attachment metadata, topic routing, time order, and the message size limit. Maintain dual reads through the mixed-version rollout and cache expiry. Phone clients receive `data:` frames containing AG-UI events, with `STATE_SNAPSHOT` for initial or refreshed view state and AG-UI events for live activity. The browser projects those events into the existing timeline, turns, and project feed.

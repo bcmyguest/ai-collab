@@ -9,6 +9,7 @@ import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig } from "../lib/config.mjs";
 import { sendMessage } from "../lib/inbox.mjs";
 import { activityEvents, buildActivity } from "../lib/activity.mjs";
+import { eventToEnvelope } from "../lib/agui.mjs";
 import { approvalOutput, approvalRequest } from "../lib/approvals.mjs";
 import { contextTokens } from "../lib/usage.mjs";
 import { sessionName } from "../lib/names.mjs";
@@ -230,7 +231,7 @@ test("opencode helpers: content append, result text, tokens, permission input", 
 
 test("opencode shared code: activity harness, text events, approvals in Claude's shape, context tokens, title", () => {
   const cfg = { peer: "opencode", session: "0123456789abcdef" };
-  assert.equal(JSON.parse(buildActivity(cfg, "opencode", { type: "text", output: "hi" }).message).harness, "opencode");
+  assert.equal(eventToEnvelope(buildActivity(cfg, "opencode", { type: "text", output: "hi" }).message).harness, "opencode");
   assert.deepEqual(activityEvents("opencode", "afteragentresponse", { text: "hi" }), [{ type: "text", output: "hi" }]);
   assert.deepEqual(activityEvents("opencode", "pretooluse", { tool_name: "bash", tool_input: { command: "ls" }, tool_use_id: "c" }),
     [{ type: "tool_call", tool: "bash", input: { command: "ls" }, callId: "c" }]);
