@@ -98,6 +98,14 @@ test("neighbouring runs of one schedule get disjoint windows, at the midpoint be
   assert.deepEqual(runWindow(runs[1], "demo"), { project: "demo", harness: "cursor", session: "cursor#" + LABEL, from: runs[1].startedAt - RUN_WINDOW_SLACK_MS, to: runs[1].finishedAt + RUN_WINDOW_SLACK_MS });
 });
 
+test("a run from a runner that predates run detail lists without a window or a link", () => {
+  // The old shape: no startedAt, no session; the row still renders, just without a timeline link.
+  const old = { id: "pm@2026-11-22T18:00:00.000Z", status: "SUCCESS", scheduledTime: "2026-11-22T18:00:00.000Z", updatedAt: 1_700_000_000_000, output: {}, error: null };
+  assert.equal(runWindow(old, "ai-collab"), null);
+  assert.equal(runLink(old, "ai-collab"), "");
+  assert.equal(runLabel(old), "");
+});
+
 test("a run row names its start time and duration", () => {
   const startedAt = Date.UTC(2026, 10, 22, 18, 0, 0);
   assert.notEqual(runLabel({ startedAt }), "");
