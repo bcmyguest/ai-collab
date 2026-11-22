@@ -23,7 +23,7 @@ function setup() {
 
 const dot = (name, prompt = "Do it.", extra = "") => `digraph ${name} {
   worker [agent="claude:claude-haiku-5-5", count=2, skill="diagnose-failure", prompt="${prompt}"];
-  checker [agent="codex", prompt="Check it."];
+  checker [agent="codex", count=2, prompt="Check it."];
   worker -> checker [on="submit", kind="pair", required=true];
   checker -> done [on="pass", kind="fan-in", required=true${extra}];
 }
