@@ -166,7 +166,7 @@ Compacting a running session, per harness:
 |---|---|---|
 | Codex | The TUI attaches to the local app-server daemon (`daemon_auto_start` in `codex features list`); `codex app-server proxy` connects another client to it. The protocol (`codex app-server generate-json-schema`) has `thread/loaded/list`, `thread/read` (status `idle` or `active`), `thread/resume` ("If thread_id identifies a running thread, app-server rejoins that thread"), and `thread/compact/start`. | Lists loaded threads; if the thread is loaded and idle, rejoins it with only its id and compacts it. A busy thread or one outside the daemon gets the urgent request; press Compact again once its turn ends. |
 | Claude Code | None documented. [Hook outputs](https://code.claude.com/docs/en/hooks#precompact-output) cannot start a compaction (PreCompact only shapes one), a Stop `reason` is text for the model, and `/compact` runs only when typed in the session or sent from [Remote Control](https://code.claude.com/docs/en/remote-control). | Urgent request; run `/compact` in the terminal or from Remote Control. |
-| Cursor | None: `cursor-agent --help` lists no compaction command or flag. | Urgent request; run `/compact` in the session. |
+| Cursor | None found. `cursor-agent --help` and `cursor-agent acp --help` list no compaction command or flag; the ACP handler bundled in cursor-agent 2026.11.22 dispatches `session/new`, `load`, `resume`, `fork`, `list`, `status`, `prompt`, `cancel`, `set_mode`, `set_model` and `set_config_option`, with no `session/compact`; no `/compact` command string appears in the bundle. Not run against a live session. | Urgent request; run `/compact` in the session. |
 
 ai-collab never writes another process's transcript or rollout files.
 
