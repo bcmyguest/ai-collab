@@ -28,6 +28,7 @@ import { ActivityRow, GoToAgent, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
 import { SurfaceContext } from "@/components/a2ui/surface";
 import { NotifyToggle } from "./notify";
+import { AlertLevel } from "./alert-level";
 import { SessionList, SessionMenu, SubagentList } from "./home";
 import { RunningCount, SubagentRuns } from "./subagent-runs";
 import { ClosedProjects, ProjectMenu } from "./project-menu";
@@ -896,6 +897,7 @@ function Console({ account }) {
             <Dot online={agent.online}/><span className="hidden sm:inline">{agent.online ? "online" : "offline"}</span></span>}
           {level === "session" && agent && <RunningCount runs={agent.subagents} now={now}/>}
           <AfkToggle mode={data.mode || "off"} disabled={!ready || working} set={mode => action("afk", { mode }, "AFK " + mode)}/>
+          <AlertLevel level={data.alerts || "all"} disabled={!ready || working} set={level => action("alerts", { level }, "Alerts set")}/>
           <NotifyToggle/>
           <ThemeToggle/>
         </div>

@@ -4,6 +4,7 @@ import { buildEvent, envelopeToEvent, projectEvent, readWireRecord } from "../..
 import { ACTIVITY_BATCH, STREAM_ERROR } from "../lib/ui-events.js";
 import { mkdirSync, watch } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
+import { buzzes, readAlertLevel, writeAlertLevel } from "../../lib/alerts.mjs";
 import { loadConfig, loadProjects, activityTopic, broadcastTopic, configDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.mjs";
 import { ACTIVITY_TYPES } from "../../lib/activity.mjs";
 import { stripControl } from "../../lib/format.mjs";
@@ -38,7 +39,7 @@ import { answerMessage, answerText, terminalMessages } from "../lib/operator-mes
 import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a2ui.js";
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern"];
+const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern"];
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
 const PARENT = /^[a-z0-9-]{1,24}#[a-f0-9]{16}$/;
@@ -362,7 +363,11 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   function notifyActions(project, topic, added) {
     const name = project.cfg.project;
     const fresh = added.filter(event => Date.now() - event.time * 1000 < NOTIFY_RECENT_MS);
-    const send = (id, fields) => notifier.notify(name + ":" + id, notice({ project: name, id, ...fields })).catch(() => {});
+    // The phone alert level decides which pushes go out; the message itself stays in the chat.
+    const send = (id, fields) => {
+      if (!buzzes(readAlertLevel(env), fields.kind === "message" ? "direct" : "question")) return;
+      notifier.notify(name + ":" + id, notice({ project: name, id, ...fields })).catch(() => {});
+    };
     if (topic === project.topic) {
       const { ends, replies } = outcomes(project.hub.events(topic));
       for (const event of fresh) {
@@ -796,7 +801,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       : item.failed ? [] : sessionCards(item, agents(item, lastMessages(item)), mode))
       : scope === "sessions" ? sessionCards(project, list, mode) : undefined;
     return {
-      project: project.cfg.project, operator: project.operator.peer, mode,
+      project: project.cfg.project, operator: project.operator.peer, mode, alerts: readAlertLevel(env),
       // Waiting counts per project, present only when above 0; a failed project has no sessions to count.
       projects: shown.map(item => {
         const count = item === project ? waiting.size : item.failed ? 0 : waitingIds(item, agents(item, lastMessages(item))).size;
@@ -981,7 +986,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
-      const { project: name, target, body, question, mode, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, team: teamName, members, delete: deleteTeamName, replyTo, command, pattern: patternSpec, deletePattern: deletePatternName, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, forwardedProps } = await payload(request);
+      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, team: teamName, members, delete: deleteTeamName, replyTo, command, pattern: patternSpec, deletePattern: deletePatternName, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, forwardedProps } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -991,6 +996,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       if (action === "close" || action === "reopen") {
         setProjectClosed(env, name, action === "close");
         return json(200, { status: action === "close" ? "Closed" : "Reopened", detail: name });
+      }
+      if (action === "alerts") {
+        writeAlertLevel(env, alertLevel);
+        return json(200, { status: "Alerts " + alertLevel, detail: alertLevel });
       }
       if (action === "delete") {
         removeProject(env, name);
