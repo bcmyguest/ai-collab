@@ -136,3 +136,27 @@ test("a name typed after the draft saves under that name, and a taken name needs
   const replaced = await post({ team: "finder", authorDot: renamed, authorReplace: "finder" });
   assert.equal(replaced.status, 201);
 });
+
+test("the Patterns page action edits only an existing project roster", async (t) => {
+  const { post, home } = await ui(t);
+  const config = path.join(home, ".config", "ai-collab");
+  const projectsFile = path.join(config, "projects.json");
+  const [project] = JSON.parse(readFileSync(projectsFile, "utf8"));
+  writeFileSync(projectsFile, JSON.stringify([{ ...project, teams: { local: ["codex"] } }]));
+  writeFileSync(path.join(config, "teams.json"), JSON.stringify({ shared: ["claude"] }));
+
+  const edit = (team, members) => post({ editTeam: true, team, members });
+  const saved = await edit("local", ["claude", "codex:gpt-5"]);
+  assert.equal(saved.status, 201);
+  assert.deepEqual(saved.body.members, ["claude", "codex:gpt-5"]);
+  for (const [name, members] of [
+    ["local", []],
+    ["local", ["claude", "claude"]],
+    ["local", ["codex:unknown"]],
+    ["shared", ["codex"]],
+    ["missing", ["codex"]],
+  ]) {
+    assert.equal((await edit(name, members)).status, 400);
+  }
+  assert.deepEqual(JSON.parse(readFileSync(projectsFile, "utf8"))[0].teams, { local: ["claude", "codex:gpt-5"] });
+});

@@ -136,4 +136,4 @@ A writing agent turns a plain-language request into one `team.dot`; the operator
 
 ## Legacy team roster in the UI
 
-The UI no longer has a roster form for teams. Teams still work: `ai-collab team create|list|delete|start|status`, the MCP `team_*` tools, and `@team` chats. Create new coordination as a pattern.
+Open a legacy team in **Patterns and teams** to see its member roster. For a project team, **Edit roster** lets you save one harness or harness:model per line. Global rosters are read-only in the UI. Teams also work through `ai-collab team create|list|delete|start|status`, the MCP `team_*` tools, and `@team` chats. Create new coordination as a pattern.

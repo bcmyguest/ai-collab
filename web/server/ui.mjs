@@ -1107,7 +1107,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
-      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, startMode, codeMode, team: teamName, members, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText } = await payload(request);
+      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, startMode, codeMode, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -1164,6 +1164,16 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (teamDot !== undefined) {
           const modelList = await models(cfg.stateDir, env, { peers: cfg.peers });
           return json(201, await saveTeamText(cfg, String(teamName ?? ""), String(teamDot), env, modelList, { create: teamNew === true }).catch((error) => reject(400, error.message)));
+        }
+        if (editTeam === true) {
+          if (!teamName || !Array.isArray(members) || !members.length || members.some(member => typeof member !== "string")) {
+            reject(400, "Enter a team name and at least one member");
+          }
+          const modelList = await models(cfg.stateDir, env, { peers: cfg.peers });
+          const saved = await createTeam(cfg, String(teamName), members, env, modelList, { edit: true })
+            .catch((error) => reject(400, error.message));
+          broadcast();
+          return json(201, saved);
         }
         if (deletePatternName) return json(201, removePattern(cfg, String(deletePatternName), env));
         // Team author: one writing-agent turn from the operator's chat text, then a save of the DOT it drafted.
