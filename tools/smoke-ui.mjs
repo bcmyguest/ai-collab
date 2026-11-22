@@ -82,9 +82,9 @@ async function phoneFixture({ homeSessions = false, inactive = false } = {}) {
   return {
     url: `http://127.0.0.1:${server.address().port}`,
     project: cfg.project, address, sessions,
-    messageDeliveries: body => fake.state.publishes.flatMap(post => {
+    messageDeliveries: (body, urgent = false) => fake.state.publishes.flatMap(post => {
       const message = parseEnvelope(post.message);
-      return message?.kind === "msg" && message.body === body ? [[post.topic, message.toSession]] : [];
+      return message?.kind === "msg" && message.body === body && Boolean(message.urgent) === urgent ? [[post.topic, message.toSession]] : [];
     }),
     broadcast: [broadcastTopic(cfg.project), undefined],
     direct: [inboxTopic(cfg.project, "claude"), label],
@@ -154,6 +154,22 @@ async function checkComposer(page, fixture) {
   await page.goto(fixture.url + "/#" + new URLSearchParams({ project, level: "session", harness: "claude", session: fixture.address }));
   await page.getByText(direct, { exact: true }).waitFor();
   await send("Direct session message", direct, [fixture.direct]);
+  const queued = page.getByRole("region", { name: "Queued messages" });
+  const row = queued.getByRole("listitem").filter({ hasText: "Direct session message" });
+  const steer = row.getByRole("button", { name: "Steer", exact: true });
+  await steer.waitFor();
+  await page.waitForFunction(() => document.getElementById("composer")?.value === "");
+  const urgentBody = "Urgent direct session message";
+  await draft.fill(urgentBody);
+  const sendNow = page.getByRole("button", { name: "Send now", exact: true });
+  assert.equal(await sendNow.evaluate(node => {
+    const rect = node.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.bottom <= innerHeight && rect.left >= 0 && rect.right <= innerWidth;
+  }), true);
+  const sent = page.waitForResponse(response => response.url().endsWith("/api/send") && response.status() === 201);
+  await sendNow.click();
+  await sent;
+  assert.deepEqual(fixture.messageDeliveries(urgentBody, true), [fixture.direct]);
 }
 
 async function checkHomeSessions(page, fixture) {
