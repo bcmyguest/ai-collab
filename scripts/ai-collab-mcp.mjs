@@ -34,12 +34,24 @@ const URGENT = { type: "boolean", default: false, description: "Deliver at the r
 const TOOLS = [
   {
     name: "ask_question",
-    description: "Send a question to the human's phone and wait for their reply. If pending, call wait_for_answer with the returned ID.",
+    description: "Send a question to the human's phone and wait for their reply. With options, the phone shows a choice card (like AskUserQuestion) and the answer is the chosen labels. If pending, call wait_for_answer with the returned ID.",
     inputSchema: {
       type: "object", required: ["question"], additionalProperties: false,
       properties: {
         question: { type: "string" }, wait_seconds: WAIT, session: IDENTITY,
         important: { type: "boolean", default: false, description: "True when you cannot continue without the answer. In AFK mode ON or QUIET, the Stop hook then holds the session until the answer arrives." },
+        options: {
+          type: "array", minItems: 2, maxItems: 6,
+          description: "Choices for a choice card; the operator picks one (or any, with multi_select) or types another answer.",
+          items: {
+            type: "object", required: ["label"], additionalProperties: false,
+            properties: {
+              label: { type: "string", minLength: 1, maxLength: 100 },
+              description: { type: "string", maxLength: 300 },
+            },
+          },
+        },
+        multi_select: { type: "boolean", default: false, description: "With options: the operator may pick several labels." },
       },
     },
   },
@@ -251,7 +263,10 @@ async function handle(request) {
       const cfg = loadConfig(listing ? { ...env, AI_COLLAB_PEER: env.AI_COLLAB_PEER || host || "operator" } : env, { host, session: args.session });
       if (!cfg.enabled) throw new Error(cfg.reason);
       if (NEEDS_SESSION.includes(name) && !cfg.session) throw new Error("Pass the session label supplied by the ai-collab hook");
-      const options = { seconds: args.wait_seconds, signal: controller.signal, important: args.important === true };
+      const options = {
+        seconds: args.wait_seconds, signal: controller.signal, important: args.important === true,
+        choices: args.options, multiSelect: args.multi_select === true, harness: host,
+      };
       let result;
       switch (name) {
         case "ask_question": result = await askQuestion(cfg, args.question, options); break;
