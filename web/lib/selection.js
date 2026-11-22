@@ -1,7 +1,7 @@
 // Location hash → console selection: the level, project, session, view tab and subagent run a URL names.
-export const LEVELS = [["project", "Project"], ["session", "Sessions"]];
+export const LEVELS = [["project", "Project"], ["session", "Sessions"], ["patterns", "Patterns and teams"]];
 // Views each level accepts in the hash: a session's timeline (activity), its subagents and raw activity; the project has one chat.
-export const TABS = { project: [], session: ["activity", "subagents", "raw"] };
+export const TABS = { project: [], session: ["activity", "subagents", "raw"], patterns: [] };
 
 /** The selection named by a hash without its "#"; an empty hash, home, or level=home is the Home overview. */
 export function parseSelection(hash) {
@@ -12,7 +12,7 @@ export function parseSelection(hash) {
   const at = LEVELS.some(([id]) => id === level) ? level : "project";
   // Old links with tab=chat or tab=activity open a session's timeline.
   const sessionTab = TABS.session.includes(tab) ? tab : "activity";
-  return {
+  const base = {
     project: params.get("project") || "",
     level: at,
     harness: params.get("harness") || "",
@@ -20,4 +20,7 @@ export function parseSelection(hash) {
     tab: at === "session" ? sessionTab : "chat",
     run: at === "session" && tab === "subagents" ? params.get("run") || "" : "",
   };
+  // pattern names the one inspected, raw=1 shows its definition text; run names a pattern run.
+  if (at === "patterns") return { ...base, pattern: params.get("pattern") || "", raw: params.get("raw") === "1", run: params.get("run") || "" };
+  return base;
 }
