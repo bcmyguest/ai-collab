@@ -6,7 +6,9 @@ import { MessageContent } from "@/components/ui/message";
 import { cn } from "@/lib/utils";
 import { turnLabel } from "@/lib/chat-turns";
 import { inputBlocks, readableText, resultLanguage, runState, subagentLabel, summarize, working } from "@/lib/activity-rows";
+import { toolDiff } from "@/lib/tool-diff";
 import { ChoiceCard, askedQuestions } from "./cards";
+import { Counts, ToolDiff } from "./tool-diff";
 
 const PREVIEW_LINES = 3;
 const TOOL_ICONS = [
@@ -75,17 +77,23 @@ function ToolCall({ item }) {
     {item.result && <Result item={item.result} input={item.input}/>}
   </div>;
   const Icon = iconOf(item.tool);
-  const summary = summarize(item.input);
-  const blocks = open ? inputBlocks(item.tool, item.input) : [];
+  // A file edit shows its diff: the files it changes in the summary, their diffs when open.
+  const diff = toolDiff(item.tool, item.input);
+  const summary = diff ? diff.files.map(file => file.path).join(", ") : summarize(item.input);
+  const blocks = open && !diff ? inputBlocks(item.tool, item.input) : [];
   return <div className="flex min-w-0 flex-col gap-1.5">
     <details className="group min-w-0 rounded-lg border bg-card text-sm" onToggle={event => setOpen(event.currentTarget.open)}>
       <summary aria-label={"Tool call " + (item.tool || "")} className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-1.5 [&::-webkit-details-marker]:hidden">
         <Icon className="size-4 shrink-0 text-muted-foreground"/>
         <span className="shrink-0 font-medium">{item.tool || "tool"}</span>
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">{summary}</span>
+        {diff && <Counts added={diff.files.reduce((sum, file) => sum + file.added, 0)} removed={diff.files.reduce((sum, file) => sum + file.removed, 0)} className="text-xs"/>}
         <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"/>
       </summary>
-      {open && <div className="max-h-96 overflow-auto border-t">
+      {open && diff && <div className="border-t p-2">
+        <ToolDiff files={diff.files}/>
+      </div>}
+      {open && !diff && <div className="max-h-96 overflow-auto border-t">
         {blocks.length ? blocks.map((block, i) => <Code key={i} code={block.code} language={block.language} className={i > 0 && "border-t"}/>)
           : <pre className="px-2.5 py-1.5 font-mono text-xs">(no input)</pre>}
       </div>}
