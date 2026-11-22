@@ -53,6 +53,11 @@ test("prompts keep quotes, backslashes and newlines through a round trip", () =>
   assert.equal(parseDot(serializeDot(team)).nodes[0].prompt, prompt);
 });
 
+test("a prompt longer than 1000 characters is refused, the same limit validatePattern applies", () => {
+  expectError(`digraph t {\n  a [agent="codex", prompt="${"x".repeat(1001)}"];\n}`, /prompt is longer than 1000 characters/, 2);
+  assert.equal(parseDot(`digraph t {\n  a [agent="codex", prompt="${"x".repeat(1000)}"];\n}`).nodes[0].prompt.length, 1000);
+});
+
 test("defaults count to 1, kind to pair and required to false", () => {
   const team = parseDot('digraph t { a [agent="codex"]; a -> done [on="finish"]; }');
   assert.equal(team.nodes[0].count, 1);

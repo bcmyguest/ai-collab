@@ -34,7 +34,7 @@ Node attributes (a node is a role; its name is `[a-z][a-z0-9-]{0,23}`):
 | `agent` | `claude`, `codex`, `cursor` or `opencode`, optionally `:model` checked against the model lists | required |
 | `count` | whole number 1-8: N instances of the role | 1 |
 | `skill` | a skill name, `[a-z0-9][a-z0-9-]{0,63}` | none |
-| `prompt` | the role's responsibility, up to 4000 characters | required for a role in a run |
+| `prompt` | the role's responsibility, 1-1000 characters | required for a role in a run |
 | `fallback` | `harness` or `harness:model`, the model to propose when the role hits a usage limit | none |
 
 Edge attributes (a handoff; `done` is the only node that is not declared):
