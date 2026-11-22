@@ -52,4 +52,9 @@ test("task_list and task_update read and change the store through MCP", { timeou
   assert.equal(blocked.isError, true);
   assert.match(blocked.content[0].text, /not a task/);
   assert.equal(createFileBackend(store).get("alpha").blockers.length, 0);
+
+  // A blank progress note fails the whole update: the status change is not saved either.
+  const mixed = await call("task_update", { id: "alpha", status: "done", progress: "   ", session: LABEL });
+  assert.equal(mixed.isError, true);
+  assert.equal(createFileBackend(store).get("alpha").status, "building");
 });

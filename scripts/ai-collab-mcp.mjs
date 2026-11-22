@@ -310,13 +310,11 @@ async function updateTask(cfg, args, env) {
   const patch = {};
   for (const key of ["status", "title", "detail", "run", "owner"]) if (args[key] !== undefined) patch[key] = args[key];
   if (args.block_on !== undefined) patch.block = args.block_on;
-  const now = Date.now();
-  if (Object.keys(patch).length) await backend.update(args.id, patch, now);
+  // The changes and the progress note are one store transaction: all of them are validated, or none is written.
+  if (args.progress !== undefined) patch.progress = { by: `${cfg.peer}#${cfg.session}`, text: args.progress };
   const notes = [];
-  if (args.progress !== undefined) {
-    await backend.addProgress(args.id, { by: `${cfg.peer}#${cfg.session}`, text: args.progress }, now);
-    if (clipProgress(args.progress).truncated) notes.push(`progress clipped to ${PROGRESS_MAX} characters`);
-  }
+  if (Object.keys(patch).length) await backend.update(args.id, patch, Date.now());
+  if (args.progress !== undefined && clipProgress(args.progress).truncated) notes.push(`progress clipped to ${PROGRESS_MAX} characters`);
   return { task: taskView(backend.get(args.id)), ...(notes.length ? { notes } : {}) };
 }
 
