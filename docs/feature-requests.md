@@ -38,7 +38,7 @@ Operator requests from chat and the terminal, newest last. Status: done (merged 
 | Render questions, approvals and choice cards with A2UI over AG-UI | done (A2UI v0.9.1 until @a2ui/react binds v1.0) |
 | Message delivery as durable workflows in the runner (reserve, push, confirm, mark/release; durable backoff) instead of UI-server state | done (runner owns delivery; UI dispatcher stands down while it runs) |
 | Cursor-style tool groups between assistant messages in the session timeline | done |
-| Modern visual refresh of the whole UI | open (adapters merged 2026-11-22; ready to dispatch) |
+| Modern visual refresh of the whole UI | open (last; coordinator shows 2–3 design directions first; do not PM-dispatch) |
 | Teams as wteam-style DOT graphs: team.dot per team (project and global), full wteam semantics (agent, count, skill, prompt; on, kind broadcast/pair/fan-in; description, max_visits), DOT text editor with live graph | building (operator 2026-11-22: list, graph and run view first; DOT storage and runner next) |
 | Inspect and edit teams in the UI | building |
 | Compaction in all agents: compact every harness, before/after tokens per compaction, a cross-agent compaction map, one compaction event model | building (operator 2026-11-22) |
@@ -53,5 +53,5 @@ Operator requests from chat and the terminal, newest last. Status: done (merged 
 | Fallback instructions per team role (e.g. a `fallback` attribute in team.dot that agents follow on a limit) | open (operator 2026-11-22) |
 | Move off ntfy eventually, so attachments and links work | open (operator 2026-11-22) |
 | Scheduled jobs in the left panel | building |
-| Reply shows a quote of the replied message | building |
+| Reply shows a quote of the replied message; reply-to visible in composer (quote bar: sender + first line) | building (operator 2026-11-22) |
 | Record feature requests | this file |
