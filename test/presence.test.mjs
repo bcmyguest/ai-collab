@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawn } from "node:child_process";
@@ -99,7 +100,7 @@ function runHook(args, input, env) {
   });
 }
 
-const modes = (fake) => fake.state.publishes.filter((p) => p.topic === ALL).map((p) => JSON.parse(p.message)).filter((m) => m?.kind === "mode").map((m) => m.mode);
+const modes = (fake) => fake.state.publishes.filter((p) => p.topic === ALL).map((p) => parseWireEnvelope(p.message)).filter((m) => m?.kind === "mode").map((m) => m.mode);
 
 function setMode(fake, mode) {
   fake.inject(ALL, JSON.stringify({ v: 1, kind: "mode", from: "operator", mode, ts: Date.now() }));

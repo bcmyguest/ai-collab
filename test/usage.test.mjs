@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -40,7 +41,7 @@ test("one alert per crossing above 200,000; failed publish retries; a drop re-ar
   t.after(() => fake.close());
   const env = peerEnv(fake, { peer: "alice" });
   const cfg = loadConfig(env, { host: "claude", session: "aabbccddeeff0123" });
-  const alerts = () => fake.state.publishes.filter(p => JSON.parse(p.message)?.kind === "alert");
+  const alerts = () => fake.state.publishes.filter(p => parseWireEnvelope(p.message)?.kind === "alert");
 
   assert.equal((await reportContext(cfg, 200_000)).alerted, false);
   assert.equal(alerts().length, 0);
@@ -53,7 +54,7 @@ test("one alert per crossing above 200,000; failed publish retries; a drop re-ar
   const [alert] = alerts();
   assert.equal(alert.topic, "ai-collab-demo--to--all");
   assert.match(alert.title, /alice#aabbccddeeff0123 context 200001 tokens/);
-  assert.deepEqual(JSON.parse(alert.message), {
+  assert.deepEqual(parseWireEnvelope(alert.message), {
     v: 1, kind: "alert", from: "alice", session: "aabbccddeeff0123", contextTokens: 200001, threshold: 200000,
   });
 

@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import { EventType } from "@ag-ui/core";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -182,7 +183,7 @@ test("AFK mode publishes to every project, streams the latest mode, and stays ou
   assert.equal(fake.state.publishes.length, 0);
 
   assert.equal((await post({ mode: "quiet" }, allowedOrigin)).status, 201);
-  const sent = fake.state.publishes.map(p => [p.topic, JSON.parse(p.message)]);
+  const sent = fake.state.publishes.map(p => [p.topic, parseWireEnvelope(p.message)]);
   assert.deepEqual(sent.map(([topic]) => topic).sort(), [broadcastTopic("demo"), broadcastTopic("second")]);
   for (const [, envelope] of sent) {
     assert.deepEqual({ ...envelope, ts: 0 }, { v: 1, kind: "mode", from: "operator", mode: "quiet", ts: 0 });

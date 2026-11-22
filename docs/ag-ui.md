@@ -28,11 +28,10 @@ Approvals and questions can suspend harness work within the same turn. The appro
 
 ## Rollout
 
-Structured ntfy publishers default to the legacy `{v:1, kind, ...}` format. Readers accept both formats. Plain questions and `reply <id> <answer>` stay human-readable in the ntfy app in either mode.
+Structured ntfy publishers default to AG-UI. Readers accept AG-UI and legacy `{v:1, kind, ...}` messages, including cached history. Plain questions and `reply <id> <answer>` stay human-readable in the ntfy app in either mode.
 
-1. Deploy 0.11.0 or later to the UI, runner, and every plugin reader. Old sessions can keep their old plugin code, so restart or retire those sessions before switching the project.
-2. Set `"wire": "agui"` on the project in `projects.json`, or set `AI_COLLAB_WIRE=agui` in the publisher's environment. The environment overrides the project setting. Reload the configurations that publish to that project.
-3. Readers continue to accept cached legacy messages. To roll back, remove the opt-in or set `AI_COLLAB_WIRE=legacy`. Every publish uses one wire format.
+1. Before deploying the AG-UI default, deploy 0.11.0 or later to the UI, runner, and every plugin reader. Restart or retire sessions that still run older plugin code.
+2. To keep or restore legacy publishing during rollout, set `"wire": "legacy"` on the project in `projects.json`, or set `AI_COLLAB_WIRE=legacy` in the publisher environment. The environment overrides the project setting. Reload affected publishers after changing their configuration. Each publish uses one wire format.
 
 On connect, the UI sends one legacy `event: state` frame so older tabs can detect the new build and offer a reload. Current phone clients receive AG-UI `data:` frames. `STATE_SNAPSHOT` refreshes view state. Activity frames carry the ntfy ID, time, and any attachment in `metadata.aiCollabUi`. A `CUSTOM` event named `ai-collab.activity-batch` commits the preceding activity frames as a history reset or an append. The browser projects activity into the timeline, turns, and project feed.
 

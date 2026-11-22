@@ -1,3 +1,4 @@
+import { parseWireEnvelope } from "../lib/agui.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -12,7 +13,7 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 const ALL = "ai-collab-demo--to--all";
 const SESSION = "aabbccddeeff0011";
 
-const envelopes = (fake, kind) => fake.state.publishes.map((p) => { try { return { ...JSON.parse(p.message), topic: p.topic, title: p.title }; } catch { return null; } })
+const envelopes = (fake, kind) => fake.state.publishes.map((p) => { try { return { ...parseWireEnvelope(p.message), topic: p.topic, title: p.title }; } catch { return null; } })
   .filter((m) => m?.kind === kind);
 
 async function published(fake, kind) {

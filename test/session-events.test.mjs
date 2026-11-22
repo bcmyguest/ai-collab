@@ -5,7 +5,7 @@ import { EventType } from "@ag-ui/core";
 import { activityEvents, buildActivity } from "../lib/activity.mjs";
 import { clearFields, modelFields, sessionHistory } from "../lib/session-events.mjs";
 import { activityFor } from "../runner/publish.mjs";
-import { envelopeToEvent, eventToEnvelope } from "../lib/agui.mjs";
+import { envelopeToEvent, eventToEnvelope, parseWireEnvelope } from "../lib/agui.mjs";
 import { clearText, modelText } from "../web/lib/compaction-view.js";
 
 test("clearFields keeps the count it has and always reports 0 after", () => {
@@ -27,7 +27,7 @@ test("Claude's PostModelSwitch becomes a model row with the resolved ids", () =>
 test("a model row reaches the published envelope and round-trips through AG-UI", () => {
   const row = { type: "model", input: "Model a → b", modelSwitch: { from: "a", to: "b" } };
   const { message } = buildActivity({ peer: "claude", session: "abc123", wire: "legacy" }, "claude", row, "2026-11-22T10:00:00.000Z");
-  assert.deepEqual(JSON.parse(message).modelSwitch, { from: "a", to: "b" });
+  assert.deepEqual(parseWireEnvelope(message).modelSwitch, { from: "a", to: "b" });
   const envelope = { v: 1, kind: "activity", from: "claude", session: "abc123", ts: 1000, ...row };
   const event = envelopeToEvent(envelope, { id: "ntfy-1" });
   assert.equal(event.type, EventType.STEP_FINISHED);
