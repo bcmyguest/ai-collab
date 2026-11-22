@@ -194,25 +194,28 @@ Context alerts post one context alert to the broadcast topic each time a session
 
 ## Usage-limit cards
 
-When a session hits a subscription or usage limit, the phone gets one choice card for that session and limit window. The card names the agent and its `harness:model`, the limit with its window when known, and the reset time when known: `Limit reached · claude:claude-opus-5-5 · 5-hour · resets 18:00`. Nothing switches on its own.
+When a session hits a subscription or usage limit, the phone gets one choice card per limit window. The card names the agent and its `harness:model`, the limit with its window when known, and the reset time when known: `Limit reached · claude:claude-opus-5-5 · 5-hour · resets 18:00`. A plain HTTP 429 with no window, reset or limit wording reads `Rate limited`. Nothing switches on its own.
+
+Sessions that hit the same typed window (harness, window and reset time) share one card. The newer card lists every session on a `Sessions:` line and closes the older one (`approval-end`, reason `cancelled`). A Claude overage that is allowed or in use is not a limit.
 
 The card offers up to four replacements, then **Wait for reset**:
 
 - The pattern role's `fallback` (`harness:model`) comes first, when the session's pattern role defines one.
 - Then the first listed model of each other available harness (`lib/models.mjs`).
 - **Wait for reset** only acknowledges. Nothing else changes.
-- A replacement starts a new session in the same project folder with a handoff prompt: the original session's name, its last activity line, and an instruction to check the repository before editing. The original session keeps running. Each session's timeline gets a row that links to the other.
-- One pick per card. A second pick returns 409.
-- A window alerts once per session. A known reset time ends the silence at that time; an unknown reset stays silent for 5 hours.
+- A replacement starts a new session for each session on the card, in the folder that session ran in. A folder that is gone is refused with its path. The handoff prompt quotes the session title and last activity as data, not instructions. The original sessions keep running. Each session's timeline gets a row that links to its replacement.
+- A pick closes the card on every phone (`approval-end`, reason `answered`), so no second pick is offered; a second pick returns 409.
+- An untyped alert (the Claude `StopFailure` hook) and a typed one (the runner's `rate_limit_event`) for the same session make one card. A known reset time ends the silence at that time; an unknown reset keeps the card open for 5 hours.
+- The alert never starts a harness CLI to list models. It reads the model cache only.
 
 Detection (`lib/limits.mjs`). "Typed" means the pattern appears in a type definition; "UNVERIFIED" means no type or source in this repo names it, and the code comment says so.
 
 | Harness | Source | Status |
 |---|---|---|
-| Claude | `rate_limit_event` with `status: "rejected"` (`sdk.d.ts:6224`, `SDKRateLimitInfo` at `:6237`) | Typed. The `resetsAt` unit is UNVERIFIED; read as epoch seconds. |
-| Claude | `StopFailure` hook with `error: "rate_limit"` (`sdk.d.ts:10502`; enum at `:3995`) | Typed. It also fires for an API 429 with no plan limit. |
-| Claude | Failed result text: "usage limit", "rate limit", "quota", "429" | UNVERIFIED |
-| Codex | Turn error with `codexErrorInfo: "usageLimitExceeded"` | UNVERIFIED (not in `node_modules` or `docs/`) |
+| Claude | `rate_limit_event` with `status: "rejected"`, not on overage (`sdk.d.ts:6224`, `SDKRateLimitInfo` at `:6237`, overage fields `:6243-6246`) | Typed. The `resetsAt` unit is UNVERIFIED: values above 1e12 read as ms, else seconds. The window end is held to at least 5 minutes ahead. |
+| Claude | `StopFailure` hook with `error: "rate_limit"` (`sdk.d.ts:10502`; enum at `:3995`) | Typed. It also fires for an API 429 with no plan limit; the card reads `Rate limited` unless its details name a limit. |
+| Claude | Failed result text: "usage limit", "plan limit", "rate limit", "quota" | UNVERIFIED |
+| Codex | Turn error with `codexErrorInfo: "usageLimitExceeded"`, forwarded in RUN_ERROR metadata by `runner/adapters/codex.mjs` | UNVERIFIED: the field name is not in the repo's schema snapshot. |
 | Codex | Turn error text | UNVERIFIED |
 | OpenCode | Provider error with HTTP 429 | UNVERIFIED. `runner/adapters/opencode.mjs` forwards only the message, not the status, so the status check never fires. |
 | OpenCode | Provider error text | UNVERIFIED |
@@ -220,7 +223,7 @@ Detection (`lib/limits.mjs`). "Typed" means the pattern appears in a type defini
 
 Where detection runs:
 
-- The Claude `StopFailure` hook (`scripts/ai-collab-hook.mjs`) covers every Claude session that reports to AI Collab, including `claude --bg` sessions the phone starts.
+- The Claude `StopFailure` hook (`scripts/ai-collab-hook.mjs`) covers every Claude session that reports to AI Collab, including `claude --bg` sessions the phone starts. Its own `error` timeline row is dropped, because the limit row says the same.
 - The owned-session runner (`runner/runner.mjs`) covers Claude's `rate_limit_event` and every harness's run error.
 - Detached `codex exec`, `opencode run` and `cursor-agent -p` sessions started from the phone have no error hook, so no card appears for them.
 
