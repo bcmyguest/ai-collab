@@ -21,7 +21,7 @@ export function taskBoard(backend, agents = [], runs = []) {
       blockers: task.blockers,
       ...(task.owner ? { owner: task.owner, ownerOnline: online.get(task.owner) === true } : {}),
       ...(task.run ? { run: task.run } : {}),
-      // The address of the run's active role: the session a card opens when it has no owner.
+      // The graph opens the run's active session when the task has no owner.
       ...(runOf.get(task.run) ? { runSession: runOf.get(task.run) } : {}),
       last: task.progress.at(-1) ?? null,
       updated: task.updated,

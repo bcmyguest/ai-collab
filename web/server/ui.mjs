@@ -30,6 +30,7 @@ import { compactionFields } from "../../lib/compaction.mjs";
 import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern, savePattern, saveTeamText, teamTemplates, teamTextOf } from "../../lib/patterns.mjs";
 import { authorTeam, saveAuthoredTeam } from "../../lib/team-author.mjs";
 import { openTasks } from "../../lib/tasks.mjs";
+import { taskTags } from "../lib/task-tags.js";
 import { taskBoard } from "./task-board.mjs";
 import { advanceRun, listRuns, startRun } from "../../lib/pattern-runs.mjs";
 import { formatTeamOrchestrator } from "../../lib/format.mjs";
@@ -484,7 +485,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // An @session gets the post in its direct chat; an @harness reaches its running sessions, or starts one with the post as prompt.
-  async function routeMentions(project, body, target, by) {
+  async function routeMentions(project, body, target, by, sentTo) {
     const { cfg, operator } = project;
     const teamNames = [...Object.keys(listTeams(cfg, env)), ...Object.keys(listPatterns(cfg, env))];
     const sessions = listSessions(cfg);
@@ -502,6 +503,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       if (name.includes("#")) {
         // @session/run goes to the session that owns the subagent run.
         const [address, run] = name.split("/");
+        if (!run && sentTo.has(address)) continue;
         const session = sessions.find(item => item.id === address);
         if (!session) { notes.push("@" + name + " unknown"); continue; }
         await direct(address, run);
@@ -510,17 +512,17 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         notes.push("@" + name + (woke?.status === "waking" ? " sent, waking" : " sent"));
         continue;
       }
-      const running = sessions.filter(item => item.peer === name && item.online && item.id !== target);
+      const running = sessions.filter(item => item.peer === name && item.online && !sentTo.has(item.id));
       if (running.length) {
         for (const item of running) await direct(item.id);
         notes.push("@" + name + " sent to " + running.length + (running.length === 1 ? " session" : " sessions"));
         continue;
       }
-      if (sessions.some(item => item.peer === name && item.id === target)) continue;
+      if (sessions.some(item => item.peer === name && sentTo.has(item.id))) continue;
       if (!startable(project).includes(name)) { notes.push("@" + name + " not available here"); continue; }
       notes.push("@" + name + await startFor(cfg, body, { harness: name }));
     }
-    return notes.join(" · ");
+    return notes;
   }
 
   // Starts a mention's session in the project folder, one start per START_GAP_MS; returns the note after the tag.
@@ -1224,23 +1226,40 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         return json(201, { sent: true });
       }
       recipient(cfg, target);
-      const direct = action === "send" && target.includes("#");
-      const sender = direct || action === "send" ? operator : cfg;
-      // A reply id the envelope cannot carry is not an error: the post quotes the original instead.
       const reply = replyTo === undefined || replyTo === null || replyTo === "" ? null : replyQuote(replyTo, body, quote);
       const text = reply?.quoted ? reply.body : body.trim();
+      const tags = action === "send" && project.tasks ? taskTags(text) : [];
+      const ids = new Set(tags.map(match => match[2]));
+      const tagged = ids.size ? project.tasks.list().filter(task => ids.has(task.id)) : [];
+      const destinations = new Set(tagged.length ? tagged.map(task => task.owner || "all") : [target]);
+      const [primary] = destinations;
+      const notes = [];
+      let wake;
       try {
         if (urgent !== undefined && typeof urgent !== "boolean") reject(400, "urgent must be true or false");
-        await sendMessage(sender, target, text, { operatorThread: direct, urgent: urgent === true, ...(reply?.replyTo ? { replyTo: reply.replyTo } : {}), ...(by && sender.peer === "operator" ? { by } : {}) });
+        if (!reply?.quoted && replyTo !== undefined && replyTo !== null && replyTo !== ""
+          && (typeof replyTo !== "string" || !/^[a-zA-Z0-9-]{1,64}$/.test(replyTo))) reject(400, "Invalid reply ID");
+        for (const to of destinations) recipient(cfg, to);
+        const sender = action === "send" ? operator : cfg;
+        for (const to of destinations) {
+          const direct = action === "send" && to.includes("#");
+          const envelopeReply = reply?.replyTo && (to === target || destinations.size === 1) ? { replyTo: reply.replyTo }
+            : (!reply?.quoted && replyTo !== undefined && replyTo !== null && replyTo !== "" && to === target ? { replyTo } : {});
+          await sendMessage(sender, to, text, { operatorThread: direct, urgent: urgent === true, ...envelopeReply, ...(by && sender.peer === "operator" ? { by } : {}) });
+          if (direct) {
+            const result = wakeAgent(project, to, listSessions(cfg).find(item => item.id === to));
+            if (destinations.size === 1) wake = result;
+          }
+          if (tagged.length) notes.push(to === "all" ? "Project chat" : "To " + to);
+        }
       } catch (err) {
         if (err.message.includes("-byte limit")) reject(400, `Message exceeds ${NTFY_MESSAGE_MAX_BYTES} encoded bytes`);
         throw err;
       }
-      const routed = action === "send" ? await routeMentions(project, text, target, by) : "";
-      const detail = routed ? { status: "Sent", detail: routed } : {};
+      if (action === "send") notes.push(...await routeMentions(project, text, primary, by, destinations));
+      const detail = notes.length ? { status: "Sent", detail: notes.join(" · ") } : {};
       const quoted = reply?.quoted ? { quoted: true } : {};
-      if (direct) return json(201, { sent: true, ...detail, ...quoted, wake: wakeAgent(project, target, listSessions(cfg).find(item => item.id === target)) });
-      return json(201, { sent: true, ...detail, ...quoted });
+      return json(201, { sent: true, ...detail, ...quoted, ...(wake ? { wake } : {}) });
     } catch (err) {
       const { status, message } = failure(err);
       return json(status, { error: message });

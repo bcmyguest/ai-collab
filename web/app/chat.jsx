@@ -317,7 +317,7 @@ function Ticks({ state }) {
     className={cn("inline-flex", state === "read" ? "text-primary" : "text-muted-foreground")}><Icon className="size-3.5"/></span>;
 }
 
-function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, answer, nudge, disabled, detail }) {
+function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, answer, nudge, disabled, detail, taskLinks }) {
   const sender = message.from || message.sender || "ntfy";
   const outgoing = sender === operator;
   // A signed-in family member's message names them; the viewer's own stays "You".
@@ -359,8 +359,8 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
       </div>
       {message.quote && <Quote quote={message.quote} label={short(message.quote.sender)}/>}
       {message.kind === "Approval" ? <ApprovalCard approval={message.approval} now={now} disabled={disabled} act={act} head={cardHead}/>
-        : message.kind === "Question" && message.question ? <QuestionCard question={message.question} body={withMentions(message.body)} answer={message.answer} by={message.answeredBy} disabled={disabled} onAnswer={body => answer(message.question, body)} head={cardHead}/>
-        : <MessageContent markdown className={cn("bubble max-w-full rounded-2xl px-3.5 py-2 text-[15px] leading-relaxed shadow-xs [overflow-wrap:anywhere]",
+        : message.kind === "Question" && message.question ? <QuestionCard question={message.question} body={withMentions(message.body)} taskLinks={taskLinks} answer={message.answer} by={message.answeredBy} disabled={disabled} onAnswer={body => answer(message.question, body)} head={cardHead}/>
+        : <MessageContent markdown taskLinks={taskLinks} className={cn("bubble max-w-full rounded-2xl px-3.5 py-2 text-[15px] leading-relaxed shadow-xs [overflow-wrap:anywhere]",
         outgoing ? "rounded-tr-md border border-primary/25 bg-primary/10 text-foreground" : "rounded-tl-md border bg-card text-card-foreground",
         message.kind === "Question" && "border-amber-500/50")}>{withMentions(message.body)}</MessageContent>}
       {message.attachment && <a href={"/api/file/" + message.attachment.file} target="_blank" rel="noreferrer" className="block max-w-full overflow-hidden rounded-2xl border bg-card">
@@ -397,6 +397,7 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
   // Command names the picker inserted in this draft; only these and known commands make the message a command.
   const picked = useRef(new Set());
   const pending = useRef(false);
+  const prefillFocused = useRef(false);
   const mention = mentionAt(draft);
   const options = [...agents.map(agent => ({ id: agent.id, name: agent.name, lastMessageAt: agent.lastMessageAt, activeAt: agent.activeAt, online: agent.online })),
     ...harnesses.map(harness => ({ id: harness.id, lastMessageAt: harness.lastMessageAt, activeAt: harness.activeAt, harness: true })),
@@ -420,6 +421,13 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
   // Every edit is kept per conversation, so a tab or view switch that remounts the composer restores it.
   function setDraft(next) { drafts.set(conversation, next); setDraftState(next); }
   function focus() { document.getElementById("composer")?.focus(); }
+  useEffect(() => {
+    if (!initialDraft || disabled || prefillFocused.current) return;
+    const input = document.getElementById("composer");
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+    prefillFocused.current = true;
+  }, [initialDraft, disabled]);
   // A Reply click prefills the agent's @tag ahead of whatever the operator has typed.
   useEffect(() => {
     if (!replying) return;
@@ -801,6 +809,8 @@ function Console({ account }) {
   const models = useModels(project);
   const level = selected.level;
   const tasksView = level === "tasks";
+  const composeTask = selected.composeTask || "";
+  const taskLinks = useMemo(() => ({ project, ids: new Set(data.tasks?.tasks.map(task => task.id)) }), [project, data.tasks]);
   // The new-agent composer replaces the chat while it is open.
   const composing = Boolean(creating) && creating === project && ready;
   const agent = level === "session" ? data.agents.find(item => item.id === selected.session) : undefined;
@@ -812,8 +822,8 @@ function Console({ account }) {
   const openCard = (node, run = "") => navigate({ project: node.project, level: "session", harness: node.harness || peerOf(node.id), session: node.id, ...(run ? { tab: "subagents", run } : {}) });
   // The session's ⋯ menu opens its raw activity: every tool call, unfolded.
   const openRaw = node => navigate({ project: node.project, level: "session", harness: node.harness || peerOf(node.id), session: node.id, tab: "raw" });
-  const placeholder = missing ? "Pick a session first" : level === "session" ? "Message " + short(selected.session) + " directly…"
-    : "Message everyone in " + (project || "the project") + "…";
+  const placeholder = composeTask ? `Message about #${composeTask}…` : missing ? "Pick a session first"
+    : level === "session" ? "Message " + short(selected.session) + " directly…" : "Message everyone in " + (project || "the project") + "…";
   // A session command: resolves true only when the session ran it or the compaction was requested (the composer clears).
   async function runCommand(body) {
     const at = requested;
@@ -955,7 +965,9 @@ function Console({ account }) {
         {ready ? <PatternsPage data={data} project={project} selected={selected} navigate={navigate} call={patternCall} disabled={working}/>
           : <p className="py-16 text-center text-sm text-muted-foreground">Loading patterns…</p>}
       </div>}
-      {!patterns && !composing && (tasksView ? <TaskBoard board={data.tasks} now={now} open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatContainerRoot contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
+      {!patterns && !composing && (tasksView ? <TaskBoard board={ready ? data.tasks : null} now={now} taskId={selected.task}
+        back={() => navigate({ project, level: "tasks" })} compose={id => navigate({ project, level: "project", composeTask: id })}
+        open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatContainerRoot contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
         <ChatContainerContent key={requested} className="mx-auto w-full max-w-3xl gap-5 px-3 py-4">
           {!ready && (home || listing || subagents || compactions) && !loadError && <p className="py-16 text-center text-sm text-muted-foreground">Loading sessions…</p>}
           {ready && (home || listing) && <>
@@ -977,7 +989,7 @@ function Console({ account }) {
           {ready && !home && !listing && !subagents && thread.map(({ message, activity: row }) => row
             ? row.type === "completion" ? <CompletionRow key={row.id} row={row} when={at => ago(at, now)} open={openAddress}/>
               : <ActivityRow key={row.id} row={row} when={at => ago(at, now)} now={now} goRun={goRun}/>
-            : <ChatMessage key={message.id} message={message} operator={data.operator} me={account.user?.login} now={now} open={openAddress} disabled={!ready || working}
+            : <ChatMessage key={message.id} message={message} operator={data.operator} me={account.user?.login} now={now} open={openAddress} disabled={!ready || working} taskLinks={taskLinks}
               detail={agentDetail(data.agents.find(agent => agent.id === message.from))}
               act={payload => action("approve", payload, "Sent")} answer={(id, body) => action("reply", { question: id, body }, "Reply sent")}
               nudge={to => action("nudge", { target: to }, "Sending now")}
@@ -996,14 +1008,18 @@ function Console({ account }) {
         </div>
       </ChatContainerRoot>)}
       <div role="status" hidden={!notice} className="mx-auto w-full max-w-3xl px-4 text-center text-xs text-muted-foreground">{notice}</div>
-      {!home && !listing && !patterns && !tasksView && !composing && <Composer key={requested} conversation={conversationKey(project, level === "session" ? selected.session : "")} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
+      {!home && !listing && !patterns && !tasksView && !composing && <Composer key={requested + ":" + composeTask} conversation={conversationKey(project, composeTask ? "#" + composeTask : level === "session" ? selected.session : "")} initialDraft={composeTask ? `#${composeTask} ` : ""} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
         placeholder={placeholder} question={question} cancel={() => setQuestion("")} urgentable={!question} replying={replyTo} cancelReply={() => setReplyTo(null)}
         onSend={async (body, urgent, command) => {
           // Project chat never runs commands: a leading / there is ordinary chat.
           if (command && !question && level === "session" && selected.session) return runCommand(body);
+          const composeHash = composeTask && location.hash;
           const sent = question ? await action("reply", { question, body }, "Reply sent")
             : await action("send", { target, body, ...(urgent ? { urgent: true } : {}), ...(replyTo ? { replyTo: replyTo.id, quote: { sender: replyTo.sender, body: replyTo.body } } : {}) }, "Sent");
-          if (sent) { setQuestion(""); setReplyTo(null); stick.current?.scrollToBottom(); }
+          if (sent) {
+            setQuestion(""); setReplyTo(null); stick.current?.scrollToBottom();
+            if (composeHash && location.hash === composeHash) navigate({ project, level: "project" });
+          }
           return sent;
         }}/>}
     </main>

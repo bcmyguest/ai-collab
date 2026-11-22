@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils"
+import { remarkTaskLinks } from "@/lib/task-tags"
 import { marked } from "marked"
 import { memo, useId, useMemo } from "react"
 import ReactMarkdown from "react-markdown";
@@ -22,6 +23,7 @@ const INITIAL_COMPONENTS = {
   a: function LinkComponent({ href, children, ...props }) {
     // A button: the chat opens the tagged session (or harness) on tap through event delegation on data-mention.
     if (href === "#mention") return <button type="button" data-mention className="mention rounded-md bg-primary/15 px-1 font-medium text-primary hover:bg-primary/25">{children}</button>
+    if (href?.startsWith("#project=") && href.includes("&level=tasks&task=")) return <a href={href} className="font-medium text-primary underline underline-offset-2">{children}</a>
     return <a href={href} target="_blank" rel="noreferrer" className="underline underline-offset-2" {...props}>{children}</a>
   },
   code: function CodeComponent({ className, children, ...props }) {
@@ -59,11 +61,12 @@ const INITIAL_COMPONENTS = {
 const MemoizedMarkdownBlock = memo(
   function MarkdownBlock({
     content,
+    taskLinks,
     components = INITIAL_COMPONENTS
   }) {
     return (
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkBreaks]}
+        remarkPlugins={taskLinks ? [remarkGfm, remarkBreaks, [remarkTaskLinks, taskLinks]] : [remarkGfm, remarkBreaks]}
         components={components}
       >
         {content}
@@ -71,7 +74,7 @@ const MemoizedMarkdownBlock = memo(
     )
   },
   function propsAreEqual(prevProps, nextProps) {
-    return prevProps.content === nextProps.content
+    return prevProps.content === nextProps.content && prevProps.taskLinks === nextProps.taskLinks
   }
 )
 
@@ -81,6 +84,7 @@ function MarkdownComponent({
   children,
   id,
   className,
+  taskLinks,
   components = INITIAL_COMPONENTS
 }) {
   const generatedId = useId()
@@ -93,6 +97,7 @@ function MarkdownComponent({
         <MemoizedMarkdownBlock
           key={`${blockId}-block-${index}`}
           content={block}
+          taskLinks={taskLinks}
           components={components}
         />
       ))}

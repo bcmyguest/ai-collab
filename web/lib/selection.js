@@ -1,3 +1,5 @@
+import { isTaskId } from "./task-tags.js";
+
 // Location hash → console selection: the level, project, session, view tab and subagent run a URL names.
 export const LEVELS = [["project", "Project"], ["session", "Sessions"], ["tasks", "Tasks"], ["patterns", "Patterns and teams"], ["compactions", "Compactions"]];
 // Views each level accepts in the hash: a session's timeline (activity), its subagents and raw activity; nothing else.
@@ -20,6 +22,8 @@ export function selectionHash(next = {}) {
     if (next.author) params.set("author", "1");
     if (next.edit && next.authorName) params.set("authorName", next.authorName);
   }
+  if (next.level === "tasks" && isTaskId(next.task)) params.set("task", next.task);
+  if (next.level === "project" && isTaskId(next.composeTask)) params.set("composeTask", next.composeTask);
   return params.toString();
 }
 
@@ -52,6 +56,8 @@ export function parseSelection(hash) {
       run: params.get("run") || "",
     };
   }
+  if (at === "tasks" && isTaskId(params.get("task"))) return { ...base, task: params.get("task") };
+  if (at === "project" && isTaskId(params.get("composeTask"))) return { ...base, composeTask: params.get("composeTask") };
   // from/to (epoch ms) cut a session's timeline to one schedule run; no other session tab reads them.
   const window = at === "session" && base.tab === "activity" ? timeWindow(params) : null;
   return window ? { ...base, window } : base;
