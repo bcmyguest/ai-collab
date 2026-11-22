@@ -29,8 +29,8 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | MCP `interrupt` tool | done |
 | Messages appear in the Claude terminal immediately (socket delivery, like Pulsar) | done (merged main 2026-11-21: `claude-socket.mjs`, dispatcher confirm + wait) |
 | Wake closed sessions on a message (durable, DBOS-like) | done in the runner (adapters merged main 2026-11-22; live wake verification open) |
-| Live wake verification for durable delivery across harness adapters | open |
-| Owned sessions: runner service, durable workflows, AG-UI event names, four harness adapters | building (operator yes 2026-11-22; adapters merged e63a06f; integration hardening — coordinator starting) |
+| Live wake verification for durable delivery across harness adapters | done claude+codex+cursor pass; codex closing-window bug separate task |
+| Owned sessions: runner service, durable workflows, AG-UI event names, four harness adapters | building runner adapters on: claude, codex (2026-11-22); cursor/opencode need auth |
 | Copy T3 Code's code viewer (`@pierre/diffs`) for mobile and web | done (file edits render as diffs) |
 | Operator prompts and phone replies (ask_question answers) visible in session and project chat | done (merged main 2026-11-21; coordinator confirmed) |
 | Context management and slash commands from the phone: Compact, Clear/new, Model switch, any typed /cmd; context meter plus loaded files | done (compact partial for Claude/Codex; model and passthrough OpenCode only, unverified) |
@@ -43,7 +43,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Message delivery as durable workflows in the runner (reserve, push, confirm, mark/release; durable backoff) instead of UI-server state | done (runner owns delivery; UI dispatcher stands down while it runs) |
 | Cursor-style tool groups between assistant messages in the session timeline | done |
 | Modern visual refresh of the whole UI | open (last; coordinator shows 2–3 design directions first; do not PM-dispatch) |
-| Teams as wteam-style DOT graphs: team.dot per team (project and global), full wteam semantics (agent, count, skill, prompt; on, kind broadcast/pair/fan-in; description, max_visits), DOT text editor with live graph | building agent started 2026-11-22 |
+| Teams as wteam-style DOT graphs: team.dot per team (project and global), full wteam semantics (agent, count, skill, prompt; on, kind broadcast/pair/fan-in; description, max_visits), DOT text editor with live graph | done merged 5494323, deployed; wteam role mapping/$pairs/gates not supported |
 | Inspect and edit teams in the UI | building |
 | Compaction in all agents: compact every harness, before/after tokens per compaction, a cross-agent compaction map, one compaction event model | done merged 706b619, deployed 2026-11-22 |
 | Structured task list (tasks.json) with status board, dependency graph and live links to agents | done merged 706b619, deployed 2026-11-22 |
@@ -53,8 +53,8 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Close or delete a project | done (UI merge 21a47722, deployed 2026-11-22) |
 | Operator's pending messages in project chat | building |
 | Sidebar projects show running/inactive counts, not harness types | done (UI merge 21a47722, deployed 2026-11-22) |
-| Subscription limits: phone alert with a choice card to pick the replacement model; no auto-switch | decided (operator 2026-11-22: alert only; 9router rejected, proxies subscription OAuth) |
-| Fallback instructions per team role (e.g. a `fallback` attribute in team.dot that agents follow on a limit) | building in the DOT teams build |
+| Subscription limits: phone alert with a choice card to pick the replacement model; no auto-switch | done merged 154a628, deployed; Claude limit types verified, others UNVERIFIED |
+| Fallback instructions per team role (e.g. a `fallback` attribute in team.dot that agents follow on a limit) | done merged 5494323, deployed; wteam role mapping/$pairs/gates not supported |
 | Move off ntfy eventually, so attachments and links work | open (operator 2026-11-22) |
 | Scheduled jobs in the left panel | done (UI merge 21a47722; detail view still building) |
 | Tap a scheduled job for read-only detail (schedule, next run, command/prompt, recent runs) | done merged 706b619, deployed 2026-11-22 |
@@ -62,10 +62,18 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Tap a notification opens the right view | done (UI merge 21a47722, deployed 2026-11-22) |
 | Notification filter: all / questions and replies / questions only / none | done (UI merge 21a47722; sidebar alert level, deployed 2026-11-22) |
 | Fix-and-review team: lead/reviewer uses deepseek (reviews policy) | done merged 706b619, deployed 2026-11-22 |
-| Hosted multi-user: users reach only their own agents; agents from other users are identified as such | open (operator 2026-11-22; needs design: user identity, tenancy, agent credentials, cross-user policy) |
+| Hosted multi-user: users reach only their own agents; agents from other users are identified as such | open shelved by operator 2026-11-22; draft + Opus review on branch worktree-agent-ae3bb980a5eec65ea, unmerged |
 | Record feature requests | done this file |
 | Phone model switch: switch a runner-owned Claude session's model from the phone via SDK Query.setModel (sdk.d.ts:3227) | open deferred by operator |
 | Context info fits the phone (no cutoff at 390px) | done merged 4c444e5, deployed |
 | Two near-identical bell icons: make them distinct or merge | done merged 4c444e5, deployed |
 | task add treats --help as a title; add help output and a remove command | open |
+| Runner wake.send retries a codex thread that is closing (runner/runner.mjs:379-399) | open |
+| Limit card: typed rate_limit_event suppressed by earlier untyped StopFailure card (lib/limit-alert.mjs:207) | building |
+| Fan-in hangs when another role stays live (lib/pattern-runs.mjs:354-360) | building |
+| Limit card: two open cards for one window when resetsAt differs (lib/limit-alert.mjs:202) | open |
+| Cursor limit detection drops error.code/data and exit-path text (runner/adapters/cursor.mjs:109,95) | open |
+| OpenCode 429 branch unreachable: status not forwarded (lib/limits.mjs:81, opencode.mjs:165) | open |
+| onOverage true on overageEnabled even when overageStatus rejected (lib/limits.mjs:37-38) | open |
+| DOT prompt optional in parser but required by validatePattern (lib/dot.mjs:150-155) | open |
 <!-- tasks:end -->
