@@ -250,7 +250,15 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     const holder = { s: null, live: null };
     const cwd = await wf.step("place", () => placeCwd(project, harness, place));
     const opened = await wf.step("open", async () => {
-      const options = { project, cwd, place, permissionMode, permission: permissionSettings(harness, permissionMode, place).settings, env: ownedEnv(), ...(model ? { model } : {}) };
+      // An adapter that starts its child before returning (Claude) calls beforeStart with the native id: the owned record exists first.
+      const beforeStart = (nativeId) => {
+        const childLabel = sessionLabel(nativeId);
+        writeOwned(sessionCfg(project, harness, childLabel), {
+          v: 1, label: childLabel, address: `${harness}#${childLabel}`, workflowId: wf.id, harness, nativeId, project, cwd, place, permissionMode,
+          ...(model ? { model } : {}), status: "starting", run: null, approvals: [], createdAt: now(),
+        });
+      };
+      const options = { project, cwd, place, permissionMode, permission: permissionSettings(harness, permissionMode, place).settings, env: ownedEnv(), beforeStart, ...(model ? { model } : {}) };
       holder.live = await adapter.open(options, contextFor(holder, harness, wf.signal));
       return { nativeId: holder.live.nativeId };
     }, { onCut: () => ({ failed: "the runner stopped while the session opened" }) });
@@ -375,8 +383,14 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
             if (s.signal.aborted) throw error;
             s.record.status = "ended";
             save(s);
-            await releaseOwned(scfg, messageIds, wf.id);
-            await enqueuePublish(s, () => publishEvent(cfg, harness, { type: EventType.CUSTOM, name: ERROR, value: `woken session did not take the message: ${error.message}` }));
+            if (error.mayHaveStarted) {
+              // The harness may have taken the turn: the batch is delivered, never resent.
+              await markDelivered(scfg, messageIds);
+              await enqueuePublish(s, () => publishEvent(cfg, harness, { type: EventType.CUSTOM, name: ERROR, value: `woken session may have taken the message; not resent: ${error.message}` }));
+            } else {
+              await releaseOwned(scfg, messageIds, wf.id);
+              await enqueuePublish(s, () => publishEvent(cfg, harness, { type: EventType.CUSTOM, name: ERROR, value: `woken session did not take the message: ${error.message}` }));
+            }
             return { error: error.message };
           }
         }, {

@@ -44,7 +44,12 @@ function startServer(pool, env) {
   server.write = (message) => child.stdin.write(`${JSON.stringify(message)}\n`);
   server.request = (method, params) => new Promise((resolve, reject) => {
     const id = ++server.nextId;
-    const timer = setTimeout(() => { server.pending.delete(id); reject(new Error(`codex ${method} timed out`)); }, REQUEST_MS);
+    const timer = setTimeout(() => {
+      server.pending.delete(id);
+      const error = new Error(`codex ${method} timed out`);
+      error.timedOut = true;
+      reject(error);
+    }, pool.requestMs);
     server.pending.set(id, {
       resolve: (value) => { clearTimeout(timer); resolve(value); },
       reject: (error) => { clearTimeout(timer); reject(error); },
@@ -62,11 +67,14 @@ function startServer(pool, env) {
 /** Starts the shared child and runs `initialize`; one child serves every thread of the runner. */
 async function connectServer(pool, env) {
   const server = startServer(pool, env);
+  pool.booting = server; // shutdown kills a child that has not finished its handshake
   try {
     await server.request("initialize", { clientInfo: CLIENT, capabilities: null });
   } catch (error) {
     server.child.kill();
     throw error;
+  } finally {
+    if (pool.booting === server) pool.booting = null;
   }
   server.write({ method: "initialized" });
   return server;
@@ -215,19 +223,23 @@ function makeHandle(session) {
       if (session.turnId) throw new Error("the codex turn is still running");
       await attach(session);
       session.prompt = input.text;
+      // A timed-out turn/start may still have started: the error says so, and the caller never resends.
       const { turn } = await session.server.request("turn/start", {
         threadId: session.nativeId, input: userInput(input), cwd: session.cwd, ...turnPolicy(session.settings),
         ...(session.model ? { model: session.model } : {}),
+      }).catch((error) => {
+        if (error.timedOut) error.mayHaveStarted = true;
+        throw error;
       });
       return { runId: turn.id };
     },
     async steer(input) {
       if (!session.turnId) throw new Error("no codex turn is running to steer");
-      await session.server.request("turn/steer", { threadId: session.nativeId, expectedTurnId: session.turnId, input: userInput(input) });
+      await liveServer(session).request("turn/steer", { threadId: session.nativeId, expectedTurnId: session.turnId, input: userInput(input) });
     },
     async interrupt() {
       if (!session.turnId) return;
-      await session.server.request("turn/interrupt", { threadId: session.nativeId, turnId: session.turnId });
+      await liveServer(session).request("turn/interrupt", { threadId: session.nativeId, turnId: session.turnId });
     },
     async respond(interruptId, decision) {
       const approval = session.approvals.get(interruptId);
@@ -264,6 +276,12 @@ function makeHandle(session) {
   };
 }
 
+/** The session's child, or a clear error once the child has exited or the session closed. */
+function liveServer(session) {
+  if (!session.server || session.server.exited) throw new Error("the codex app-server is not running; resume the session");
+  return session.server;
+}
+
 /** Binds the session to the shared child, resuming the thread there after a restart or child exit. */
 async function attach(session) {
   const server = await currentServer(session.pool, session.env);
@@ -284,9 +302,9 @@ function newSession({ pool, ctx, env, cwd, place, mode, model, settings }) {
   return { pool, ctx, env, cwd, place, mode, model, settings, nativeId: "", address: "", server: null, prompt: "", turnId: null, approvals: new Map(), usage: null };
 }
 
-/** Default export of runner/adapters/codex.mjs. `command` overrides the child argv (tests pass a fake app-server). */
-export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND } = {}) {
-  const pool = { command, server: null, starting: null };
+/** Default export of runner/adapters/codex.mjs. `command` overrides the child argv; requestMs the RPC timeout (tests). */
+export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND, requestMs = REQUEST_MS } = {}) {
+  const pool = { command, requestMs, server: null, starting: null, booting: null };
   return {
     harness: "codex",
     capabilities: { steer: true, images: false, resume: "transcript", permissionModes: PERMISSION_MODES },
@@ -338,6 +356,8 @@ export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND } = {
       const server = pool.server;
       pool.server = null;
       server?.child.kill();
+      pool.booting?.child.kill();
+      pool.booting = null;
     },
   };
 }

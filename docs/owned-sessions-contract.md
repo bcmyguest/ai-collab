@@ -183,7 +183,7 @@ One run takes every message in the batch, so a burst costs one paid turn. Messag
 | `adopt.check` | Adoption only: a registry entry online in another process (the user resumed the session) ends the wake `skipped-online`; the hooks and live delivery take the messages | re-executes |
 | `adopt` | Adoption only: writes an owned record (`status: "ended"`, `workflowId` = the wake id) when none exists | re-executes (idempotent) |
 | `wake.reserve` | `reserveOwned` for the batch under this wake's id (busy: retried after 1 s, up to 5 tries); messages another owner holds drop out of the batch | re-executes (the owner re-acquires) |
-| `wake.send` | Resumes the native session through `adapter.resume`, `handle.send` of the batch; on success the batch is marked seen and receipts go out; on error the batch is released | `onCut`: `cutRun` marks the run interrupted, the session ends again, the batch is released (never resent) |
+| `wake.send` | Resumes the native session through `adapter.resume`, `handle.send` of the batch; on success the batch is marked seen and receipts go out; on error the batch is released, except an error with `mayHaveStarted` (a codex `turn/start` timeout): the batch is marked delivered and an error notice says it was not resent | `onCut`: `cutRun` marks the run interrupted, the session ends again, the batch is released (never resent) |
 | `wake.wait` | Waits for `RUN_FINISHED` or `RUN_ERROR` | `onCut` marks the run interrupted |
 | `wake.more` | Whether the `wake` queue holds messages that arrived during the run | re-executes |
 | `wake.close` | `endSession`: the session is `ended` again | re-executes |
@@ -247,6 +247,8 @@ Rules for every adapter:
 - Map `options.permission` (from the permission table) onto the harness; never widen it.
 - Emit completed text and tool calls as `TEXT_MESSAGE_CHUNK` and `TOOL_CALL_CHUNK`. The ntfy publisher skips incremental `TEXT_MESSAGE_CONTENT` fragments.
 - Reject `open` with an `Error` whose message the operator can act on. Never print secrets into it.
+- `open` may call `options.beforeStart(nativeId)` once the adapter has chosen the native id and before the child starts; the runner writes the owned record there (status `starting`), so the child's hooks stand down.
+- A send error with `mayHaveStarted: true` means the harness may have taken the input: the runner marks it delivered and never resends it. Only a send error that certainly did not start releases the batch.
 - No real CLI runs in tests: drive the adapter against a fake transport (a stub JSON-RPC peer, a stub HTTP server) plus `test/helpers/fake-ntfy.mjs`.
 
 ### OpenCode adapter facts (`runner/adapters/opencode.mjs`)
@@ -255,6 +257,9 @@ Verified means the string appears in the local OpenCode 2.2.5 binary (`strings`)
 
 | Fact | Status | Evidence |
 |---|---|---|
+| Resync on reconnect: an owned session with an open run that reports `data.status === "idle"` ends the run with `RUN_ERROR`; a pending ask the server no longer lists closes its card (`cancelled`); an ask whose reply is in flight raises no card | Adapter behaviour; `data.status` field and its `idle` value UNVERIFIED | `test/runner-adapter-opencode-resync.test.mjs` (fake service) |
+| Subagent asks: `permission.asked` whose `sessionID` is a child of an owned session (`parentID`) surface on the owned session; the reply goes to the child's id | Adapter behaviour; `parentID` field UNVERIFIED | `test/runner-adapter-opencode-resync.test.mjs` |
+| Execution binding: once our execution has started, only a `session.execution.*` event whose `executionID` matches it ends the run. Before that, a completion ends the run (existing test: failed without started). A TUI prompt that completes before ours starts can still end it | `executionID` field UNVERIFIED; the unbound case is a known gap | `test/runner-adapter-opencode.test.mjs` |
 | Routes: `POST /api/session`, `POST /api/session/:id/prompt`, `POST .../interrupt`, `GET .../permission`, `POST .../permission/:requestID/reply`, `GET /api/event`, `GET /api/model`, `GET /api/command`, `GET /api/info` | Verified names | binary route strings |
 | Create body `{location: {directory}, model?}`; reply `{id}` as `data.id` | Partly: `location` and `data` verified, `model` key shape (`providerID`, `modelID`) UNVERIFIED | `session.create` schema |
 | Prompt body `{text, delivery: "queue" \| "steer", resume: true}` | Verified names; live effect UNVERIFIED | `session.prompt` schema |
@@ -266,7 +271,13 @@ Verified means the string appears in the local OpenCode 2.2.5 binary (`strings`)
 | `AI_COLLAB_PARENT` export into the agent shell | Not done: the service runs its own shell, so the adapter cannot set a per-session env | owned-sessions.md |
 | Hook stand-down | Keyed by owned record (session id), not by env, because the service is shared | `lib/owned.mjs` `standsDown` |
 | Not implemented | `contextUsage`, `setModel`, question forms (`/form` replies), `resumeData` | |
+### Codex adapter status
+
+`runner/adapters/codex.mjs` bounds each RPC at 60 s. A timed-out `turn/start` carries `mayHaveStarted`, so the runner never resends it. `shutdown()` also kills a child still in its `initialize` handshake. `steer` and `interrupt` after the child is gone (or the session closed) throw `the codex app-server is not running` instead of a `TypeError`. Tested against `test/helpers/fake-codex-silent-app-server.mjs` (`test/runner-adapter-codex-regressions.test.mjs`); nothing ran against the real app-server.
+
 ### Claude adapter status
+
+The CLI handshake at `open` and `resume` is bounded at 60 s: a CLI that does not answer fails with `claude session failed to start: no response from the CLI within 60 s` (or `claude resume ...`), and its query is closed. Tested with `test/helpers/fake-claude-query.mjs` (`test/runner-adapter-claude-handshake.test.mjs`, `test/runner-owned-before-start.test.mjs`).
 
 `runner/adapters/claude.mjs` implements the Claude column above with `query()` from the Agent SDK; `createClaudeAdapter({query})` takes the query function for tests (`test/runner-adapter-claude.test.mjs`, 20 tests, fake query). Nothing ran against the real CLI or SDK. UNVERIFIED:
 
@@ -323,7 +334,7 @@ An agent started inside an owned session (say `claude -p` from an owned Claude's
 
 Known limits:
 
-- Hooks that fire before the `claim` step writes the record (a Claude CLI's `SessionStart`, a Codex app-server child's first events, the shared OpenCode service) may publish one stray row.
+- Hooks that fire before the `claim` step writes the record (a Codex app-server child's first events, the shared OpenCode service) may publish one stray row. A Claude child does not: its owned record exists before the child starts (`beforeStart`).
 - Once a session is `ended`, its hooks report again, so a later `claude --resume <id>` from a terminal shows up as a normal session.
 
 ## Control API (runner ↔ UI)
