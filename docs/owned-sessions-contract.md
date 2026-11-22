@@ -192,7 +192,7 @@ Wakes of one address run in sequence (a gate per address). A woken session is ow
 
 A session the user resumed outside the runner: the pump drops the adopted owned record of a session seen online in another process and serves it as live; a wake for a session seen online outside is skipped.
 
-Harness adapters: `runner/adapters/<harness>.mjs` is not built for claude, codex, cursor or opencode. Until one is built, `loadAdapters` logs `no <harness> adapter yet`, and wakes for that harness record `no-adapter`. The fake adapter drives the tests.
+Harness adapters: `runner/adapters/<harness>.mjs` is built for claude only; codex, cursor and opencode are not. Until one is built, `loadAdapters` logs `no <harness> adapter yet`, and wakes for that harness record `no-adapter`. The fake adapter drives the tests.
 
 ### Pruning
 
@@ -248,6 +248,18 @@ Rules for every adapter:
 - Emit completed text and tool calls as `TEXT_MESSAGE_CHUNK` and `TOOL_CALL_CHUNK`. The ntfy publisher skips incremental `TEXT_MESSAGE_CONTENT` fragments.
 - Reject `open` with an `Error` whose message the operator can act on. Never print secrets into it.
 - No real CLI runs in tests: drive the adapter against a fake transport (a stub JSON-RPC peer, a stub HTTP server) plus `test/helpers/fake-ntfy.mjs`.
+
+### Claude adapter status
+
+`runner/adapters/claude.mjs` implements the Claude column above with `query()` from the Agent SDK; `createClaudeAdapter({query})` takes the query function for tests (`test/runner-adapter-claude.test.mjs`, 20 tests, fake query). Nothing ran against the real CLI or SDK. UNVERIFIED:
+
+- `query()` spawns the CLI on first read or on call, and `initializationResult()` makes no API request (no tokens).
+- `query.interrupt()` ends the turn with a `result` message; the adapter reports `cancelled` on it.
+- AskUserQuestion input (`questions`) and `updatedInput.answers` shape.
+- `steer` with `priority: "now"` folds into the running turn.
+- `listModels` and `listCommands` via a prompt-less probe query, and `supportedCommands` names (with or without `/`).
+- The SDK `env` option replaces the child environment; the adapter passes the runner's `childEnv` plus `AI_COLLAB_OWNED=claude` and `AI_COLLAB_PARENT`.
+- `AI_COLLAB_OWNED` is set but no code reads it. Hooks stand down by the owned record (`lib/owned.mjs` `standsDown`). `docs/research/owned-sessions.md` L158 says the value is `"1"`; `runner/types.d.ts` says `<harness>`. The adapter uses `claude`.
 
 ## Adapter events
 
@@ -367,7 +379,7 @@ Cursor's `full-access` needs OpenShell. OpenCode replies are always `once`, neve
 | `runner/control.mjs`, `runner/client.mjs` | Control socket server and client |
 | `runner/main.mjs` | Service entry (`npm run runner`) |
 | `runner/adapters/fake.mjs` | Scripted adapter for tests and a template for real adapters |
-| `runner/adapters/<harness>.mjs` | Real adapters, one per agent (not written yet; `loadAdapters` logs `no <harness> adapter yet`) |
+| `runner/adapters/<harness>.mjs` | Real adapters, one per agent: `claude.mjs` is built; codex, cursor and opencode are not (`loadAdapters` logs `no <harness> adapter yet`) |
 | `runner/delivery.mjs` | Delivery workflow: reserve, push, confirm, mark or release, expect-reply redelivery |
 | `lib/deliver-push.mjs` | Live push paths (socket, `codex queue`, OpenCode HTTP) and the ack tracker, shared with the UI dispatcher |
 | `lib/owned.mjs` | Owned-record read/write and `standsDown` |
