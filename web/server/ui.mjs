@@ -24,6 +24,8 @@ import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
 import { closedProjectNames, createTeam, deleteTeam, listTeams, readProjectsFile, removeProject, setProjectClosed, teamTask } from "../../lib/teams.mjs";
 import { copyPattern, listPatterns, removableNames, removePattern, savePattern } from "../../lib/patterns.mjs";
+import { openTasks } from "../../lib/tasks.mjs";
+import { taskBoard } from "./task-board.mjs";
 import { advanceRun, listRuns, startRun } from "../../lib/pattern-runs.mjs";
 import { formatTeamOrchestrator } from "../../lib/format.mjs";
 import { activityRows, groupSubagents, summarize } from "../lib/activity-rows.js";
@@ -289,6 +291,11 @@ export function assertSameOrigin(request, allowedOrigin) {
   if ((site && site !== "same-origin") || !fromUi) reject(403, "Same-origin request required");
 }
 
+// The project's task backend, or null when its projects.json "tasks" setting names none.
+function tasksOf(name, env) {
+  try { return openTasks(name, env); } catch { return null; }
+}
+
 export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start = startSession, models = listModels, push: notifier = null, auth = null }) {
   if (!configs.length) throw new Error("No ai-collab project is configured");
   for (const item of configs) if (!item.enabled) throw new Error(item.reason);
@@ -338,8 +345,11 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     mkdirSync(registry, { recursive: true, mode: 0o700 });
     const watcher = watch(registry, broadcast);
     watcher.unref();
+    // Task edits from the CLI or an agent reach open streams through the backend's watch.
+    const tasks = tasksOf(item.project, env);
+    const unwatchTasks = tasks ? tasks.watch(broadcast) : () => {};
     const project = {
-      cfg: item, hub: hubs.get(key), watcher,
+      cfg: item, hub: hubs.get(key), watcher, tasks, unwatchTasks,
       operator: { ...item, peer: "operator", session: "" },
       topic: broadcastTopic(item.project), status: statusTopic(item.project), activity: activityTopic(item.project),
       receipts: receiptsTopic(item.project),
@@ -803,6 +813,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const cards = scope === "home" ? shown.flatMap(item => item === project ? sessionCards(item, list, mode)
       : item.failed ? [] : sessionCards(item, agents(item, lastMessages(item)), mode))
       : scope === "sessions" ? sessionCards(project, list, mode) : undefined;
+    const runs = listRuns(project.cfg);
     return {
       project: project.cfg.project, operator: project.operator.peer, mode, alerts: readAlertLevel(env),
       // Sessions per project as running and inactive, read by the sidebar rows; kept apart from projects.
@@ -834,7 +845,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       startPlaces: startPlaces(project),
       teams: Object.entries(listTeams(project.cfg, env)).map(([id, members]) => ({ id, members })),
       patterns: patternRows(project.cfg, env),
-      runs: listRuns(project.cfg).slice(0, 20),
+      runs: runs.slice(0, 20),
+      tasks: taskBoard(project.tasks, list, runs),
     };
   }
 
@@ -1220,7 +1232,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       for (const client of clients) client.write = () => {};
       clients.clear();
       clearTimeout(pushTimer);
-      for (const project of projects.values()) project.watcher.close();
+      for (const project of projects.values()) {
+        project.watcher.close();
+        project.unwatchTasks();
+      }
       for (const hub of hubs.values()) hub.close();
     },
   };
