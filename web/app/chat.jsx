@@ -203,7 +203,7 @@ function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamO
           </button>
           <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label={"New session in " + project.id}
             title="New session" onClick={() => newSession(project.id)}><Plus/></Button>
-          <ProjectMenu project={project.id} act={projectAction}/>
+          {!data.autoProjects?.includes(project.id) && <ProjectMenu project={project.id} act={projectAction}/>}
         </li>)}
       </ul>
       {data.closedProjects?.length > 0 && <div className="pt-4"><ClosedProjects names={data.closedProjects} act={projectAction}/></div>}
@@ -859,7 +859,7 @@ function Console({ account }) {
   }
   // Close, reopen and delete a project; Delete asks first and leaves the repo, worktrees and ntfy history alone.
   async function projectAction(path, name) {
-    if (path === "delete" && !window.confirm("Delete " + name + " from the project registry? Its repo, worktrees and ntfy history stay.")) return;
+    if (path === "delete" && !window.confirm("Delete " + name + " from the project registry? Its repo, worktrees and ntfy history stay. Live sessions in its repo will re-home under the folder name.")) return;
     const done = await action(path, { project: name }, path === "close" ? "Closed" : path === "reopen" ? "Reopened" : "Deleted");
     if (done && path !== "reopen" && name === (selected.project || data.project)) navigate({ level: "home" });
   }

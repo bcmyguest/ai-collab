@@ -22,7 +22,7 @@ import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } 
 import { availableHarnesses, availablePlaces, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
 import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
-import { closedProjectNames, createTeam, deleteTeam, listTeams, removeProject, setProjectClosed, teamTask } from "../../lib/teams.mjs";
+import { closedProjectNames, createTeam, deleteTeam, listTeams, readProjectsFile, removeProject, setProjectClosed, teamTask } from "../../lib/teams.mjs";
 import { createPattern, deletePattern, listPatterns } from "../../lib/patterns.mjs";
 import { advanceRun, listRuns, startRun } from "../../lib/pattern-runs.mjs";
 import { formatTeamOrchestrator } from "../../lib/format.mjs";
@@ -811,6 +811,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }),
       // Registered projects marked closed, listed so the sidebar can reopen them.
       closedProjects: closedProjectNames(env).filter(name => !removed.has(name)),
+      // Projects auto-joined from a session's repo have no projects.json entry, so Close and Delete do not apply.
+      autoProjects: shown.map(item => item.cfg.project).filter(name => !readProjectsFile(env).some(entry => entry?.project === name)),
       view: { harness, session, ...(scope ? { scope } : {}) },
       harnesses: harnesses(project, list, last),
       // Unfinished subagent runs ride on each agent for the composer's @session/run picker.
