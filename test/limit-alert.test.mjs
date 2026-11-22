@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../lib/config.mjs";
 import { LIMIT_TOOL, WAIT_LABEL, alertLimit, limitLine, replacementOptions, resetClock, roleFallback } from "../lib/limit-alert.mjs";
@@ -73,6 +74,17 @@ test("alertLimit publishes a second card after the known reset passes", async (t
   await alertLimit(cfg, { harness: "claude", limit: FIVE_HOUR, now: FIVE_HOUR.resetsAt - 60_000, ...deps });
   assert.equal((await alertLimit(cfg, { harness: "claude", limit: FIVE_HOUR, now: FIVE_HOUR.resetsAt + 1, ...deps })).status, "sent");
   assert.equal(cards(fake).length, 2);
+});
+
+test("a limit alert never spawns a harness CLI to list models", async (t) => {
+  const { fake, env, cfg } = await setup(t);
+  const bin = mkdtempSync(join(tmpdir(), "limit-bin-"));
+  const marker = join(bin, "spawned.txt");
+  // Fake executables that only record that they ran; no real CLI is started.
+  for (const name of ["opencode", "cursor-agent"]) writeFileSync(join(bin, name), `#!/bin/sh\necho ${name} >> "${marker}"\n`, { mode: 0o755 });
+  await alertLimit({ ...cfg, session: SESSION }, { harness: "claude", limit: FIVE_HOUR, env: { ...env, PATH: bin } });
+  assert.equal(existsSync(marker), false);
+  assert.equal(cards(fake).length, 1);
 });
 
 test("a session in a pattern run puts its role's fallback first on the card", async (t) => {
