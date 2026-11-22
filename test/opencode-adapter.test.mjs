@@ -96,7 +96,7 @@ test("opencode install writes the plugin shim, the MCP server under mcp.servers,
   assert.equal(config.model, "anthropic/x");
   assert.deepEqual(config.plugins, ["other"]);
   assert.deepEqual(config.skills, ["/my/skills", path.join(SRC, "skills")], "the skills path is added once");
-  assert.deepEqual(Object.keys(config.mcp.servers), ["other", "ai-collab"]);
+  assert.deepEqual(Object.keys(config.mcp.servers), ["other", "ai-collab", "ai-collab-code"]);
   assert.deepEqual(config.mcp.servers["ai-collab"], { type: "local", command: ["node", path.join(SRC, "scripts", "ai-collab-mcp.mjs"), "opencode"], cwd: ".", enabled: true });
   assert.equal(first.plugin, path.join(dir, "plugins", "ai-collab.js"));
   assert.equal(readFileSync(first.plugin, "utf8"), pluginShim(SRC));

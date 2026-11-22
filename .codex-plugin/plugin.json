@@ -17,6 +17,14 @@
         "${PLUGIN_ROOT}/scripts/ai-collab-mcp.mjs",
         "codex"
       ]
+    },
+    "ai-collab-code": {
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/scripts/ai-collab-code-mcp.mjs",
+        "codex"
+      ],
+      "tool_timeout_sec": 150
     }
   }
 }
