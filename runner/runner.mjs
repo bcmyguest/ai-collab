@@ -145,6 +145,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     if ((e.type === EventType.RUN_STARTED || e.type === EventType.RUN_FINISHED) && e.threadId !== r.address) {
       return log(`${r.harness}: dropped event (wrong threadId)`);
     }
+    const limit = e.type === EventType.CUSTOM && e.name === LIMIT ? e.value : e.type === EventType.RUN_ERROR ? limitFromRunError(r.harness, e.message, e.metadata?.aiCollab) : null;
     switch (e.type) {
       case EventType.RUN_STARTED:
         r.status = "running";
@@ -165,7 +166,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         r.run = null;
         for (const card of [...r.approvals]) closeApproval(s, card.id, "cancelled");
         save(s);
-        if (e.type === EventType.RUN_ERROR) s.finished.set(e.metadata.aiCollab.runId, { outcome: "error", message: e.message });
+        if (e.type === EventType.RUN_ERROR) s.finished.set(e.metadata.aiCollab.runId, { outcome: "error", message: e.message, ...(r.builder && limit?.wording ? { usageLimit: true } : {}) });
         else {
           const outcome = e.outcome?.type ?? "success";
           const handoff = outcome === "success" ? patternHandoff(s.patternReply?.text) : undefined;
@@ -194,7 +195,6 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       return;
     }
     // A harness limit (an adapter event or a run error): one limit card per session and window.
-    const limit = e.type === EventType.CUSTOM && e.name === LIMIT ? e.value : e.type === EventType.RUN_ERROR ? limitFromRunError(r.harness, e.message, e.metadata?.aiCollab) : null;
     if (limit) enqueuePublish(s, () => alertLimit(s.cfg, { harness: r.harness, limit }).catch((error) => log(`limit alert failed: ${error.message}`)));
     enqueuePublish(s, () => publishEvent(s.cfg, r.harness, e));
   }
@@ -400,7 +400,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         await wf.step("builder.finish", async () => {
           await s.live?.close().catch(() => {});
           s.live = null;
-          await finishOwnedBuilder(builder, staged, finished?.outcome === "success" ? 0 : 1, env, log);
+          await finishOwnedBuilder(builder, staged, finished?.outcome === "success" ? 0 : 1, env, log, undefined, finished?.usageLimit);
         });
         return wf.step("close", () => endSession(s, "builder finished"));
       }

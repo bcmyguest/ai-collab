@@ -102,7 +102,7 @@ test("builder start runs the agent in its own sandbox and lands its commit on th
   const create = calls.find((a) => a[1] === "create");
   assert.ok(create.includes(SANDBOX));
   const policy = JSON.parse(readFileSync(create[create.indexOf("--policy") + 1], "utf8"));
-  assert.deepEqual(policy.network_policies.cursor.endpoints.map((e) => e.host).slice(0, 1), ["api2.cursor.sh"]);
+  assert.deepEqual(policy.network_policies.cursor.endpoints[0], { host: "api2.cursor.sh", port: 443, protocol: "tcp", tls: "skip" });
   assert.equal(policy.network_policies.ai_collab.endpoints[0].host, "host.openshell.internal");
   assert.ok(policy.network_policies.cursor.binaries.some((b) => b.path === "/sandbox/agent/2026.11.22-fake/cursor-agent"));
   assert.ok(calls.some((a) => a[1] === "delete" && a[2] === SANDBOX));
@@ -224,7 +224,7 @@ test("a CODEX_HOME with no login falls back to the user's ~/.codex login", async
   assert.equal(src.codexAuth, existsSync(own) ? own : "");
 });
 
-test("Codex builder runs through the control socket and links its task before sending the brief", async (t) => {
+async function ownedBuilderTest(t, prompt) {
   const ntfy = await startFakeNtfy();
   t.after(() => ntfy.close());
   const l = lab({ AI_COLLAB_URL: ntfy.url, AI_COLLAB_PEERS: "claude,codex,operator" });
@@ -238,7 +238,7 @@ test("Codex builder runs through the control socket and links its task before se
     FAKE_CODEX_LOG: path.join(l.home, "codex.log"),
   });
   await withTask(l);
-  writeFileSync(l.brief, "hang");
+  writeFileSync(l.brief, prompt);
   const cfg = loadConfig(l.env, { cwd: l.root });
   const durable = openDurable(path.join(l.home, "runner.db"));
   const runner = createRunner({
@@ -254,7 +254,7 @@ test("Codex builder runs through the control socket and links its task before se
   assert.match(address, /^codex#[0-9a-f]{16}$/);
   assert.equal(task(l).owner, address);
   assert.equal(task(l).run, "run123");
-  assert.equal(task(l).status, "building");
+  if (prompt === "hang") assert.equal(task(l).status, "building");
   assert.equal(runner.get(address).taskId, "smoke-task");
   assert.match((await l.cli("builder", "list")).out, /codex#/);
   assert.ok(readJsonLines(l.env.FAKE_SYSTEMD_LOG).every(row => row[0] !== "systemd-run"));
@@ -263,7 +263,19 @@ test("Codex builder runs through the control socket and links its task before se
     await new Promise(resolve => setTimeout(resolve, 20));
   }
   const turn = readJsonLines(l.env.FAKE_CODEX_LOG).find(row => row.method === "turn/start");
-  assert.match(turn?.params.input[0].text, /^hang[\s\S]*oncebitten check --base main/);
+  assert.ok(turn?.params.input[0].text.startsWith(prompt));
+  assert.match(turn.params.input[0].text, /oncebitten check --base main/);
+  if (prompt === "limit") {
+    while (Date.now() < deadline && runner.get(address).status !== "ended") {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    assert.equal(runner.get(address).status, "ended");
+    assert.equal(task(l).status, "done");
+    assert.match(wtGit(l, "show", "HEAD:notes.md"), /a line from the builder/);
+    assert.equal(readJsonLines(l.env.FAKE_BUILDER_LOG).length, 1);
+    assert.deepEqual(JSON.parse(readFileSync(l.env.FAKE_OPENSHELL_STATE, "utf8")).sandboxes, []);
+    return;
+  }
   const stopped = await l.cli("builder", "stop", "smoke-task");
   assert.equal(stopped.code, 0, stopped.err);
   assert.equal(runner.get(address).status, "ended");
@@ -278,7 +290,10 @@ test("Codex builder runs through the control socket and links its task before se
   assert.equal(task(l).status, "blocked");
   assert.equal(task(l).owner, address);
   assert.deepEqual(JSON.parse(readFileSync(l.env.FAKE_OPENSHELL_STATE, "utf8")).sandboxes, []);
-});
+}
+
+test("Codex builder links its task before sending the brief", (t) => ownedBuilderTest(t, "hang"));
+test("runner-owned Codex retries a usage limit with Cursor", (t) => ownedBuilderTest(t, "limit"));
 
 test("Codex builder uses the standalone unit when the control socket is absent", async () => {
   const l = lab();
@@ -296,4 +311,27 @@ test("Codex builder uses the standalone unit when the control socket is absent",
   assert.ok(readJsonLines(l.env.FAKE_SYSTEMD_LOG).some(row => row[0] === "systemd-run"));
   assert.equal(task(l).status, "done");
   assert.equal(task(l).owner, undefined);
+});
+
+test("standalone Codex retries a usage limit with Cursor and carries uncommitted edits forward", async () => {
+  const l = lab();
+  l.env.AI_COLLAB_RUNNER_SOCKET = path.join(l.home, "missing.sock");
+  const tree = path.join(l.home, "codex-release");
+  mkdirSync(path.join(tree, "bin"), { recursive: true });
+  const codex = path.join(tree, "bin", "codex");
+  writeFileSync(codex, '#!/bin/sh\necho "Codex partial edit" >> notes.md\necho "Usage limit reached" >&2\nexit 1\n', { mode: 0o755 });
+  symlinkSync(codex, path.join(l.home, "bin", "codex"));
+  l.env.AI_COLLAB_CODEX_TREE = tree;
+  writeFileSync(path.join(l.env.XDG_CONFIG_HOME, "ai-collab", "defaults.json"), JSON.stringify({ builderOrder: ["codex", "cursor"] }));
+  await withTask(l);
+  const res = await l.cli("builder", "start", "--task", "smoke-task", "--brief", l.brief);
+  assert.equal(res.code, 0, res.err);
+  assert.equal(task(l).status, "done");
+  assert.match(wtGit(l, "show", "HEAD:notes.md"), /Codex partial edit\na line from the builder/);
+  const [cursor] = readJsonLines(l.env.FAKE_BUILDER_LOG);
+  assert.equal(cursor.args[6], "deepseek-v41-flash-1017-high");
+  const calls = readJsonLines(l.env.FAKE_OPENSHELL_LOG);
+  assert.equal(calls.filter((row) => row[1] === "create").length, 2);
+  assert.equal(calls.filter((row) => row[1] === "delete").length, 2);
+  assert.ok(readJsonLines(l.env.FAKE_ONCEBITTEN_LOG).some((row) => row.args[0] === "check"));
 });

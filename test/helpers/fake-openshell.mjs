@@ -36,6 +36,7 @@ if (args[0] === "sandbox" && args[1] === "list") {
 if (args[0] === "sandbox" && args[1] === "create") {
   const state = load();
   const name = nameArg(args);
+  rmSync(inside(name), { recursive: true, force: true });
   state.sandboxes.push({ name, phase: "Ready" });
   save(state);
   process.exit(0);

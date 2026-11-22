@@ -7,7 +7,7 @@ Lib: `lib/builder.mjs`. OpenShell lifecycle: `runner/sandbox.mjs`. Tests: `test/
 ## Commands
 
 ```
-ai-collab builder start --task <id> --harness cursor|codex|claude [--model M] --brief <file> [--branch B] [--run ID]
+ai-collab builder start --task <id> [--harness cursor|codex|claude] [--model M] --brief <file> [--branch B] [--run ID]
 ai-collab builder list [--all]
 ai-collab builder stop <id>
 ```
@@ -19,6 +19,10 @@ ai-collab builder stop <id>
 | `stop` | Closes an owned session through the runner or stops the standalone unit and deletes its sandbox. Refuses an id that `start` did not create, so hand-started `builder-*` units are never touched. The worktree and branch stay. |
 
 Defaults: Cursor `deepseek-v41-flash-1017-high`, Codex `gpt-6.2-sol`, Claude `haiku` (the alias for the latest Haiku). The id is the task id. State lives in `$XDG_STATE_HOME/ai-collab/builders/<id>/` (`state.json`, `brief.md`, `policy.yaml`); the unit's output is in `journalctl --user -u builder-<id>`.
+
+When `--harness` is omitted, the first supported entry in `defaults.json`'s `builderOrder` array selects the starting harness. For example, `"builderOrder": ["codex", "cursor"]` starts with Codex. Codex is the built-in starting harness.
+
+Both Codex launch paths retry a subscription usage limit once with Cursor `deepseek-v41-flash-1017-high`. The supervisor copies the Git worktree and recorded task calls and hooks into a fresh OpenShell sandbox, then sends the brief again. The normal collection and oncebitten check run after the retry.
 
 ## Runner-owned Codex builders
 
@@ -145,7 +149,7 @@ Measured on 2026-11-22 with openshell 0.1.9, a real sandbox per run, and throwaw
 | Claude `claude-haiku-5-5` end to end | **works**: sandbox `b-sandbox-0bd292`; init listed tools `Bash, Edit, Glob, Grep, Read, Write` plus 13 `mcp__ai-collab__*`, MCP `ai-collab` connected; the agent ran git 2.43.0, node v26.13.0, npm 11.20.0 and `list_agents`, committed `docs(builders): sandbox smoke test line` (`Assisted-by: Claude:claude-haiku-5-5`), ran `oncebitten check --base main` (clean) and set the task done; the commit landed on the host branch, 7 captures were replayed into oncebitten, and the sandbox was deleted. 7 turns, $0.0055 |
 | Sandbox names | over 19 characters are refused (`name exceeds maximum length (50 > 19)`) |
 
-Why Cursor fails, as far as measured: plain `node` (the CLI's own bundled binary) resolves and fetches `api2.cursor.sh` in the same sandbox, with the same env and workdir, sequentially and 30 at a time. Inside the CLI's process, a lookup probe loaded with `--require` succeeds at about 300 ms and fails from about 450-630 ms on; with `HTTPS_PROXY=http://127.0.0.1:3128` the CLI gets `connect EACCES 127.0.0.1:3128` instead. Seccomp, capabilities and the network namespace do not change over that time. OpenShell logs the DNS mapping and no denial. Something in the CLI process restricts its own sockets after start (`--sandbox disabled` does not stop it); docs/owned-sessions-contract.md (OpenShell, "Still unsolved") has the earlier probes. Until that is solved, use `--harness codex`.
+Before the builder policy switched Cursor API endpoints to native TCP with TLS passthrough, plain `node` (the CLI's own bundled binary) resolves and fetches `api2.cursor.sh` in the same sandbox, with the same env and workdir, sequentially and 30 at a time. Inside the CLI's process, a lookup probe loaded with `--require` succeeds at about 300 ms and fails from about 450-630 ms on; with `HTTPS_PROXY=http://127.0.0.1:3128` the CLI gets `connect EACCES 127.0.0.1:3128` instead. Seccomp, capabilities and the network namespace do not change over that time. OpenShell logs the DNS mapping and no denial. Something in the CLI process restricts its own sockets after start (`--sandbox disabled` does not stop it); docs/owned-sessions-contract.md (OpenShell, "Still unsolved") has the earlier probes. The revised policy uses exact API hostnames so OpenShell can serve policy DNS and Cursor can negotiate TLS directly. A live prompt with the revised policy is pending.
 
 UNVERIFIED:
 
