@@ -47,7 +47,7 @@ const ownerOf = (cfg, id) => {
   return run.sessions[run.active] ?? "";
 };
 
-test("fix-and-review runs in order, loops on changes requested, and fails at the cap", async (t) => {
+test("fix-and-review runs in order, loops on changes requested, and waits for operator confirmation at the cap", async (t) => {
   const { env, cfg, fake } = await fixture(t);
   const { calls, start } = fakeStart();
   const now = clock();
@@ -77,10 +77,14 @@ test("fix-and-review runs in order, loops on changes requested, and fails at the
     await advanceRun(cfg, id, "diff and test results", { caller: ownerOf(cfg, id), env, start, now });
   }
   const capped = await advanceRun(cfg, id, "changes requested", { caller: ownerOf(cfg, id), env, start, now });
-  assert.equal(capped.status, "failed");
+  assert.equal(capped.status, "suspended");
   assert.match(capped.detail, /cap of 3/);
-  assert.equal(runStatus(cfg, id).status, "failed");
-  assert.ok(fake.state.publishes.some((p) => /Pattern run .* failed/.test(p.message)), "the operator hears about the cap failure");
+  const suspended = runStatus(cfg, id);
+  assert.equal(suspended.status, "suspended");
+  assert.ok(fake.state.publishes.some((p) => /Pattern run .* suspended.*Operator confirmation/.test(p.message)));
+  const resumed = await advanceRun(cfg, id, "", { override: true, confirmation: suspended.suspension.id, env, start, now });
+  assert.equal(resumed.status, "running");
+  assert.equal(resumed.handoff.on, "changes requested");
 });
 
 test("completion is refused until the required approval has fired", async (t) => {

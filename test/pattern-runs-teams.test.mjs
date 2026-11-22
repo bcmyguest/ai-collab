@@ -136,7 +136,7 @@ test("a caller that is not a live instance is refused, even with another instanc
   await assert.rejects(advanceRun(cfg, id, "submit", { caller: sessionOf(cfg, id, "workers", 0), env, start, now }), /only the active role "workers" can advance/);
 });
 
-test("max_visits fails the run when a role is visited past the limit", async (t) => {
+test("max_visits suspends a handoff until the operator confirms it", async (t) => {
   const { env, cfg } = await fixture(t, { loop: LOOP });
   const { start } = fakeStart();
   const now = clock();
@@ -146,8 +146,24 @@ test("max_visits fails the run when a role is visited past the limit", async (t)
   await advanceRun(cfg, id, "back", { caller: sessionOf(cfg, id, "b"), env, start, now });
   await advanceRun(cfg, id, "go", { caller: sessionOf(cfg, id, "a"), env, start, now });
   const over = await advanceRun(cfg, id, "back", { caller: sessionOf(cfg, id, "b"), env, start, now });
-  assert.equal(over.status, "failed");
+  assert.equal(over.status, "suspended");
   assert.match(over.detail, /role "a" reached its max_visits of 2/);
+  const suspended = runStatus(cfg, id);
+  assert.equal(suspended.active, "b");
+  assert.equal(suspended.handoffs.length, 3);
+  assert.deepEqual(suspended.visits, { a: [2], b: [2] });
+  const confirmation = suspended.suspension.id;
+  await assert.rejects(advanceRun(cfg, id, "back", { override: true, env, start, now }), /is suspended/);
+  await assert.rejects(advanceRun(cfg, id, "back", { confirmation, caller: sessionOf(cfg, id, "b"), env, start, now }), /no matching suspension/);
+  const resumed = await advanceRun(cfg, id, "", { override: true, confirmation, by: "alice", env, start, now });
+  assert.equal(resumed.status, "running");
+  assert.equal(resumed.active, "a");
+  assert.equal(resumed.handoff.by, "alice");
+  assert.equal(runStatus(cfg, id).visits.a[0], 3);
+  assert.equal(runStatus(cfg, id).suspension, undefined);
+  await assert.rejects(advanceRun(cfg, id, "", { override: true, confirmation, env, start, now }), /no matching suspension/);
+  const next = await advanceRun(cfg, id, "go", { caller: sessionOf(cfg, id, "a"), env, start, now });
+  assert.equal(next.status, "suspended");
 });
 
 const CHANGE = `digraph change {

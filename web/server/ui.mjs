@@ -1107,7 +1107,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
-      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, startMode, codeMode, team: teamName, members, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps } = await payload(request);
+      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, startMode, codeMode, team: teamName, members, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -1182,7 +1182,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         }
         // Operator override: the run's active role need not be the caller; the handoff records the operator's login.
         if (advanceRunId) {
-          const advanced = await advanceRun(cfg, String(advanceRunId), String(advanceEvent ?? ""), { note: String(advanceNote ?? ""), override: true, by: by ?? "operator", env, start })
+          const advanced = await advanceRun(cfg, String(advanceRunId), String(advanceEvent ?? ""), { note: String(advanceNote ?? ""), override: true, confirmation: String(advanceConfirmation ?? ""), by: by ?? "operator", env, start })
             .catch((error) => reject(400, error.message));
           return json(201, advanced);
         }
