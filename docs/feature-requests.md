@@ -11,7 +11,7 @@ Operator requests from chat and the terminal, newest last. Status: done (merged 
 | Online/offline marker in the Subagents view | done |
 | A child session counts as its parent's subagent | done |
 | Teams: dynamic, stored in projects.json plus a global config; orchestrator starts and keeps members alive | done (first version) |
-| Teams as roles and interaction patterns (Hermes / coding-factory / wteam style), not just roster create — e.g. "Fix and review" with handoffs | open; operator 2026-11-21; Codex sol design; decided: each handoff is required or guidance, set per pattern |
+| Teams as roles and interaction patterns (Hermes / coding-factory / wteam style), not just roster create — e.g. "Fix and review" with handoffs | done; operator 2026-11-21; Codex sol design; decided: each handoff is required or guidance, set per pattern |
 | OpenCode taggable; one OpenCode instance with Qwen 3.8 Flash Next | done (peer added) |
 | Codex install without the plugin-hash timeout (GitHub marketplace) | done |
 | Agents can read the project's public channel | done (`ai-collab history`, MCP `channel_history`) |
