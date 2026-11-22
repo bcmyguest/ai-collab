@@ -73,3 +73,14 @@ test("SessionStart from a compaction is a finished compact row; other sources st
     [{ type: "compact", input: "compacted", compaction: { phase: "finished" } }]);
   assert.deepEqual(activityEvents("claude", "sessionstart", { source: "clear" }), [{ type: "start", input: "session started · clear" }]);
 });
+
+test("PostCompact is a finished compact row with the trigger", async () => {
+  const { activityEvents } = await import("../lib/activity.mjs");
+  assert.deepEqual(activityEvents("claude", "postcompact", { trigger: "auto", compact_summary: "s" }),
+    [{ type: "compact", input: "compacted · auto", compaction: { trigger: "auto", phase: "finished" } }]);
+});
+
+test("compactionFields keeps filesDropped as a count", () => {
+  assert.deepEqual(compactionFields({ phase: "started", filesDropped: 4 }), { phase: "started", filesDropped: 4 });
+  assert.deepEqual(compactionFields({ phase: "started", filesDropped: -2 }), { phase: "started" });
+});

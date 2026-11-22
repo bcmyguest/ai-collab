@@ -36,16 +36,18 @@ Only on your ntfy server: with `deploy/compose.yaml`, messages stay in its cache
 
 ### Compaction
 
-Every compact row carries `compaction: {trigger?, phase, tokensBefore?, tokensAfter?}` (lib/compaction.mjs). `phase` is `started`, `finished` or `failed`; `trigger` is `auto` or `manual` and is absent when the harness does not report it. Sources:
+Every compact row carries `compaction: {trigger?, phase, tokensBefore?, tokensAfter?, filesDropped?}` (lib/compaction.mjs). A PreCompact row takes `tokensBefore` (the context meter's last reading, lib/usage.mjs) and `filesDropped` (on-demand instruction files that the compaction drops) from the session state. `phase` is `started`, `finished` or `failed`; `trigger` is `auto` or `manual` and is absent when the harness does not report it. Sources:
 
 | Source | Phase | Where |
 |---|---|---|
 | Claude `compact_boundary` system message (`pre_tokens`, `post_tokens`), `@anthropic-ai/claude-agent-sdk` sdk.d.ts:4058 | finished, with token counts | runner/adapters/claude.mjs |
+| Claude `PreCompact` (sdk.d.ts:2902) | started, with `tokensBefore` and `filesDropped` | lib/activity.mjs, scripts/ai-collab-hook.mjs |
+| Claude `PostCompact` (sdk.d.ts:2778), wired in hooks/hooks.json | finished | lib/activity.mjs |
 | Claude `SessionStart` `source: "compact"` (sdk.d.ts:7266) | finished | lib/activity.mjs |
 | Codex `contextCompaction` item | started and finished together | runner/adapters/codex.mjs |
 | OpenCode `session.compaction.started`, `.ended`, `.failed` | started, finished, failed | runner/adapters/opencode.mjs |
 
-The compact row from a finished step reads `compacted · <trigger>`, and a failed one reads `compaction failed`. Claude's `SessionStart` with `source: "compact"` (sdk.d.ts:7266) is a finished compact row. `PreCompact` rows do not carry the field yet. Claude's `PostCompact` (sdk.d.ts:2778) is not in hooks/hooks.json yet.
+The compact row from a finished step reads `compacted · <trigger>`, and a failed one reads `compaction failed`. `tokensAfter` is set only by the Claude runner (`post_tokens`). Hook rows have no after-reading: the meter's first reading after a compaction is not recorded yet, so the timeline shows no after count for them.
 
 ## Cost to the agent
 
