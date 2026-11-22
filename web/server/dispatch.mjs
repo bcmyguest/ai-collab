@@ -15,7 +15,8 @@ import { broadcastTopic, inboxTopic, receiptsTopic } from "../../lib/config.mjs"
 import { BACKOFF_BASE_MS, BACKOFF_MAX_MS, MAX_ATTEMPTS, PUSHED, REDELIVER_MS, TTL_MS, direct, pushSession, readySession, runCommand } from "../../lib/deliver-push.mjs";
 import { identityLine, formatInbox } from "../../lib/format.mjs";
 import { sessionIdleState } from "../../lib/idle.mjs";
-import { claimInbox, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery } from "../../lib/inbox.mjs";
+import { claimInbox, ATTACHMENT_BUDGET_MS, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery } from "../../lib/inbox.mjs";
+import { cacheAttachmentsWithin } from "../../lib/attachment-cache.mjs";
 import { pollCached } from "../../lib/ntfy.mjs";
 import { opencodeRequest } from "../../lib/opencode-api.mjs";
 import { readReceipts } from "../../lib/receipts.mjs";
@@ -122,8 +123,12 @@ export function createDispatcher({
     return "failed";
   }
 
-  // The text a session receives: identity line plus the formatted messages.
-  const textFor = (scfg, messages) => [identityLine(scfg), formatInbox(messages, { session: scfg.session })].filter(Boolean).join("\n");
+  // The text a session receives: identity line plus the formatted messages. An attachment is cached first,
+  // so the session reads this machine's copy instead of downloading the file from ntfy again.
+  const textFor = async (scfg, messages) => {
+    const shown = await cacheAttachmentsWithin(scfg, messages, { budgetMs: ATTACHMENT_BUDGET_MS });
+    return [identityLine(scfg), formatInbox(shown, { session: scfg.session })].filter(Boolean).join("\n");
+  };
 
   // Claude takes a socket message in any state, when its gate is open; Codex waits for an idle session; OpenCode takes a queued or steering prompt in any state.
   function ready(session, active) {
@@ -180,7 +185,7 @@ export function createDispatcher({
       const rest = waiting.filter((m) => !late.includes(m));
       if (!rest.length) continue;
       const ids = rest.map((m) => m.id);
-      const status = await dispatchIds(session, scfg, textFor(scfg, rest), { urgent: rest.some((m) => m.urgent), ids });
+      const status = await dispatchIds(session, scfg, await textFor(scfg, rest), { urgent: rest.some((m) => m.urgent), ids });
       if (status !== "delivered") continue;
       counts.delivered += rest.length;
       for (const m of rest) {
@@ -200,7 +205,7 @@ export function createDispatcher({
           const again = { ...e.message, attempt: e.attempts + 1, attempts: MAX_ATTEMPTS };
           // Redelivery reserves an id that is already seen, so the seen list can be trimmed without exposing it.
           const owned = await reserveDelivery(scfg, [id], { allowSeen: true });
-          if (owned.length && await dispatchIds(session, scfg, textFor(scfg, [again]), { urgent: again.urgent === true, ids: [id] }) === "delivered") {
+          if (owned.length && await dispatchIds(session, scfg, await textFor(scfg, [again]), { urgent: again.urgent === true, ids: [id] }) === "delivered") {
             Object.assign(e, { lastAt: now(), attempts: e.attempts + 1 });
             counts.redelivered += 1;
           }
