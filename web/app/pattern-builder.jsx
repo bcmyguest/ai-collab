@@ -62,6 +62,19 @@ export function PatternBuilder({ project, startable, disabled, create, close }) 
   const targets = [...roleIds, DONE];
   const patch = (key, index, values) => setState(prev => ({ ...prev, [key]: prev[key].map((item, i) => (i === index ? { ...item, ...values } : item)) }));
   const remove = (key, index) => setState(prev => ({ ...prev, [key]: prev[key].filter((_, i) => i !== index) }));
+  // A renamed role keeps its handoffs: every from and to that named the old id takes the new one.
+  const renameRole = (index, next) => setState(prev => {
+    const old = prev.roles[index].id;
+    return {
+      ...prev,
+      roles: prev.roles.map((role, i) => (i === index ? { ...role, id: next } : role)),
+      handoffs: prev.handoffs.map(handoff => ({
+        ...handoff,
+        from: handoff.from === old ? next : handoff.from,
+        to: handoff.to === old ? next : handoff.to,
+      })),
+    };
+  });
   const add = (key, item) => setState(prev => ({ ...prev, [key]: [...prev[key], item] }));
 
   async function save() {
@@ -86,7 +99,7 @@ export function PatternBuilder({ project, startable, disabled, create, close }) 
       {state.roles.map((role, index) => <div key={index} className="flex flex-col gap-1 rounded-lg border p-2">
         <div className="flex flex-wrap gap-1">
           <input className="w-28 rounded border bg-background px-1.5 py-1 font-mono text-xs" placeholder="role" value={role.id}
-            onChange={e => patch("roles", index, { id: e.target.value })}/>
+            onChange={e => renameRole(index, e.target.value)}/>
           <select className="rounded border bg-background px-1 py-1 text-xs" value={role.harness} onChange={e => patch("roles", index, { harness: e.target.value })}>
             {startable.map(harness => <option key={harness} value={harness}>{harness}</option>)}
           </select>

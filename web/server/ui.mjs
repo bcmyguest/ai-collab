@@ -23,7 +23,7 @@ import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
 import { createTeam, deleteTeam, listTeams, teamTask } from "../../lib/teams.mjs";
 import { createPattern, deletePattern, listPatterns } from "../../lib/patterns.mjs";
-import { listRuns, startRun } from "../../lib/pattern-runs.mjs";
+import { advanceRun, listRuns, startRun } from "../../lib/pattern-runs.mjs";
 import { formatTeamOrchestrator } from "../../lib/format.mjs";
 import { activityRows, groupSubagents, summarize } from "../lib/activity-rows.js";
 import { childRuns } from "../lib/child-subagents.js";
@@ -390,8 +390,6 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const notes = [];
     for (const name of mentionedTeams(body, Object.keys(patterns).filter((item) => !patterns[item].legacy))) {
       const task = teamTask(body, name);
-      if (Date.now() - lastStartAt < START_GAP_MS) { notes.push(`@${name} wait 10 seconds between starts`); continue; }
-      lastStartAt = Date.now();
       const started = await startRun(cfg, name, task, env, { start, models: await models(cfg.stateDir, env, { peers: cfg.peers }) }).catch((error) => ({ status: "failed", detail: error.message }));
       notes.push(`@${name} run ${started.id ?? ""} ${started.status}${started.detail ? ": " + started.detail : ""}`);
     }
@@ -911,7 +909,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
-      const { project: name, target, body, question, mode, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, team: teamName, members, delete: deleteTeamName, replyTo, command, pattern: patternSpec, deletePattern: deletePatternName, startPattern, task: patternTask } = await payload(request);
+      const { project: name, target, body, question, mode, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, team: teamName, members, delete: deleteTeamName, replyTo, command, pattern: patternSpec, deletePattern: deletePatternName, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -945,10 +943,15 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       if (action === "pattern") {
         if (deletePatternName) return json(201, deletePattern(cfg, String(deletePatternName), env));
         if (startPattern) {
-          if (Date.now() - lastStartAt < START_GAP_MS) reject(429, "Wait 10 seconds between starts");
-          lastStartAt = Date.now();
-          const started = await startRun(cfg, String(startPattern), String(patternTask ?? ""), env, { start, models: await models(cfg.stateDir, env, { peers: cfg.peers }) });
+          const started = await startRun(cfg, String(startPattern), String(patternTask ?? ""), env, { start, models: await models(cfg.stateDir, env, { peers: cfg.peers }) })
+            .catch((error) => reject(400, error.message));
           return json(201, started);
+        }
+        // Operator override: the run's active role need not be the caller; the handoff records the operator's login.
+        if (advanceRunId) {
+          const advanced = await advanceRun(cfg, String(advanceRunId), String(advanceEvent ?? ""), { note: String(advanceNote ?? ""), override: true, by: by ?? "operator", env, start })
+            .catch((error) => reject(400, error.message));
+          return json(201, advanced);
         }
         return json(201, await createPattern(cfg, patternSpec, env, await models(cfg.stateDir, env, { peers: cfg.peers })));
       }
