@@ -14,6 +14,7 @@ Give the operator one place to run, watch and steer a coding agents from a phone
 
 ## Rules
 
+- Merge recipe: `git worktree add -b merge/<name> ~/ai-collab-wt-merge-<name> origin/main`, then `git -C <that> merge builder/<x>`, test there, `git -C <that> push origin HEAD:main`, then `git -C /home/b/ai-collab pull --ff-only`. Never check out `main` in a second worktree (no `-f`): moving main from elsewhere leaves /home/b/ai-collab's files stale.
 - Merge and resolve conflicts in a worktree (`git worktree add`), never in /home/b/ai-collab: the CLI, hooks and OpenCode load code from that checkout, so conflict markers there break every agent. Push the merged result; then pull in /home/b/ai-collab.
 - Never hold the builder pool for a merge; merge in parallel.
 - Every tick ends with a send_to_all status line: merged, started, running count, and what is waiting on the operator.
