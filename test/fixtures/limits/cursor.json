@@ -1,4 +1,11 @@
 [
   {"name": "UNVERIFIED ACP plan limit text", "event": {"kind": "run_error", "message": "Plan limit reached for this month"}, "expect": {"window": null, "windowName": null, "resetsAt": null, "verified": false}},
+  {"name": "UNVERIFIED You've reached your usage limit", "event": {"kind": "run_error", "message": "You've reached your usage limit. Upgrade to continue."}, "expect": {"window": null, "windowName": null, "resetsAt": null, "verified": false}},
+  {"name": "UNVERIFIED 429 with limit wording", "event": {"kind": "run_error", "message": "HTTP 429: usage limit reached for the 5-hour window"}, "expect": {"window": "five_hour", "windowName": "5-hour", "resetsAt": null, "verified": false}},
+  {"name": "UNVERIFIED structured ACP code usage_limit_exceeded", "event": {"kind": "run_error", "message": "request failed", "code": "usage_limit_exceeded"}, "expect": {"window": null, "windowName": null, "resetsAt": null, "verified": false}},
+  {"name": "UNVERIFIED structured ACP error data with insufficient_quota", "event": {"kind": "run_error", "message": "request failed", "data": {"type": "insufficient_quota", "message": "You have exhausted your quota"}}, "expect": {"window": null, "windowName": null, "resetsAt": null, "verified": false}},
+  {"name": "UNVERIFIED 429 from the child's stderr tail, with limit wording", "event": {"kind": "run_error", "message": "cursor-agent acp exited (code 1)\n429 Too Many Requests: weekly usage limit reached"}, "expect": {"window": "seven_day", "windowName": "weekly", "resetsAt": null, "verified": false}},
+  {"name": "a bare 429 without limit wording is not a limit", "event": {"kind": "run_error", "message": "cursor-agent acp exited (code 1)\n429 Too Many Requests"}, "expect": null},
+  {"name": "a bare ACP error code is not a limit", "event": {"kind": "run_error", "message": "request failed", "code": -32000}, "expect": null},
   {"name": "ordinary ACP error is not a limit", "event": {"kind": "run_error", "message": "model not found"}, "expect": null}
 ]

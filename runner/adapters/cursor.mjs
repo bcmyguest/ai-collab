@@ -72,6 +72,37 @@ function forceOf(permission, place) {
   return force;
 }
 
+// Bytes of the child's stderr kept for the error that ends the connection; enough for a provider's limit message.
+const STDERR_TAIL_MAX = 4000;
+
+/** An ACP JSON-RPC error as an Error that keeps the envelope's code and data (a limit or auth error carries its detail there). */
+function acpError(error) {
+  const out = new Error(error.message ?? "ACP error");
+  // UNVERIFIED: which codes cursor-agent uses for a usage limit; the envelope is kept whole so a classifier can read it.
+  if (error.code !== undefined) out.code = error.code;
+  if (error.data !== undefined) out.data = error.data;
+  return out;
+}
+
+/** The error for a child that exited: the exit status plus the tail of its stderr, where a startup refusal lands. */
+function exitError(code, signal, stderrTail) {
+  const out = new Error(`cursor-agent acp exited (${signal ?? `code ${code}`})`);
+  if (code !== null && code !== undefined) out.code = code;
+  if (signal) out.signal = signal;
+  const tail = String(stderrTail ?? "").trim();
+  if (tail) out.stderr = tail;
+  return out;
+}
+
+/** Everything an error carries, as one text for the limit classifier: its message, code, data and stderr tail. */
+export function errorText(error) {
+  const parts = [error?.message ?? String(error ?? "")];
+  if (error?.code !== undefined) parts.push(typeof error.code === "object" ? JSON.stringify(error.code) : String(error.code));
+  if (error?.data !== undefined) parts.push(typeof error.data === "string" ? error.data : JSON.stringify(error.data));
+  if (error?.stderr) parts.push(String(error.stderr));
+  return parts.filter(Boolean).join("\n");
+}
+
 // One ACP connection: newline-delimited JSON-RPC 2.0 over the child's stdio.
 function connect(argv, { env, cwd, log, onRequest, onNotify }) {
   const child = spawn(argv[0], argv.slice(1), { env, cwd, shell: false, stdio: ["pipe", "pipe", "pipe"] });
@@ -79,6 +110,9 @@ function connect(argv, { env, cwd, log, onRequest, onNotify }) {
   let nextId = 1;
   let buffer = "";
   let dead = null;
+  // The last lines the child wrote to stderr, kept for the error that ends the connection (limit text lives here).
+  let stderrTail = "";
+  const keepStderr = (chunk) => { stderrTail = (stderrTail + chunk).slice(-STDERR_TAIL_MAX); };
   child.stdin.on("error", () => {});
   child.stdout.setEncoding("utf8");
   child.stderr.setEncoding("utf8");
@@ -90,9 +124,9 @@ function connect(argv, { env, cwd, log, onRequest, onNotify }) {
       if (line.trim()) dispatch(line);
     }
   });
-  child.stderr.on("data", (chunk) => { for (const line of chunk.split("\n")) if (line.trim()) log(line.trimEnd()); });
+  child.stderr.on("data", (chunk) => { keepStderr(chunk); for (const line of chunk.split("\n")) if (line.trim()) log(line.trimEnd()); });
   child.on("error", (error) => fail(error));
-  child.on("exit", (code, signal) => fail(new Error(`cursor-agent acp exited (${signal ?? `code ${code}`})`)));
+  child.on("exit", (code, signal) => fail(exitError(code, signal, stderrTail)));
 
   function send(message) {
     child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
@@ -106,7 +140,7 @@ function connect(argv, { env, cwd, log, onRequest, onNotify }) {
     if (!waiter) return;
     pending.delete(message.id);
     clearTimeout(waiter.timer);
-    if (message.error) waiter.reject(new Error(message.error.message ?? "ACP error"));
+    if (message.error) waiter.reject(acpError(message.error));
     else waiter.resolve(message.result);
   }
   function fail(error) {
@@ -267,7 +301,9 @@ export default function cursorAdapter(config = {}) {
   function failRun(session, run, error) {
     cancelApprovals(session);
     session.run = null;
-    session.ctx.emit({ type: EventType.RUN_ERROR, message: error.message, metadata: { aiCollab: { runId: run.runId } } });
+    // The message carries the ACP code, data and stderr tail too, so a limit classifier sees everything the error had.
+    const text = errorText(error);
+    session.ctx.emit({ type: EventType.RUN_ERROR, message: text, metadata: { aiCollab: { runId: run.runId, ...(error?.code !== undefined ? { code: error.code } : {}) } } });
   }
 
   const threadOf = (session) => `cursor#${sessionLabel(session.sessionId)}`;

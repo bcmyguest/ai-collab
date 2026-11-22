@@ -219,7 +219,7 @@ Detection (`lib/limits.mjs`). "Typed" means the pattern appears in a type defini
 | Codex | Turn error text | UNVERIFIED |
 | OpenCode | Provider error with HTTP 429 | UNVERIFIED. `runner/adapters/opencode.mjs` forwards the provider's HTTP status in `RUN_ERROR` metadata (`aiCollab.status`) and `limitFromRunError` passes it to the classifier. The field names it reads are UNVERIFIED. |
 | OpenCode | Provider error text | UNVERIFIED |
-| Cursor | ACP error text | UNVERIFIED |
+| Cursor | ACP error text, error code and data, and the child's stderr tail: "usage limit", "You've reached your usage limit", a 429 with limit wording, or a structured limit code | UNVERIFIED. `runner/adapters/cursor.mjs` keeps `error.code`, `error.data` and a stderr tail on `RUN_ERROR`, and joins them into the message the classifier reads. |
 
 Where detection runs:
 
