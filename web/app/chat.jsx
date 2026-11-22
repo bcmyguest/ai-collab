@@ -23,7 +23,7 @@ import { NewAgentComposer } from "./new-session";
 import { PatternsPage } from "./patterns-page";
 import { TaskBoard } from "./tasks";
 import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
-import { TABS, parseSelection } from "@/lib/selection";
+import { parseSelection, selectionHash } from "@/lib/selection";
 import { subscribeUiEvents } from "@/lib/ui-events";
 import { ActivityRow, GoToAgent, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
@@ -763,15 +763,7 @@ function Console({ account }) {
 
   function navigate(next) {
     setNavOpen(false);
-    if (next.level === "home") { location.hash = "home"; return; }
-    const params = new URLSearchParams();
-    for (const key of ["project", "level", "harness", "session"]) if (next[key]) params.set(key, next[key]);
-    if ((TABS[next.level || "project"] || []).includes(next.tab)) params.set("tab", next.tab);
-    if (next.tab === "subagents" && next.run) params.set("run", next.run);
-    if (next.level === "patterns") for (const key of ["pattern", "run"]) if (next[key]) params.set(key, next[key]);
-    if (next.level === "patterns" && next.raw) params.set("raw", "1");
-    if (next.level === "patterns" && next.edit) params.set("edit", next.edit);
-    location.hash = params.toString();
+    location.hash = selectionHash(next);
   }
   const project = selected.project || data.project || "";
   const models = useModels(project);

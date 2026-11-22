@@ -28,6 +28,7 @@ import { closedProjectNames, createTeam, deleteTeam, listTeams, readProjectsFile
 import { clearFields, modelFields, sessionHistory } from "../../lib/session-events.mjs";
 import { compactionFields } from "../../lib/compaction.mjs";
 import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern, savePattern, saveTeamText, teamTemplates, teamTextOf } from "../../lib/patterns.mjs";
+import { authorTeam, saveAuthoredTeam } from "../../lib/team-author.mjs";
 import { openTasks } from "../../lib/tasks.mjs";
 import { taskBoard } from "./task-board.mjs";
 import { advanceRun, listRuns, startRun } from "../../lib/pattern-runs.mjs";
@@ -1063,7 +1064,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
-      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, startMode, team: teamName, members, delete: deleteTeamName, replyTo, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, forwardedProps } = await payload(request);
+      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, startMode, team: teamName, members, delete: deleteTeamName, replyTo, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -1109,6 +1110,24 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           return json(201, await saveTeamText(cfg, String(teamName ?? ""), String(teamDot), env, modelList, { create: teamNew === true }).catch((error) => reject(400, error.message)));
         }
         if (deletePatternName) return json(201, removePattern(cfg, String(deletePatternName), env));
+        // Team author: one writing-agent turn from the operator's chat text, then a save of the DOT it drafted.
+        if (authorRequest !== undefined) {
+          const drafted = await authorTeam(cfg, {
+            request: String(authorRequest ?? ""), name: String(teamName ?? ""), scope: String(authorScope ?? "project"),
+            current: String(authorCurrent ?? ""), turns: Array.isArray(authorTurns) ? authorTurns : [], peers: cfg.peers, startable: startable(project), env,
+            ...(authorHarness ? { harness: String(authorHarness) } : {}), ...(authorModelName ? { model: String(authorModelName) } : {}),
+          }).catch((error) => reject(400, error.message));
+          return json(201, drafted);
+        }
+        if (authorDot !== undefined) {
+          // The operator confirmed the name: save the draft, replacing an entry only when authorReplace names it.
+          const saved = await saveAuthoredTeam(cfg, {
+            name: String(teamName ?? ""), dot: String(authorDot), scope: String(authorScope ?? "project"),
+            replace: authorReplace === undefined || authorReplace === null ? "" : String(authorReplace),
+            env, models: await models(cfg.stateDir, env, { peers: cfg.peers }),
+          }).catch((error) => reject(400, error.message));
+          return json(201, saved);
+        }
         if (copyPatternName) return json(201, await copyPattern(cfg, String(copyPatternName), env, await models(cfg.stateDir, env, { peers: cfg.peers })).catch((error) => reject(400, error.message)));
         if (startPattern) {
           const started = await startRun(cfg, String(startPattern), String(patternTask ?? ""), env, { start, models: await models(cfg.stateDir, env, { peers: cfg.peers }) })
