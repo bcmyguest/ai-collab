@@ -18,6 +18,7 @@ import { fuzzyRank } from "@/lib/fuzzy";
 import { agentDetail } from "@/lib/agent-detail";
 import { withMentions } from "@/lib/mentions";
 import { chatThread } from "@/lib/chat-turns";
+import { PatternBuilder, PatternRuns } from "./pattern-builder";
 import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
 import { TABS, parseSelection } from "@/lib/selection";
 import { subscribeUiEvents } from "@/lib/ui-events";
@@ -168,37 +169,7 @@ function SessionName({ agent }) {
   return agent?.name ? <span className="line-clamp-2 min-w-0 break-words text-xs text-foreground/80">{agent.name}</span> : null;
 }
 
-function CreateTeam({ project, teams, startable, models, disabled, create, close }) {
-  const [name, setName] = useState("");
-  const [members, setMembers] = useState("");
-  const [error, setError] = useState("");
-  async function save() {
-    const roster = members.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
-    if (!name.trim() || !roster.length) { setError("Name and at least one member required"); return; }
-    for (const member of roster) {
-      const harness = member.split(":")[0];
-      if (!startable.includes(harness)) { setError("Unknown harness: " + harness); return; }
-    }
-    setError("");
-    const result = await create({ project, team: name.trim(), members: roster });
-    if (result?.error) { setError(result.error); return; }
-    close();
-  }
-  return <div className="flex w-full flex-col gap-2 rounded-xl border bg-card p-3 text-sm shadow-sm">
-    <div className="flex items-center justify-between gap-2">
-      <span className="font-medium">Create team</span>
-      <Button type="button" variant="ghost" size="sm" onClick={close}>Cancel</Button>
-    </div>
-    <input className="rounded-lg border bg-background px-2 py-1.5 font-mono text-xs" placeholder="light-team" value={name} onChange={e => setName(e.target.value)}/>
-    <textarea className="min-h-[4.5rem] rounded-lg border bg-background px-2 py-1.5 font-mono text-xs" placeholder="claude:haiku, codex:gpt-5-codex"
-      value={members} onChange={e => setMembers(e.target.value)}/>
-    {teams?.length > 0 && <p className="text-xs text-muted-foreground">Teams: {teams.map(t => t.id).join(", ")}</p>}
-    {error && <p className="text-xs text-destructive">{error}</p>}
-    <Button type="button" size="sm" disabled={disabled} onClick={save}>Save team</Button>
-  </div>;
-}
-
-function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamOpen, createTeam, dispose, openRaw, disabled }) {
+function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamOpen, createPattern, dispose, openRaw, disabled }) {
   const current = selected.project || data.project;
   // Home's state carries the server's default project's agents; they are not "this project" here.
   const home = selected.level === "home";
@@ -228,13 +199,18 @@ function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamO
     </section>
     {!home && <section className="px-2 pb-2">
       <div className="mb-1 flex items-center justify-between gap-2">
-        <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Teams</h2>
+        <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Patterns and teams</h2>
         <Button type="button" variant="ghost" size="sm" className="h-7 rounded-full px-2 text-xs" disabled={disabled} onClick={() => setTeamOpen(!teamOpen)}>{teamOpen ? "Close" : "Create"}</Button>
       </div>
-      {teamOpen ? <CreateTeam project={current} teams={data.teams} startable={data.startable || []} models={{}} disabled={disabled} create={createTeam} close={() => setTeamOpen(false)}/>
-        : (data.teams?.length ? <ul className="flex flex-col gap-1 text-xs text-muted-foreground">{(data.teams || []).map(team =>
-          <li key={team.id} className="truncate font-mono" title={(team.members || []).join(", ")}>@{team.id} · {(team.members || []).length} members</li>)}</ul>
-          : <p className="text-xs text-muted-foreground">No teams yet.</p>)}
+      {teamOpen ? <PatternBuilder project={current} startable={data.startable || []} disabled={disabled} create={createPattern} close={() => setTeamOpen(false)}/>
+        : <div className="flex flex-col gap-2">
+          {data.patterns?.some(pattern => !pattern.legacy) && <ul className="flex flex-col gap-1 text-xs text-muted-foreground">{data.patterns.filter(pattern => !pattern.legacy).map(pattern =>
+            <li key={pattern.name} className="truncate font-mono" title={pattern.roles.map(role => role.id).join(" → ")}>@{pattern.name} · {pattern.roles.length} roles · {pattern.source}</li>)}</ul>}
+          {data.teams?.length ? <ul className="flex flex-col gap-1 text-xs text-muted-foreground">{(data.teams || []).map(team =>
+            <li key={team.id} className="truncate font-mono" title={(team.members || []).join(", ")}>@{team.id} · {(team.members || []).length} members</li>)}</ul>
+            : !data.patterns?.some(pattern => !pattern.legacy) && <p className="text-xs text-muted-foreground">No teams or patterns yet.</p>}
+          <PatternRuns runs={data.runs}/>
+        </div>}
     </section>}
     <section>
       <div className="flex items-center justify-between px-2 pb-2">
@@ -777,11 +753,11 @@ function Console({ account }) {
   async function startSession(payload) {
     try { return await api("start", { project, ...payload }); } catch (err) { return { status: "failed", detail: err.message }; }
   }
-  async function saveTeam(payload) {
-    try { return await api("team", payload); } catch (err) { return { error: err.message }; }
+  async function savePattern(payload) {
+    try { return await api("pattern", payload); } catch (err) { return { error: err.message }; }
   }
   const sidebar = <Sidebar data={data} selected={selected} now={now} navigate={navigate} newSession={newSession} teamOpen={teamOpen} setTeamOpen={setTeamOpen}
-    createTeam={saveTeam} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")} openRaw={openRaw}/>;
+    createPattern={savePattern} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")} openRaw={openRaw}/>;
   const anyWaiting = data.projects.some(project => project.waiting > 0);
   return <div className="flex h-dvh w-full overflow-hidden">
     <aside className="hidden w-72 shrink-0 border-r bg-sidebar text-sidebar-foreground md:block">{sidebar}</aside>
