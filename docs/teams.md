@@ -46,7 +46,7 @@ Edge attributes (a handoff; `done` is the only node that is not declared):
 | `required` | `true` or `false` | `false` |
 | `cap` | whole number 1-10, role-to-role handoffs only | none |
 
-Checks: unknown attributes, kinds, harnesses and models, and edges to undeclared nodes fail with the line number. A pair edge needs both roles to have the same `count`. The digraph name is the team name and must match its folder. The first node is the entry role; every role must be reachable from it, and at least one edge must reach `done`.
+Checks: unknown attributes, kinds, harnesses and models, and edges to undeclared nodes fail with the line number. A node with no `prompt` fails with the node's line ("role `<id>` needs a prompt"). A pair edge needs both roles to have the same `count`. The digraph name is the team name and must match its folder. The first node is the entry role; every role must be reachable from it, and at least one edge must reach `done`.
 
 ### What loads from wteam files
 
