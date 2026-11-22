@@ -10,7 +10,7 @@ import { getPattern } from "../lib/patterns.mjs";
 import { applyPatternAdvance, cutPatternRun, launchPatternRun, NOTE_MAX, preparePatternRun, RUN_ID, runStatus } from "../lib/pattern-runs.mjs";
 import { statePath } from "../lib/state.mjs";
 import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, receiptsTopic, sessionLabel } from "../lib/config.mjs";
-import { RESERVE_MS, ATTACHMENT_BUDGET_MS, claimInbox, markDelivered, parseEnvelope, releaseOwned, reserveOwned } from "../lib/inbox.mjs";
+import { RESERVE_MS, ATTACHMENT_BUDGET_MS, claimInbox, markDelivered, parseEnvelope, releaseOwned, reserveOwned, reservedMessage } from "../lib/inbox.mjs";
 import { parsePhoneReply, parseQuestionText } from "../lib/questions.mjs";
 import { replyDecision, APPROVAL_ID } from "../lib/approvals.mjs";
 import { formatInbox, identityLine } from "../lib/format.mjs";
@@ -393,7 +393,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
           if (!got.busy || tries >= 4) break;
           await wf.sleep(1000);
         }
-        batch = batch.filter((m) => got.owned.includes(m.id));
+        batch = batch.filter((m) => got.owned.includes(m.id)).map(m => reservedMessage(scfg, m)).filter(Boolean);
         if (!batch.length) break;
         const shown = await cacheAttachmentsWithin(scfg, batch, { budgetMs: ATTACHMENT_BUDGET_MS });
         const text = formatInbox(shown, { session: label });
@@ -517,6 +517,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       await acks.refresh(configs.get(project), topics);
       return acks.acked(message.id, address);
     },
+    reservedMessage,
     textFor: async (scfg, message, attemptNo) => {
       const shown = attemptNo > 1 ? { ...message, attempt: attemptNo, attempts: MAX_ATTEMPTS } : message;
       const [cached] = await cacheAttachmentsWithin(scfg, [shown], { budgetMs: ATTACHMENT_BUDGET_MS });
