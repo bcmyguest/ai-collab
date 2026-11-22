@@ -7,11 +7,9 @@ import { MessageContent } from "@/components/ui/message";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { IN_TERMINAL, approvalOutcome, approvalSurfaceId, questionSurfaceId } from "@/lib/a2ui";
-import { Surface } from "@/components/a2ui/surface";
+import { CARD, Surface } from "@/components/a2ui/surface";
 
 export { approvalOutcome };
-
-const CARD = "w-full max-w-full rounded-2xl border bg-card px-3.5 py-3 text-sm text-card-foreground shadow-xs [overflow-wrap:anywhere]";
 
 /** AskUserQuestion questions: options as buttons (checkboxes when multiSelect), an Other field, one Submit; read-only without onSubmit. */
 export function ChoiceCard({ questions, answers, onSubmit, disabled, title }) {
@@ -61,7 +59,8 @@ export function ChoiceCard({ questions, answers, onSubmit, disabled, title }) {
 
 /** A permission request or choice an agent waits on: the A2UI surface when the stream sent one, else the card below. */
 export function ApprovalCard(props) {
-  return <Surface id={approvalSurfaceId(props.approval.id)} fallback={<LegacyApprovalCard {...props}/>}/>;
+  const open = !approvalOutcome(props.approval, props.now);
+  return <Surface id={approvalSurfaceId(props.approval.id)} head={props.head} kind="Approval" open={open} fallback={<LegacyApprovalCard {...props}/>}/>;
 }
 
 /** A permission request or choice an agent waits on: Allow / Deny (or the choice card) until it closes, then the outcome. */
@@ -91,7 +90,7 @@ export function LegacyApprovalCard({ approval, now, disabled, act }) {
 
 /** An ask_question post: the A2UI surface when the stream sent one, else the card below. */
 export function QuestionCard(props) {
-  return <Surface id={questionSurfaceId(props.question)} fallback={<LegacyQuestionCard {...props}/>}/>;
+  return <Surface id={questionSurfaceId(props.question)} head={props.head} kind="Question" open={!props.answer} fallback={<LegacyQuestionCard {...props}/>}/>;
 }
 
 /** An ask_question post: the question, then its answer or an answer field. */
