@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { loadProjects } from "../lib/config.mjs";
-import { addTask, ownTask, writeTasks } from "../lib/tasks.mjs";
+import { addTask, ownTask, taskStoreFile, writeStore } from "../lib/tasks.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { firstUpdate } from "./helpers/ui-stream.mjs";
@@ -20,12 +20,12 @@ test("the UI state snapshot carries the project's task board", async (t) => {
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
   mkdirSync(root);
   writeFileSync(path.join(home, ".config", "ai-collab", "projects.json"), JSON.stringify([{ root, project: "demo", url: fake.url, peers: "claude" }]));
+  const env = { HOME: home, PATH: process.env.PATH, XDG_DATA_HOME: path.join(home, "data"), AI_COLLAB_STATE_DIR: path.join(home, "state") };
   const doc = { v: 1, tasks: [] };
   addTask(doc, { id: "first", title: "First task", status: "building" }, 1000);
   ownTask(doc, "first", OWNER, 1000);
-  writeTasks(root, doc);
+  writeStore(taskStoreFile("demo", env), doc);
 
-  const env = { HOME: home, PATH: process.env.PATH, AI_COLLAB_STATE_DIR: path.join(home, "state") };
   const ui = createUi({ projects: loadProjects(env, { host: "operator" }), env });
   t.after(() => ui.close());
   const ctrl = new AbortController();

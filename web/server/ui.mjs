@@ -5,7 +5,7 @@ import { ACTIVITY_BATCH, STREAM_ERROR } from "../lib/ui-events.js";
 import { mkdirSync, unwatchFile, watch, watchFile } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
 import { buzzes, readAlertLevel, writeAlertLevel } from "../../lib/alerts.mjs";
-import { listProjects, loadConfig, loadProjects, activityTopic, broadcastTopic, configDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.mjs";
+import { loadConfig, loadProjects, activityTopic, broadcastTopic, configDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.mjs";
 import { ACTIVITY_TYPES } from "../../lib/activity.mjs";
 import { stripControl } from "../../lib/format.mjs";
 import { NTFY_MESSAGE_MAX_BYTES, latestStatuses, markUrgent, parseEnvelope, sendMessage } from "../../lib/inbox.mjs";
@@ -24,7 +24,7 @@ import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
 import { closedProjectNames, createTeam, deleteTeam, listTeams, readProjectsFile, removeProject, setProjectClosed, teamTask } from "../../lib/teams.mjs";
 import { copyPattern, listPatterns, removableNames, removePattern, savePattern } from "../../lib/patterns.mjs";
-import { tasksFile } from "../../lib/tasks.mjs";
+import { openTasks, taskStoreFile } from "../../lib/tasks.mjs";
 import { taskBoard } from "./task-board.mjs";
 import { advanceRun, listRuns, startRun } from "../../lib/pattern-runs.mjs";
 import { formatTeamOrchestrator } from "../../lib/format.mjs";
@@ -291,6 +291,11 @@ export function assertSameOrigin(request, allowedOrigin) {
   if ((site && site !== "same-origin") || !fromUi) reject(403, "Same-origin request required");
 }
 
+// The project's task backend, or null when its projects.json "tasks" setting names none.
+function tasksOf(name, env) {
+  try { return openTasks(name, env); } catch { return null; }
+}
+
 export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start = startSession, models = listModels, push: notifier = null, auth = null }) {
   if (!configs.length) throw new Error("No ai-collab project is configured");
   for (const item of configs) if (!item.enabled) throw new Error(item.reason);
@@ -340,12 +345,11 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     mkdirSync(registry, { recursive: true, mode: 0o700 });
     const watcher = watch(registry, broadcast);
     watcher.unref();
-    // Task edits from the CLI or an agent reach open streams: the store is polled once a second.
-    const root = listProjects(env).find(entry => entry.project === item.project)?.root || "";
-    const store = root ? tasksFile(root) : "";
-    if (store) watchFile(store, { interval: 1000, persistent: false }, broadcast);
+    // Task edits from the CLI or an agent reach open streams: the store file is polled once a second.
+    const store = taskStoreFile(item.project, env);
+    watchFile(store, { interval: 1000, persistent: false }, broadcast);
     const project = {
-      cfg: item, hub: hubs.get(key), watcher, root, store,
+      cfg: item, hub: hubs.get(key), watcher, store, tasks: tasksOf(item.project, env),
       operator: { ...item, peer: "operator", session: "" },
       topic: broadcastTopic(item.project), status: statusTopic(item.project), activity: activityTopic(item.project),
       receipts: receiptsTopic(item.project),
@@ -842,7 +846,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       teams: Object.entries(listTeams(project.cfg, env)).map(([id, members]) => ({ id, members })),
       patterns: patternRows(project.cfg, env),
       runs: runs.slice(0, 20),
-      tasks: taskBoard(project.root, list, runs),
+      tasks: taskBoard(project.tasks, list, runs),
     };
   }
 

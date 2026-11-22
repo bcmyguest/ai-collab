@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { runCli } from "../lib/cli.mjs";
-import { readTasks } from "../lib/tasks.mjs";
+import { readStore, taskStoreFile } from "../lib/tasks.mjs";
 
 const SESSION = "0123456789abcdef";
 
@@ -15,7 +15,7 @@ function project({ session } = {}) {
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
   writeFileSync(path.join(home, ".config", "ai-collab", "projects.json"), JSON.stringify([{ root, project: "demo" }]));
   const env = {
-    PATH: process.env.PATH, HOME: home, AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "claude",
+    PATH: process.env.PATH, HOME: home, XDG_DATA_HOME: path.join(home, "data"), AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "claude",
     AI_COLLAB_STATE_DIR: path.join(home, "state"), ...(session ? { AI_COLLAB_SESSION: session } : {}),
   };
   const out = [];
@@ -26,22 +26,32 @@ function project({ session } = {}) {
     return runCli(["task", ...argv], { env, stdout: { write: (s) => out.push(s) }, stderr: { write: (s) => err.push(s) } })
       .then((code) => ({ code, out: out.join(""), err: err.join("") }));
   };
-  return { root, cli };
+  return { root, env, store: taskStoreFile("demo", env), cli };
 }
 
 test("task CLI adds, sets, blocks, owns and records progress in the store", async () => {
-  const { root, cli } = project({ session: SESSION });
+  const { store, cli } = project({ session: SESSION });
   assert.deepEqual(await cli("add", "Scratch", "probe"), { code: 0, out: "scratch-probe\n", err: "" });
   assert.equal((await cli("set", "scratch-probe", "status=building", "detail=in flight")).code, 0);
   assert.equal((await cli("add", "Second")).out, "second\n");
   assert.equal((await cli("block", "scratch-probe", "second")).code, 0);
   assert.equal((await cli("own", "scratch-probe", `claude#${SESSION}`)).code, 0);
+  assert.equal((await cli("set", "scratch-probe", "run=lx9k2mabc123")).code, 0);
   assert.equal((await cli("progress", "scratch-probe", "tests", "green")).code, 0);
 
-  const task = readTasks(root).tasks.find((t) => t.id === "scratch-probe");
+  const task = readStore(store).tasks.find((t) => t.id === "scratch-probe");
   assert.equal(task.title, "Scratch probe");
-  assert.deepEqual([task.status, task.detail, task.blockers, task.owner], ["building", "in flight", ["second"], `claude#${SESSION}`]);
+  assert.deepEqual([task.status, task.detail, task.blockers, task.owner, task.run], ["building", "in flight", ["second"], `claude#${SESSION}`, "lx9k2mabc123"]);
   assert.deepEqual(task.progress.map(({ by, text }) => [by, text]), [[`claude#${SESSION}`, "tests green"]]);
+});
+
+test("task CLI rejects an invalid run id and reports a clipped progress note", async () => {
+  const { cli } = project();
+  await cli("add", "Alpha");
+  assert.equal((await cli("set", "alpha", "run=lx9k2m-abc123")).code, 1);
+  const long = await cli("progress", "alpha", "x".repeat(600));
+  assert.equal(long.code, 0);
+  assert.match(long.out, /clipped to 500 characters/);
 });
 
 test("task CLI list filters by status and show prints one task", async () => {
@@ -57,9 +67,9 @@ test("task CLI list filters by status and show prints one task", async () => {
 });
 
 test("task CLI rejects bad input and leaves the store unchanged", async () => {
-  const { root, cli } = project();
+  const { store, cli } = project();
   await cli("add", "Alpha");
-  const before = readFileSync(path.join(root, ".ai-collab", "tasks.json"), "utf8");
+  const before = readFileSync(store, "utf8");
   const bad = [
     ["set", "alpha", "status=started"],
     ["set", "alpha", "created=1"],
@@ -73,14 +83,14 @@ test("task CLI rejects bad input and leaves the store unchanged", async () => {
     assert.equal(result.code, 1, argv.join(" "));
     assert.match(result.err, /^ai-collab: /);
   }
-  assert.equal(readFileSync(path.join(root, ".ai-collab", "tasks.json"), "utf8"), before);
+  assert.equal(readFileSync(store, "utf8"), before);
   const unknown = await cli("bogus");
   assert.equal(unknown.code, 1);
   assert.match(unknown.err, /usage: task list/);
 });
 
-test("task CLI renders feature-requests.md and imports a table only once", async () => {
-  const { root, cli } = project();
+test("task CLI renders feature-requests.md, imports once, and imports a store file", async () => {
+  const { root, env, store, cli } = project();
   const table = path.join(root, "..", "table.md");
   writeFileSync(table, "| Request | Status |\n|---|---|\n| Ship it | done (merged) |\n| Plan it | decided |\n");
   assert.equal((await cli("import", table)).out, "imported 2 tasks\n");
@@ -88,4 +98,13 @@ test("task CLI renders feature-requests.md and imports a table only once", async
   assert.equal((await cli("render")).code, 0);
   const rendered = readFileSync(path.join(root, "docs", "feature-requests.md"), "utf8");
   assert.ok(rendered.includes("\n| Ship it | done (merged) |\n| Plan it | decided |\n"));
+
+  // A .json store file (the old .ai-collab/tasks.json shape) imports too, into a new project store.
+  const json = path.join(root, "..", "tasks.json");
+  writeFileSync(json, JSON.stringify({ v: 1, tasks: [{ id: "old", title: "Old", status: "open", blockers: [], progress: [], created: 1, updated: 1 }] }));
+  const second = project();
+  assert.equal((await second.cli("import", json)).out, "imported 1 tasks\n");
+  assert.equal(readStore(second.store).tasks[0].id, "old");
+  assert.equal(store.endsWith("demo.json"), true);
+  assert.equal(env.XDG_DATA_HOME.endsWith("data"), true);
 });

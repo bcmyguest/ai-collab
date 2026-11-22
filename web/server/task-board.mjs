@@ -1,19 +1,18 @@
 // The task board for the UI snapshot: each task with its owner's presence and its last progress line.
-import { readTasks } from "../../lib/tasks.mjs";
 
-/** Tasks of the project at root; an unreadable store reports its error instead of tasks. */
-export function taskBoard(root, agents = [], runs = []) {
-  if (!root) return { tasks: [] };
-  let doc;
+/** Tasks of a project backend; an unreadable store reports its error instead of tasks. */
+export function taskBoard(backend, agents = [], runs = []) {
+  if (!backend) return { tasks: [] };
+  let list;
   try {
-    doc = readTasks(root);
+    list = backend.list();
   } catch (err) {
     return { tasks: [], error: err.message };
   }
   const online = new Map(agents.map(agent => [agent.id, agent.online === true]));
   const runOf = new Map(runs.map(run => [run.id, run.sessions?.[run.active] || ""]));
   return {
-    tasks: doc.tasks.map(task => ({
+    tasks: list.map(task => ({
       id: task.id,
       title: task.title,
       status: task.status,
