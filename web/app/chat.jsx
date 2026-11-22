@@ -833,7 +833,7 @@ function Console({ account }) {
           {!ready && (home || listing || subagents) && !loadError && <p className="py-16 text-center text-sm text-muted-foreground">Loading sessions…</p>}
           {ready && (home || listing) && <>
             {home && data.unavailable?.length > 0 && <p role="alert" className="text-xs text-destructive">Unavailable: {data.unavailable.join(", ")}</p>}
-            <SessionList sessions={data.sessions} now={now} open={openCard} disabled={working} showProject={home}
+            <SessionList sessions={data.sessions} now={now} open={openCard} disabled={working} showProject={home} compact={home}
               offlineOpen={Boolean(views.get(memoryKey, {}).offline)} onOfflineToggle={rememberOffline}
               openAddress={(address, at) => navigate({ project: at, level: "session", harness: peerOf(address), session: address })}
               empty={home ? "No sessions in any project yet." : "No sessions in " + project + " yet."}
