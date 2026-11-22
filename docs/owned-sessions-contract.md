@@ -108,6 +108,8 @@ The first prompt is the first input; the loop starts with it, not with `recv`.
 | Latest due tick within 60 s of the next boundary (capped at half the interval) | Not run at start; the next boundary runs instead |
 | Tick due while the previous tick of the schedule still runs | Recorded `SKIPPED` with output `{"skipped":"previous run still going"}`; not retried |
 | Previous non-skipped tick's scheduled time is under `everyMinutes` before this one (interval edited) | Recorded `SKIPPED` with output `{"skipped":"interval changed: ..."}`; not retried |
+
+A skipped tick is a workflow row like any other and appears in the run list, but it is not a run: `last` in `GET /v1/schedules` is the newest non-skipped tick, so a skipped extra trigger never replaces the last real run's status on the scheduler card.
 | Runner stops during a run | The command's process group gets SIGTERM, then SIGKILL after 5 s. The step stays `started`; at the next boot it records `cut` and is not re-run |
 | `POST /v1/schedules/:name/run` | Starts a tick under `<name>@manual@<uuid>` with the same overlap rule; returns 202 without waiting. One run per 10 s per schedule (429 otherwise); the caller label from `?caller=` is logged |
 

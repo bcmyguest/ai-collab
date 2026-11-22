@@ -64,9 +64,11 @@ test("a tick that finds the previous run still going is recorded as skipped", as
     return "done";
   });
   log.startSchedules();
-  await waitFor(() => log.schedules()[0].last?.output?.skipped);
+  // The skip is in the run list, but it is not the schedule's last run: the real one still going keeps that place.
+  await waitFor(() => log.scheduleRuns("slow").some((run) => run.output?.skipped));
   assert.equal(runs, 1);
-  assert.equal(log.schedules()[0].last.status, "SKIPPED");
+  assert.equal(log.scheduleRuns("slow")[0].status, "SKIPPED");
+  assert.notEqual(log.schedules()[0].last.status, "SKIPPED");
   release();
   await waitFor(() => runs >= 2);
   await log.close();

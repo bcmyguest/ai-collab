@@ -46,7 +46,7 @@ export function openDurable(file, { now = Date.now } = {}) {
     wfInsertIgnore: db.prepare("INSERT OR IGNORE INTO workflows (id, name, input, status, created_at, updated_at) VALUES (?, ?, ?, 'PENDING', ?, ?)"),
     wfRecord: db.prepare("INSERT OR IGNORE INTO workflows (id, name, input, status, output, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"),
     wfGet: db.prepare("SELECT * FROM workflows WHERE id = ?"),
-    wfLatestNamed: db.prepare("SELECT * FROM workflows WHERE name = ? ORDER BY created_at DESC, id DESC LIMIT 1"),
+    wfLatestReal: db.prepare("SELECT * FROM workflows WHERE name = ? AND status != 'SKIPPED' ORDER BY created_at DESC, id DESC LIMIT 1"),
     wfListNamed: db.prepare("SELECT * FROM workflows WHERE name = ? ORDER BY created_at DESC, id DESC LIMIT ?"),
     wfLastActual: db.prepare("SELECT input FROM workflows WHERE name = ? AND status != 'SKIPPED' AND id NOT LIKE '%@manual@%' ORDER BY created_at DESC LIMIT 1"),
     wfPending: db.prepare("SELECT id, name, input FROM workflows WHERE status = 'PENDING' ORDER BY created_at"),
@@ -267,11 +267,12 @@ export function openDurable(file, { now = Date.now } = {}) {
       const at = now();
       return fire(s, at, at, { manual: true });
     },
-    /** Each schedule with its next tick (ISO) and its latest tick row. */
+    /** Each schedule with its next tick (ISO) and its latest real run: a skipped extra trigger is not a run. */
     schedules() {
       const at = now();
       return [...schedules.values()].map((s) => {
-        const last = q.wfLatestNamed.get(tickName(s.name));
+        // A tick skipped while the previous run still goes, or for an edited interval, never replaces the last real run's status.
+        const last = q.wfLatestReal.get(tickName(s.name));
         return {
           name: s.name, everyMs: s.everyMs, nextRun: new Date(dueAt(s.everyMs, at) + s.everyMs).toISOString(),
           last: last ? { id: last.id, status: last.status, scheduledTime: new Date(parse(last.input).scheduledTime).toISOString(), output: parse(last.output), error: last.error } : null,
