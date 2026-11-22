@@ -99,4 +99,5 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Left panel lists named agents (PM and other set_identity names); tapping one opens a direct chat, no address needed | open |
 | Scheduled jobs and agents shown apart: the PM agent is not its schedule entry (operator: agent != scheduled job) | open |
 | Schedule run kills builders the PM started: runner SIGKILLs the whole process group on exit (runner/schedules.mjs:129) | done |
+| Builders the PM starts live in the runner's cgroup, so a runner restart (deploy) kills them; launch each as its own systemd-run --user unit | open |
 <!-- tasks:end -->
