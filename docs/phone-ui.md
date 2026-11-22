@@ -188,6 +188,16 @@ Context alerts post one context alert to the broadcast topic each time a session
 | Cursor | `preCompact` hook `context_tokens` (sampled only before compaction) |
 | OpenCode 2 | last `session.step.ended` event's `tokens`: `input + cache.read + cache.write`, passed as `context_tokens` |
 
+## Compaction map
+
+The sidebar's **Compactions** entry, and **Compaction map** in a session's menu, open `#project=<name>&level=compactions`. It lists every agent in the project: harness, model, the context against the window (`tokens of window · N to window`), and its compactions, clears and model switches on one time axis shared by all rows. The axis runs from the oldest entry (or an hour ago) to now. Markers: amber auto, blue manual, red failed, sky clear, green model switch. The three newest entries follow each card with their times.
+
+Headroom is `window - tokens` and shows only when the harness reported both (Codex does; Claude, Cursor and OpenCode report no window). No harness reports its auto-compact point, so the map shows no auto-compact headroom. The history is the activity kept in memory (500 events per project).
+
+Timeline rows: `Compacted · auto · 182k → 31k · 4 files dropped`, `Cleared · 140k → 0`, `Model claude-haiku-5-5 → claude-opus-5-5`. A compaction's before count and dropped files come from its started row; the after count comes from the runner (Claude's `post_tokens`), so a hook-observed compaction shows no after count.
+
+Phone Clear and Model switch: no new channel is verified. `/clear` stays `unsupported` on every harness. `/model` keeps its current support. The Claude Agent SDK has `Query.setModel` (sdk.d.ts:3227), but no phone route calls it. Cursor's ACP dispatcher serves `session/set_model`; `runner/adapters/cursor.mjs` `setModel` sends it, **unverified**: it has not run against a live cursor-agent, and no route calls it.
+
 ## Slash commands and context
 
 A composer message is a command for the open session only when its first word is a known command (`compact`, `model`, `clear`) or a name the picker inserted; `/home/x is broken` is chat. Typing `/` opens the command list; Tab inserts the highlighted entry, and a name no known command matches is offered as a passthrough entry. Enter sends the whole message; Escape closes the list. Each entry shows its support for the session's harness: `partial` and `unverified` entries run and carry a badge, and `unsupported` entries are disabled with the reason in their tooltip. The draft clears only when the session ran the command (`succeeded`) or the compaction was `requested`; any other result keeps the draft. The project chat never runs commands.

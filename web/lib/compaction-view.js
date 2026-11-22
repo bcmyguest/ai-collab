@@ -50,3 +50,13 @@ export function mapAxis(histories, now) {
   const times = histories.flat().map(item => item.at);
   return { start: Math.min(now - 60 * 60_000, ...times), end: now };
 }
+
+/** "Cleared · 140k → 0", or "Cleared" when the count before is unknown. */
+export function clearText({ tokensBefore, tokensAfter } = {}) {
+  return tokensBefore === undefined ? "Cleared" : `Cleared · ${tokenCount(tokensBefore)} → ${tokenCount(tokensAfter ?? 0)}`;
+}
+
+/** "Model claude-haiku-5-5 → claude-opus-5-5". */
+export function modelText({ from, to }) {
+  return `Model ${from} → ${to}`;
+}

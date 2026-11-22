@@ -31,6 +31,7 @@ import { WAITER_MAX_S, runWaiter, takeWaiterSlot } from "../lib/waiter.mjs";
 import { ON_DEMAND_LOADS, contextUsage, readContext, recordInstructions, reportContext } from "../lib/usage.mjs";
 import { activityEvents, publishActivity } from "../lib/activity.mjs";
 import { compactionFields } from "../lib/compaction.mjs";
+import { clearFields } from "../lib/session-events.mjs";
 import { sendReceipts, settleReceipts } from "../lib/receipts.mjs";
 import { closeTerminalCards, decideApproval, decideQuestion } from "../lib/approvals.mjs";
 import { standsDown } from "../lib/owned.mjs";
@@ -55,13 +56,16 @@ const NAMED_EVENTS = new Set(["SessionStart", "UserPromptSubmit", "Stop"]);
 // Cursor permission hooks fall through to Cursor's own prompt with "ask".
 const CURSOR_PERMISSION = new Set(["beforeshellexecution", "beforemcpexecution"]);
 
-// A PreCompact row carries the meter's last reading and the on-demand instruction files the compaction drops.
-function stampPrecompact(cfg, events) {
+// A compaction start or clear carries the meter's last reading; a compaction start also counts the on-demand files it drops.
+function stampContext(cfg, events) {
   const context = readContext(cfg);
+  const tokensBefore = context.tokens ?? undefined;
   const filesDropped = context.files.filter(entry => ON_DEMAND_LOADS.has(entry.load)).length;
-  return events.map(event => event.compaction
-    ? { ...event, compaction: compactionFields({ ...event.compaction, tokensBefore: context.tokens ?? undefined, filesDropped }) }
-    : event);
+  return events.map(event => {
+    if (event.clear) return { ...event, clear: clearFields({ tokensBefore }) };
+    if (event.compaction?.phase === "started") return { ...event, compaction: compactionFields({ ...event.compaction, tokensBefore, filesDropped }) };
+    return event;
+  });
 }
 
 function hostArg(argv) {
@@ -190,7 +194,7 @@ async function main() {
   if (argv.includes("--rewake")) return rewake(cfg, host, msg);
 
   // Started first and awaited last, so delivery never waits on it.
-  const events = key === "precompact" ? stampPrecompact(cfg, activityEvents(host, key, msg)) : activityEvents(host, key, msg);
+  const events = key === "precompact" || key === "sessionstart" ? stampContext(cfg, activityEvents(host, key, msg)) : activityEvents(host, key, msg);
   const activity = publishActivity(cfg, host, events).catch(() => 0);
   // A view-only approval card (AFK off) closes once a later event shows the terminal prompt resolved.
   const closing = closeTerminalCards(cfg, { host, key, input: msg }).catch(() => []);

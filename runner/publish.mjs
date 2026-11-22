@@ -6,6 +6,7 @@ import { publish } from "../lib/ntfy.mjs";
 import { publishStatus } from "../lib/inbox.mjs";
 import { publishActivity } from "../lib/activity.mjs";
 import { compactionFields } from "../lib/compaction.mjs";
+import { modelFields } from "../lib/session-events.mjs";
 import { approvalMessage, cleanQuestions } from "../lib/approvals.mjs";
 import { sendReceipts } from "../lib/receipts.mjs";
 import { reportContext } from "../lib/usage.mjs";
@@ -47,6 +48,10 @@ export function activityFor(e) {
       }, e)];
     case EventType.STEP_STARTED:
     case EventType.STEP_FINISHED:
+      if (e.stepName === "model") {
+        const fields = e.type === EventType.STEP_FINISHED && meta?.modelSwitch ? modelFields(meta.modelSwitch) : null;
+        return fields ? [{ type: "model", input: `Model ${fields.from} → ${fields.to}`, modelSwitch: fields }] : [];
+      }
       return e.stepName === "compact" ? [compactRow(e.type, meta)] : [];
     case EventType.CUSTOM:
       if (e.name === ERROR) return [{ type: "error", output: e.value }];
