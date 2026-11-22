@@ -89,3 +89,15 @@ test("a blank text does not split a tool group", () => {
   const rows = chatFlow(grouped(items), [], A).rows;
   assert.deepEqual(rows.map(item => [item.type, item.steps]), [["group", 2], ["text", undefined]]);
 });
+
+test("a chat message that arrives mid tool run splits the group so newer tool rows sit below it", () => {
+  // A Cursor turn emits no texts, so its whole run of tools is one group that started before the operator's compact notice.
+  const notice = { id: "m1", time: 104, kind: "Message", from: "system", to: A, body: "[ai-collab] The operator asked to compact" };
+  const reply = { id: "m2", time: 106, kind: "Message", from: A, to: "operator", body: "Merged a-ui; fixing 4 UI test regressions" };
+  const items = [prompt, ...use(1, 101, 1, "Read"), ...use(2, 103, 2, "Shell"), ...use(3, 105, 3, "Read"), ...use(4, 107, 4, "Write"), ...use(5, 109, 5, "Read")];
+  const thread = chatThread([notice, reply], grouped(items), A);
+  assert.deepEqual(ids(thread), ["group:c1", "m1", "group:c3", "m2", "group:c4"]);
+  const times = thread.map(item => (item.message || item.activity).time);
+  assert.deepEqual(times, [...times].sort((a, b) => a - b));
+  assert.deepEqual(thread.filter(item => item.activity).map(item => [item.activity.steps, item.activity.live]), [[2, false], [1, false], [2, true]]);
+});

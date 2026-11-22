@@ -110,11 +110,30 @@ export function chatFlow(rows, messages = [], session = "") {
   return { rows: out, messages: finals };
 }
 
+/** Cuts each tool group at the chat messages that arrived during it, so its later tool uses sort after them; only the last piece of a live group stays live. */
+function splitAtMessages(rows, times) {
+  return rows.flatMap(row => {
+    if (row.type !== "group") return [row];
+    const span = row.rows.map(item => item.time || 0);
+    const inside = times.filter(time => time >= Math.min(...span) && time < Math.max(...span));
+    if (!inside.length) return [row];
+    const pieces = [[]];
+    for (const item of row.rows) {
+      const piece = pieces.at(-1);
+      const last = piece.at(-1);
+      if (last && inside.some(time => time >= (last.time || 0) && time < (item.time || 0))) pieces.push([item]);
+      else piece.push(item);
+    }
+    if (pieces.length === 1) return [row];
+    return pieces.map((piece, i) => ({ ...toolGroup(piece), live: row.live && i === pieces.length - 1 }));
+  });
+}
+
 /** The session thread: chat messages, assistant texts and tool groups interleaved by time. */
 export function chatThread(messages, rows, session) {
   const flow = chatFlow(rows, messages, session);
   const merged = [...messages, ...flow.messages].sort((a, b) => (a.time || 0) - (b.time || 0));
-  return interleave(merged, flow.rows);
+  return interleave(merged, splitAtMessages(flow.rows, merged.map(item => item.time || 0)));
 }
 
 /** "Ran Bash · npm test" for one tool use, "Ran 2 tools · Bash, Read" for several. */
