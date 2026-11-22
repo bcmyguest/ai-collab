@@ -31,6 +31,10 @@ Prefer these MCP tools; pass your session label from the hook context as `sessio
 
 Use the CLI prefix from your hook context so outgoing messages carry your assigned peer and session label.
 
+## Gathering evidence in code
+
+Use the `ai-collab-code` tool `run_read_code` to query and combine project state in one sandboxed program. The [role programs](references/role-programs.md) cover PM, builder, and reviewer queries.
+
 ## Answering the operator
 
 Hook context labels each operator message and says how to answer it:
