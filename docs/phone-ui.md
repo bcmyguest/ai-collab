@@ -192,6 +192,40 @@ Context alerts post one context alert to the broadcast topic each time a session
 | Cursor | `preCompact` hook `context_tokens` (sampled only before compaction) |
 | OpenCode 2 | last `session.step.ended` event's `tokens`: `input + cache.read + cache.write`, passed as `context_tokens` |
 
+## Usage-limit cards
+
+When a session hits a subscription or usage limit, the phone gets one choice card for that session and limit window. The card names the agent and its `harness:model`, the limit with its window when known, and the reset time when known: `Limit reached · claude:claude-opus-5-5 · 5-hour · resets 18:00`. Nothing switches on its own.
+
+The card offers up to four replacements, then **Wait for reset**:
+
+- The pattern role's `fallback` (`harness:model`) comes first, when the session's pattern role defines one.
+- Then the first listed model of each other available harness (`lib/models.mjs`).
+- **Wait for reset** only acknowledges. Nothing else changes.
+- A replacement starts a new session in the same project folder with a handoff prompt: the original session's name, its last activity line, and an instruction to check the repository before editing. The original session keeps running. Each session's timeline gets a row that links to the other.
+- One pick per card. A second pick returns 409.
+- A window alerts once per session. A known reset time ends the silence at that time; an unknown reset stays silent for 5 hours.
+
+Detection (`lib/limits.mjs`). "Typed" means the pattern appears in a type definition; "UNVERIFIED" means no type or source in this repo names it, and the code comment says so.
+
+| Harness | Source | Status |
+|---|---|---|
+| Claude | `rate_limit_event` with `status: "rejected"` (`sdk.d.ts:6224`, `SDKRateLimitInfo` at `:6237`) | Typed. The `resetsAt` unit is UNVERIFIED; read as epoch seconds. |
+| Claude | `StopFailure` hook with `error: "rate_limit"` (`sdk.d.ts:10502`; enum at `:3995`) | Typed. It also fires for an API 429 with no plan limit. |
+| Claude | Failed result text: "usage limit", "rate limit", "quota", "429" | UNVERIFIED |
+| Codex | Turn error with `codexErrorInfo: "usageLimitExceeded"` | UNVERIFIED (not in `node_modules` or `docs/`) |
+| Codex | Turn error text | UNVERIFIED |
+| OpenCode | Provider error with HTTP 429 | UNVERIFIED. `runner/adapters/opencode.mjs` forwards only the message, not the status, so the status check never fires. |
+| OpenCode | Provider error text | UNVERIFIED |
+| Cursor | ACP error text | UNVERIFIED |
+
+Where detection runs:
+
+- The Claude `StopFailure` hook (`scripts/ai-collab-hook.mjs`) covers every Claude session that reports to AI Collab, including `claude --bg` sessions the phone starts.
+- The owned-session runner (`runner/runner.mjs`) covers Claude's `rate_limit_event` and every harness's run error.
+- Detached `codex exec`, `opencode run` and `cursor-agent -p` sessions started from the phone have no error hook, so no card appears for them.
+
+A reply typed in the ntfy app does nothing. Answer the card in the web UI, where the pick starts the replacement.
+
 ## Compaction map
 
 The sidebar's **Compactions** entry, and **Compaction map** in a session's menu, open `#project=<name>&level=compactions`. It lists every agent in the project: harness, model, the context against the window (`tokens of window · N to window`), and its compactions, clears and model switches on one time axis shared by all rows. The axis runs from the oldest entry (or an hour ago) to now. Markers: amber auto, blue manual, red failed, sky clear, green model switch. The three newest entries follow each card with their times.

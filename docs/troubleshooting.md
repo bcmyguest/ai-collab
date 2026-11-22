@@ -20,6 +20,12 @@
 
 CLI exit codes: 0 success, 1 error (for example a peer not in `AI_COLLAB_PEERS`, an empty body, or an outage), 2 disabled.
 
+## Usage-limit cards
+
+| Symptom | Fix |
+|---|---|
+| No limit card after a session hit its limit. | Detached `codex exec`, `opencode run` and `cursor-agent -p` sessions have no error hook, so they never alert. Owned sessions and Claude sessions do. The Codex, OpenCode and Cursor patterns are UNVERIFIED; see [Usage-limit cards](phone-ui.md#usage-limit-cards). |
+
 ## The UI
 
 - **UI broken after moving the checkout.** `next build` records the absolute path of `web/server/ui.mjs`; rebuild.
