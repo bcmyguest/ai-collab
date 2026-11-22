@@ -1,70 +1,55 @@
-// Cursor adapter: one `cursor-agent acp` child per owned session over stdio JSON-RPC, optionally inside an OpenShell sandbox.
+// Cursor adapter: one `<cursor cli> acp` child per owned session over stdio JSON-RPC, optionally inside an OpenShell sandbox.
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
 import { EventType } from "@ag-ui/core";
 import { sessionLabel } from "../../lib/config.mjs";
+import { cursorBinary, findExecutable } from "../../lib/start.mjs";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, permissionSettings } from "../contract.mjs";
+import {
+  destroySandbox, downloadTree, ensureSandbox as ensureSandboxIn, execArgv as sandboxExecArgv, runTool,
+  sandboxName as sandboxNameFor, uploadFile, uploadTree,
+} from "../sandbox.mjs";
 
-// UNVERIFIED: ACP protocolVersion 1 and the method names follow the ACP spec, not a schema dump from cursor-agent.
+// ACP protocolVersion 1 and the method names come from the ACP spec; `agent acp` answered `initialize`
+// with protocolVersion 1 on 2026-11-22 (docs/owned-sessions-contract.md, Cursor adapter).
 const PROTOCOL_VERSION = 1;
 const SETUP_TIMEOUT_MS = 30_000;
 const TOOL_TIMEOUT_MS = 60_000;
 const SANDBOX_TIMEOUT_MS = 600_000;
 const CLIENT = { name: "ai-collab-runner", version: "0" };
 const OWNED = { AI_COLLAB_OWNED: "cursor" };
+// Where a sandbox session's worktree lives inside the sandbox and the home its CLI runs with.
+const SANDBOX_ROOT = "/sandbox";
+const SANDBOX_HOME = "/sandbox/home";
+const SANDBOX_BIN = "/sandbox/bin";
+// The name the CLI is launched by inside a sandbox, whatever it is called on the host.
+const SANDBOX_LAUNCHER = "cursor-agent";
 
 /** The OpenShell sandbox name for a project: ai-collab-<project>, lowercase, at most 40 characters of project. */
-export const sandboxName = (project) =>
-  `ai-collab-${project.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40)}`;
+export const sandboxName = (project) => sandboxNameFor(project);
 
 /** Argv of the ACP server: `acp`, then `--force` when the mode asks for it, then `--model` when one is named. */
 export function acpArgs({ force = false, model } = {}) {
   return ["acp", ...(force ? ["--force"] : []), ...(model ? ["--model", model] : [])];
 }
 
-/** Argv that runs cursor-agent inside a sandbox: `openshell sandbox exec` with stdin piped and the owned marker set. */
-export function execArgv({ openshell, sandbox, args }) {
-  return [openshell, "sandbox", "exec", "--no-tty", "-n", sandbox, "--env", "AI_COLLAB_OWNED=cursor", "--", "cursor-agent", ...args];
-}
-
-/** Runs a short-lived tool to completion; never rejects, so a missing binary reports through `stderr`. */
-export function runTool(bin, args, { env, cwd, timeoutMs = SETUP_TIMEOUT_MS } = {}) {
-  return new Promise((resolve) => {
-    const child = spawn(bin, args, { env, cwd, shell: false, stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (d) => { stdout += d; });
-    child.stderr.on("data", (d) => { stderr += d; });
-    const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
-    child.on("error", (error) => { clearTimeout(timer); resolve({ code: null, stdout, stderr: error.message }); });
-    child.on("close", (code) => { clearTimeout(timer); resolve({ code, stdout, stderr }); });
+/**
+ * Argv that runs the Cursor CLI inside a sandbox: `openshell sandbox exec` with the session's workdir, the owned
+ * marker, and the CLI's home (so it reads the auth file written there) . The CLI name defaults to `cursor-agent`,
+ * the name inside the sandbox image, not the host's.
+ */
+export function execArgv({ openshell, sandbox, args, binary = "cursor-agent", workdir, env = {} }) {
+  return sandboxExecArgv({
+    openshell, sandbox, workdir, command: [binary, ...args],
+    env: { AI_COLLAB_OWNED: "cursor", ...env },
   });
 }
 
-/** Creates the project's sandbox when missing, starts it when stopped, and resumes it when suspended. */
-export async function ensureSandbox({ openshell, env, project }) {
-  const name = sandboxName(project);
-  const list = await runTool(openshell, ["sandbox", "list", "-o", "json"], { env, timeoutMs: SETUP_TIMEOUT_MS });
-  if (list.code !== 0) throw new Error(`openshell sandbox list failed: ${list.stderr.trim() || `exit ${list.code}`}`);
-  let sandboxes;
-  try { sandboxes = JSON.parse(list.stdout).sandboxes ?? []; } catch { throw new Error("openshell sandbox list printed no JSON"); }
-  const found = sandboxes.find((s) => s.name === name);
-  const step = found ? stateCommand(found) : ["create", "--name", name, "--no-tty", "--detach"];
-  if (!step) return name;
-  const out = await runTool(openshell, ["sandbox", ...step], { env, timeoutMs: SANDBOX_TIMEOUT_MS });
-  if (out.code !== 0) throw new Error(`openshell sandbox ${step[0]} failed: ${out.stderr.trim() || `exit ${out.code}`}`);
-  return name;
-}
+export { runTool };
 
-// UNVERIFIED: the sandbox JSON field names (phase, state, status) come from no local schema dump; no sandbox exists to inspect.
-function stateCommand(sandbox) {
-  const state = String(sandbox.phase ?? sandbox.state ?? sandbox.status?.phase ?? sandbox.status ?? "");
-  if (/suspend/i.test(state)) return ["resume", sandbox.name];
-  if (/stop/i.test(state)) return ["start", sandbox.name];
-  return null;
-}
 
 function forceOf(permission, place) {
   const force = permission?.force === true;
@@ -113,6 +98,13 @@ function connect(argv, { env, cwd, log, onRequest, onNotify }) {
   // The last lines the child wrote to stderr, kept for the error that ends the connection (limit text lives here).
   let stderrTail = "";
   const keepStderr = (chunk) => { stderrTail = (stderrTail + chunk).slice(-STDERR_TAIL_MAX); };
+  let settleExit;
+  const exited = new Promise((resolve) => { settleExit = resolve; });
+  // A sandbox's `exec` client is not the process holding the pipes once it is killed: the remote command inherits
+  // them, so they are destroyed here or the runner never exits after a close.
+  const destroyStreams = () => {
+    for (const stream of [child.stdin, child.stdout, child.stderr]) if (!stream.destroyed) stream.destroy();
+  };
   child.stdin.on("error", () => {});
   child.stdout.setEncoding("utf8");
   child.stderr.setEncoding("utf8");
@@ -126,7 +118,7 @@ function connect(argv, { env, cwd, log, onRequest, onNotify }) {
   });
   child.stderr.on("data", (chunk) => { keepStderr(chunk); for (const line of chunk.split("\n")) if (line.trim()) log(line.trimEnd()); });
   child.on("error", (error) => fail(error));
-  child.on("exit", (code, signal) => fail(exitError(code, signal, stderrTail)));
+  child.on("exit", (code, signal) => { fail(exitError(code, signal, stderrTail)); settleExit(); });
 
   function send(message) {
     child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
@@ -165,16 +157,97 @@ function connect(argv, { env, cwd, log, onRequest, onNotify }) {
     notify: (method, params) => send({ method, params }),
     reply: (id, result) => send({ id, result }),
     replyError: (id, code, message) => send({ id, error: { code, message } }),
-    kill: () => { child.kill("SIGTERM"); },
+    kill: () => { child.kill("SIGTERM"); destroyStreams(); },
+    closed: exited,
     child,
   };
 }
 
+/**
+ * Uploads what a sandbox session needs and returns the exec env and workdir.
+ *
+ * Verified flow (docs/owned-sessions-contract.md, OpenShell): a sandbox gets no host bind mount, so the worktree
+ * is uploaded before the run and downloaded after it; the CLI tree is uploaded once under SANDBOX_ROOT; auth is the
+ * host's `$XDG_CONFIG_HOME/cursor/auth.json` (or `~/.config/cursor/auth.json`), written to a 0600 temp file and
+ * uploaded, never passed in argv or --env, so it never reaches a log. Missing auth is not fatal: the CLI asks to log in.
+ */
+export async function prepareSandbox({ openshell, env, sandbox, cwd, home = homedir(), cursorTree, launcher = SANDBOX_LAUNCHER, staged = new Set(), log = () => {} }) {
+  const remoteWork = `${SANDBOX_ROOT}/work`;
+  await uploadTree({ openshell, env, sandbox, local: cwd, remote: remoteWork });
+  const execEnv = { HOME: SANDBOX_HOME, XDG_CONFIG_HOME: `${SANDBOX_HOME}/.config` };
+  if (cursorTree) {
+    // The host install tree is about 500 MB, so it is uploaded once per sandbox and reused after that; the
+    // bin/ symlink is one small upload and always replaces the old target.
+    if (!staged.has(sandbox)) {
+      await uploadTree({ openshell, env, sandbox, local: cursorTree, remote: `${SANDBOX_ROOT}/agent` });
+      staged.add(sandbox);
+    }
+    const dir = mkdtempSync(join(tmpdir(), "ai-collab-sandbox-bin-"));
+    try {
+      mkdirSync(join(dir, "bin"));
+      symlinkSync(join(SANDBOX_ROOT, "agent", basename(cursorTree), launcher), join(dir, "bin", SANDBOX_LAUNCHER));
+      // Its own directory (/sandbox/bin), so a second session's upload never lands on the first's.
+      await uploadTree({ openshell, env, sandbox, local: join(dir, "bin"), remote: SANDBOX_ROOT });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    execEnv.PATH = `${SANDBOX_BIN}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`;
+  } else {
+    // Nothing to upload: the binary must already be on the sandbox's own PATH (an image that ships it).
+    log(`cursor: no CLI install tree found for ${launcher}; the sandbox's own PATH must have it`);
+  }
+  const authPath = [join(home, ".config", "cursor", "auth.json"), join(home, ".cursor", "auth.json")].find((p) => existsSync(p));
+  if (authPath) {
+    await uploadAuth({ openshell, env, sandbox, authPath, log });
+  } else {
+    log("cursor: no host auth.json found; the sandbox CLI will ask to log in");
+  }
+  return { workdir: `${remoteWork}/${basename(cwd)}`, env: execEnv };
+}
+
+// Copies the auth file in through a 0600 temp file (a single-file upload keeps the mode), then deletes the temp file.
+async function uploadAuth({ openshell, env, sandbox, authPath, log }) {
+  const dir = mkdtempSync(join(tmpdir(), "ai-collab-sandbox-auth-"));
+  const copy = join(dir, "auth.json");
+  try {
+    let auth = "";
+    try { auth = readFileSync(authPath, "utf8"); } catch { auth = ""; }
+    if (!auth) { log("cursor: the host auth.json is unreadable; the sandbox CLI will ask to log in"); return; }
+    writeFileSync(copy, auth, { mode: 0o600 });
+    await uploadFile({ openshell, env, sandbox, local: copy, remoteDir: `${SANDBOX_HOME}/.config/cursor` });
+  } catch (error) {
+    log(`cursor: could not stage the sandbox auth file; the CLI will ask to log in (${error.message})`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Copies the sandbox worktree back over the host worktree after a run or on close; never throws. */
+export async function syncSandboxBack({ openshell, env, sandbox, cwd, log = () => {} }) {
+  try {
+    await downloadTree({ openshell, env, sandbox, remote: `${SANDBOX_ROOT}/work/${basename(cwd)}`, local: cwd });
+    return true;
+  } catch (error) {
+    log(`cursor: could not copy edits back from the sandbox: ${error.message}`);
+    return false;
+  }
+}
+
 /** Maps AG-UI output for one harness session: a run, its text and tool calls, and its approval cards. */
 export default function cursorAdapter(config = {}) {
-  const cursorBin = config.env?.AI_COLLAB_CURSOR_BIN || "cursor-agent";
-  const openshellBin = config.env?.AI_COLLAB_OPENSHELL_BIN || "openshell";
+  const envOf = config.env ?? {};
+  const openshellBin = envOf.AI_COLLAB_OPENSHELL_BIN || "openshell";
+  // Both resolve against the caller's PATH: the service may start with a bare one.
+  const lookupPath = config.path ?? envOf.PATH ?? process.env.PATH ?? "";
+  const cursorBin = envOf.AI_COLLAB_CURSOR_BIN || cursorBinary(lookupPath);
+  // The CLI tree uploaded into a sandbox: the version directory that holds the host binary's real path.
+  const cursorTree = envOf.AI_COLLAB_CURSOR_TREE || treeOf(cursorBin, lookupPath);
+  const policyPath = envOf.AI_COLLAB_OPENSHELL_POLICY || "";
   const connections = new Set();
+  // One sandbox per project, reused: created by the first session and deleted when the last one closes.
+  const sandboxes = new Map();
+  // Sandboxes whose (large) CLI tree is already uploaded; it is only re-uploaded into a new sandbox.
+  const stagedTrees = new Set();
 
   // Starts the ACP child (inside the sandbox for openshell) and negotiates initialize; returns the session state.
   async function attach(spec, ctx) {
@@ -182,13 +255,29 @@ export default function cursorAdapter(config = {}) {
     const cursorArgs = acpArgs({ force, model: spec.model });
     const env = { ...spec.env, ...OWNED };
     let argv;
-    if (spec.place === "openshell") {
-      const sandbox = await ensureSandbox({ openshell: openshellBin, env, project: spec.project });
-      argv = execArgv({ openshell: openshellBin, sandbox, args: cursorArgs });
-    } else {
-      argv = [cursorBin, ...cursorArgs];
+    // A claimed sandbox (and the session that holds it) is released again on any failure below.
+    let sandbox = null;
+    const session = { sessionId: null, run: null, approvals: new Map(), tools: new Map(), closed: false, ctx, sandbox: null, env, cwd: spec.cwd };
+    try {
+      if (spec.place === "openshell") {
+        // One sandbox per project, reused: created by the first session and deleted when the last one closes.
+        sandbox = await ensureSandboxIn({ openshell: openshellBin, env, name: sandboxName(spec.project), policy: policyPath });
+        claim(sandbox, spec.cwd);
+        session.sandbox = sandbox;
+        const prepared = await prepareSandbox({
+          openshell: openshellBin, env, sandbox, cwd: spec.cwd, home: spec.home, cursorTree,
+          staged: stagedTrees, log: (l) => ctx.log(l),
+        });
+        argv = execArgv({ openshell: openshellBin, sandbox, args: cursorArgs, workdir: prepared.workdir, env: prepared.env });
+        // The CLI runs in the sandbox, so it must be told the sandbox path, not the host's.
+        session.remoteCwd = prepared.workdir;
+      } else {
+        argv = [cursorBin, ...cursorArgs];
+      }
+    } catch (error) {
+      await closeSandbox(session);
+      throw error;
     }
-    const session = { sessionId: null, run: null, approvals: new Map(), tools: new Map(), closed: false, ctx };
     const conn = connect(argv, {
       env,
       cwd: spec.place === "openshell" ? undefined : spec.cwd,
@@ -198,17 +287,21 @@ export default function cursorAdapter(config = {}) {
     });
     connections.add(conn);
     ctx.signal.addEventListener("abort", () => conn.kill(), { once: true });
+    // A CLI that dies on its own (crash, sandbox delete) gives up its claim too, so no sandbox is left behind.
+    conn.closed.then(() => { if (session.sandbox) void closeSandbox(session); });
     try {
       const init = await conn.request("initialize", {
         protocolVersion: PROTOCOL_VERSION,
         clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
         clientInfo: CLIENT,
       }, SETUP_TIMEOUT_MS);
-      if (spec.requireLoad && !init?.agentCapabilities?.loadSession) throw new Error("cursor-agent does not advertise loadSession; the session cannot resume");
+      if (spec.requireLoad && !init?.agentCapabilities?.loadSession) throw new Error("the Cursor CLI does not advertise loadSession; the session cannot resume");
       return { conn, session };
     } catch (error) {
+      // The CLI may have died before initialize answered; closing the connection is what ends a sandbox run.
       conn.kill();
       connections.delete(conn);
+      await closeSandbox(session);
       throw error;
     }
   }
@@ -308,6 +401,38 @@ export default function cursorAdapter(config = {}) {
 
   const threadOf = (session) => `cursor#${sessionLabel(session.sessionId)}`;
 
+  // Counts a session's claim on its project's sandbox; the sandbox is deleted when the last claim goes.
+  function claim(name, cwd) {
+    const known = sandboxes.get(name) ?? { cwd, refs: 0 };
+    known.refs += 1;
+    sandboxes.set(name, known);
+  }
+
+  // Copies a sandbox session's edits back to the host worktree, then drops the session's claim on the sandbox;
+  // the sandbox is deleted when no session holds it any more. Logs rather than throws, and runs at most once.
+  function closeSandbox(session) {
+    session.release ??= releaseSandbox(session);
+    return session.release;
+  }
+
+  async function releaseSandbox(session) {
+    const name = session.sandbox;
+    session.sandbox = null;
+    const log = session.ctx.log;
+    if (!name) return true;
+    if (session.cwd) await syncSandboxBack({ openshell: openshellBin, env: session.env, sandbox: name, cwd: session.cwd, log });
+    const known = sandboxes.get(name);
+    if (known) {
+      known.refs = Math.max(0, (known.refs ?? 1) - 1);
+      if (known.refs > 0) return true;
+      sandboxes.delete(name);
+    }
+    const out = await destroySandbox({ openshell: openshellBin, env: session.env, name });
+    stagedTrees.delete(name);
+    if (!out.ok) log(`cursor: could not delete sandbox ${name}: ${out.detail}`);
+    return out.ok;
+  }
+
   function makeHandle({ conn, session }) {
     return {
       get nativeId() { return session.sessionId; },
@@ -337,6 +462,7 @@ export default function cursorAdapter(config = {}) {
         if (conn.dead) throw conn.dead;
         return conn.request("session/set_model", { sessionId: session.sessionId, modelId }, TOOL_TIMEOUT_MS);
       },
+      // Closing a sandbox session ends its CLI, copies its edits back, then deletes the sandbox.
       async close() {
         if (session.closed) return;
         session.closed = true;
@@ -344,13 +470,14 @@ export default function cursorAdapter(config = {}) {
         cancelApprovals(session);
         conn.kill();
         connections.delete(conn);
+        await closeSandbox(session);
       },
     };
   }
 
   return {
     harness: "cursor",
-    capabilities: { steer: false, images: false, resume: "transcript", permissionModes: ["supervised", "full-access"] },
+    capabilities: { steer: false, images: false, resume: "transcript", permissionModes: ["supervised", "full-access"], places: ["folder", "worktree", "openshell"] },
 
     async available(env = {}) {
       const out = await runTool(cursorBin, ["--version"], { env });
@@ -360,12 +487,13 @@ export default function cursorAdapter(config = {}) {
     async open(options, ctx) {
       const attached = await attach({ ...options, requireLoad: false }, ctx);
       try {
-        const created = await attached.conn.request("session/new", { cwd: options.cwd, mcpServers: [] }, SETUP_TIMEOUT_MS);
+        const created = await attached.conn.request("session/new", { cwd: attached.session.remoteCwd ?? options.cwd, mcpServers: [] }, SETUP_TIMEOUT_MS);
         attached.session.sessionId = created.sessionId;
         return makeHandle(attached);
       } catch (error) {
         attached.conn.kill();
         connections.delete(attached.conn);
+        await closeSandbox(attached.session);
         throw error;
       }
     },
@@ -379,11 +507,12 @@ export default function cursorAdapter(config = {}) {
       }, ctx);
       try {
         attached.session.sessionId = record.nativeId;
-        await attached.conn.request("session/load", { sessionId: record.nativeId, cwd: record.cwd, mcpServers: [] }, TOOL_TIMEOUT_MS);
+        await attached.conn.request("session/load", { sessionId: record.nativeId, cwd: attached.session.remoteCwd ?? record.cwd, mcpServers: [] }, TOOL_TIMEOUT_MS);
         return makeHandle(attached);
       } catch (error) {
         attached.conn.kill();
         connections.delete(attached.conn);
+        await closeSandbox(attached.session);
         throw error;
       }
     },
@@ -403,6 +532,19 @@ export default function cursorAdapter(config = {}) {
       connections.clear();
     },
   };
+}
+
+// The directory a Cursor CLI install lives in: `~/.local/bin/agent` is a symlink into
+// `~/.local/share/cursor-agent/versions/<v>/`, which holds the CLI and its bundled node.
+export function treeOf(bin, path = "") {
+  if (!bin) return "";
+  const found = bin.includes("/") ? bin : findExecutable(bin, path);
+  if (!found) return "";
+  let real = found;
+  try { real = realpathSync(found); } catch { return ""; }
+  const dir = dirname(real);
+  // Only the real layout counts: a lone binary (a test fake, a wrapper on PATH) has no tree to upload.
+  return existsSync(join(dir, "node")) ? dir : "";
 }
 
 // Text of a finished tool call: the text content blocks, else the raw output, else a status word.

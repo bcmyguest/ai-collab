@@ -397,9 +397,9 @@ Cursor's `full-access` needs OpenShell. OpenCode replies are always `once`, neve
 
 ## Cursor adapter
 
-`runner/adapters/cursor.mjs`. One `cursor-agent acp` child per owned session (stdio, newline-delimited JSON-RPC 2.0), spawned in the session's cwd. The adapter does not share one ACP child across sessions, so each child's environment is its own. `shutdown()` kills the children still tracked.
+`runner/adapters/cursor.mjs`. One `<cursor cli> acp` child per owned session (stdio, newline-delimited JSON-RPC 2.0), spawned in the session's cwd, or inside an OpenShell sandbox. The adapter does not share one ACP child across sessions, so each child's environment is its own. `shutdown()` kills the children still tracked.
 
-Argv: `cursor-agent acp`, plus `--force` for full-access, plus `--model <m>` when a model is named. Outside OpenShell, `--force` is refused.
+Argv: `<cursor cli> acp`, plus `--force` for full-access, plus `--model <m>` when a model is named. Outside OpenShell, `--force` is refused. The binary is `agent` when the first PATH directory holding either name has it, else `cursor-agent` (`cursorBinary` in `lib/start.mjs`); `agent 2026.11.22-e9042b2` is installed here, and `~/.local/bin/cursor-agent` is the same symlink.
 
 | Capability | Status | Evidence |
 |---|---|---|
@@ -412,42 +412,49 @@ Argv: `cursor-agent acp`, plus `--force` for full-access, plus `--model <m>` whe
 | `setPermissionMode` | not built (409) | |
 | `steer`, `contextUsage`, `listCommands` | not built; `listCommands` returns `[]` | |
 | `listModels` | partial: `--list-models` output format UNVERIFIED | same test (fake output) |
-| `available` | supported | `cursor-agent --version` |
-| Real ACP schema, `protocolVersion: 1`, method names | UNVERIFIED: from the ACP spec, no schema dump from cursor-agent | |
+| `available` | supported | `agent --version` prints `2026.11.22-e9042b2` |
+| Runs inside a real OpenShell sandbox: staged CLI, auth, worktree upload, edits back, sandbox deleted on close | supported, but **no prompt completed** (see below) | `test/cursor-sandbox.test.mjs` (fake); live 2026-11-22: `initialize` succeeded (`isAuthenticated: true` in the CLI log), `session/new` failed |
+| Real ACP schema, `protocolVersion: 1`, method names | **initialize verified live**: `protocolVersion: 1`, `loadSession`, `authMethods: [cursor_login]`, `sessionCapabilities.list` | live `agent acp` in a sandbox, 2026-11-22 |
 | `--force` applied by ACP mode | UNVERIFIED: the flag parses after `acp` (see below), not whether ACP honours it | |
 | `AI_COLLAB_PARENT` in the agent's shell | not built: the native session id is known only after `session/new`, after the child starts | |
-| Hooks stand down for the cursor child | not verified: `AI_COLLAB_OWNED=cursor` is set on the child | |
+| Hooks stand down for the cursor child | not verified: `AI_COLLAB_OWNED=cursor` is set on the child, in a sandbox through `--env` |
 
-Cursor help, `cursor-agent 2026.11.22-e9042b2` (read locally; nothing run against an account):
+Cursor help, `agent 2026.11.22-e9042b2` (read locally; nothing run against an account):
 
 - `acp` takes only `-h`. `-f, --force` and `--yolo` (alias) are top-level options. `cursor-agent acp --force` and `cursor-agent acp --model x` exit 0 with no unknown-option error; `cursor-agent acp --bogus-flag-x` exits 1 with `unknown option`.
 - `--list-models` lists models and exits. `--version` prints the version.
 
 ## OpenShell
 
-`openshell 0.1.9`, read from `--help` only. The adapter creates no sandbox outside a test; tests inject `test/helpers/fake-openshell.mjs`.
+`openshell 0.1.9`, measured on this machine on 2026-11-22 against real sandboxes (`oslab-verify` and `ai-collab-osdbg*`, all deleted afterwards; `openshell sandbox list -o json` is empty). Tests inject `test/helpers/fake-openshell.mjs`; nothing in the suite creates a sandbox.
 
-Adapter flow for `place: "openshell"`: `sandbox list -o json`, then `sandbox create` when no sandbox named `ai-collab-<project>` exists, or `sandbox start` (or `resume`) when its state says stopped (or suspended). Then `sandbox exec` runs `cursor-agent acp --force` with the owned marker.
+Adapter flow for `place: "openshell"`: `sandbox list -o json`, then `sandbox create` when no sandbox named `ai-collab-<project>` exists, or `sandbox start` (or `resume`) when its state says stopped (or suspended). Then it uploads the worktree, the host CLI tree (once per sandbox) and the auth file, and `sandbox exec` runs `cursor-agent acp --force` with the owned marker, the session home and a PATH that has `/sandbox/bin`.
 
-| Command | Used for | Flags confirmed from `--help` |
+| Command | Used for | Verified |
 |---|---|---|
-| `openshell sandbox list -o json` | find the project's sandbox | `-o json`, `--names`, `--selector`. Reply on the connected gateway: `{"next_page_token": "", "sandboxes": []}` |
-| `openshell sandbox create --name N --no-tty --detach` | create when missing | `--name`, `--no-tty`, `--detach`, `--no-keep` (delete after the command), `--from`, `--template`, `--policy`, `--provider`, `--env`, `--upload` |
-| `openshell sandbox start NAME` | start a stopped sandbox | positional name |
-| `openshell sandbox resume NAME` | resume a suspended sandbox | positional name (`suspend` keeps memory state) |
-| `openshell sandbox exec --no-tty -n N --env K=V -- <cmd...>` | run the agent | `-n`, `--no-tty`, `--env` (non-secret), `--workdir`, `--timeout`, `--no-login-shell`; command after `--`; help example pipes stdin into `exec` |
-| `openshell sandbox stop NAME`, `delete NAME` | not used by the adapter | `stop` keeps the workspace |
+| `openshell sandbox list -o json` | find the project's sandbox | yes: `{"next_page_token": "", "sandboxes": [...]}`, `phase` is `"Ready"` and `provisioning.phase` is `"ready"` |
+| `openshell sandbox create --name N --no-tty --detach` | create when missing | yes: returns in about 1 s with the sandbox Ready; `--policy`, `--provider`, `--from`, `--no-keep` exist |
+| `openshell sandbox start NAME`, `resume NAME` | a stopped or suspended sandbox | `start` from the help; `resume` used by the fake only |
+| `openshell sandbox exec --no-tty -n N --env K=V --workdir D -- <cmd...>` | run the agent | yes: stdin and stdout pass through unchanged, so ACP over stdio works; env pairs come before `--workdir`; a login shell keeps the caller's PATH |
+| `openshell sandbox upload N <dir>/ <dest>/` | the worktree, the CLI tree, auth | yes: copies `<dir>` to `<dest>/<basename>`; without the trailing slash on DEST the tree nests one level deeper, and a single file into a directory path keeps its name and mode |
+| `openshell sandbox download N <remote> <local>` | bring edits back | yes: merges into `<local>`; host-only files stay |
+| `openshell sandbox delete NAME` | end the session | yes: `sandbox list` is empty afterwards and the docker containers are gone |
 
-UNVERIFIED: the sandbox JSON field names the adapter reads for state (`phase`, `state`, `status`). No sandbox exists to inspect. `--detach` without a command, and the result of `sandbox create` with no command, are UNVERIFIED.
+Measured facts that shaped the code:
 
-Unsolved:
+- The image (`nvcr.io/nvidia/base/ubuntu:24.04`) has **no `/etc/ssl`** and **no `node` on PATH**; the CLI's bundled node prints `Cannot open directory /etc/ssl/certs` once and works.
+- `sandbox upload` inside a Git work tree applies `.gitignore` and **refuses** when that leaves nothing (a repo with no tracked files). `uploadTree` retries with `--no-git-ignore`.
+- The CLI install tree is 539 MB unpacked; the upload takes about 3 s, so it is done once per sandbox, not once per session.
+- **SIGTERM to the local `exec` client does stop the remote command** (a `node -e` process that would have written a marker at +8 s never did). Only a command that detached itself (`nohup ... &`) survives, and the sandbox delete is what ends that one. The local client cannot be relied on for this alone: after `kill()` the ACP pipes stay open behind it, which is the hang the adapter now avoids by destroying them.
+- `host.openshell.internal` is the host; `127.0.0.1:8794` inside a sandbox is not.
 
-- **Cursor login inside the sandbox.** `cursor-agent login` opens a browser and writes to the sandbox filesystem. `cursor_login` is the ACP auth method (from `initialize` on this machine, `docs/research/owned-sessions.md`). A key via `--api-key` or `CURSOR_API_KEY` is a secret: attach it with `--provider` (help: secrets go in providers, not `--env`). Not built.
-- **File sync.** The adapter sends the host cwd as the ACP session cwd and sets no `--workdir`. No host mount was seen. `sandbox upload` and `download` exist but the adapter does not use them. Not built.
-- **ntfy access from inside.** Needs a sandbox policy (`--policy` YAML) that allows the ntfy host. Nothing in the sandbox runs `ai-collab`, so hooks do not run there. Not verified.
-- **Sandbox lifetime.** The adapter starts a stopped sandbox and never stops or deletes one. No idle cleanup. `--no-keep` is not set.
-- **Killing `sandbox exec`.** Whether closing the local `exec` client stops the remote `cursor-agent` is UNVERIFIED.
-- **Runner start path.** `runner/runner.mjs` `placeCwd` still rejects `place: "openshell"` (line 236), so the runner cannot start an OpenShell session yet. The adapter accepts it when the runner passes it.
+Still unsolved:
+
+- **A real prompt has never completed inside a sandbox.** The staged `agent` starts, speaks ACP, reports `isAuthenticated: true`, and `initialize` succeeds with `protocolVersion: 1`. `session/new` then answers `{"code":-32603,"message":"Internal error","data":{"message":"Failed to initialize session services"}}` with `cwd: "/sandbox/work/repo"`, and its own log shows why the same request cannot reach home: `privacy.refresh.error ConnectError: [unavailable] getaddrinfo EAI_AGAIN api2.cursor.sh`, then `analytics.flush.error ... fetch failed`. The CLI sandboxes *itself* (`sandbox.configureSuccess {.../cursorsandbox}`) and applies a Landlock network rule that denies its own egress about a second in; the sandbox's policy engine logs the connection as allowed, so the denial is inside the CLI process. Auth, staging and file sync are proven; the conversation is not.
+- **The fix to try next.** A Cursor CLI version whose nested sandbox detects that it is already sandboxed, a supported knob that turns the nested network policy off (the CLI's own `networkAccess` profile did not), or a policy change that exempts the `cursorsandbox` helper.
+- **ntfy access from inside.** A policy can allow `host.openshell.internal:8794` for the node binary (measured in `docs/research/owned-sessions.md`), but nothing in the sandbox runs `ai-collab`, so hooks do not run there. The adapter accepts `AI_COLLAB_OPENSHELL_POLICY` and passes `--policy`; no policy file is shipped.
+- **Idle cleanup.** A sandbox lives until its last session closes. A runner crash leaves it; there is no orphan sweep.
+- **The other harnesses.** Claude, Codex and OpenCode still cannot use `place: "openshell"`; `capabilities.places` names what each adapter allows, and only Cursor lists it.
 
 ## Files
 
@@ -466,8 +473,10 @@ Unsolved:
 | `runner/adapters/codex.mjs` | Codex adapter: one `codex app-server` child per runner (`-c thread_unload_delay_secs=0`, env `AI_COLLAB_OWNED=codex`); tests in `test/runner-adapter-codex.test.mjs` drive `test/helpers/fake-codex-app-server.mjs` |
 | `runner/adapters/claude.mjs` | Claude adapter: Agent SDK `query()` with an input queue, `canUseTool` → approval cards |
 | `runner/adapters/opencode.mjs` | OpenCode adapter: local OpenCode 2 HTTP service and its `/api/event` SSE stream |
-| `runner/adapters/cursor.mjs` | Cursor adapter: ACP over stdio, optional OpenShell exec |
+| `runner/adapters/cursor.mjs` | Cursor adapter: ACP over stdio, optional OpenShell sandbox (staged CLI, auth, worktree sync) |
+| `runner/sandbox.mjs` | OpenShell lifecycle shared by adapters: ensure, upload, download, delete, and the argv builders |
 | `test/runner-adapter-cursor.test.mjs`, `test/helpers/fake-cursor-agent.mjs`, `test/helpers/fake-openshell.mjs` | Cursor adapter tests; fake ACP child and fake openshell |
+| `test/cursor-sandbox.test.mjs`, `test/runner-sandbox.test.mjs` | Sandbox staging (CLI tree, auth, worktree round trip, release on failure) and the sandbox module's argv and lifecycle |
 | `runner/delivery.mjs` | Delivery workflow: reserve, push, confirm, mark or release, expect-reply redelivery |
 | `lib/deliver-push.mjs` | Live push paths (socket, `codex queue`, OpenCode HTTP) and the ack tracker, shared with the UI dispatcher |
 | `lib/owned.mjs` | Owned-record read/write and `standsDown` |
