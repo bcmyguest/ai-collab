@@ -67,10 +67,11 @@ test("Claude's compact_boundary becomes one finished step with the SDK token cou
   await adapter.shutdown?.();
 });
 
-test("SessionStart with source clear is a clear row; other sources stay start rows", async () => {
+test("SessionEnd with reason clear is a clear row on the old session; other reasons stay stop rows", async () => {
   const { activityEvents } = await import("../lib/activity.mjs");
-  assert.deepEqual(activityEvents("claude", "sessionstart", { source: "compact" }), [{ type: "start", input: "session started · compact" }]);
-  assert.deepEqual(activityEvents("claude", "sessionstart", { source: "clear" }), [{ type: "clear", input: "cleared", clear: { tokensAfter: 0 } }]);
+  assert.deepEqual(activityEvents("claude", "sessionend", { reason: "clear" }), [{ type: "clear", input: "cleared", clear: { tokensAfter: 0 } }]);
+  assert.deepEqual(activityEvents("claude", "sessionend", { reason: "other" }), [{ type: "stop", input: "session ended · other" }]);
+  assert.deepEqual(activityEvents("claude", "sessionstart", { source: "clear" }), [{ type: "start", input: "session started · clear" }]);
 });
 
 test("PostCompact is a finished compact row with the trigger", async () => {

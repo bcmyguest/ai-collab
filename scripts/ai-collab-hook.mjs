@@ -194,7 +194,7 @@ async function main() {
   if (argv.includes("--rewake")) return rewake(cfg, host, msg);
 
   // Started first and awaited last, so delivery never waits on it.
-  const events = key === "precompact" || key === "sessionstart" ? stampContext(cfg, activityEvents(host, key, msg)) : activityEvents(host, key, msg);
+  const events = key === "precompact" || key === "sessionend" ? stampContext(cfg, activityEvents(host, key, msg)) : activityEvents(host, key, msg);
   const activity = publishActivity(cfg, host, events).catch(() => 0);
   // A view-only approval card (AFK off) closes once a later event shows the terminal prompt resolved.
   const closing = closeTerminalCards(cfg, { host, key, input: msg }).catch(() => []);
