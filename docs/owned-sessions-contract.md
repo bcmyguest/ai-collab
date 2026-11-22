@@ -113,7 +113,7 @@ The first prompt is the first input; the loop starts with it, not with `recv`.
 
 A tick id is recorded with its first step, so a tick starts at most once while `runner.db` is intact. An operator who deletes or restores the database can start a tick twice. A skipped tick is not retried: its id stays in the log.
 
-The command runs with `spawn` (argv, no shell) in its own process group, stdin closed, in `cwd`, with `timeoutSec` as the deadline. A timeout, abort or the command's exit ends the group: members the command left behind are killed. Its result is `{ok, exitCode, signal, timedOut, durationMs, tail, scheduledTime, actualTime}`, where `tail` is the last 2000 characters of stdout and stderr. Ticks publish no ntfy rows: a schedule has no session to publish under.
+The command runs with `spawn` (argv, no shell) in its own process group, stdin closed, in `cwd`, with `timeoutSec` as the deadline. A timeout or abort kills the group. A clean exit leaves processes the command started in the background (agents it handed work to) running. Its result is `{ok, exitCode, signal, timedOut, durationMs, tail, scheduledTime, actualTime}`, where `tail` is the last 2000 characters of stdout and stderr. Ticks publish no ntfy rows: a schedule has no session to publish under.
 
 Config: `$XDG_CONFIG_HOME/ai-collab/schedules.json` (default `~/.config/ai-collab/schedules.json`), or the path in `AI_COLLAB_SCHEDULES`. A JSON array. An invalid entry, unreadable file or bad JSON is reported in `configError` and skipped; the runner keeps serving. A missing file means no schedules. Code: `runner/schedules.mjs`.
 

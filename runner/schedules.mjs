@@ -11,7 +11,7 @@ export const KILL_GRACE_MS = 5000;
 export const TICK_STEP = "command";
 const MAX_EVERY_MINUTES = 525_600;
 const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
-const KEYS = ["name", "everyMinutes", "cwd", "command", "timeoutSec"];
+const KEYS = ["name", "everyMinutes", "cwd", "command", "timeoutSec", "wakeOnTasks"];
 
 /** The schedules file: AI_COLLAB_SCHEDULES, else <config dir>/schedules.json. */
 export const schedulesPath = (env = process.env) => env.AI_COLLAB_SCHEDULES || join(configDir(env), "schedules.json");
@@ -38,7 +38,9 @@ function checkEntry(entry, index) {
   const timeoutSec = entry.timeoutSec ?? DEFAULT_TIMEOUT_SEC;
   if (!Number.isSafeInteger(timeoutSec) || timeoutSec < 1) invalid(index, "timeoutSec must be a positive integer");
   if (timeoutSec >= entry.everyMinutes * 60) invalid(index, "timeoutSec must be shorter than everyMinutes");
-  return { name: entry.name, everyMs: entry.everyMinutes * 60_000, cwd: entry.cwd, command: entry.command, timeoutMs: timeoutSec * 1000 };
+  // wakeOnTasks names a project whose finished tasks start this schedule early.
+  if (entry.wakeOnTasks !== undefined && (typeof entry.wakeOnTasks !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(entry.wakeOnTasks))) invalid(index, "wakeOnTasks must be a project name");
+  return { name: entry.name, everyMs: entry.everyMinutes * 60_000, cwd: entry.cwd, command: entry.command, timeoutMs: timeoutSec * 1000, ...(entry.wakeOnTasks ? { wakeOnTasks: entry.wakeOnTasks } : {}) };
 }
 
 /**

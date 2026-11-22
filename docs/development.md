@@ -16,7 +16,7 @@ Tests use an in-process fake ntfy server (`test/helpers/fake-ntfy.mjs`) and need
 
 ### Schedules
 
-The runner runs the commands in `~/.config/ai-collab/schedules.json` on a timer: a JSON array of `{name, everyMinutes, cwd, command, timeoutSec}`. Each tick is a durable workflow whose id starts at most once while `runner.db` is intact; a start after downtime runs only the latest due tick. An invalid entry is reported in `configError` and skipped. Keys, the skip and cut rules, and the control routes are in [Scheduled workflows](owned-sessions-contract.md#scheduled-workflows). `GET /v1/schedules` and `POST /v1/schedules/:name/run` on the control socket show and trigger them.
+The runner runs the commands in `~/.config/ai-collab/schedules.json` on a timer: a JSON array of `{name, everyMinutes, cwd, command, timeoutSec, wakeOnTasks}`. `wakeOnTasks` names a project: when one of its tasks moves to `done` or `blocked`, the runner starts the schedule at once (checked every 15 s, retried while a tick still runs), so the PM hands off the next task without waiting for the timer. Each tick is a durable workflow whose id starts at most once while `runner.db` is intact; a start after downtime runs only the latest due tick. An invalid entry is reported in `configError` and skipped. Keys, the skip and cut rules, and the control routes are in [Scheduled workflows](owned-sessions-contract.md#scheduled-workflows). `GET /v1/schedules` and `POST /v1/schedules/:name/run` on the control socket show and trigger them.
 
 Migrate the feature-request PM tick from the `ai-collab-pm.timer` systemd user timer. The runner must run first: its unit is a template and not installed.
 

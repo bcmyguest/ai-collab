@@ -9,6 +9,7 @@ import { openDurable } from "./durable.mjs";
 import { createRunner } from "./runner.mjs";
 import { listenControl, runnerSocket } from "./control.mjs";
 import { loadSchedules, registerSchedules } from "./schedules.mjs";
+import { startTaskWakes } from "./task-wake.mjs";
 import { acquireLock } from "./lock.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -60,6 +61,7 @@ export async function main(env = process.env) {
     // Serve the socket before any tick can start, so a failed bind starts nothing.
     control = await listenControl(runner, runnerSocket(env));
     durable.startSchedules();
+    startTaskWakes(entries, runner, { env, log });
     log(`listening on ${control.path}; adapters ${[...adapters.keys()].join(", ") || "none"}; recovered ${recovered.length} session(s); schedules ${schedules.join(", ") || "none"}`);
   } catch (error) {
     await control?.close();
