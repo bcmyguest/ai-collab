@@ -10,6 +10,7 @@ import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, NOTICE, PERMISSION_MODES,
 export const APP_SERVER_ARGS = ["app-server", "-c", "thread_unload_delay_secs=0"];
 const DEFAULT_COMMAND = { file: "codex", args: APP_SERVER_ARGS, version: ["--version"] };
 const REQUEST_MS = 60_000;
+const COMPACT_MS = 5 * 60_000;
 const METHOD_NOT_FOUND = -32601;
 const SANDBOX_MODE = { readOnly: "read-only", workspaceWrite: "workspace-write", dangerFullAccess: "danger-full-access" };
 const APPROVAL_TOOL = {
@@ -112,6 +113,7 @@ function onExit(server) {
   for (const waiter of server.pending.values()) waiter.reject(new Error("codex app-server exited"));
   server.pending.clear();
   for (const session of server.sessions.values()) {
+    settleCompact(session, new Error("codex app-server exited during compaction"));
     if (session.turnId) session.ctx.emit({ type: EventType.RUN_ERROR, message: "codex app-server exited during the run", metadata: { aiCollab: { runId: session.turnId } } });
     for (const interruptId of session.approvals.keys()) session.ctx.emit({ type: EventType.CUSTOM, name: APPROVAL_RESOLVED, value: { interruptId, status: "cancelled", reason: "cancelled" } });
     session.approvals.clear();
@@ -121,9 +123,36 @@ function onExit(server) {
   server.sessions.clear();
 }
 
+// Settles the session's in-flight compact(): resolves with its token counts, or rejects with the reason.
+function settleCompact(session, error) {
+  const wait = session.compactWait;
+  if (!wait) return;
+  session.compactWait = null;
+  if (error !== undefined) wait.reject(error instanceof Error ? error : new Error(String(error)));
+  else wait.resolve({ ...(wait.before !== null ? { before: wait.before } : {}), ...(wait.after !== null ? { after: wait.after } : {}) });
+}
+
+// A compaction turn's first token count is its before, the last its after.
+function compactTokens(session, usage) {
+  const tokens = usage?.last?.totalTokens;
+  if (!Number.isSafeInteger(tokens)) return;
+  if (session.compactWait.before === null) session.compactWait.before = tokens;
+  else session.compactWait.after = tokens;
+}
+
 function onNotification(server, { method, params }) {
   const session = server.sessions.get(params?.threadId);
   if (!session) return;
+  // A compaction turn: its own turn lifecycle, not a prompt run, so it never opens a RUN.
+  if (session.compactWait) {
+    if (method === "turn/started") {
+      if (!session.compactWait.turnId) session.compactWait.turnId = params.turn?.id;
+      return;
+    }
+    if (method === "turn/completed") return settleCompact(session);
+    if (method === "error") return settleCompact(session, params.error?.message);
+    if (method === "thread/tokenUsage/updated") compactTokens(session, params.tokenUsage);
+  }
   switch (method) {
     case "turn/started": return turnStarted(session, params.turn);
     case "turn/completed": return turnCompleted(session, params.turn);
@@ -227,6 +256,7 @@ function makeHandle(session) {
     nativeId: session.nativeId,
     async send(input) {
       if (session.turnId) throw new Error("the codex turn is still running");
+      if (session.compactWait) throw new Error("a codex compaction is still running");
       await attach(session);
       session.prompt = input.text;
       // A timed-out turn/start may still have started: the error says so, and the caller never resends.
@@ -247,6 +277,31 @@ function makeHandle(session) {
     async interrupt() {
       if (!session.turnId) return;
       await liveServer(session).request("turn/interrupt", { threadId: session.nativeId, turnId: session.turnId });
+    },
+    // thread/compact/start on this session's own thread; the harness reports a compaction turn, and this settles
+    // when that turn completes. The turn is not a prompt run, so it never emits RUN_STARTED/RUN_FINISHED.
+    async compact() {
+      if (session.turnId) throw new Error("codex: finish the running turn before compacting");
+      if (session.compactWait) throw new Error("codex: a compaction is already running");
+      const server = await currentServer(session.pool, session.env);
+      if (session.server !== server) await attach(session);
+      const wait = { turnId: null, before: null, after: null };
+      const done = new Promise((resolve, reject) => {
+        wait.timer = setTimeout(() => settleCompact(session, new Error("codex compaction timed out")), COMPACT_MS);
+        wait.resolve = resolve;
+        wait.reject = reject;
+      }).finally(() => {
+        clearTimeout(wait.timer);
+        if (session.compactWait === wait) session.compactWait = null;
+      });
+      done.catch(() => {});
+      session.compactWait = wait;
+      try {
+        await server.request("thread/compact/start", { threadId: session.nativeId });
+      } catch (error) {
+        settleCompact(session, error);
+      }
+      return done;
     },
     async respond(interruptId, decision) {
       const approval = session.approvals.get(interruptId);
@@ -306,7 +361,7 @@ async function attach(session) {
 }
 
 function newSession({ pool, ctx, env, cwd, place, mode, model, settings }) {
-  return { pool, ctx, env, cwd, place, mode, model, settings, nativeId: "", address: "", server: null, prompt: "", turnId: null, approvals: new Map(), usage: null };
+  return { pool, ctx, env, cwd, place, mode, model, settings, nativeId: "", address: "", server: null, prompt: "", turnId: null, approvals: new Map(), usage: null, compactWait: null };
 }
 
 /** Default export of runner/adapters/codex.mjs. `command` overrides the child argv; requestMs the RPC timeout (tests). */

@@ -677,6 +677,22 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     return { status: "interrupting" };
   }
 
+  /**
+   * Compacts an owned session's context through its harness, in place: Claude runs /compact on the live query, Codex
+   * thread/compact/start, OpenCode session.compact. Resolves {status, detail, before?, after?}; a harness with no
+   * outside trigger (Cursor) reports unsupported so the UI keeps its request-and-retry path.
+   */
+  async function compact(address) {
+    const s = find(address);
+    if (s.record.status === "ended") fail(409, "The owned session has ended");
+    if (s.record.status === "running") fail(409, "The session is mid-turn; compact it once the turn ends");
+    const handle = await liveHandle(s);
+    if (!handle.compact) return { status: "unsupported", detail: `${s.record.harness} has no outside compaction trigger` };
+    const counts = await handle.compact();
+    const span = Number.isFinite(counts?.before) && Number.isFinite(counts?.after) ? `${counts.before} → ${counts.after} tokens.` : "";
+    return { status: "succeeded", detail: `Compacted the session in place. ${span}`.trim(), ...(counts?.before !== undefined ? { before: counts.before } : {}), ...(counts?.after !== undefined ? { after: counts.after } : {}) };
+  }
+
   /** Changes an owned session's permission mode; reached only through the control socket, never through ntfy or MCP. */
   async function setMode(address, mode) {
     const s = find(address);
@@ -870,7 +886,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   };
 
   return {
-    start, send, interrupt, respond, setMode, close, boot, stop, harnesses, deliveries, pump: pumpDeliveries,
+    start, send, interrupt, compact, respond, setMode, close, boot, stop, harnesses, deliveries, pump: pumpDeliveries,
     list: () => [...sessions.values()].map(view),
     // Each schedule with the command and folder its schedules.json entry names.
     schedules: () => ({ schedules: durable.schedules().map((s) => ({ ...s, ...entryOf(s.name) })), configError: scheduleErrors }),

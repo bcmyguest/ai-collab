@@ -149,8 +149,39 @@ test("an approval card deny sends decline", async () => {
   }
 });
 
-test("interrupt ends the run as cancelled", async () => {
+test("compact runs thread/compact/start on the session's own thread and reports its token counts", async () => {
   const { adapter, events, ctx, logFile, env } = setup();
+  try {
+    const handle = await adapter.open(modeOptions(env), ctx);
+    assert.equal(typeof handle.compact, "function");
+    const counts = await handle.compact();
+    assert.deepEqual(counts, { before: 90000, after: 20000 });
+    const [compact] = requests(logFile, "thread/compact/start");
+    assert.equal(compact.params.threadId, handle.nativeId);
+    // A compaction turn is not a prompt run: it opens no RUN_STARTED/RUN_FINISHED of its own.
+    assert.equal(events.filter((e) => e.type === EventType.RUN_STARTED).length, 0);
+    // It still reports the compaction as a step so the timeline shows it.
+    assert.ok(events.some((e) => e.type === EventType.STEP_FINISHED && e.stepName === "compact"));
+    expectValid(events);
+  } finally {
+    await adapter.shutdown();
+  }
+});
+
+test("compact refuses while a prompt turn is running", async () => {
+  const { adapter, events, ctx, env } = setup();
+  try {
+    const handle = await adapter.open(modeOptions(env), ctx);
+    await handle.send({ text: "hang" });
+    await until(() => events.find((e) => e.type === EventType.RUN_STARTED));
+    await assert.rejects(() => handle.compact(), /finish the running turn/);
+    await handle.interrupt();
+  } finally {
+    await adapter.shutdown();
+  }
+});
+
+test("interrupt ends the run as cancelled", async () => {  const { adapter, events, ctx, logFile, env } = setup();
   try {
     const handle = await adapter.open(modeOptions(env), ctx);
     const { runId } = await handle.send({ text: "hang" });

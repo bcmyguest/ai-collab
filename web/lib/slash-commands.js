@@ -18,13 +18,13 @@ const unsupported = (reason) => ({ status: "unsupported", reason });
 // "passthrough" applies to any typed /name that is not in COMMANDS.
 export const SUPPORT = {
   claude: {
-    compact: partial("Compacts a saved session through the Agent SDK. A running session gets a request to finish its step, then /compact in its terminal."),
+    compact: partial("A runner-owned session compacts in place: /compact on its live query. A terminal session compacts through the Agent SDK when saved, or gets a request to finish its step, then /compact in its terminal."),
     model: unsupported("Claude's messaging socket delivers text only; no model switch is documented."),
     clear: unsupported("No clear is documented for Claude's messaging socket."),
     passthrough: unsupported("The socket wraps each message in a cross-session envelope, so /name reaches Claude as text, not a command."),
   },
   codex: {
-    compact: partial("Compacts the thread with thread/compact/start when the thread is loaded and idle in the app-server daemon, or a saved thread. Otherwise the session gets a request."),
+    compact: partial("A runner-owned session compacts in place with thread/compact/start. A terminal session compacts the thread when it is loaded and idle in the app-server daemon, or a saved thread; otherwise it gets a request."),
     model: unsupported("app-server sets the model per turn (turn/start), not on a thread, so it cannot change the model alone."),
     clear: unsupported("thread/start creates a new thread id; this session keeps its id."),
     passthrough: unsupported("No app-server method runs a slash command. Sending it as a turn is unverified."),

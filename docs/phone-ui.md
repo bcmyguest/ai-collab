@@ -183,9 +183,27 @@ Compacting a running session, per harness:
 | Claude Code | None documented. [Hook outputs](https://code.claude.com/docs/en/hooks#precompact-output) cannot start a compaction (PreCompact only shapes one), a Stop `reason` is text for the model, and `/compact` runs only when typed in the session or sent from [Remote Control](https://code.claude.com/docs/en/remote-control). | Urgent request; run `/compact` in the terminal or from Remote Control. |
 | Cursor | None found. `cursor-agent --help` and `cursor-agent acp --help` list no compaction command or flag; the ACP handler bundled in cursor-agent 2026.11.22 dispatches `session/new`, `load`, `resume`, `fork`, `list`, `status`, `prompt`, `cancel`, `set_mode`, `set_model` and `set_config_option`, with no `session/compact`; no `/compact` command string appears in the bundle. Not run against a live session. | Urgent request; run `/compact` in the session. |
 
+### Compact on a runner-owned session compacts in place
+
+A session the runner started (an owned session) has a live handle, so Compact runs the harness's own trigger there
+instead of asking the agent by message. The runner's control socket serves `POST /v1/sessions/:harness/:label/compact`,
+and the UI's Compact button and `/compact` reach it first; a terminal session, which the runner does not own, still
+falls back to the paths above.
+
+| Harness | In-place trigger | Reported |
+|---|---|---|
+| Claude Code | `/compact` typed into the live Agent SDK query (a local slash command: it bypasses the loop and emits `local_command_output`). | The `compact_boundary` `pre_tokens`/`post_tokens`. |
+| Codex | `thread/compact/start` on the session's own thread over its app-server. | The compaction turn's first and last `thread/tokenUsage/updated` totals. |
+| OpenCode | `POST /api/session/<id>/compact` (`session.compact`), the same call the terminal path makes. | No counts the service returns; the timeline shows its `session.compaction.*` rows. |
+| Cursor | None; the runner answers `unsupported`, and the UI keeps the request-and-retry path. | — |
+
+A Compact during a running turn is refused with `The session is mid-turn; compact it once the turn ends`, so `/compact`
+never lands in the middle of the agent's step. The compaction never opens an AG-UI run of its own; the adapter still emits
+the `compact` step so the timeline and the compaction map show it.
+
 ai-collab never writes another process's transcript or rollout files.
 
-**Unverified.** The live Codex path ran only against a fake daemon proxy; no real running thread was compacted, and whether the daemon rejects `thread/compact/start` when a turn starts between `thread/read` and the request was not checked.
+**Unverified.** The live Codex path ran only against a fake daemon proxy; no real running thread was compacted, and whether the daemon rejects `thread/compact/start` when a turn starts between `thread/read` and the request was not checked. The in-place Claude path was checked against a fake SDK query that answers `/compact` the way the CLI does, and the OpenCode path against a fake service; neither ran against the live harness.
 
 Concurrent requests for one session share a single run. A wake and a compact never run at the same time. The child gets no `AI_COLLAB_*` variables. Its own hook reads the private project config.
 
@@ -250,6 +268,20 @@ Timeline rows: `Compacted · auto · 182k → 31k · 4 files dropped`, `Cleared 
 
 Phone Clear and Model switch: no new channel is verified. `/clear` stays `unsupported` on every harness. `/model` keeps its current support. The Claude Agent SDK has `Query.setModel` (sdk.d.ts:3227), but no phone route calls it. Cursor's ACP dispatcher serves `session/set_model`; `runner/adapters/cursor.mjs` `setModel` sends it, **unverified**: it has not run against a live cursor-agent, and no route calls it.
 
+## Task board
+
+**Tasks** is its own entry in the left sidebar, under the project, beside **Patterns and teams** — not a link tucked in
+the SESSIONS header. It opens `#project=<name>&level=tasks` and lists every task in the project's store as a status board
+(open, decided, building, blocked, done) with a Board / Graph switch and a status filter. An old
+`#project=<name>&level=project&tab=tasks` link still opens it. The entry shows the task count, and its board reads the
+same project stream as the chat, so the store's own file watch keeps it current.
+
+The board scrolls in its own container rather than growing the page, so it never makes the body jump as cards resize. A
+long list stays smooth on a phone because of three things: each card is `content-visibility: auto` (the browser skips
+layout and paint for the cards off screen), each card is memoized on the age string it prints rather than the raw clock,
+and the board renders ages at a coarse clock — the finest unit any card prints (seconds, minutes, hours, days) — so a
+per-second tick rarely re-renders a column at all.
+
 ## Slash commands and context
 
 A composer message is a command for the open session only when its first word is a known command (`compact`, `model`, `clear`) or a name the picker inserted; `/home/x is broken` is chat. Typing `/` opens the command list; Tab inserts the highlighted entry, and a name no known command matches is offered as a passthrough entry. Enter sends the whole message; Escape closes the list. Each entry shows its support for the session's harness: `partial` and `unverified` entries run and carry a badge, and `unsupported` entries are disabled with the reason in their tooltip. The draft clears only when the session ran the command (`succeeded`) or the compaction was `requested`; any other result keeps the draft. The project chat never runs commands.
@@ -258,7 +290,7 @@ A composer message is a command for the open session only when its first word is
 
 | Command | Claude Code | Codex | OpenCode 2 | Cursor |
 |---|---|---|---|---|
-| `/compact` | `partial`: Agent SDK on a saved session; a running session gets the urgent request | `partial`: `thread/compact/start` when the thread is loaded and idle in the app-server daemon; otherwise the urgent request | `supported`: `POST /api/session/:sessionID/compact` | `unsupported` |
+| `/compact` | `partial`: a runner-owned session compacts in place with `/compact` on its live query; a terminal session uses the Agent SDK when saved, otherwise the urgent request | `partial`: a runner-owned session compacts in place with `thread/compact/start`; a terminal session compacts when its thread is loaded and idle in the app-server daemon | `supported`: `POST /api/session/:sessionID/compact` | `unsupported`: the Compact button sends the session a request instead |
 | `/model <provider/model>` | `unsupported`: the messaging socket delivers text only | `unsupported`: `turn/start` sets the model per turn, not on a thread | `unverified`: `POST /api/session/:sessionID/model`, body `{providerID, modelID}` not checked against a live service | `unsupported` |
 | `/clear` | `unsupported`: no documented clear over the socket | `unsupported`: `thread/start` makes a new thread id | `unsupported`: `POST /api/session` creates another session | `unsupported` |
 | any other `/name` | `unsupported`: the socket wraps each message in a `<cross-session-message>` envelope, so the name reaches Claude as text. Verified in the binary: `isSlashCommand` tests the raw value for a leading `/` | `unsupported`: no app-server method runs a slash command | `unverified`: `POST /api/session/:sessionID/command`, body `{command, arguments}` not checked | `unsupported` |

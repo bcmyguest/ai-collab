@@ -277,6 +277,12 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
           s.ctx.emit({ type: EventType.RUN_FINISHED, threadId: s.threadId, runId: run.runId, outcome: { type: "cancelled" } });
         }
       },
+      // POST /api/session/<id>/compact (operation session.compact); the service emits session.compaction.* events.
+      async compact() {
+        if (s.run) throw new Error("opencode: finish the running turn before compacting");
+        await call("POST", `${path}/compact`, {});
+        return {};
+      },
       async respond(interruptId, decision) {
         const entry = pending.get(interruptId);
         if (!entry || entry.owner !== s.sessionID) throw new Error("no open OpenCode approval with that id");

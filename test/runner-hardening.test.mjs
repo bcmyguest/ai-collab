@@ -183,6 +183,16 @@ test("a route run passes the sanitized caller to the runner", async () => {
   assert.deepEqual(seen, [["pm", "cliuserx"]]);
 });
 
+test("POST /v1/sessions/:harness/:label/compact reaches the runner's compact", async () => {
+  const seen = [];
+  const runner = { compact: async (address) => { seen.push(address); return { status: "succeeded", detail: "Compacted the session in place. 90000 → 20000 tokens." }; } };
+  const url = new URL("http://runner.invalid/v1/sessions/claude/0123456789abcdef/compact");
+  const [status, value] = await route(runner, "POST", url, {});
+  assert.equal(status, 200);
+  assert.deepEqual(seen, ["claude#0123456789abcdef"]);
+  assert.equal(value.status, "succeeded");
+});
+
 test("boot leaves scheduled ticks out of its recovered list and does not wait on them", async () => {
   const file = dbFile();
   const define = (log) => log.scheduled("stuck", { everyMs: 60_000, firstStep: "command" }, async (scheduled, actual, wf) => wf.step("command", () => new Promise((_, reject) => {

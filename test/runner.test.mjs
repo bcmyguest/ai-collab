@@ -90,8 +90,59 @@ test("start opens a session, claims the registry, and publishes prompt, text and
   }
 });
 
-test("hooks stand down for the owned session only; an agent started inside it reports as its child", async () => {
+test("compact on an idle owned session compacts in place and reports the counts", async () => {
   const fake = await startFakeNtfy();
+  const ctx = setup(fake);
+  const adapter = createFakeAdapter({ harness: "claude" });
+  const runner = makeRunner(ctx, adapter);
+  await runner.boot();
+  try {
+    const { session } = await runner.start({ project: "demo", harness: "claude", prompt: "hi" });
+    await until(() => runner.get(session).status === "idle", "idle");
+    const result = await runner.compact(session);
+    assert.equal(result.status, "succeeded");
+    assert.equal(result.before, 90000);
+    assert.equal(result.after, 20000);
+    assert.match(result.detail, /90000 → 20000 tokens/);
+    assert.ok(adapter.calls.some((c) => c.op === "compact"), "the adapter's own compaction ran");
+  } finally {
+    await runner.stop();
+    await fake.close();
+  }
+});
+
+test("compact refuses while a turn runs, and reports unsupported when the adapter has no trigger", async () => {
+  const fake = await startFakeNtfy();
+  const ctx = setup(fake);
+  const adapter = createFakeAdapter({ harness: "codex" });
+  const runner = makeRunner(ctx, adapter);
+  await runner.boot();
+  try {
+    const { session } = await runner.start({ project: "demo", harness: "codex", prompt: "hang" });
+    await until(() => runner.get(session).status === "running", "running");
+    await assert.rejects(() => runner.compact(session), /mid-turn/);
+  } finally {
+    await runner.stop();
+    await fake.close();
+  }
+
+  // A harness with no adapter trigger reports unsupported rather than posting a message.
+  const fake2 = await startFakeNtfy();
+  const ctx2 = setup(fake2);
+  const bare = createFakeAdapter({ harness: "cursor", compact: false });
+  const runner2 = makeRunner(ctx2, bare);
+  await runner2.boot();
+  try {
+    const { session } = await runner2.start({ project: "demo", harness: "cursor", prompt: "hi" });
+    await until(() => runner2.get(session).status === "idle", "idle");
+    assert.equal((await runner2.compact(session)).status, "unsupported");
+  } finally {
+    await runner2.stop();
+    await fake2.close();
+  }
+});
+
+test("hooks stand down for the owned session only; an agent started inside it reports as its child", async () => {  const fake = await startFakeNtfy();
   const ctx = setup(fake);
   const runner = makeRunner(ctx, createFakeAdapter({ harness: "codex" }));
   await runner.boot();

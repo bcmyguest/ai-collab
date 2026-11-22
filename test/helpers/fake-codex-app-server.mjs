@@ -101,8 +101,20 @@ function handle(message) {
       if (threadId) { hanging.delete(params.turnId); finishTurn(threadId, params.turnId, "interrupted"); }
       return;
     }
-    case "thread/unsubscribe":
+    case "turn/unsubscribe":
       return write({ id, result: {} });
+    case "thread/compact/start": {
+      // Like the real app-server: a compaction turn starts, reports a contextCompaction item and token counts,
+      // and completes. It is not a prompt turn, so no agentMessage is emitted.
+      const threadId = params.threadId;
+      const turnId = `turn-${++turns}`;
+      write({ id, result: { turn: { id: turnId } } });
+      notify("turn/started", { threadId, turn: { id: turnId, items: [], status: "inProgress" } });
+      notify("thread/tokenUsage/updated", { threadId, turnId, tokenUsage: { last: { totalTokens: 90000 }, total: { totalTokens: 90000 }, modelContextWindow: 200000 } });
+      notify("item/completed", { threadId, turnId, item: { type: "contextCompaction", id: `cmp-${turnId}` } });
+      notify("thread/tokenUsage/updated", { threadId, turnId, tokenUsage: { last: { totalTokens: 20000 }, total: { totalTokens: 20000 }, modelContextWindow: 200000 } });
+      return finishTurn(threadId, turnId, "completed");
+    }
     case "model/list":
       return write({ id, result: { data: [{ id: "gpt-fake", model: "gpt-fake", displayName: "GPT Fake", isDefault: true, hidden: false }], nextCursor: null } });
     case "skills/list":

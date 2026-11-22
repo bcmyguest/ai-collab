@@ -53,6 +53,7 @@ async function fakeService() {
     if (session && session[2] === "/permission" && req.method === "GET") return send(200, { data: permissions.get(session[1]) ?? [] });
     if (session && session[2] === "/prompt") return send(200, { data: { id: "msg_1" } });
     if (session && session[2] === "/interrupt") return send(200, { interrupted: true });
+    if (session && session[2] === "/compact") return send(200, { compacted: true });
     if (session && /^\/permission\/[^/]+\/reply$/.test(session[2] ?? "")) return send(200, {});
     if (session && session[2] === undefined && req.method === "GET") return send(200, { data: { id: session[1] } });
     return send(404, { error: "unscripted route" });
@@ -164,6 +165,30 @@ test("opencode interrupt ends the run once as cancelled, even when the execution
     assert.equal(finished.length, 1);
     assert.deepEqual([finished[0].runId, finished[0].outcome], [runId, { type: "cancelled" }]);
     assert.equal(svc.posts(`/api/session/${SID}/interrupt`).length, 1);
+    await handle.close();
+  } finally {
+    await adapter.shutdown();
+    await svc.close();
+  }
+});
+
+test("opencode compact posts session.compact and refuses while a run is open", async () => {
+  const svc = await fakeService();
+  const adapter = createOpenCodeAdapter({ env: svc.env, retryMs: 20 });
+  try {
+    const ctx = fakeCtx();
+    const handle = await adapter.open({ cwd: "/work", permission: { autoReply: [], reply: "once" } }, ctx);
+    await until(() => svc.streams.length, "event stream");
+    assert.equal(typeof handle.compact, "function");
+    assert.deepEqual(await handle.compact(), {});
+    assert.deepEqual(svc.posts(`/api/session/${SID}/compact`)[0].body, {});
+
+    await handle.send({ text: "long task" });
+    svc.emit({ type: "session.execution.started", data: { sessionID: SID } });
+    await until(() => ofType(ctx, EventType.RUN_STARTED).length, "RUN_STARTED");
+    await assert.rejects(() => handle.compact(), /finish the running turn/);
+    assert.equal(svc.posts(`/api/session/${SID}/compact`).length, 1, "no second compact while mid-turn");
+    await handle.interrupt();
     await handle.close();
   } finally {
     await adapter.shutdown();

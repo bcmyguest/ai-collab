@@ -28,7 +28,7 @@ function pushStream() {
 }
 
 // Records every query() call; onUser scripts the reply to each user message the adapter sends.
-function fakeSdk({ onUser = echoReply, init, failInit = null } = {}) {
+function fakeSdk({ onUser = echoReply, init, failInit = null, onCompact = compactReply } = {}) {
   const queries = [];
   const initResult = init ?? {
     models: [{ value: "default", displayName: "Default (recommended)", description: "x" }],
@@ -48,6 +48,9 @@ function fakeSdk({ onUser = echoReply, init, failInit = null } = {}) {
     (async () => {
       for await (const message of prompt) {
         record.seen.push(message);
+        // A local slash command bypasses the loop in the real CLI; the fake answers /compact the way the CLI does.
+        const text = typeof message.message?.content === "string" ? message.message.content : "";
+        if (text === "/compact") { await onCompact(api, record); continue; }
         await onUser(message, api, record);
       }
     })().catch((error) => out.end(error));
@@ -74,6 +77,13 @@ function echoReply(message, api) {
   const text = typeof message.message.content === "string" ? message.message.content : message.message.content.at(-1).text;
   api.emit({ type: "assistant", uuid: "a-1", parent_tool_use_id: null, message: { role: "assistant", content: [{ type: "text", text: `echo: ${text}` }] } });
   api.result({});
+}
+
+// What the CLI emits for a typed /compact: a status, the boundary with its token counts, then local output.
+function compactReply(api) {
+  api.emit({ type: "system", subtype: "status", status: "compacting", compact_result: undefined });
+  api.emit({ type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "manual", pre_tokens: 90000, post_tokens: 20000 } });
+  api.emit({ type: "system", subtype: "local_command_output", content: "Compacted" });
 }
 
 function harness(sdk = fakeSdk(), extra = {}) {
@@ -346,6 +356,41 @@ test("contextUsage maps the SDK totals", async () => {
   const { adapter, ctx } = harness();
   const handle = await adapter.open(OPTIONS, ctx);
   assert.deepEqual(await handle.contextUsage(), { tokens: 500, window: 200000 });
+  await handle.close();
+});
+
+test("compact types /compact into the live query and reports the boundary's token counts", async () => {
+  const { adapter, sdk, events, ctx } = harness();
+  const handle = await adapter.open(OPTIONS, ctx);
+  assert.equal(typeof handle.compact, "function");
+  assert.deepEqual(await handle.compact(), { before: 90000, after: 20000 });
+  const sent = sdk.queries[0].seen;
+  assert.equal(sent.length, 1, "one message reached the CLI");
+  assert.equal(sent[0].message.content, "/compact");
+  assert.equal(sent[0].type, "user");
+  // The finished boundary reaches the timeline as the compact step, and never opens a RUN.
+  assert.ok(events.some((e) => e.type === EventType.STEP_FINISHED && e.stepName === "compact" && e.metadata.aiCollab.compaction.tokensAfter === 20000));
+  assert.equal(events.filter((e) => e.type === EventType.RUN_STARTED).length, 0);
+  await handle.close();
+});
+
+test("compact reports a failed compaction", async () => {
+  const failing = fakeSdk({ onCompact: (api) => api.emit({ type: "system", subtype: "status", status: null, compact_result: "failed", compact_error: "context compaction failed" }) });
+  const { adapter, ctx } = harness(failing);
+  const handle = await adapter.open(OPTIONS, ctx);
+  await assert.rejects(() => handle.compact(), /context compaction failed/);
+  await handle.close();
+});
+
+test("compact refuses while a run is open, since /compact would land mid-turn", async () => {
+  // A turn that stays open: no result until the test interrupts it.
+  const sdk = fakeSdk({ onUser: (message, api) => api.emit({ type: "assistant", uuid: "a-1", parent_tool_use_id: null, message: { role: "assistant", content: [{ type: "text", text: "working" }] } }) });
+  const { adapter, events, ctx } = harness(sdk);
+  const handle = await adapter.open(OPTIONS, ctx);
+  handle.send({ text: "work" });
+  await waitFor(() => events.some((e) => e.type === EventType.RUN_STARTED));
+  await assert.rejects(() => handle.compact(), /finish the running turn/);
+  await handle.interrupt();
   await handle.close();
 });
 

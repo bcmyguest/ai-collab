@@ -1,7 +1,7 @@
 // Location hash → console selection: the level, project, session, view tab and subagent run a URL names.
-export const LEVELS = [["project", "Project"], ["session", "Sessions"], ["patterns", "Patterns and teams"], ["compactions", "Compactions"]];
-// Views each level accepts in the hash: a session's timeline (activity), its subagents and raw activity; the project has its chat and the task board.
-export const TABS = { project: ["tasks"], session: ["activity", "subagents", "raw"], patterns: [] };
+export const LEVELS = [["project", "Project"], ["session", "Sessions"], ["tasks", "Tasks"], ["patterns", "Patterns and teams"], ["compactions", "Compactions"]];
+// Views each level accepts in the hash: a session's timeline (activity), its subagents and raw activity; nothing else.
+export const TABS = { project: [], session: ["activity", "subagents", "raw"], tasks: [], patterns: [] };
 
 /** The selection named by a hash without its "#"; an empty hash, home, or level=home is the Home overview. */
 export function parseSelection(hash) {
@@ -9,7 +9,9 @@ export function parseSelection(hash) {
   const level = params.get("level");
   if (!hash || params.has("home") || level === "home") return { project: "", level: "home", harness: "", session: "", tab: "chat", run: "" };
   const tab = params.get("tab");
-  const at = LEVELS.some(([id]) => id === level) ? level : "project";
+  // An old link to the board (level=project&tab=tasks) opens the Tasks level.
+  const named = level === "project" && tab === "tasks" ? "tasks" : level;
+  const at = LEVELS.some(([id]) => id === named) ? named : "project";
   // Old links with tab=chat or tab=activity open a session's timeline.
   const sessionTab = TABS.session.includes(tab) ? tab : "activity";
   const base = {
@@ -17,7 +19,7 @@ export function parseSelection(hash) {
     level: at,
     harness: params.get("harness") || "",
     session: params.get("session") || "",
-    tab: at === "session" ? sessionTab : tab === "tasks" ? "tasks" : "chat",
+    tab: at === "session" ? sessionTab : "chat",
     run: at === "session" && tab === "subagents" ? params.get("run") || "" : "",
   };
   // pattern names the one inspected, raw=1 shows its definition text; edit=1 opens its team editor, edit=new a new team; run names a pattern run.

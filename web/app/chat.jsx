@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { HarnessLogo, hasLogo } from "./logos";
-import { Activity, Square, ArrowLeft, ArrowUp, AtSign, Bot, Check, CheckCheck, CircleCheck, Coffee, CornerLeftUp, FolderGit2, LoaderCircle, Menu, Minimize2, Monitor, Moon, Plus, Reply, RotateCw, Sun, VolumeX, X, Zap } from "lucide-react";
+import { Activity, Square, ArrowLeft, ArrowUp, AtSign, Bot, Check, CheckCheck, CircleCheck, Coffee, CornerLeftUp, FolderGit2, ListChecks, LoaderCircle, Menu, Minimize2, Monitor, Moon, Plus, Reply, RotateCw, Sun, VolumeX, X, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatContainerContent, ChatContainerRoot, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
@@ -80,13 +80,15 @@ function streamOf(selected) {
   const raw = session && selected.tab === "raw";
   // Sessions with none picked lists the project's sessions under the selector.
   const listing = selected.level === "session" && !selected.session;
+  // The task board: its own sidebar level, read from the same project stream as the chat.
+  const tasks = selected.level === "tasks";
   // The compaction map reads each agent's compactions and context from the sessions view.
   const compactions = selected.level === "compactions";
   if (watching || inline || subagents || raw) stream.set("view", "activity");
   else if (home) stream.set("view", "home");
   else if (listing || compactions) stream.set("view", "sessions");
   if (compactions) stream.set("history", "1");
-  return { home, watching, subagents, inline, raw, listing, compactions, requested: stream.toString() };
+  return { home, watching, subagents, inline, raw, listing, tasks, compactions, requested: stream.toString() };
 }
 
 async function api(path, payload) {
@@ -213,6 +215,14 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
     </section>
     <ScheduledJobs/>
     {!home && <section className="px-2 pb-2">
+      {/* The task board has its own entry, beside Patterns and teams, rather than a link beside SESSIONS. */}
+      <button type="button" onClick={() => navigate({ project: current, level: "tasks" })} aria-current={selected.level === "tasks" ? "page" : undefined}
+        title="Every task in this project, on a status board"
+        className={cn("flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left text-sm transition-colors hover:bg-sidebar-accent", selected.level === "tasks" && "bg-sidebar-accent font-medium")}>
+        <ListChecks className="size-4 shrink-0 text-muted-foreground"/>
+        <span className="min-w-0 flex-1 truncate">Tasks</span>
+        <span className="shrink-0 text-xs text-muted-foreground">{(data.tasks?.tasks || []).length}</span>
+      </button>
       <button type="button" onClick={() => navigate({ project: current, level: "patterns" })} aria-current={selected.level === "patterns" ? "page" : undefined}
         className={cn("flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left text-sm transition-colors hover:bg-sidebar-accent", selected.level === "patterns" && "bg-sidebar-accent font-medium")}>
         <span className="min-w-0 flex-1 truncate">Patterns and teams</span>
@@ -222,10 +232,6 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
     <section>
       <div className="flex items-center justify-between px-2 pb-2">
         <h2 className="min-w-0 truncate text-xs font-medium uppercase tracking-wider text-muted-foreground" title={home ? undefined : current}>{home ? "Sessions" : "Sessions · " + current}</h2>
-        {/* Home already lists every project's sessions; elsewhere the button opens this project's list. */}
-        {!home && <button type="button" onClick={() => navigate({ project: current, level: "project", tab: "tasks" })}
-          aria-current={selected.level === "project" && selected.tab === "tasks" ? "page" : undefined}
-          className="shrink-0 rounded-full px-2 py-0.5 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">Tasks</button>}
         <button type="button" onClick={() => navigate(home ? { level: "home" } : { project: current, level: "session" })}
           aria-current={home || (selected.level === "session" && !selected.session) ? "page" : undefined}
           className="shrink-0 rounded-full px-2 py-0.5 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">All sessions</button>
@@ -602,7 +608,7 @@ function Console({ account }) {
   const shown = useRef(false);
   const autoRetry = useRef(true);
   const hiddenAt = useRef(0);
-  const { home, watching, subagents, inline, raw, listing, compactions, requested } = streamOf(selected);
+  const { home, watching, subagents, inline, raw, listing, tasks, compactions, requested } = streamOf(selected);
   route.current = requested;
   // Home and a Sessions list remember their scroll and Offline group; other views open at the newest message.
   const memoryKey = home ? "home" : listing ? "sessions " + (selected.project || data.project || "") : "";
@@ -770,14 +776,14 @@ function Console({ account }) {
   const project = selected.project || data.project || "";
   const models = useModels(project);
   const level = selected.level;
-  const tasksView = level === "project" && selected.tab === "tasks";
+  const tasksView = level === "tasks";
   // The new-agent composer replaces the chat while it is open.
   const composing = Boolean(creating) && creating === project && ready;
   const agent = level === "session" ? data.agents.find(item => item.id === selected.session) : undefined;
   const target = level === "session" ? selected.session : "all";
   const missing = level === "session" && !target;
   const patterns = level === "patterns";
-  const title = home ? "Home" : patterns ? "Patterns" : level === "session" ? short(selected.session) || "Sessions" : project;
+  const title = home ? "Home" : patterns ? "Patterns" : tasksView ? "Tasks" : level === "session" ? short(selected.session) || "Sessions" : project;
   // A home or Sessions card opens its session, or one of its subagent runs.
   const openCard = (node, run = "") => navigate({ project: node.project, level: "session", harness: node.harness || peerOf(node.id), session: node.id, ...(run ? { tab: "subagents", run } : {}) });
   // The session's ⋯ menu opens its raw activity: every tool call, unfolded.
@@ -863,7 +869,7 @@ function Console({ account }) {
             onClick={() => navigate(level === "session" || patterns ? { project, level: "project" } : { level: "home" })}><ArrowLeft/></Button>}
           {level === "session" && selected.session && <Avatar address={selected.session} className="size-8 shrink-0"/>}
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xs text-muted-foreground">{home ? "All projects" : patterns ? "Project · " + project : level === "project" ? "Project" : raw ? "Raw activity · " + project : project + " · session"}</p>
+            <p className="truncate text-xs text-muted-foreground">{home ? "All projects" : patterns ? "Project · " + project : tasksView ? "Project · " + project : level === "project" ? "Project" : raw ? "Raw activity · " + project : project + " · session"}</p>
             <h1 className="truncate text-base font-semibold leading-tight" title={level === "session" ? selected.session : undefined}>{title}</h1>
             {level === "session" && agent?.name && <p className="line-clamp-2 break-words text-xs text-muted-foreground" title={agent.name}>{agent.name}</p>}
             {level === "session" && agent?.parent && <button type="button" onClick={() => openAddress(agent.parent)} title={"Started by " + agent.parent}
@@ -947,7 +953,7 @@ function Console({ account }) {
         </div>
       </ChatContainerRoot>)}
       <div role="status" hidden={!notice} className="mx-auto w-full max-w-3xl px-4 text-center text-xs text-muted-foreground">{notice}</div>
-      {!home && !listing && !patterns && !composing && <Composer key={requested} conversation={conversationKey(project, level === "session" ? selected.session : "")} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
+      {!home && !listing && !patterns && !tasksView && !composing && <Composer key={requested} conversation={conversationKey(project, level === "session" ? selected.session : "")} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
         placeholder={placeholder} question={question} cancel={() => setQuestion("")} urgentable={!question} replying={replyTo} cancelReply={() => setReplyTo(null)}
         onSend={async (body, urgent, command) => {
           // Project chat never runs commands: a leading / there is ordinary chat.
