@@ -2,12 +2,12 @@
 
 A builder is one agent that implements one task on its own branch. `ai-collab builder start` runs each new builder inside its own OpenShell sandbox, detached from the caller in a transient systemd user unit, so a UI or runner restart does not kill it. Builders started by hand before this command existed run on the host and are left alone.
 
-Lib: `lib/builder.mjs`. OpenShell lifecycle: `runner/sandbox.mjs`. Tests: `test/builder.test.mjs` with fake `openshell`, `systemd-run`, `systemctl`, agent and `oncebitten` from `test/helpers/`.
+Lib: `lib/builder.mjs`. OpenShell lifecycle: `runner/sandbox.mjs`. Tests: `test/builder.test.mjs` and `test/builder-claude.test.mjs` with fake `openshell`, `systemd-run`, `systemctl`, agent and `oncebitten` from `test/helpers/`.
 
 ## Commands
 
 ```
-ai-collab builder start --task <id> --harness cursor|codex [--model M] --brief <file> [--branch B]
+ai-collab builder start --task <id> --harness cursor|codex|claude [--model M] --brief <file> [--branch B]
 ai-collab builder list [--all]
 ai-collab builder stop <id>
 ```
@@ -18,7 +18,7 @@ ai-collab builder stop <id>
 | `list` | Builders started by `start` that are still running: `unit, task, sandbox, phase, unit state`. `--all` adds finished ones. |
 | `stop` | `systemctl --user stop builder-<id>`, then deletes the sandbox. Refuses an id that `start` did not create, so hand-started `builder-*` units are never touched. The worktree and branch stay. |
 
-Defaults: Cursor `deepseek-v41-flash-1017-high`, Codex `gpt-6.2-sol`. The id is the task id. State lives in `$XDG_STATE_HOME/ai-collab/builders/<id>/` (`state.json`, `brief.md`, `policy.yaml`); the unit's output is in `journalctl --user -u builder-<id>`.
+Defaults: Cursor `deepseek-v41-flash-1017-high`, Codex `gpt-6.2-sol`, Claude `sonnet` (the alias for the latest Sonnet). The id is the task id. State lives in `$XDG_STATE_HOME/ai-collab/builders/<id>/` (`state.json`, `brief.md`, `policy.yaml`); the unit's output is in `journalctl --user -u builder-<id>`.
 
 ## What the unit does
 
@@ -66,12 +66,13 @@ Why a clone rather than committing on the host after a plain file copy: builders
 |---|---|---|
 | Cursor | `~/.config/cursor/auth.json` (or `~/.cursor/auth.json`) to `/sandbox/home/.config/cursor/` | `api2`, `api3`, `api4.cursor.sh`, `agentn.global.api5.cursor.sh`, `cursor.com` |
 | Codex | `$CODEX_HOME/auth.json` to `/sandbox/home/.codex/` | `chatgpt.com`, `api.openai.com`, `auth.openai.com`, `ab.chatgpt.com` (UNVERIFIED list) |
+| Claude | `$CLAUDE_CONFIG_DIR/.credentials.json` (default `~/.claude/`) to `/sandbox/home/.claude/`, and the ntfy token from `defaults.json` `tokenFile` to `/sandbox/home/.config/ai-collab/ntfy-token` | `api.anthropic.com` (the only host a lean run contacted), `platform.claude.com` (OAuth refresh) and `claude.ai` (account auth), per [network-config](https://code.claude.com/docs/en/network-config.md) |
 
-The auth file goes through a 0600 temp copy and a single-file upload; it never appears in argv, `--env` or a log. Nothing else is copied: no ntfy token, no SSH keys, no host config. The policy (`policy.yaml`, JSON, which is YAML) allows the harness hosts on 443 and `host.openshell.internal:8794` (the host's ntfy) for the executables of the harness tree and the uploaded node; every other host is denied. The policy keeps `/sandbox`, `/tmp` and `/dev/null` writable, so the suite needs `TMPDIR` under `/tmp`.
+Each secret goes through a 0600 temp copy and a single-file upload; it never appears in argv, `--env` or a log. Only Claude builders get the ntfy token, for the ai-collab MCP server. Nothing else is copied: no SSH keys, no host config. When Claude refreshes its OAuth login inside, the unit copies the new credentials back to the host (0600, atomic rename) unless the host file changed during the run; whether a refresh rotates the refresh token is not documented. The policy (`policy.yaml`, JSON, which is YAML) allows the harness hosts on 443 and `host.openshell.internal:8794` (the host's ntfy) for the executables of the harness tree and the uploaded node; every other host is denied. The policy keeps `/sandbox`, `/tmp` and `/dev/null` writable, so the suite needs `TMPDIR` under `/tmp`.
 
 The login shell of `sandbox exec` sets `SSL_CERT_FILE` to the CA OpenShell terminates TLS with, so the unit never overrides it.
 
-The harness's own sandbox is off (`--sandbox disabled` for Cursor, `--dangerously-bypass-approvals-and-sandbox` for Codex): OpenShell is the isolation.
+The harness's own sandbox or permission prompts are off (`--sandbox disabled` for Cursor, `--dangerously-bypass-approvals-and-sandbox` for Codex, `--dangerously-skip-permissions` for Claude): OpenShell is the isolation.
 
 ## Task status
 
@@ -94,6 +95,38 @@ The host's capture hooks (`~/.cursor/hooks.json`, `~/.codex/hooks.json` calling 
 
 Every brief ends with the sandbox notes, which tell the agent to run `oncebitten check --base main` and fix what fires before it marks the task done. The `oncebitten` binary is uploaded for that. The host runs the same check on the landed branch as a backstop. `steer` hooks are not carried into the sandbox.
 
+## Lean Claude builders
+
+`--harness claude` uploads the host's native `claude` binary (one 364 MB file) to `/sandbox/claude/` and runs it headless with only what a builder needs. Every switch below is a documented Claude Code mechanism or a settings key the host's own `~/.claude/settings.json` uses; the sources are `claude --help` (2.1.330) and code.claude.com/docs ([cli-reference](https://code.claude.com/docs/en/cli-reference.md), [env-vars](https://code.claude.com/docs/en/env-vars.md), [settings-reference](https://code.claude.com/docs/en/settings-reference.md), [permissions](https://code.claude.com/docs/en/permissions.md)).
+
+| Turned off | How |
+|---|---|
+| Every built-in tool except Bash, Read, Edit, Write, Glob, Grep (gone: Task, Cron*, ScheduleWakeup, RemoteTrigger, PushNotification, Monitor, SendMessage, Skill, ToolSearch, WebFetch, WebSearch, Workflow, DesignSync, NotebookEdit, worktree tools, ListAgents, ReportFindings) | `--tools Bash,Read,Edit,Write,Glob,Grep`, plus the same names in `permissions.deny` |
+| Every MCP server but ai-collab (and `ai-collab-code` once `scripts/ai-collab-code-mcp.mjs` exists) | `--strict-mcp-config --mcp-config /sandbox/home/.claude/builder-mcp.json`; `ENABLE_CLAUDEAI_MCP_SERVERS=false` |
+| ai-collab MCP tools that would act on sandbox-local state: `task_list`, `task_update`, `team_start`, `team_status`, `pattern_*`, `interrupt`, `list_sessions` | `permissions.deny` (`mcp__ai-collab__<tool>`); task changes go through the `ai-collab task` shim |
+| User, project and local settings files; skills and slash commands; Chrome | `--setting-sources ""` (an empty value is not documented, but 2.1.330 accepts it and loads none), `--disable-slash-commands`, `--no-chrome` |
+| Bundled skills, workflows, artifacts, Remote Control, prompt suggestions, away summary, push and input-needed notifications, feedback survey, spinner tips, git instructions in the system prompt, auto memory | settings `disableBundledSkills`, `disableWorkflows`, `disableArtifact`, `disableRemoteControl`, `remoteControlAtStartup: false`, `promptSuggestionEnabled`, `awaySummaryEnabled`, `agentPushNotifEnabled`, `inputNeededNotifEnabled`, `feedbackSurveyRate: 0`, `spinnerTipsEnabled`, `includeGitInstructions: false`, `autoMemoryEnabled: false` |
+| Built-in plugins (`cc-plugin-telemetry`, `-privacy`, `-agents-md`, `-plugin-authoring`) | `enabledPlugins: {"<name>@builtin": false}`; the init event then lists no plugins (that these ids switch off exactly those plugins is UNVERIFIED) |
+| Telemetry, error reports, auto-update, feedback command, cost warnings, terminal title, background tasks, agent view, artifacts, marketplace auto-install, IDE extension install, and all nonessential traffic | env `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_TELEMETRY`, `DISABLE_ERROR_REPORTING`, `DISABLE_AUTOUPDATER`, `DISABLE_FEEDBACK_COMMAND`, `DISABLE_COST_WARNINGS`, `CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_TERMINAL_TITLE`, `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`, `CLAUDE_CODE_DISABLE_AGENT_VIEW`, `CLAUDE_CODE_DISABLE_ARTIFACT`, `CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL`, `CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL` |
+
+Kept: the project's `CLAUDE.md` (builders follow repo rules), the ai-collab MCP messaging tools, and the oncebitten capture hooks (`UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, read from the host's `settings.json`). `--bare` is not used because it reads no OAuth login.
+
+The ai-collab MCP server runs from a copy of this checkout's `package.json`, `scripts/`, `lib/` and `web/lib/` under `/sandbox/tools/ai-collab`, with the uploaded node, `AI_COLLAB_PEER=claude`, and a sandbox `defaults.json` that points at `http://host.openshell.internal:8794`.
+
+### First-turn input tokens
+
+Measured 2026-11-22 in real sandboxes with `claude-haiku-5-5` (input = uncached + cache creation + cache read, from the first assistant message):
+
+| Run | First-turn input tokens |
+|---|---|
+| Default (`claude -p --dangerously-skip-permissions`, fresh home), prompt "Reply with the single word PONG." | 21,606 |
+| Default, the smoke builder's brief | 19,008 |
+| Lean flags, no MCP server, PONG | 5,373 |
+| Lean builder, smoke brief, ai-collab MCP failed to start (13 fewer tools) | 7,489 |
+| Lean builder, smoke brief, ai-collab MCP connected (6 built-in + 13 MCP tools) | 12,040 |
+
+The lean builder with MCP sends 37% fewer first-turn tokens than the default on the same brief; the 13 ai-collab tools cost about 4,500 of them. A default run also contacted `mcp-proxy.anthropic.com` (claude.ai connectors) and tried `http-intake.logs.us5.datadoghq.com` (denied by the policy); the lean runs contacted only `api.anthropic.com`.
+
 ## Verified and unverified
 
 Measured on 2026-11-22 with openshell 0.1.9, a real sandbox per run, and throwaway task `sandbox-smoke-test-add-one-line-to-docs` (its branch and worktree deleted afterwards, never merged):
@@ -103,11 +136,16 @@ Measured on 2026-11-22 with openshell 0.1.9, a real sandbox per run, and throwaw
 | Codex `gpt-6.2-sol` end to end | **works**: unit `builder-<id>` ran Codex in sandbox `b-sandbox-302b20`; the agent committed `docs(builders): sandbox smoke test line` with `git` inside; the commit landed on the host branch; the agent ran `oncebitten check --base main` (clean); its recorded `task progress` and `task set status=done` were applied on the host; the sandbox was deleted and `openshell sandbox list -o json` was empty |
 | Cursor `deepseek-v41-flash-1017-high` | **fails**: the CLI exits 1 within a second with `Error: [unavailable] getaddrinfo EAI_AGAIN api2.cursor.sh`; the unit then blocked the task and deleted the sandbox, as designed |
 | `node` and `npm` inside | the image lacks `libatomic.so.1`; the unit now uploads node's non-glibc libraries to `/sandbox/tools/lib` and sets `LD_LIBRARY_PATH`. A manual sandbox then printed `v26.13.0` and npm `11.20.0`; a builder run with this fix has not happened |
+| Claude `claude-haiku-5-5` end to end | **works**: sandbox `b-sandbox-0bd292`; init listed tools `Bash, Edit, Glob, Grep, Read, Write` plus 13 `mcp__ai-collab__*`, MCP `ai-collab` connected; the agent ran git 2.43.0, node v26.13.0, npm 11.20.0 and `list_agents`, committed `docs(builders): sandbox smoke test line` (`Assisted-by: Claude:claude-haiku-5-5`), ran `oncebitten check --base main` (clean) and set the task done; the commit landed on the host branch, 7 captures were replayed into oncebitten, and the sandbox was deleted. 7 turns, $0.0055 |
 | Sandbox names | over 19 characters are refused (`name exceeds maximum length (50 > 19)`) |
 
 Why Cursor fails, as far as measured: plain `node` (the CLI's own bundled binary) resolves and fetches `api2.cursor.sh` in the same sandbox, with the same env and workdir, sequentially and 30 at a time. Inside the CLI's process, a lookup probe loaded with `--require` succeeds at about 300 ms and fails from about 450-630 ms on; with `HTTPS_PROXY=http://127.0.0.1:3128` the CLI gets `connect EACCES 127.0.0.1:3128` instead. Seccomp, capabilities and the network namespace do not change over that time. OpenShell logs the DNS mapping and no denial. Something in the CLI process restricts its own sockets after start (`--sandbox disabled` does not stop it); docs/owned-sessions-contract.md (OpenShell, "Still unsolved") has the earlier probes. Until that is solved, use `--harness codex`.
 
 UNVERIFIED:
+
+- Claude OAuth refresh inside a sandbox and the copy-back: no smoke run needed a refresh, so only the fakes cover it.
+- ntfy from inside: the ai-collab MCP server connected and `list_agents` answered, but no message was sent through `host.openshell.internal:8794`.
+- `--setting-sources ""` loading nothing is observed behaviour, not documented.
 
 - The full test suite inside a sandbox (node now starts there; no builder has run `npm test`).
 - Capture replay with a real harness: the Codex run saved no hook payload (0 captures), so `codex exec` may not fire `UserPromptSubmit` hooks from `$CODEX_HOME/hooks.json`; the unit now also marks the worktree trusted in the sandbox's `config.toml`, untested. The replay path is covered only by the fake agent.
@@ -123,6 +161,7 @@ UNVERIFIED:
 | `lib/cli.mjs` | `ai-collab builder` wiring |
 | `runner/sandbox.mjs` | OpenShell list, create, upload, download, exec argv, delete |
 | `test/builder.test.mjs` | end to end against the fakes |
+| `test/builder-claude.test.mjs`, `test/helpers/fake-claude-builder.mjs` | the lean Claude builder against the fakes |
 | `test/helpers/fake-systemd-run.mjs` | fake `systemd-run` (runs the unit in the foreground) and `systemctl` |
 | `test/helpers/fake-builder-agent.mjs` | fake agent: commits, fires a capture hook, records task calls |
 | `test/helpers/fake-oncebitten.mjs` | fake `oncebitten capture` and `check` |
