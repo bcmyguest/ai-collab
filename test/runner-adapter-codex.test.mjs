@@ -89,6 +89,22 @@ test("full-access maps to the granular policy and danger-full-access", async () 
   }
 });
 
+test("an OpenShell session runs with no approvals (never) and full access, so it needs no experimental granular policy", async () => {
+  const { adapter, ctx, logFile, env } = setup();
+  try {
+    const handle = await adapter.open(modeOptions(env, "full-access", "openshell"), ctx);
+    const [start] = requests(logFile, "thread/start");
+    assert.equal(start.params.approvalPolicy, "never");
+    assert.equal(start.params.sandbox, "danger-full-access");
+    await handle.send({ text: "go", runId: "r-openshell" });
+    const [turn] = await until(() => { const t = requests(logFile, "turn/start"); return t.length ? t : null; });
+    assert.equal(turn.params.approvalPolicy, "never");
+    assert.deepEqual(turn.params.sandboxPolicy, { type: "dangerFullAccess" });
+  } finally {
+    await adapter.shutdown();
+  }
+});
+
 test("send runs a turn and maps its output to AG-UI events", async () => {
   const { adapter, events, ctx, logFile, env } = setup();
   try {

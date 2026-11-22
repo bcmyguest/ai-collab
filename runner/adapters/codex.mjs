@@ -28,6 +28,9 @@ const threadPolicy = (settings) => ({
   sandbox: SANDBOX_MODE[settings.sandboxPolicy.type],
 });
 
+/** Inside OpenShell the sandbox is the boundary: Codex runs with no approvals and full access to the sandbox. */
+export const openshellPermission = (settings) => ({ ...settings, approvalPolicy: "never", sandboxPolicy: { type: "dangerFullAccess" } });
+
 /** Turn-level settings for a mode: the same policy with the sandbox as an object, as `turn/start` takes it. */
 const turnPolicy = (settings) => ({
   approvalPolicy: settings.approvalPolicy,
@@ -400,8 +403,9 @@ export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND, requ
     async open(options, ctx) {
       const [file, ...args] = options.sandboxArgv || [];
       const sessionPool = file ? { command: { file, args }, requestMs } : pool;
+      const opened = options.place === "openshell" ? { ...options, permission: openshellPermission(options.permission) } : options;
       try {
-        return await openThread(sessionPool, options, ctx);
+        return await openThread(sessionPool, opened, ctx);
       } catch (error) {
         if (file) sessionPool.server?.child.kill();
         throw error;
