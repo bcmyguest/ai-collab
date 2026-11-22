@@ -791,10 +791,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     } else {
       const peers = new Set([...project.inboxes.keys(), ...activityList(project).map(item => peerOf(item.agent))]);
       const inbox = [...peers].flatMap(peer => entries(project, inboxOf(project, peer), () => true));
-      const pending = inbox.filter(item => item.kind === "Message" && item.from === "operator" && item.to?.includes("#")
-        && !item.startOnly && !project.reads.get(item.id)?.has(item.to));
       const sent = [...topic, ...withQueue(inbox)];
-      list = [...shared, ...pending, ...answers.map(answerMessage), ...terminalPrompts(project, null, sent)];
+      // Inbox direct sends stay in session threads; they only suppress terminal echoes here.
+      list = [...shared, ...answers.map(answerMessage), ...terminalPrompts(project, null, sent)];
     }
     const { ends, replies, senders } = outcomes(project.hub.events(project.topic));
     // A reply carries its replied message's sender and opening text, even when that message is off the page.
