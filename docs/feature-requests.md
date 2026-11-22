@@ -49,4 +49,9 @@ Operator requests from chat and the terminal, newest last. Status: done (merged 
 | Close or delete a project | building |
 | Operator's pending messages in project chat | building |
 | Sidebar projects show running/inactive counts, not harness types | building |
+| Subscription limits: phone alert with a choice card to pick the replacement model; no auto-switch | decided (operator 2026-11-22: alert only; 9router rejected, proxies subscription OAuth) |
+| Fallback instructions per team role (e.g. a `fallback` attribute in team.dot that agents follow on a limit) | open (operator 2026-11-22) |
+| Move off ntfy eventually, so attachments and links work | open (operator 2026-11-22) |
+| Scheduled jobs in the left panel | building |
+| Reply shows a quote of the replied message | building |
 | Record feature requests | this file |
