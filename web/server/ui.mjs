@@ -12,6 +12,7 @@ import { readReceipts } from "../../lib/receipts.mjs";
 import { controlSession } from "../../lib/controls.mjs";
 import { interruptSession } from "../../lib/interrupt.mjs";
 import { slashCommand } from "../../lib/slash.mjs";
+import { readContext } from "../../lib/usage.mjs";
 import { parseCommand } from "../lib/slash-commands.js";
 import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } from "../../lib/approvals.mjs";
 import { availableHarnesses, availablePlaces, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
@@ -712,7 +713,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       agents: list.map(agent => {
         const subagents = [...(runsOf.get(agent.id) || []), ...(kids.get(agent.id) || [])];
         const base = subagents.length ? { ...agent, subagents } : agent;
-        return waiting.has(agent.id) ? { ...base, waiting: true } : base;
+        // Context telemetry and instruction files from the session's state file (lib/usage.mjs).
+        const context = readContext({ stateDir: project.cfg.stateDir, project: project.cfg.project, peer: agent.peer, session: agent.session });
+        const withContext = context.tokens !== null || context.files.length ? { ...base, context } : base;
+        return waiting.has(agent.id) ? { ...withContext, waiting: true } : withContext;
       }),
       messages: scope === "home" ? [] : messages(project, { harness, session }, list),
       ...(cards ? { sessions: cards } : {}),

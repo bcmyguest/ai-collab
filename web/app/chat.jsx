@@ -16,6 +16,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { fuzzyRank } from "@/lib/fuzzy";
 import { matchCommands, parseCommand } from "@/lib/slash-commands";
+import { contextMeter, filesRead } from "@/lib/context-view";
 import { agentDetail } from "@/lib/agent-detail";
 import { withMentions } from "@/lib/mentions";
 import { chatThread } from "@/lib/chat-turns";
@@ -524,6 +525,29 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
   </div>;
 }
 
+// The session's context: tokens used (with the window and a warning when the harness reported one) and its files.
+function ContextChip({ context, rows }) {
+  const meter = contextMeter(context);
+  const loaded = context.files || [];
+  const read = filesRead(rows);
+  const tone = meter.level === "full" ? "border-destructive text-destructive" : meter.level === "warn" ? "border-amber-500 text-amber-600" : "text-muted-foreground";
+  const warning = meter.level === "full" ? " · full" : meter.level === "warn" ? " · near full" : "";
+  return <details className="relative">
+    <summary title="Context used, and the files in it" className={cn("flex cursor-pointer list-none items-center gap-1 rounded-full border px-2.5 py-1 text-xs", tone)}>
+      Context{meter.text && " " + meter.text}{warning}</summary>
+    <div className="absolute right-0 z-30 mt-1 max-h-72 w-[min(90vw,360px)] overflow-y-auto rounded-2xl border bg-popover p-3 text-xs text-popover-foreground shadow-lg">
+      <p className="font-medium">Files in context</p>
+      {loaded.length ? <ul>{loaded.map(entry => <li key={entry.path} className="truncate font-mono" title={entry.path}>{entry.path}
+        <span className="text-muted-foreground"> · {entry.memory} · {entry.load.replace(/_/g, " ")}</span></li>)}</ul>
+        : <p className="text-muted-foreground">None recorded. Claude reports them through its InstructionsLoaded hook.</p>}
+      <p className="mt-2 font-medium">Files read</p>
+      {read.length ? <ul>{read.map(entry => <li key={entry.path} className="truncate font-mono" title={entry.path}>{entry.path}
+        <span className="text-muted-foreground"> · {entry.count}×</span></li>)}</ul>
+        : <p className="text-muted-foreground">No file reads in the loaded activity.</p>}
+    </div>
+  </details>;
+}
+
 // A session's finished turn(s) in the project chat: the first line of the final reply; tap opens the session.
 function CompletionRow({ row, when, open }) {
   return <button type="button" data-type="completion" onClick={() => open(row.agent)} title={row.agent}
@@ -833,6 +857,7 @@ function Console({ account }) {
           {" · "}<button type="button" className="underline-offset-2 hover:underline" onClick={signOut}>sign out</button></p>}
         {!home && <ZoomControls data={data} selected={selected} now={now} navigate={navigate}
           compact={level === "session" && agent?.session && <span className="ml-auto flex items-center gap-2">
+            <ContextChip context={agent.context || {}} rows={rows}/>
             {agent.online && ["codex", "opencode"].includes(agent.peer) && <Button variant="outline" size="sm" className="h-9 rounded-full" aria-label="Interrupt" disabled={!ready || working}
               onClick={() => action("interrupt", { target: selected.session }, "Interrupt requested")}><Square/>Interrupt</Button>}
             <SessionMenu node={{ ...agent, project }} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}
