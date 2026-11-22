@@ -193,13 +193,13 @@ function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamO
         {data.projects.map(project => <li key={project.id} className="flex items-center gap-1">
           <button type="button" aria-current={project.id === current ? "page" : undefined}
             onClick={() => navigate({ project: project.id, level: "project" })}
-            className={cn("flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left text-sm transition-colors hover:bg-sidebar-accent",
+            className={cn("flex min-w-0 flex-1 items-center gap-3 rounded-xl px-2 py-2 text-left text-sm transition-colors hover:bg-sidebar-accent",
               project.id === current && "bg-sidebar-accent font-medium")}>
             <FolderGit2 className="size-4 shrink-0 text-muted-foreground"/>
             <span className="min-w-0 flex-1 truncate">{project.id}</span>
             {project.waiting > 0 && <span className="shrink-0 rounded-full border border-amber-500/60 bg-amber-500/15 px-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-300"
               aria-label={project.waiting + " waiting on you"} title="Sessions waiting on you">{project.waiting}</span>}
-            <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{data.projectCounts?.[project.id] ? data.projectCounts[project.id].running + " running · " + data.projectCounts[project.id].inactive + " inactive" : ""}</span>
+            <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground" title={data.projectCounts?.[project.id] ? data.projectCounts[project.id].running + " running · " + data.projectCounts[project.id].inactive + " inactive" : undefined}>{data.projectCounts?.[project.id] ? data.projectCounts[project.id].running + " ▶ · " + data.projectCounts[project.id].inactive + " off" : ""}</span>
           </button>
           <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label={"New session in " + project.id}
             title="New session" onClick={() => newSession(project.id)}><Plus/></Button>
