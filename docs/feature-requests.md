@@ -7,6 +7,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 <!-- tasks:start -->
 | Request | Priority | Status |
 |---|---|---|
+| Session view: hide dead sessions older than a day by default (one tap shows them), and drop sessions whose worktree is gone | P2 | building |
 | Fetch each ntfy attachment once: UI and agents cache attachments locally instead of re-downloading (hit ntfy's daily attachment bandwidth limit) | P2 | building |
 | PM mission file: a file the PM owns and edits (mission, goals, rules), versioned in git, read each tick | P2 | building |
 | System messages (compact request etc.) render as from operator; give them a system sender | P2 | building |
@@ -14,7 +15,6 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | sandbox smoke test: add one line to docs/builders.md | P2 | blocked builder builder-sandbox-smoke-test-add-one-line-to-docs exited 1 with 0 commit(s) and set no status |
 | Codex exec builders in a fresh worktree: ai-collab hooks fail (SessionStart/UserPromptSubmit/PostToolUse 'Failed'), so the session never registers or shows in the UI | P2 | open |
 | Scheduler card: a skipped extra trigger (previous run still going) must not replace the last real run's status | P2 | open |
-| Session view: hide dead sessions older than a day by default (one tap shows them), and drop sessions whose worktree is gone | P2 | open |
 | Operator's pending messages in project chat | P2 | open |
 | Session view shows which agent is running now | P2 | open |
 | Inspect and edit teams in the UI | P2 | open |
