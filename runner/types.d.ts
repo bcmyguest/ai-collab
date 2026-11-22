@@ -105,6 +105,8 @@ export interface Capabilities {
   // transcript: history survives a runner restart and the run is cut (marked interrupted, never resent); none: not resumable.
   resume: "transcript" | "none";
   permissionModes: PermissionMode[];
+  // Places the runner may put a session in; folder and worktree when absent.
+  places?: Place[];
 }
 
 export interface Adapter {

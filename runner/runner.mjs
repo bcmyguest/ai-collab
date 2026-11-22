@@ -242,11 +242,13 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     return { ended: reason };
   }
 
+  // The folder a session runs in: the project root, a fresh worktree, or (OpenShell) a worktree the sandbox syncs.
   async function placeCwd(project, harness, place) {
     let root;
     try { root = projectRoot(project, env); } catch (error) { fail(400, error.message); }
     if (place === "folder") return root;
-    if (place === "openshell") fail(400, "openshell owned sessions are not supported yet");
+    const adapter = adapterOf(harness);
+    if (!(adapter.capabilities.places ?? ["folder", "worktree"]).includes(place)) fail(400, `${harness} owned sessions cannot use place ${place} yet`);
     const tree = worktreeNames(harness, now());
     const gitFile = findExecutable("git", childEnv(env).PATH);
     if (!gitFile) fail(500, "git is not installed");
