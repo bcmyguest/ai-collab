@@ -190,10 +190,6 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
       className="flex items-center gap-2 rounded-xl px-2 text-left text-sm font-semibold tracking-tight" title="Home: every project's sessions">
       <span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground">ai</span>AI Collab
     </button>
-    <button type="button" onClick={() => navigate({ project: current, level: "compactions" })} aria-current={selected.level === "compactions" ? "page" : undefined}
-      className="flex items-center gap-2 rounded-xl px-2 text-left text-sm" title="Compactions of every agent in this project">
-      <Minimize2 className="size-4"/>Compactions
-    </button>
     <section>
       <h2 className="px-2 pb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Projects</h2>
       <ul className="flex flex-col gap-1">

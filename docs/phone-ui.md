@@ -242,7 +242,7 @@ A reply typed in the ntfy app does nothing. Answer the card in the web UI, where
 
 ## Compaction map
 
-The sidebar's **Compactions** entry, and **Compaction map** in a session's menu, open `#project=<name>&level=compactions`. It lists every agent in the project: harness, model, the context against the window (`tokens of window · N to window`), and its compactions, clears and model switches on one time axis shared by all rows. The axis runs from the oldest entry (or an hour ago) to now. Markers: amber auto, blue manual, red failed, sky clear, green model switch. The three newest entries follow each card with their times.
+**Compaction map** in a session's menu opens `#project=<name>&level=compactions`. It lists every agent in the project: harness, model, the context against the window (`tokens of window · N to window`), and its compactions, clears and model switches on one time axis shared by all rows. The axis runs from the oldest entry (or an hour ago) to now. Markers: amber auto, blue manual, red failed, sky clear, green model switch. The three newest entries follow each card with their times.
 
 Headroom is `window - tokens` and shows only when the harness reported both (Codex does; Claude, Cursor and OpenCode report no window). No harness reports its auto-compact point, so the map shows no auto-compact headroom. The history is the activity kept in memory (500 events per project).
 
