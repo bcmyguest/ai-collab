@@ -57,7 +57,7 @@ const optionsFor = (t, extra = {}) => ({
 });
 
 test("sandboxName and acpArgs build the OpenShell name and the acp argv", () => {
-  assert.equal(sandboxName("My_Project.v2"), "ai-collab-my-project-v2");
+  assert.equal(sandboxName("My_Repo"), "ai-collab-my-repo");
   assert.deepEqual(acpArgs(), ["acp"]);
   assert.deepEqual(acpArgs({ force: true }), ["acp", "--force"]);
   assert.deepEqual(acpArgs({ model: "composer-2.5" }), ["acp", "--model", "composer-2.5"]);

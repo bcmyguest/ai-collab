@@ -140,9 +140,20 @@ test("a sandbox session asks session/new for the sandbox path, not the host path
 test("a sandbox prompt streams through exec and finishes the run", async () => {
   const t = lab();
   const c = ctx();
-  const handle = await cursorAdapter({ env: t.env }).open({
-    project: "demo", cwd: t.root, place: "openshell", permissionMode: "full-access", permission: { force: true }, env: t.env,
+  const project = "cursor-owned-session-smoke";
+  const policy = path.join(t.root, "policy.yaml");
+  writeFileSync(policy, "{}\n");
+  const env = { ...t.env, AI_COLLAB_OPENSHELL_POLICY: policy };
+  const handle = await cursorAdapter({ env }).open({
+    project, cwd: t.root, place: "openshell", permissionMode: "full-access", permission: { force: true }, env,
   }, c);
+  const commands = lines(t.env.FAKE_OPENSHELL_LOG);
+  const create = commands.find(([scope, command]) => scope === "sandbox" && command === "create");
+  assert.equal(create?.[create.indexOf("--name") + 1], sandboxName(project));
+  assert.ok(create?.includes("--policy"));
+  assert.equal(create[create.indexOf("--policy") + 1], policy);
+  const exec = commands.find((command) => command.includes("acp"));
+  assert.deepEqual(exec?.slice(exec.indexOf("acp")), ["acp", "--force"]);
   await handle.send({ text: "hello" });
   for (let i = 0; i < 200 && !c.events.some((e) => e.type === EventType.RUN_FINISHED); i += 1) {
     await new Promise((r) => setTimeout(r, 10));

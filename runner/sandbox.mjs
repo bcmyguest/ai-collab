@@ -22,14 +22,19 @@
 //   - The image (nvcr.io/nvidia/base/ubuntu:24.04) has no /etc/ssl and no node on PATH; both come
 //     from the uploaded CLI tree.
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 
 const SETUP_TIMEOUT_MS = 60_000;
 const SYNC_TIMEOUT_MS = 600_000;
-const SANDBOX_NAME_MAX = 40;
+const SANDBOX_NAME_MAX = 19;
 
 /** Lowercase DNS-label-safe sandbox name for a project. */
 export function sandboxName(project) {
-  return `ai-collab-${String(project).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, SANDBOX_NAME_MAX)}`;
+  const slug = String(project).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+  const name = `ai-collab-${slug}`;
+  if (slug && name.length <= SANDBOX_NAME_MAX) return name;
+  const suffix = createHash("sha256").update(String(project)).digest("hex").slice(0, 8);
+  return `ai-collab-${suffix}`;
 }
 
 /** The phase a sandbox JSON record reports; 0.1.9 writes "Ready" on `sandbox get` and `sandbox list`. */

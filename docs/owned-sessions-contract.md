@@ -437,7 +437,7 @@ Cursor help, `agent 2026.11.22-e9042b2` (read locally; nothing run against an ac
 
 `openshell 0.1.9`, measured on this machine on 2026-11-22 against real sandboxes (`oslab-verify` and `ai-collab-osdbg*`, all deleted afterwards; `openshell sandbox list -o json` is empty). Tests inject `test/helpers/fake-openshell.mjs`; nothing in the suite creates a sandbox.
 
-Adapter flow for `place: "openshell"`: `sandbox list -o json`, then `sandbox create` when no sandbox named `ai-collab-<project>` exists, or `sandbox start` (or `resume`) when its state says stopped (or suspended). Then it uploads the worktree, the host CLI tree (once per sandbox) and the auth file, and `sandbox exec` runs `cursor-agent acp --force` with the owned marker, the session home and a PATH that has `/sandbox/bin`.
+Adapter flow for `place: "openshell"`: `sandbox list -o json`, then `sandbox create` when the project sandbox is missing, or `sandbox start` (or `resume`) when its state says stopped (or suspended). Then it uploads the worktree, the host CLI tree (once per sandbox) and the auth file, and `sandbox exec` runs `cursor-agent acp --force` with the owned marker, the session home and a PATH that has `/sandbox/bin`. The runner uses `ai-collab-<project slug>` when it fits the 19-character limit in OpenShell 0.1.9. For longer or empty slugs it uses `ai-collab-` followed by eight hex characters from a hash of the project name.
 
 | Command | Used for | Verified |
 |---|---|---|
