@@ -14,6 +14,8 @@ export const APPROVAL_REQUESTED = "ai-collab.approval-requested";
 export const APPROVAL_RESOLVED = "ai-collab.approval-resolved";
 export const NOTICE = "ai-collab.notice";
 export const ERROR = "ai-collab.error";
+// A harness limit: value is a lib/limits.mjs classification. The runner alerts once per session and window.
+export const LIMIT = "ai-collab.limit";
 export const RESOLVE_REASONS = ["allowed", "denied", "answered", "cancelled"];
 export const STATE_PATHS = ["/contextTokens", "/contextWindow", "/model", "/permissionMode"];
 
@@ -103,6 +105,7 @@ export function eventProblem(e) {
 
 function customProblem({ name, value }) {
   if (name === NOTICE || name === ERROR) return isText(value) ? null : "event text required";
+  if (name === LIMIT) return isText(value?.harness) ? null : "invalid limit";
   if (name === APPROVAL_REQUESTED) {
     return isText(value?.interruptId) && ["tool_approval", "question"].includes(value.reason) &&
       isText(value.toolCallName) && typeof value.summary === "string" ? null : "invalid approval request";

@@ -192,6 +192,43 @@ Context alerts post one context alert to the broadcast topic each time a session
 | Cursor | `preCompact` hook `context_tokens` (sampled only before compaction) |
 | OpenCode 2 | last `session.step.ended` event's `tokens`: `input + cache.read + cache.write`, passed as `context_tokens` |
 
+## Usage-limit cards
+
+When a session hits a subscription or usage limit, the phone gets one choice card per limit window. The card names the agent and its `harness:model`, the limit with its window when known, and the reset time when known: `Limit reached · claude:claude-opus-5-5 · 5-hour · resets 18:00`. A plain HTTP 429 with no window, reset or limit wording reads `Rate limited`. Nothing switches on its own.
+
+Sessions that hit the same typed window (harness, window and reset time) share one card. The newer card lists every session on a `Sessions:` line and closes the older one (`approval-end`, reason `cancelled`). A Claude overage that is allowed or in use is not a limit.
+
+The card offers up to four replacements, then **Wait for reset**:
+
+- The pattern role's `fallback` (`harness:model`) comes first, when the session's pattern role defines one.
+- Then the first listed model of each other available harness (`lib/models.mjs`).
+- **Wait for reset** only acknowledges. Nothing else changes.
+- A replacement starts a new session for each session on the card, in the folder that session ran in. A folder that is gone is refused with its path. The handoff prompt quotes the session title and last activity as data, not instructions. The original sessions keep running. Each session's timeline gets a row that links to its replacement.
+- A pick closes the card on every phone (`approval-end`, reason `answered`), so no second pick is offered; a second pick returns 409.
+- An untyped alert (the Claude `StopFailure` hook) and a typed one (the runner's `rate_limit_event`) for the same session make one card. A known reset time ends the silence at that time; an unknown reset keeps the card open for 5 hours.
+- The alert never starts a harness CLI to list models. It reads the model cache only.
+
+Detection (`lib/limits.mjs`). "Typed" means the pattern appears in a type definition; "UNVERIFIED" means no type or source in this repo names it, and the code comment says so.
+
+| Harness | Source | Status |
+|---|---|---|
+| Claude | `rate_limit_event` with `status: "rejected"`, not on overage (`sdk.d.ts:6224`, `SDKRateLimitInfo` at `:6237`, overage fields `:6243-6246`) | Typed. The `resetsAt` unit is UNVERIFIED: values above 1e12 read as ms, else seconds. The window end is held to at least 5 minutes ahead. |
+| Claude | `StopFailure` hook with `error: "rate_limit"` (`sdk.d.ts:10502`; enum at `:3995`) | Typed. It also fires for an API 429 with no plan limit; the card reads `Rate limited` unless its details name a limit. |
+| Claude | Failed result text: "usage limit", "plan limit", "rate limit", "quota" | UNVERIFIED |
+| Codex | Turn error with `codexErrorInfo: "usageLimitExceeded"`, forwarded in RUN_ERROR metadata by `runner/adapters/codex.mjs` | UNVERIFIED: the field name is not in the repo's schema snapshot. |
+| Codex | Turn error text | UNVERIFIED |
+| OpenCode | Provider error with HTTP 429 | UNVERIFIED. `runner/adapters/opencode.mjs` forwards only the message, not the status, so the status check never fires. |
+| OpenCode | Provider error text | UNVERIFIED |
+| Cursor | ACP error text | UNVERIFIED |
+
+Where detection runs:
+
+- The Claude `StopFailure` hook (`scripts/ai-collab-hook.mjs`) covers every Claude session that reports to AI Collab, including `claude --bg` sessions the phone starts. Its own `error` timeline row is dropped, because the limit row says the same.
+- The owned-session runner (`runner/runner.mjs`) covers Claude's `rate_limit_event` and every harness's run error.
+- Detached `codex exec`, `opencode run` and `cursor-agent -p` sessions started from the phone have no error hook, so no card appears for them.
+
+A reply typed in the ntfy app does nothing. Answer the card in the web UI, where the pick starts the replacement.
+
 ## Compaction map
 
 The sidebar's **Compactions** entry, and **Compaction map** in a session's menu, open `#project=<name>&level=compactions`. It lists every agent in the project: harness, model, the context against the window (`tokens of window · N to window`), and its compactions, clears and model switches on one time axis shared by all rows. The axis runs from the oldest entry (or an hour ago) to now. Markers: amber auto, blue manual, red failed, sky clear, green model switch. The three newest entries follow each card with their times.

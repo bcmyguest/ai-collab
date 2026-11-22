@@ -1,0 +1,5 @@
+[
+  {"name": "UNVERIFIED provider HTTP 429", "event": {"kind": "run_error", "status": 429, "message": "Too Many Requests"}, "expect": {"window": null, "windowName": null, "resetsAt": null, "verified": false}},
+  {"name": "UNVERIFIED quota text", "event": {"kind": "run_error", "message": "provider quota exceeded"}, "expect": {"window": null, "windowName": null, "resetsAt": null, "verified": false}},
+  {"name": "ordinary provider error is not a limit", "event": {"kind": "run_error", "status": 500, "message": "internal error"}, "expect": null}
+]

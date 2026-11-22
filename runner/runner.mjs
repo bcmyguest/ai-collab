@@ -19,7 +19,9 @@ import { sessionIdleState } from "../lib/idle.mjs";
 import { opencodeRequest } from "../lib/opencode-api.mjs";
 import { childEnv, checkPrompt, findExecutable, projectRoot, worktreeNames } from "../lib/start.mjs";
 import { ownedFile, readOwned, writeOwned } from "../lib/owned.mjs";
-import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, permissionSettings } from "./contract.mjs";
+import { limitFromRunError } from "../lib/limits.mjs";
+import { alertLimit } from "../lib/limit-alert.mjs";
+import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, LIMIT, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, permissionSettings } from "./contract.mjs";
 import { DELIVERY, deliveryWorkflow } from "./delivery.mjs";
 import { publishApproval, publishApprovalEnd, publishEnded, publishEvent, publishReceipts } from "./publish.mjs";
 
@@ -153,6 +155,9 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       if (card) closeApproval(s, card.id, e.value.reason);
       return;
     }
+    // A harness limit (an adapter event or a run error): one limit card per session and window.
+    const limit = e.type === EventType.CUSTOM && e.name === LIMIT ? e.value : e.type === EventType.RUN_ERROR ? limitFromRunError(r.harness, e.message, e.metadata?.aiCollab) : null;
+    if (limit) enqueuePublish(s, () => alertLimit(s.cfg, { harness: r.harness, limit }).catch((error) => log(`limit alert failed: ${error.message}`)));
     enqueuePublish(s, () => publishEvent(s.cfg, r.harness, e));
   }
 

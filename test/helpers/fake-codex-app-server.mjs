@@ -42,6 +42,7 @@ function runTurn(threadId, text) {
   }
   if (/\bhang\b/.test(text)) { hanging.set(turnId, threadId); return; }
   if (/\bfail\b/.test(text)) { finishTurn(threadId, turnId, "failed", { message: "fake turn failure" }); return; }
+  if (/\blimit\b/.test(text)) { finishTurn(threadId, turnId, "failed", { message: "fake usage limit reached", codexErrorInfo: "usageLimitExceeded" }); return; }
   if (/\bcrash\b/.test(text)) { process.exit(3); }
   if (/\bask\b/.test(text)) {
     // A server request the adapter does not answer: it must reply with an error.

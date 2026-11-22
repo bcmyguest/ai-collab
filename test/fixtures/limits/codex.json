@@ -1,0 +1,7 @@
+[
+  {"name": "UNVERIFIED usageLimitExceeded code", "event": {"kind": "turn_error", "message": "You've hit your usage limit.", "codexErrorInfo": "usageLimitExceeded"}, "expect": {"window": null, "windowName": null, "resetsAt": null, "verified": false}},
+  {"name": "UNVERIFIED turn error text with 5-hour window", "event": {"kind": "turn_error", "message": "5-hour usage limit reached"}, "expect": {"window": "five_hour", "windowName": "5-hour", "resetsAt": null, "verified": false}},
+  {"name": "bare 429 without limit wording is not a limit", "event": {"kind": "turn_error", "message": "429 Too Many Requests"}, "expect": null},
+  {"name": "ordinary turn error is not a limit", "event": {"kind": "turn_error", "message": "sandbox denied the write"}, "expect": null},
+  {"name": "non-turn event is not a limit", "event": {"kind": "rate_limit_event"}, "expect": null}
+]
