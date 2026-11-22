@@ -1,0 +1,11 @@
+[
+  {"name": "rate_limit_event rejected 5-hour", "event": {"kind": "rate_limit_event", "rate_limit_info": {"status": "rejected", "rateLimitType": "five_hour", "resetsAt": 1793113200}}, "expect": {"window": "five_hour", "windowName": "5-hour", "resetsAt": 1793113200000, "verified": true}},
+  {"name": "rate_limit_event rejected weekly Opus", "event": {"kind": "rate_limit_event", "rate_limit_info": {"status": "rejected", "rateLimitType": "seven_day_opus"}}, "expect": {"window": "seven_day_opus", "windowName": "weekly Opus", "resetsAt": null, "verified": true}},
+  {"name": "rate_limit_event warning is not a limit", "event": {"kind": "rate_limit_event", "rate_limit_info": {"status": "allowed_warning", "rateLimitType": "five_hour", "utilization": 0.9}}, "expect": null},
+  {"name": "StopFailure rate_limit", "event": {"kind": "stop_failure", "error": "rate_limit", "error_details": "5-hour limit reached"}, "expect": {"window": "five_hour", "windowName": "5-hour", "resetsAt": null, "verified": true}},
+  {"name": "StopFailure rate_limit without detail", "event": {"kind": "stop_failure", "error": "rate_limit"}, "expect": {"window": null, "windowName": null, "resetsAt": null, "verified": true}},
+  {"name": "StopFailure billing_error is not a limit", "event": {"kind": "stop_failure", "error": "billing_error"}, "expect": null},
+  {"name": "StopFailure overloaded is not a limit", "event": {"kind": "stop_failure", "error": "overloaded"}, "expect": null},
+  {"name": "UNVERIFIED result error text weekly limit", "event": {"kind": "result_error", "text": "Weekly usage limit reached"}, "expect": {"window": "seven_day", "windowName": "weekly", "resetsAt": null, "verified": false}},
+  {"name": "result error without limit text", "event": {"kind": "result_error", "text": "error_during_execution"}, "expect": null}
+]

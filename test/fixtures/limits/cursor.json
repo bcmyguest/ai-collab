@@ -1,0 +1,4 @@
+[
+  {"name": "UNVERIFIED ACP plan limit text", "event": {"kind": "run_error", "message": "Plan limit reached for this month"}, "expect": {"window": null, "windowName": null, "resetsAt": null, "verified": false}},
+  {"name": "ordinary ACP error is not a limit", "event": {"kind": "run_error", "message": "model not found"}, "expect": null}
+]
