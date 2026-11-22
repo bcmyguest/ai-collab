@@ -238,7 +238,8 @@ test("a title ending in a backslash round-trips through render and import", () =
   const doc = { v: 1, tasks: [] };
   addTask(doc, { id: "slash", title: "Path C:\\dir\\", status: "open" }, NOW);
   const rendered = renderFeatureRequests(doc, "");
-  assert.ok(rendered.includes("| Path C:\\dir\\ | open |"), "the table row keeps the backslashes");
+  // The row escapes each backslash, so the trailing one cannot escape the cell's closing pipe.
+  assert.ok(rendered.includes("| Path C:\\\\dir\\\\ | open |"), "the table row doubles the backslashes");
   const back = importFeatureRequests(rendered, NOW);
   assert.equal(back.tasks[0].title, "Path C:\\dir\\");
   assert.equal(renderFeatureRequests(back, rendered), rendered);
