@@ -25,7 +25,7 @@ Operator requests from chat and the terminal, newest last. Status: done (merged 
 | Pulsar feature parity: wake idle sessions, priorities, redelivery, wait idle, tags, interrupt | done |
 | MCP `interrupt` tool | done |
 | Messages appear in the Claude terminal immediately (socket delivery, like Pulsar) | done (merged main 2026-11-21: `claude-socket.mjs`, dispatcher confirm + wait) |
-| Wake closed sessions on a message (durable, DBOS-like) | open; owned-sessions runner |
+| Wake closed sessions on a message (durable, DBOS-like) | building (with durable delivery) |
 | Owned sessions: runner service, durable workflows, AG-UI event names, four harness adapters | building (runner: broadcasts, runtime mode, approval timeout, scheduled workflows merged 2026-11-21; harness adapters next) |
 | Copy T3 Code's code viewer (`@pierre/diffs`) for mobile and web | done (file edits render as diffs) |
 | Operator prompts and phone replies (ask_question answers) visible in session and project chat | done (merged main 2026-11-21; coordinator confirmed) |
@@ -36,5 +36,5 @@ Operator requests from chat and the terminal, newest last. Status: done (merged 
 | A UI message to one session stays out of the project chat | decided |
 | Move to AG-UI end to end (official @ag-ui packages) | done; ntfy wire switch AI_COLLAB_WIRE=agui pending plugin rollout |
 | Render questions, approvals and choice cards with A2UI over AG-UI | done (A2UI v0.9.1 until @a2ui/react binds v1.0) |
-| Message delivery as durable workflows in the runner (reserve, push, confirm, mark/release; durable backoff) instead of UI-server state | planned after the AG-UI merge |
+| Message delivery as durable workflows in the runner (reserve, push, confirm, mark/release; durable backoff) instead of UI-server state | building (Haiku; includes waking closed sessions) |
 | Record feature requests | this file |
