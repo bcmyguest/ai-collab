@@ -1,8 +1,11 @@
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { once } from "node:events";
+import { cursorBinary } from "../lib/start.mjs";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,7 +18,7 @@ import { settleReceipts } from "../lib/receipts.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
-import cursorAdapter from "../runner/adapters/cursor.mjs";
+import cursorAdapter, { sandboxName } from "../runner/adapters/cursor.mjs";
 import { wrapOpen } from "./helpers/fake-adapter-hooks.mjs";
 import { listenControl } from "../runner/control.mjs";
 import { runnerClient } from "../runner/client.mjs";
@@ -518,5 +521,101 @@ test("the control socket saves and publishes only accepted Claude model switches
     await control.close();
     await runner.stop();
     await fake.close();
+  }
+});
+
+test("live Cursor OpenShell turn through the runner service", {
+  skip: process.env.AI_COLLAB_LIVE_CURSOR_OPENSHELL !== "1",
+}, async () => {
+  const openshell = process.env.AI_COLLAB_OPENSHELL_BIN || "openshell";
+  const cursor = process.env.AI_COLLAB_CURSOR_BIN || cursorBinary(process.env.PATH);
+  for (const binary of [openshell, cursor]) {
+    const result = spawnSync(binary, ["--version"], { encoding: "utf8", timeout: 15_000 });
+    assert.equal(result.status, 0, binary + " --version: " + (result.error?.message ?? result.stderr));
+  }
+  const project = "c" + randomBytes(4).toString("hex");
+  const sandboxExists = () => JSON.parse(execFileSync(openshell, ["sandbox", "list", "-o", "json"], {
+    encoding: "utf8", timeout: 30_000,
+  })).sandboxes.some((sandbox) => sandbox.name === sandboxName(project));
+  assert.equal(sandboxExists(), false, "smoke-test sandbox already exists");
+
+  const fake = await startFakeNtfy();
+  const ctx = setup(fake);
+  const socket = path.join(ctx.home, "runner.sock");
+  const client = runnerClient({ socket, timeoutMs: 240_000 });
+  const env = {
+    ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("AI_COLLAB_"))),
+    ...ctx.env,
+    HOME: os.homedir(),
+    AI_COLLAB_PROJECT: project,
+    AI_COLLAB_PEERS: "cursor,runner",
+    AI_COLLAB_RUNNER_SOCKET: socket,
+    AI_COLLAB_RUNNER_HARNESSES: "cursor",
+    AI_COLLAB_CURSOR_BIN: cursor,
+    AI_COLLAB_OPENSHELL_BIN: openshell,
+  };
+  for (const key of ["AI_COLLAB_OPENSHELL_POLICY", "AI_COLLAB_CURSOR_TREE"]) {
+    if (process.env[key]) env[key] = process.env[key];
+  }
+  let service;
+  let exited;
+  let session;
+  let stderr = "";
+  try {
+    writeFileSync(path.join(env.XDG_CONFIG_HOME, "ai-collab", "projects.json"), JSON.stringify([{ root: ctx.root, project }]));
+    writeFileSync(path.join(ctx.root, "README.md"), "Temporary Cursor smoke test repository.\n");
+    execFileSync("git", ["init", "--quiet", "--template=", ctx.root], { env });
+    execFileSync("git", ["-C", ctx.root, "add", "README.md"], { env });
+    execFileSync("git", ["-C", ctx.root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+      "-c", "commit.gpgSign=false", "commit", "--quiet", "-m", "Initial commit"], { env });
+
+    service = spawn(process.execPath, [path.join(ROOT, "runner", "main.mjs")], { env, stdio: ["ignore", "ignore", "pipe"] });
+    exited = once(service, "close");
+    service.stderr.setEncoding("utf8").on("data", (chunk) => { stderr += chunk; });
+    await until(() => {
+      assert.equal(service.exitCode, null, stderr);
+      return stderr.includes("listening on " + socket + "; adapters cursor");
+    }, "runner service readiness", 15_000);
+    assert.equal((await client.health()).status, 200);
+
+    const marker = "cursor-openshell-live.txt";
+    const started = await client.start({
+      project, harness: "cursor", place: "openshell",
+      prompt: "Create " + marker + " in the current directory containing only cursor-openshell-ok. Then confirm completion in your reply.",
+    });
+    assert.equal(started.status, 201, JSON.stringify(started.body));
+    session = started.body.session;
+    const record = await client.get(session);
+    assert.equal(record.status, 200);
+    assert.equal(record.body.permissionMode, "full-access");
+    assert.equal(record.body.place, "openshell");
+    assert.equal(sandboxExists(), true, "runner did not create the sandbox");
+
+    const activity = () => envelopes(fake, "ai-collab-" + project + "--activity")
+      .filter((row) => row.session === sessionLabel(record.body.nativeId));
+    const stop = await until(() => activity().find((row) => row.type === "stop"), "Cursor turn completion", 120_000);
+    assert.equal(stop.input, "turn ended", JSON.stringify(activity()));
+    assert.ok(activity().some((row) => row.type === "text" && row.tool !== "Notification" && row.output?.trim()));
+
+    const closed = await client.close(session);
+    assert.equal(closed.status, 200, JSON.stringify(closed.body));
+    assert.equal(closed.body.status, "ended");
+    session = undefined;
+    assert.equal(readFileSync(path.join(record.body.cwd, marker), "utf8").trim(), "cursor-openshell-ok");
+    assert.equal(sandboxExists(), false, "runner did not delete the sandbox");
+  } catch (error) {
+    throw new Error("Live Cursor smoke test failed: " + error.message + "\n" + stderr, { cause: error });
+  } finally {
+    try {
+      if (session) await client.close(session);
+    } finally {
+      if (service) {
+        service.kill("SIGTERM");
+        const kill = setTimeout(() => service.kill("SIGKILL"), 15_000);
+        await exited.finally(() => clearTimeout(kill));
+      }
+      await fake.close();
+      rmSync(ctx.home, { recursive: true, force: true });
+    }
   }
 });
