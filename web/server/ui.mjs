@@ -795,7 +795,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return project.places.list;
   }
 
-  function snapshot({ project, harness, session, scope }) {
+  function snapshot({ project, harness, session, scope, history: wantHistory }) {
     const last = lastMessages(project);
     const list = agents(project, last);
     const waiting = waitingIds(project, list);
@@ -810,8 +810,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const cards = scope === "home" ? shown.flatMap(item => item === project ? sessionCards(item, list, mode)
       : item.failed ? [] : sessionCards(item, agents(item, lastMessages(item)), mode))
       : scope === "sessions" ? sessionCards(project, list, mode) : undefined;
-    // Each agent's compactions, clears and model switches from the activity in memory (lib/session-events.mjs).
-    const history = sessionHistory(activityList(project));
+    // Each agent's compactions, clears and model switches from the activity in memory; only the compactions view asks (history=1).
+    const history = wantHistory ? sessionHistory(activityList(project)) : new Map();
     return {
       project: project.cfg.project, operator: project.operator.peer, mode, alerts: readAlertLevel(env),
       // Sessions per project as running and inactive, read by the sidebar rows; kept apart from projects.
@@ -954,7 +954,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const mode = url.searchParams.get("view");
     // view=home adds every project's session cards; view=sessions this project's.
     const scope = mode === "home" || mode === "sessions" ? mode : "";
-    return { project, harness: scope === "home" ? "" : harness, session: scope === "home" ? "" : session, activity: mode === "activity", scope };
+    return { project, harness: scope === "home" ? "" : harness, session: scope === "home" ? "" : session, activity: mode === "activity", scope, history: url.searchParams.get("history") === "1" };
   }
 
   // The signed-in GitHub user, or a 401 while sign-in is on; null while it is off.

@@ -86,6 +86,7 @@ function streamOf(selected) {
   if (watching || inline || subagents || raw) stream.set("view", "activity");
   else if (home) stream.set("view", "home");
   else if (listing || compactions) stream.set("view", "sessions");
+  if (compactions) stream.set("history", "1");
   return { home, watching, subagents, inline, raw, listing, compactions, requested: stream.toString() };
 }
 
