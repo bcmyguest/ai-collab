@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { STATE_LABELS, sessionTree } from "@/lib/session-state";
+import { deadSplit } from "@/lib/session-dead";
 import { runState, subagentLabel } from "@/lib/activity-rows";
 import { SUBAGENT_LABELS, subagentState } from "@/lib/subagent-state";
 import { pendingLabel } from "@/lib/pending-summary";
@@ -113,14 +114,15 @@ function SessionCard({ node, now, open, openAddress, act, answer, dispose, raw, 
   </li>;
 }
 
-/** Session cards grouped Waiting on you, AFK hold, Working, Idle, then Offline collapsed; compact cards show a pending count instead of the cards. */
-export function SessionList({ sessions, now, open, openAddress, act, answer, dispose, raw, disabled, showProject, compact, empty, offlineOpen, onOfflineToggle }) {
+/** Session cards grouped Waiting on you, AFK hold, Working, Idle, then Offline collapsed; Offline splits a Dead section (silent a day) behind one tap. */
+export function SessionList({ sessions, now, open, openAddress, act, answer, dispose, raw, disabled, showProject, compact, empty, offlineOpen, onOfflineToggle, deadOpen, onDeadToggle }) {
   const tree = sessionTree(sessions || [], now);
   if (!tree.length) return <p className="py-16 text-center text-sm text-muted-foreground">{empty}</p>;
   const card = node => <SessionCard key={node.project + node.id} node={node} now={now} open={open} openAddress={openAddress} act={act} answer={answer} dispose={dispose} raw={raw} disabled={disabled} showProject={showProject} compact={compact}/>;
+  const [offline, dead] = deadSplit(tree, now);
   return <div className="flex min-w-0 flex-col gap-5">
     {GROUPS.map(([group, title]) => {
-      const list = tree.filter(node => node.group === group);
+      const list = group === "offline" ? offline : tree.filter(node => node.group === group);
       if (!list.length) return null;
       const body = <ul className="flex flex-col gap-2">{list.map(card)}</ul>;
       if (group === "offline") return <details key={group} data-group={group} className="group" open={offlineOpen} onToggle={event => onOfflineToggle?.(event.currentTarget.open)}>
@@ -132,6 +134,14 @@ export function SessionList({ sessions, now, open, openAddress, act, answer, dis
         <h2 className="pb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">{title} · {list.length}</h2>{body}
       </section>;
     })}
+    {dead.length > 0 && <section data-group="dead" aria-label="Dead sessions">
+      <button type="button" aria-expanded={Boolean(deadOpen)} onClick={() => onDeadToggle?.(!deadOpen)}
+        className="flex w-full items-center gap-1.5 pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <ChevronRight className={cn("size-3.5 transition-transform", deadOpen && "rotate-90")}/>Dead · {dead.length}
+        <span className="normal-case tracking-normal">· offline for over a day</span>
+      </button>
+      {deadOpen && <ul className="flex flex-col gap-2">{dead.map(card)}</ul>}
+    </section>}
   </div>;
 }
 

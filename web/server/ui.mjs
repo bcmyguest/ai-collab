@@ -11,7 +11,7 @@ import { stripControl } from "../../lib/format.mjs";
 import { NTFY_MESSAGE_MAX_BYTES, latestStatuses, markUrgent, parseEnvelope, sendMessage } from "../../lib/inbox.mjs";
 import { publish } from "../../lib/ntfy.mjs";
 import { parsePhoneReply, parseQuestionText } from "../../lib/questions.mjs";
-import { disposeSession, listSessions, sessionPlace } from "../../lib/sessions.mjs";
+import { disposeSession, listSessions, sessionPlace, worktreeGone } from "../../lib/sessions.mjs";
 import { readReceipts } from "../../lib/receipts.mjs";
 import { controlSession } from "../../lib/controls.mjs";
 import { interruptSession } from "../../lib/interrupt.mjs";
@@ -595,6 +595,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       found.set(id, {
         id, peer, session, online, seenAt, activeAt: Math.floor((seenAt || 0) / 60_000) * 60_000, registered: true, ...(started ? { parent: started } : {}),
         ...(typeof cwd === "string" && isAbsolute(cwd) ? { folder: cleanText(basename(cwd), ACTIVITY_NAME_MAX) } : {}),
+        // An offline session whose worktree was deleted has nothing to resume, so its card is dropped.
+        ...(worktreeGone({ cwd, online, sandbox }, root) ? { gone: true } : {}),
         ...(cleanName(name) ? { name: cleanName(name) } : {}),
         // The name set_identity chose, which the sidebar lists as an agent (PM first), with its activity line.
         ...(cleanName(identityName) ? { identityName: cleanName(identityName) } : {}),
@@ -652,9 +654,15 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return new Set(list.filter(agent => waitingOn(pending.get(agent.id), Date.now())).map(agent => agent.id));
   }
 
+  // Sessions that still have a place to run: an offline one whose worktree was deleted is left out of cards and counts.
+  function placed(list) {
+    return list.filter(agent => !agent.gone);
+  }
+
   // Home and Sessions cards: each session's facts for sessionState(), its last action and running subagents.
   function sessionCards(project, list, mode) {
     const { cfg, statuses } = project;
+    const shown = placed(list);
     const rows = groupSubagents(activityRows(activityList(project)));
     const latest = new Map();
     const lastAction = new Map();
@@ -669,7 +677,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }
     }
     const pending = pendingBySender(project, list);
-    return list.map(agent => {
+    return shown.map(agent => {
       const row = latest.get(agent.id);
       const lastAt = row ? Math.max(row.time, ...(row.rows || []).map(r => r.time)) * 1000 : 0;
       const statusAt = Date.parse(statuses.get(agent.id)?.ts) || 0;
@@ -861,7 +869,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   function snapshot({ project, harness, session, scope, history: wantHistory }) {
     const last = lastMessages(project);
     const list = agents(project, last);
-    const waiting = waitingIds(project, list);
+    // A session whose worktree was deleted has no card to answer on, so it does not count as waiting either.
+    const waiting = waitingIds(project, placed(list));
     const mode = latestMode([...projects.values()].flatMap(item => item.hub.events(item.topic))).mode;
     // Home covers every project's hub; Sessions only this project. Both ride the same pushed state event.
     const own = sessionCards(project, list, mode);
@@ -878,11 +887,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const history = wantHistory ? sessionHistory(activityList(project)) : new Map();
     return {
       project: project.cfg.project, operator: project.operator.peer, mode, alerts: readAlertLevel(env),
-      // Sessions per project as running and inactive, read by the sidebar rows; kept apart from projects.
-      projectCounts: Object.fromEntries(shown.map(item => [item.cfg.project, sessionCounts(item === project ? list : item.failed ? [] : agents(item, lastMessages(item)))])),
+      // Sessions per project as running and inactive, read by the sidebar rows; kept apart from projects. A session
+      // whose worktree was deleted has no card, so it is not counted either.
+      projectCounts: Object.fromEntries(shown.map(item => [item.cfg.project, sessionCounts(item === project ? placed(list) : item.failed ? [] : placed(agents(item, lastMessages(item))))])),
       // Waiting counts per project, present only when above 0; a failed project has no sessions to count.
       projects: shown.map(item => {
-        const count = item === project ? waiting.size : item.failed ? 0 : waitingIds(item, agents(item, lastMessages(item))).size;
+        const count = item === project ? waiting.size : item.failed ? 0 : waitingIds(item, placed(agents(item, lastMessages(item)))).size;
         return { id: item.cfg.project, peers: item.cfg.peers, ...(count ? { waiting: count } : {}) };
       }),
       // Registered projects marked closed, listed so the sidebar can reopen them.
@@ -890,7 +900,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       // Projects auto-joined from a session's repo have no projects.json entry, so Close and Delete do not apply.
       autoProjects: shown.map(item => item.cfg.project).filter(name => !readProjectsFile(env).some(entry => entry?.project === name)),
       view: { harness, session, ...(scope ? { scope } : {}) },
-      harnesses: harnesses(project, list, last),
+      harnesses: harnesses(project, placed(list), last),
       // Unfinished subagent runs ride on each agent for the composer's @session/run picker.
       agents: list.map(agent => {
         const subagents = [...(runsOf.get(agent.id) || []), ...(kids.get(agent.id) || [])];

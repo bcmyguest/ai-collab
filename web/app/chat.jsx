@@ -674,6 +674,11 @@ function Console({ account }) {
     views.set(memoryKey, { ...views.get(memoryKey, {}), offline: open });
     remembered(n => n + 1);
   }
+  function rememberDead(open) {
+    if (Boolean(views.get(memoryKey, {}).dead) === open) return;
+    views.set(memoryKey, { ...views.get(memoryKey, {}), dead: open });
+    remembered(n => n + 1);
+  }
   useEffect(() => {
     const change = () => {
       const next = selection();
@@ -975,6 +980,7 @@ function Console({ account }) {
             {home && data.unavailable?.length > 0 && <p role="alert" className="text-xs text-destructive">Unavailable: {data.unavailable.join(", ")}</p>}
             <SessionList sessions={data.sessions} now={now} open={openCard} raw={openRaw} disabled={working} showProject={home} compact={home}
               offlineOpen={Boolean(views.get(memoryKey, {}).offline)} onOfflineToggle={rememberOffline}
+              deadOpen={Boolean(views.get(memoryKey, {}).dead)} onDeadToggle={rememberDead}
               openAddress={(address, at) => navigate({ project: at, level: "session", harness: peerOf(address), session: address })}
               empty={home ? "No sessions in any project yet." : "No sessions in " + project + " yet."}
               dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}

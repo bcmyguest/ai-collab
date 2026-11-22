@@ -3,6 +3,8 @@ import { runState } from "./activity-rows.js";
 
 export const RECENT_MS = 60_000;
 export const WORKING_MS = 15 * 60_000;
+// An offline session silent this long is dead: the list keeps it folded behind a tap.
+export const DEAD_MS = 24 * 60 * 60_000;
 export const STATES = ["waiting", "afk", "working", "idle", "offline"];
 export const STATE_LABELS = { waiting: "Waiting on you", afk: "AFK hold", working: "Working", idle: "Idle", offline: "Offline" };
 const FIRST_WORDS = 6;
@@ -46,6 +48,16 @@ export function visibleWake(wake, agent) {
 export function fallbackName(folder, prompt) {
   const words = typeof prompt === "string" ? prompt.replace(/\s+/g, " ").trim().split(" ").slice(0, FIRST_WORDS).join(" ") : "";
   return [folder, words].filter(Boolean).join(": ").slice(0, 80);
+}
+
+/** When the card, or any session nested under it, was last active (ms). */
+export function lastSeenAt(node) {
+  return Math.max(node.seenAt || 0, node.lastActivityAt || 0, ...(node.children || []).map(lastSeenAt));
+}
+
+/** A card offline for a day is dead: still listed, but behind one tap so live work stays on screen. */
+export function isDead(node, now) {
+  return (node.group || node.state) === "offline" && now - lastSeenAt(node) >= DEAD_MS;
 }
 
 /** Cards ordered by state, then newest activity; children whose parent is listed nest under it and lift its group. */
