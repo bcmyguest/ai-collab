@@ -33,3 +33,20 @@ export function pairCompactions(rows) {
     return { ...row, compaction: merged };
   });
 }
+
+/** Tokens left under the window, or null unless the harness reported both counts; the auto-compact point is never guessed. */
+export function headroom({ tokens, window } = {}) {
+  if (!Number.isSafeInteger(tokens) || !Number.isSafeInteger(window) || window <= 0) return null;
+  return { left: Math.max(0, window - tokens), window };
+}
+
+/** Where a time sits on the map axis from start to end, as a percent; 0 when the axis has no width. */
+export function axisPercent(at, start, end) {
+  return end > start ? Math.min(100, Math.max(0, ((at - start) / (end - start)) * 100)) : 0;
+}
+
+/** The map axis: from the oldest compaction (or an hour before now) to now. */
+export function mapAxis(histories, now) {
+  const times = histories.flat().map(item => item.at);
+  return { start: Math.min(now - 60 * 60_000, ...times), end: now };
+}

@@ -40,3 +40,15 @@ test("a finished row with its own counts keeps them, and rows without compaction
   const plain = { type: "text", output: "x" };
   assert.equal(pairCompactions([plain])[0], plain);
 });
+
+test("headroom only from a reported window, never guessed", async () => {
+  const { headroom, axisPercent, mapAxis } = await import("../web/lib/compaction-view.js");
+  assert.deepEqual(headroom({ tokens: 182000, window: 200000 }), { left: 18000, window: 200000 });
+  assert.equal(headroom({ tokens: 182000, window: null }), null);
+  assert.equal(headroom({ tokens: 210000, window: 200000 }).left, 0);
+  assert.equal(axisPercent(50, 0, 100), 50);
+  assert.equal(axisPercent(5, 10, 10), 0);
+  const now = 10 * 3600_000;
+  assert.deepEqual(mapAxis([[{ at: now - 2 * 3600_000 }]], now), { start: now - 2 * 3600_000, end: now });
+  assert.deepEqual(mapAxis([], now), { start: now - 3600_000, end: now });
+});

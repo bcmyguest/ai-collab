@@ -23,6 +23,7 @@ import { availableHarnesses, availablePlaces, projectRoot, checkPrompt, startSes
 import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
 import { closedProjectNames, createTeam, deleteTeam, listTeams, readProjectsFile, removeProject, setProjectClosed, teamTask } from "../../lib/teams.mjs";
+import { compactionFields, compactionHistory } from "../../lib/compaction.mjs";
 import { copyPattern, listPatterns, removableNames, removePattern, savePattern } from "../../lib/patterns.mjs";
 import { advanceRun, listRuns, startRun } from "../../lib/pattern-runs.mjs";
 import { formatTeamOrchestrator } from "../../lib/format.mjs";
@@ -121,6 +122,8 @@ function activityItem(event) {
       const value = cleanText(e[key], max);
       if (value) item[key] = value;
     }
+    const compaction = e.compaction ? compactionFields(e.compaction) : null;
+    if (compaction) item.compaction = compaction;
     const attachment = attachmentOf(event, { text: true });
     if (attachment) item.attachment = attachment;
     // A subagent's rows carry its run; the envelope's agent becomes subagent because agent already names the session.
@@ -803,6 +806,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const cards = scope === "home" ? shown.flatMap(item => item === project ? sessionCards(item, list, mode)
       : item.failed ? [] : sessionCards(item, agents(item, lastMessages(item)), mode))
       : scope === "sessions" ? sessionCards(project, list, mode) : undefined;
+    // Each agent's compactions from the activity in memory (lib/compaction.mjs compactionHistory).
+    const history = compactionHistory(activityList(project));
     return {
       project: project.cfg.project, operator: project.operator.peer, mode, alerts: readAlertLevel(env),
       // Sessions per project as running and inactive, read by the sidebar rows; kept apart from projects.
@@ -825,7 +830,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         // Context telemetry and instruction files from the session's state file (lib/usage.mjs).
         const context = readContext({ stateDir: project.cfg.stateDir, project: project.cfg.project, peer: agent.peer, session: agent.session });
         const withContext = context.tokens !== null || context.files.length ? { ...base, context } : base;
-        return waiting.has(agent.id) ? { ...withContext, waiting: true } : withContext;
+        const withHistory = history.has(agent.id) ? { ...withContext, compactions: history.get(agent.id) } : withContext;
+        return waiting.has(agent.id) ? { ...withHistory, waiting: true } : withHistory;
       }),
       messages: scope === "home" ? [] : messages(project, { harness, session }, list),
       ...(cards ? { sessions: cards } : {}),

@@ -1,5 +1,5 @@
 // Location hash → console selection: the level, project, session, view tab and subagent run a URL names.
-export const LEVELS = [["project", "Project"], ["session", "Sessions"], ["patterns", "Patterns and teams"]];
+export const LEVELS = [["project", "Project"], ["session", "Sessions"], ["patterns", "Patterns and teams"], ["compactions", "Compactions"]];
 // Views each level accepts in the hash: a session's timeline (activity), its subagents and raw activity; the project has one chat.
 export const TABS = { project: [], session: ["activity", "subagents", "raw"], patterns: [] };
 
