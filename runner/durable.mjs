@@ -23,6 +23,15 @@ CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 const json = (value) => JSON.stringify(value === undefined ? null : value);
 const parse = (text) => (text === null || text === undefined ? undefined : JSON.parse(text));
 
+// Resolves after ms, or rejects with the signal's reason when it aborts first. Not checkpointed.
+function pauseFor(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(signal.reason);
+    const timer = setTimeout(resolve, Math.max(0, ms));
+    signal.addEventListener("abort", () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
+  });
+}
+
 export class NonDeterminismError extends Error {}
 
 /** Opens (or creates) the log at file; ":memory:" serves tests. */
@@ -38,6 +47,7 @@ export function openDurable(file, { now = Date.now } = {}) {
     wfRecord: db.prepare("INSERT OR IGNORE INTO workflows (id, name, input, status, output, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"),
     wfGet: db.prepare("SELECT * FROM workflows WHERE id = ?"),
     wfLatestNamed: db.prepare("SELECT * FROM workflows WHERE name = ? ORDER BY created_at DESC, id DESC LIMIT 1"),
+    wfListNamed: db.prepare("SELECT * FROM workflows WHERE name = ? ORDER BY created_at DESC, id DESC LIMIT ?"),
     wfLastActual: db.prepare("SELECT input FROM workflows WHERE name = ? AND status != 'SKIPPED' AND id NOT LIKE '%@manual@%' ORDER BY created_at DESC LIMIT 1"),
     wfPending: db.prepare("SELECT id, name, input FROM workflows WHERE status = 'PENDING' ORDER BY created_at"),
     wfEnd: db.prepare("UPDATE workflows SET status = ?, output = ?, error = ?, updated_at = ? WHERE id = ?"),
@@ -94,7 +104,7 @@ export function openDurable(file, { now = Date.now } = {}) {
     let own = ownStep;
     const signal = AbortSignal.any([closing.signal, ctrl.signal]);
     const recorded = (n) => q.stepGet.get(id, n);
-    return {
+    const ctx = {
       id, input, signal,
       get replaying() { return Boolean(recorded(seq)); },
       async step(name, fn, { onCut } = {}) {
@@ -143,6 +153,14 @@ export function openDurable(file, { now = Date.now } = {}) {
       },
       pending: (topic) => q.msgPending.get(id, topic).n,
     };
+    // Waits ms without a checkpoint: a restart waits again. Use it for polling, never for a deadline.
+    ctx.pause = (ms) => pauseFor(ms, signal);
+    // Waits ms from the first execution: the deadline is checkpointed, so a restart waits only the rest.
+    ctx.sleep = async (ms) => {
+      const until = await ctx.step("sleep", () => now() + ms);
+      await ctx.step("sleep.wait", () => pauseFor(until - now(), signal));
+    };
+    return ctx;
   }
 
   function run(id, name, input, { ownStep = false } = {}) {
@@ -265,6 +283,16 @@ export function openDurable(file, { now = Date.now } = {}) {
       q.wfInsert.run(id, name, json(input), now(), now());
       return run(id, name, input);
     },
+    /** Starts a workflow once per id: null when the id already has a row, so a repeated start does nothing. */
+    startWorkflowOnce(name, id, input) {
+      if (!q.wfInsertIgnore.run(id, name, json(input), now(), now()).changes) return null;
+      return run(id, name, input);
+    },
+    /** The latest workflows of one name, newest first, with parsed input and output. */
+    listNamed: (name, limit = 100) => q.wfListNamed.all(name, limit).map((row) => ({
+      id: row.id, name: row.name, status: row.status, input: parse(row.input), output: parse(row.output), error: row.error,
+      createdAt: row.created_at, updatedAt: row.updated_at,
+    })),
     /** Ids of PENDING workflows that recover() would run. */
     pending: () => q.wfPending.all().filter((w) => !running.has(w.id) && registry.has(w.name)).map((w) => w.id),
     /** Re-runs every PENDING workflow from its log; returns their ids. */
@@ -289,6 +317,22 @@ export function openDurable(file, { now = Date.now } = {}) {
     steps: (id) => db.prepare("SELECT seq, name, status, output, error FROM steps WHERE workflow_id = ? ORDER BY seq").all(id),
     getKv: (key) => parse(q.kvGet.get(key)?.value),
     setKv: (key, value) => q.kvSet.run(key, json(value)),
+    /** Deletes finished workflows of the given names last updated before `before` (ms), with their steps and messages. */
+    prune(names, before) {
+      let count = 0;
+      for (const name of names) {
+        const ids = db.prepare("SELECT id FROM workflows WHERE name = ? AND status != 'PENDING' AND updated_at < ?").all(name, before).map((r) => r.id);
+        tx(() => {
+          for (const id of ids) {
+            db.prepare("DELETE FROM steps WHERE workflow_id = ?").run(id);
+            db.prepare("DELETE FROM messages WHERE workflow_id = ?").run(id);
+            db.prepare("DELETE FROM workflows WHERE id = ?").run(id);
+          }
+        });
+        count += ids.length;
+      }
+      return count;
+    },
     /** Aborts running workflows where they wait, leaving unfinished steps as started (cut), then closes the file. */
     async close() {
       for (const s of schedules.values()) clearTimeout(s.timer);
