@@ -229,6 +229,12 @@ async function payload(request) {
   reject(400, "Expected a JSON object");
 }
 
+// A Home card's context meter: the harness's last token count and window, only when a token count is recorded.
+function cardContext(cfg, agent) {
+  const { tokens, window } = readContext({ stateDir: cfg.stateDir, project: cfg.project, peer: agent.peer, session: agent.session });
+  return tokens === null ? {} : { context: { tokens, window } };
+}
+
 function recipient(cfg, target, exact = false) {
   if (typeof target !== "string") reject(400, "Select a recipient");
   const [role, session, ...extra] = target.split("#");
@@ -561,6 +567,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         ...agent, project: cfg.project, harness: peerOf(agent.id), lastActivityAt: lastAt, ...(open ? { openCallAt: lastAt } : {}),
         afkHold: mode !== "off" && row?.type === "stop" && /^turn ended/.test(row.input || "") && statusAt < row.time * 1000,
         ...(lastAction.has(agent.id) ? { lastAction: lastAction.get(agent.id) } : {}), subagents, pending: pending.get(agent.id) || [],
+        ...cardContext(cfg, agent),
       };
     });
   }

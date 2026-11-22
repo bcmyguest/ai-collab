@@ -201,12 +201,12 @@ A composer message that starts with `/` is a command for the open session, not c
 
 The table is the source in `web/lib/slash-commands.js`. Sources: the Claude binary (`claude`, resolved with `readlink -f`), `codex app-server generate-json-schema`, the OpenCode 2.2.5 binary's operation list (`session.command`, `session.compact`, `session.switchModel`), and `cursor-agent --help`.
 
-The session header shows **Context** with the tokens in the session's last usage report (sources as in the table above). A window appears, with a percentage, only where the harness reports one: Codex, from `info.model_context_window` in the rollout's `token_count` event (also `ThreadTokenUsage.modelContextWindow` in the app-server schema). At 80% the meter turns amber ("near full"); at 95% red ("full"). Claude, Cursor and OpenCode show tokens without a percentage.
+The session header shows **Context** with the tokens in the session's last usage report (sources as in the table above). A window appears, with a percentage, only where the harness reports one: Codex, from `info.model_context_window` in the rollout's `token_count` event (also `ThreadTokenUsage.modelContextWindow` in the app-server schema). At 80% the meter turns amber ("near full"); at 95% red ("full"). Claude, Cursor and OpenCode show tokens without a percentage. Home session cards show the same meter on their metadata line once a token count is recorded.
 
 The same panel lists:
 
 - **Files in context**: the instruction files Claude loaded, from its `InstructionsLoaded` hook (`file_path`, `memory_type` User, Project, Local or Managed, `load_reason` session_start, nested_traversal, path_glob_match, include or compact). Codex and the other harnesses record none.
-- **Files read**: paths of `Read` (or `read_file`) tool calls in the activity loaded for the session, with a count each, most recent first. Only activity already loaded in the view counts.
+- **Files read**: paths of `Read` (or `read_file`) tool calls in the activity loaded for the session, with a count each, most recent first. Only this session's rows in the loaded activity count. The section appears once that activity has loaded; before then it is hidden.
 
 The tokens and files live in the session's `.context.json` state file beside its other state. Alerts above 200,000 tokens are unchanged.
 

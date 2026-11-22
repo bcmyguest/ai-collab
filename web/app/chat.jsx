@@ -540,10 +540,13 @@ function ContextChip({ context, rows }) {
       {loaded.length ? <ul>{loaded.map(entry => <li key={entry.path} className="truncate font-mono" title={entry.path}>{entry.path}
         <span className="text-muted-foreground"> · {entry.memory} · {entry.load.replace(/_/g, " ")}</span></li>)}</ul>
         : <p className="text-muted-foreground">None recorded. Claude reports them through its InstructionsLoaded hook.</p>}
-      <p className="mt-2 font-medium">Files read</p>
-      {read.length ? <ul>{read.map(entry => <li key={entry.path} className="truncate font-mono" title={entry.path}>{entry.path}
-        <span className="text-muted-foreground"> · {entry.count}×</span></li>)}</ul>
-        : <p className="text-muted-foreground">No file reads in the loaded activity.</p>}
+      {/* Shown only once activity rows have loaded; before that, no reads are known, so the section stays out. */}
+      {rows.length > 0 && <>
+        <p className="mt-2 font-medium">Files read</p>
+        {read.length ? <ul>{read.map(entry => <li key={entry.path} className="truncate font-mono" title={entry.path}>{entry.path}
+          <span className="text-muted-foreground"> · {entry.count}×</span></li>)}</ul>
+          : <p className="text-muted-foreground">No file reads in the loaded activity.</p>}
+      </>}
     </div>
   </details>;
 }
@@ -857,7 +860,7 @@ function Console({ account }) {
           {" · "}<button type="button" className="underline-offset-2 hover:underline" onClick={signOut}>sign out</button></p>}
         {!home && <ZoomControls data={data} selected={selected} now={now} navigate={navigate}
           compact={level === "session" && agent?.session && <span className="ml-auto flex items-center gap-2">
-            <ContextChip context={agent.context || {}} rows={rows}/>
+            <ContextChip context={agent.context || {}} rows={rows.filter(row => row.agent === agent.id)}/>
             {agent.online && ["codex", "opencode"].includes(agent.peer) && <Button variant="outline" size="sm" className="h-9 rounded-full" aria-label="Interrupt" disabled={!ready || working}
               onClick={() => action("interrupt", { target: selected.session }, "Interrupt requested")}><Square/>Interrupt</Button>}
             <SessionMenu node={{ ...agent, project }} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}
