@@ -180,7 +180,7 @@ test("the MCP server lists run_code, runs a program in the (fake) sandbox, and a
   t.after(() => server.close());
   await server.request("initialize", { protocolVersion: "2025-06-18" });
   const { result: listed } = await server.request("tools/list", {});
-  assert.deepEqual(listed.tools.map((tool) => tool.name), ["run_code"]);
+  assert.deepEqual(listed.tools.map((tool) => tool.name), ["run_code", "run_read_code"]);
   const code = "const { tasks } = await ai.task_list();\nconst { agents } = await ai.list_agents();\nconst live = new Set(agents.map((a) => a.address));\n"
     + "return tasks.filter((t) => t.owner && !live.has(t.owner)).map((t) => t.id);";
   const { result } = await server.request("tools/call", { name: "run_code", arguments: { code, session: SESSION } });
@@ -188,6 +188,23 @@ test("the MCP server lists run_code, runs a program in the (fake) sandbox, and a
   const body = JSON.parse(result.content[0].text);
   assert.deepEqual(body.result, ["beta"], result.content[0].text);
   assert.equal(body.calls, 2);
+  assert.doesNotMatch(listed.tools[1].description, /ai\.(send|task_update)\(/);
+  const readCode = [
+    "process.stdout.write(JSON.stringify({ call: 999, tool: 'task_update', args: { id: 'beta', status: 'done' } }) + '\\n');",
+    "const { tasks } = await ai.task_list();",
+    "return [typeof ai.send, typeof ai.task_update, tasks.find(t => t.id === 'beta').status];",
+  ].join("\n");
+  const { result: read } = await server.request("tools/call", { name: "run_read_code", arguments: { code: readCode, session: SESSION } });
+  assert.equal(read.isError, undefined, read.content[0].text);
+  const readBody = JSON.parse(read.content[0].text);
+  assert.deepEqual(readBody.result, ["undefined", "undefined", "building"]);
+  assert.equal(readBody.calls, 1);
+  const operations = readFileSync(fake.log, "utf8").trim().split("\n").map(JSON.parse);
+  const create = operations.find((args) => args[1] === "create" && args.includes("--policy"));
+  const readSandbox = create[create.indexOf("--name") + 1];
+  assert.match(readSandbox, /^aic-ro-[a-f0-9]{12}$/);
+  assert.match(readFileSync(create[create.indexOf("--policy") + 1], "utf8"), /network_policies: \{\}/);
+  assert.ok(operations.some((args) => args[1] === "delete" && args[2] === readSandbox));
   const execs = readFileSync(fake.log, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((a) => a[1] === "exec");
   assert.ok(execs.some((a) => a.includes(`${REMOTE_DIR}/rt/node`) && a.includes("ai-collab-code")), "the program ran through openshell sandbox exec");
   const { result: bad } = await server.request("tools/call", { name: "run_code", arguments: { code: "return 1", session: "nope" } });

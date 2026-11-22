@@ -34,7 +34,7 @@ its `exec` code tool with `features.code_mode=false` too. Measurements: `/dev/sh
 
 ## run_code
 
-`scripts/ai-collab-code-mcp.mjs` is a second MCP server, `ai-collab-code`, with one tool, `run_code`:
+`scripts/ai-collab-code-mcp.mjs` is a second MCP server, `ai-collab-code`, with the tools `run_code` and `run_read_code`. Call `run_code` like this:
 
 ```json
 { "code": "const { tasks } = await ai.task_list(); return tasks.length;", "session": "<your session label>", "timeout_ms": 30000 }
@@ -64,6 +64,12 @@ The sandbox image has no node, so the first run uploads the host's node binary a
 the only channel into a sandbox. Measured: a two-call program returns in about 1.5 s, the first run included.
 
 Remove the sandbox with `openshell sandbox delete ai-collab-code`; the next run creates it again.
+
+### Read-only programs for roles
+
+Call `run_read_code` with the same input and result shape. It exposes the seven read-only queries listed above. The host checks that allowlist before dispatching each request, including requests written directly to stdout.
+
+Each invocation provisions a fresh `aic-ro-*` sandbox using `lib/code-read-policy.yaml` and deletes it on completion. The policy has no network routes and grants writes to the staged runtime directory and scratch paths. Fresh sandboxes keep those files from carrying across invocations. The role programs show what to query before making a coordination decision. [Role programs](../skills/ai-collab/references/role-programs.md)
 
 ### Registration
 
