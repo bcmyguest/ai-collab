@@ -317,22 +317,32 @@ export function openDurable(file, { now = Date.now } = {}) {
     steps: (id) => db.prepare("SELECT seq, name, status, output, error FROM steps WHERE workflow_id = ? ORDER BY seq").all(id),
     getKv: (key) => parse(q.kvGet.get(key)?.value),
     setKv: (key, value) => q.kvSet.run(key, json(value)),
-    /** Deletes finished workflows of the given names last updated before `before` (ms), with their steps and messages. */
+    /**
+     * Deletes the steps and messages of finished workflows of the given names last updated before `before` (ms). The
+     * workflow row stays as a tombstone, so a message the log knows is never started again. Resolves the count pruned.
+     */
     prune(names, before) {
       let count = 0;
       for (const name of names) {
-        const ids = db.prepare("SELECT id FROM workflows WHERE name = ? AND status != 'PENDING' AND updated_at < ?").all(name, before).map((r) => r.id);
+        const ids = db.prepare("SELECT id FROM workflows WHERE name = ? AND status != 'PENDING' AND updated_at < ? AND id IN (SELECT workflow_id FROM steps UNION SELECT workflow_id FROM messages)").all(name, before).map((r) => r.id);
         tx(() => {
           for (const id of ids) {
             db.prepare("DELETE FROM steps WHERE workflow_id = ?").run(id);
             db.prepare("DELETE FROM messages WHERE workflow_id = ?").run(id);
-            db.prepare("DELETE FROM workflows WHERE id = ?").run(id);
           }
         });
         count += ids.length;
       }
       return count;
     },
+    /** Unconsumed messages on a topic of a workflow, consumed in one transaction: a message is handed over once. */
+    drain(workflowId, topic) {
+      const rows = db.prepare("SELECT id, value FROM messages WHERE workflow_id = ? AND topic = ? AND consumed = 0 ORDER BY id").all(workflowId, topic);
+      tx(() => { for (const r of rows) q.msgConsume.run(r.id); });
+      return rows.map((r) => parse(r.value));
+    },
+    /** Unconsumed messages on a topic of a workflow. */
+    pendingCount: (workflowId, topic) => q.msgPending.get(workflowId, topic).n,
     /** Aborts running workflows where they wait, leaving unfinished steps as started (cut), then closes the file. */
     async close() {
       for (const s of schedules.values()) clearTimeout(s.timer);

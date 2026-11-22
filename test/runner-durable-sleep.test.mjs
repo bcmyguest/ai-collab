@@ -40,15 +40,17 @@ test("startWorkflowOnce starts a workflow id once and returns null for a repeat"
   await log.close();
 });
 
-test("prune deletes finished workflows older than the cut-off with their steps, and keeps pending ones", async () => {
+test("prune deletes the steps and messages of finished workflows older than the cut-off, keeps their rows and pending ones", async () => {
   const log = openDurable(":memory:");
   log.register("flow", async (wf) => wf.step("a", () => 1));
   log.register("pending", async (wf) => wf.recv("never"));
   await log.startWorkflowOnce("flow", "done", {});
   log.startWorkflowOnce("pending", "waiting", {});
   assert.equal(log.prune(["flow", "pending"], Date.now() + 60_000), 1);
-  assert.equal(log.status("done"), null);
+  // The row stays as a tombstone, so the message it guards never starts again.
+  assert.equal(log.status("done").status, "SUCCESS");
   assert.equal(log.steps("done").length, 0);
+  assert.equal(log.startWorkflowOnce("flow", "done", {}), null);
   assert.equal(log.status("waiting").status, "PENDING");
   await log.close();
 });

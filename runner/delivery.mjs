@@ -1,4 +1,4 @@
-// Delivery workflow: one durable workflow per (session, message id). It reserves, pushes, confirms and marks the message,
+// Delivery workflow: one durable workflow per (session, message). It reserves, pushes, confirms and marks the message,
 // then redelivers an expect-reply message until it is answered. Steps and sleeps are checkpointed in runner.db.
 import { BACKOFF_BASE_MS, BACKOFF_MAX_MS, MAX_ATTEMPTS, REDELIVER_MS, TTL_MS } from "../lib/deliver-push.mjs";
 
@@ -11,23 +11,28 @@ export function backoffMs(failures) {
 }
 
 /**
- * Builds the workflow function over deps (all injectable; see runner/runner.mjs for the live set):
- *   now() -> ms; scfgOf(project, session) -> config for the session; sessionOf(project, address) -> live session or null;
- *   ready(session) -> bool; reserve(scfg, ids, {allowSeen}) -> owned ids; release(scfg, ids); markDelivered(scfg, ids);
+ * Builds the workflow function over deps (injectable; the live set is in runner/runner.mjs):
+ *   now(); scfgOf(project, session); sessionOf(project, address) -> live session or null; ready(session) -> bool;
+ *   reserve(scfg, ids, {owner, allowSeen}) -> {owned, busy}; release(scfg, ids, owner); markDelivered(scfg, ids);
  *   snapshot(session) -> JSON; push(session, {text, urgent, ids}) -> {status}; awaitConfirm(id, session, snapshot) -> bool;
- *   backoffMs(failures), redeliverMs and readyPollMs override the defaults in tests;
- *   confirmedSince(session, ids, snapshot) -> bool; acked(project, address, message) -> bool; textFor(scfg, message, attempt) -> string.
- * Input: {project, address, message}. Output: {status} with status delivered, skipped, cut, answered, dropped or expired.
+ *   waitConfirmed(session, ids, snapshot) -> bool after the full confirm window; confirmedSince(session, ids, snapshot) -> bool;
+ *   acked(project, address, message) -> bool; textFor(scfg, message, attempt) -> string.
+ * Optional overrides for tests: backoffMs(failures), redeliverMs, readyPollMs.
+ * Input: {project, address, message, redeliver?: {pushes, firstAt}} (redeliver resumes a message the dispatcher delivered).
+ * Output: {status} with status delivered, skipped, cut, answered, dropped or expired.
  */
 export function deliveryWorkflow(deps) {
   const backoff = deps.backoffMs ?? backoffMs;
   const redeliverMs = deps.redeliverMs ?? REDELIVER_MS;
   const readyPollMs = deps.readyPollMs ?? READY_POLL_MS;
   return async function delivery(wf, input) {
-    const { project, address, message } = input;
+    const { project, address, message, redeliver = null } = input;
     const id = message.id;
-    const firstAt = await wf.step("start", () => deps.now());
+    const owner = wf.id;
+    const firstAt = await wf.step("start", () => redeliver?.firstAt ?? deps.now());
     const expired = () => deps.now() - firstAt >= TTL_MS;
+    // The first snapshot of the workflow: every resend is checked against it, so a landed push is never sent twice.
+    let snap;
 
     // Waits, without a checkpoint, until the target is live and ready; resolves null once the TTL passes.
     async function target() {
@@ -39,59 +44,71 @@ export function deliveryWorkflow(deps) {
       }
     }
 
-    // One push attempt. Resolves "delivered", "failed" (retry after backoff), "cut" or "skipped" (reserved elsewhere).
-    async function attempt(session, attemptNo, { allowSeen }) {
+    // One push attempt. Resolves "delivered", "failed" (retry after backoff), "cut" (never sent again), "skipped" or "expired".
+    async function attempt(attemptNo, { allowSeen }) {
+      const session = await target();
+      if (!session) return "expired";
       const scfg = deps.scfgOf(project, session);
+      if (snap === undefined) snap = await wf.step("snapshot", () => deps.snapshot(session));
+      if (attemptNo > 1 && await wf.step("recheck", () => deps.confirmedSince(session, [id], snap))) {
+        await wf.step("mark", () => deps.markDelivered(scfg, [id]));
+        return "delivered";
+      }
+      const got = await wf.step("reserve", () => deps.reserve(scfg, [id], { owner, allowSeen }));
+      if (got.busy) return "failed";
+      if (!got.owned.length) return "skipped";
       const text = deps.textFor(scfg, message, attemptNo);
-      const owned = await wf.step("reserve", () => deps.reserve(scfg, [id], { allowSeen }));
-      if (!owned.length) return "skipped";
-      const snap = await wf.step("snapshot", () => deps.snapshot(session));
-      // A cut push is checked before anything else: a landed push counts as delivered and is never sent again.
       const pushed = await wf.step("push", () => deps.push(session, { text, urgent: message.urgent === true, ids: [id] }), {
-        onCut: async () => ({ status: await deps.confirmedSince(session, [id], snap) ? "delivered" : "cut" }),
+        onCut: async () => ({ status: await deps.waitConfirmed(session, [id], snap) ? "delivered" : "cut" }),
       });
       if (pushed.status === "delivered") {
         await wf.step("mark", () => deps.markDelivered(scfg, [id]));
         return "delivered";
       }
-      if (pushed.status === "cut") {
-        await wf.step("cut", () => deps.markDelivered(scfg, [id]));
-        return "cut";
+      if (pushed.status === "cut" || pushed.status === "unsent") {
+        await wf.step("release", () => deps.release(scfg, [id], owner));
+        return pushed.status === "cut" ? "cut" : "failed";
       }
-      if (pushed.status === "unsent") {
-        await wf.step("release", () => deps.release(scfg, [id]));
-        return "failed";
-      }
-      // Unconfirmed: the transcript has not shown the write yet. A late confirmation settles it before any resend.
-      const confirmed = await wf.step("confirm", () => deps.awaitConfirm(id, session, snap), {
-        onCut: () => deps.confirmedSince(session, [id], snap),
+      // Unconfirmed: renew the reservation for the watch, then wait for the write to show in the transcript.
+      await wf.step("renew", () => deps.reserve(scfg, [id], { owner, allowSeen: true }));
+      const c = await wf.step("confirm", () => deps.awaitConfirm(id, session, snap).then((confirmed) => ({ confirmed, cut: false })), {
+        onCut: async () => ({ confirmed: await deps.waitConfirmed(session, [id], snap), cut: true }),
       });
-      if (confirmed || await wf.step("late", () => deps.confirmedSince(session, [id], snap))) {
+      if (c.confirmed) {
         await wf.step("mark", () => deps.markDelivered(scfg, [id]));
         return "delivered";
       }
-      await wf.step("release", () => deps.release(scfg, [id]));
+      if (c.cut) {
+        await wf.step("release", () => deps.release(scfg, [id], owner));
+        return "cut";
+      }
+      if (await wf.step("late", () => deps.confirmedSince(session, [id], snap))) {
+        await wf.step("mark", () => deps.markDelivered(scfg, [id]));
+        return "delivered";
+      }
+      await wf.step("release", () => deps.release(scfg, [id], owner));
       return "failed";
     }
 
-    // Pushes until delivered, skipped, cut or past the TTL; a failed attempt waits a durable backoff first.
+    // Attempts until delivered, skipped, cut or past the TTL; a failed attempt waits a durable backoff first.
     async function deliver(attemptNo, opts) {
       for (let failures = 0; ; ) {
-        const session = await target();
-        if (!session) return "expired";
-        const outcome = await attempt(session, attemptNo, opts);
+        const outcome = await attempt(attemptNo, opts);
         if (outcome !== "failed") return outcome;
         failures += 1;
         await wf.sleep(backoff(failures));
       }
     }
 
-    const first = await deliver(1, { allowSeen: false });
-    if (first !== "delivered") return { status: first };
-    if (message.expectReply !== true) return { status: "delivered", pushes: 1 };
+    let pushes = redeliver?.pushes ?? 0;
+    if (!redeliver) {
+      const first = await deliver(1, { allowSeen: false });
+      if (first !== "delivered") return { status: first };
+      if (message.expectReply !== true) return { status: "delivered", pushes: 1 };
+      pushes = 1;
+    }
 
-    // Redelivery: after each REDELIVER_MS without an answer, push again, at most MAX_ATTEMPTS pushes in all.
-    let pushes = 1;
+    // Redelivery: after each redeliverMs without an answer, push again, at most MAX_ATTEMPTS pushes in all.
     for (;;) {
       await wf.sleep(redeliverMs);
       if (await wf.step("acked", () => deps.acked(project, address, message))) return { status: "answered", pushes };

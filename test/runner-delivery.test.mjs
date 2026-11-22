@@ -18,13 +18,14 @@ function depsWith(log, over = {}) {
     scfgOf: () => ({ project: "demo", peer: "codex", session: "abc" }),
     sessionOf: () => SESSION,
     ready: async () => true,
-    reserve: async (scfg, ids) => ids,
+    reserve: async (scfg, ids) => ({ owned: ids, busy: false }),
     release: async () => { log.releases += 1; },
     markDelivered: async () => { log.marks += 1; },
-    snapshot: async () => null,
+    snapshot: async () => { log.snapshots += 1; return null; },
     push: async (session, { text }) => { log.pushes.push(text); return { status: statuses.shift() ?? "delivered" }; },
     awaitConfirm: async () => true,
     confirmedSince: async () => false,
+    waitConfirmed: async () => false,
     acked: async () => false,
     textFor: (scfg, m, attempt) => `${m.id} attempt ${attempt}`,
     backoffMs: () => 5,
@@ -33,7 +34,7 @@ function depsWith(log, over = {}) {
     ...over,
   };
 }
-const newLog = () => ({ pushes: [], marks: 0, releases: 0 });
+const newLog = () => ({ pushes: [], marks: 0, releases: 0, snapshots: 0 });
 
 // Starts one delivery in a fresh log and resolves its output once it ends.
 async function deliver(deps, { file = dbFile(), msg = message(), durable = openDurable(file) } = {}) {
@@ -91,7 +92,7 @@ test("a push cut by a restart is never resent when the transcript shows it lande
   await closing;
 
   const second = openDurable(file);
-  second.register("delivery", deliveryWorkflow(depsWith(log, { confirmedSince: async () => true })));
+  second.register("delivery", deliveryWorkflow(depsWith(log, { waitConfirmed: async () => true })));
   second.recover();
   assert.deepEqual(await second.result("delivery:x"), { status: "delivered", pushes: 1 });
   assert.equal(log.pushes.length, 1);
@@ -112,11 +113,13 @@ test("a push cut by a restart and not shown in the transcript is marked cut and 
   await closing;
 
   const second = openDurable(file);
-  second.register("delivery", deliveryWorkflow(depsWith(log, { confirmedSince: async () => false })));
+  second.register("delivery", deliveryWorkflow(depsWith(log, { waitConfirmed: async () => false })));
   second.recover();
   assert.deepEqual(await second.result("delivery:x"), { status: "cut" });
   assert.equal(log.pushes.length, 1);
-  assert.equal(log.marks, 1);
+  // Unconfirmed after the full window: released to the hooks, never marked seen, never sent again.
+  assert.equal(log.marks, 0);
+  assert.equal(log.releases, 1);
   await second.close();
 });
 
@@ -138,7 +141,7 @@ test("an expect-reply message stops being redelivered once the target answers", 
 
 test("a message already reserved elsewhere is skipped without a push", async () => {
   const log = newLog();
-  const { output } = await deliver(depsWith(log, { reserve: async () => [] }));
+  const { output } = await deliver(depsWith(log, { reserve: async () => ({ owned: [], busy: false }) }));
   assert.deepEqual(output, { status: "skipped" });
   assert.equal(log.pushes.length, 0);
 });
@@ -150,4 +153,23 @@ test("a message waits while its session is not ready, then goes out", async () =
   assert.equal(output.status, "delivered");
   assert.equal(polls, 3);
   assert.equal(log.pushes.length, 1);
+});
+
+test("a busy inbox lock is retried after backoff, not taken as a skip", async () => {
+  const log = newLog();
+  let reserves = 0;
+  const { output } = await deliver(depsWith(log, {
+    reserve: async (scfg, ids) => (reserves += 1) === 1 ? { owned: [], busy: true } : { owned: ids, busy: false },
+  }));
+  assert.equal(output.status, "delivered");
+  assert.equal(reserves, 2);
+  assert.equal(log.pushes.length, 1);
+});
+
+test("the first snapshot is kept across attempts, so every resend is checked against it", async () => {
+  const log = newLog();
+  const { output } = await deliver(depsWith(log, { statuses: ["unsent", "unsent", "delivered"] }));
+  assert.equal(output.status, "delivered");
+  assert.equal(log.pushes.length, 3);
+  assert.equal(log.snapshots, 1);
 });
