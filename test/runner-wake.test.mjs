@@ -20,7 +20,7 @@ function setup(fake) {
   writeFileSync(path.join(home, ".config", "ai-collab", "projects.json"), JSON.stringify([{ root, project: "demo" }]));
   const env = {
     PATH: process.env.PATH, HOME: home, XDG_CONFIG_HOME: path.join(home, ".config"), AI_COLLAB_URL: fake.url,
-    AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "runner", AI_COLLAB_PEERS: "codex,cursor,operator,runner",
+    AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "runner", AI_COLLAB_PEERS: "codex,claude,operator,runner",
     AI_COLLAB_STATE_DIR: path.join(home, "state"), AI_COLLAB_TIMEOUT_MS: "2000",
   };
   const cfg = loadConfig(env, { cwd: root });
@@ -108,23 +108,23 @@ test("a direct message to a closed session that is not owned adopts it and wakes
   }
 });
 
-test("a closed session whose harness has no loaded adapter records that and leaves its message for the hooks", async () => {
+test("a closed claude session with no loaded adapter records that and leaves its message for the hooks", async () => {
   const fake = await startFakeNtfy();
   const ctx = setup(fake);
   const adapter = createFakeAdapter({ harness: "codex" });
   const { runner, durable } = makeRunner(ctx, [adapter], { watch: false });
   await runner.boot();
   try {
-    const nativeId = "cursor-chat-1";
+    const nativeId = "claude-chat-1";
     const label = sessionLabel(nativeId);
-    await recordSession({ ...ctx.cfg, peer: "cursor", session: label }, { id: nativeId, cwd: ctx.root, harness: "cursor", event: "stop" });
-    const ev = fake.inject("ai-collab-demo--to--cursor", JSON.stringify({ v: 1, kind: "msg", from: "operator", to: "cursor", toSession: label, operatorThread: true, ts: new Date().toISOString(), body: "for cursor" }));
-    const wakeId = `${WAKE}:cursor#${label}:${ev.id}`;
+    await recordSession({ ...ctx.cfg, peer: "claude", session: label }, { id: nativeId, cwd: ctx.root, harness: "claude", event: "stop" });
+    const ev = fake.inject("ai-collab-demo--to--claude", JSON.stringify({ v: 1, kind: "msg", from: "operator", to: "claude", toSession: label, operatorThread: true, ts: new Date().toISOString(), body: "for claude" }));
+    const wakeId = `${WAKE}:claude#${label}:${ev.id}`;
     await runner.pump();
     await until(() => durable.status(wakeId)?.status === "SUCCESS", "no-adapter wake");
-    assert.deepEqual(durable.status(wakeId).output, { status: "no-adapter", error: "no cursor adapter yet" });
+    assert.deepEqual(durable.status(wakeId).output, { status: "no-adapter", error: "no claude adapter yet" });
     assert.equal(adapter.calls.length, 0);
-    const left = await claimInbox({ ...ctx.cfg, peer: "cursor", session: label }, { commit: false, accept: () => true });
+    const left = await claimInbox({ ...ctx.cfg, peer: "claude", session: label }, { commit: false, accept: () => true });
     assert.ok(left.some((m) => m.id === ev.id), "the hooks can still take the message");
   } finally {
     await runner.stop();
