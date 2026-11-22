@@ -20,3 +20,4 @@ Give the operator one place to run, watch and steer a coding agents from a phone
 - Track tasks with task_update + ai-collab task render; do not hand-edit docs/feature-requests.md.
 - Before marking done: oncebitten check --base main (when rules exist).
 - After every web/UI deploy: `node scripts/smoke-ui.mjs` (headless page load); if it fails, revert and redeploy. Builder briefs for web/ changes must say so.
+- Isolated suite gate: use mise-installed node/npm binaries (not mise shims) when TMP HOME breaks mise trust.
