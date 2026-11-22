@@ -193,6 +193,7 @@ Wakes of one address run in sequence (a gate per address). A woken session is ow
 A session the user resumed outside the runner: the pump drops the adopted owned record of a session seen online in another process and serves it as live; a wake for a session seen online outside is skipped.
 
 Harness adapters: `runner/adapters/<harness>.mjs` is not built for claude, codex or opencode. Until one is built, `loadAdapters` logs `no <harness> adapter yet`, and wakes for that harness record `no-adapter`. The Cursor adapter is built (see [Cursor adapter](#cursor-adapter)). The fake adapter drives the tests.
+Harness adapters: `runner/adapters/<harness>.mjs` is built for claude only; codex, cursor and opencode are not. Until one is built, `loadAdapters` logs `no <harness> adapter yet`, and wakes for that harness record `no-adapter`. The fake adapter drives the tests.
 
 ### Pruning
 
@@ -266,6 +267,17 @@ Verified means the string appears in the local OpenCode 2.2.5 binary (`strings`)
 | `AI_COLLAB_PARENT` export into the agent shell | Not done: the service runs its own shell, so the adapter cannot set a per-session env | owned-sessions.md |
 | Hook stand-down | Keyed by owned record (session id), not by env, because the service is shared | `lib/owned.mjs` `standsDown` |
 | Not implemented | `contextUsage`, `setModel`, question forms (`/form` replies), `resumeData` | |
+### Claude adapter status
+
+`runner/adapters/claude.mjs` implements the Claude column above with `query()` from the Agent SDK; `createClaudeAdapter({query})` takes the query function for tests (`test/runner-adapter-claude.test.mjs`, 20 tests, fake query). Nothing ran against the real CLI or SDK. UNVERIFIED:
+
+- `query()` spawns the CLI on first read or on call, and `initializationResult()` makes no API request (no tokens).
+- `query.interrupt()` ends the turn with a `result` message; the adapter reports `cancelled` on it.
+- AskUserQuestion input (`questions`) and `updatedInput.answers` shape.
+- `steer` with `priority: "now"` folds into the running turn.
+- `listModels` and `listCommands` via a prompt-less probe query, and `supportedCommands` names (with or without `/`).
+- The SDK `env` option replaces the child environment; the adapter passes the runner's `childEnv` plus `AI_COLLAB_OWNED=claude` and `AI_COLLAB_PARENT`.
+- `AI_COLLAB_OWNED` is set but no code reads it. Hooks stand down by the owned record (`lib/owned.mjs` `standsDown`). `docs/research/owned-sessions.md` L158 says the value is `"1"`; `runner/types.d.ts` says `<harness>`. The adapter uses `claude`.
 
 ## Adapter events
 
@@ -445,6 +457,7 @@ Unsolved:
 | `runner/adapters/<harness>.mjs` | Real adapters, one per agent; claude, codex and opencode not written yet (`loadAdapters` logs `no <harness> adapter yet`) |
 | `test/runner-adapter-cursor.test.mjs`, `test/helpers/fake-cursor-agent.mjs`, `test/helpers/fake-openshell.mjs` | Cursor adapter tests; fake ACP child and fake openshell |
 | `runner/adapters/<harness>.mjs` | Real adapters, one per agent. `opencode.mjs` exists; claude, codex and cursor are not written yet (`loadAdapters` logs `no <harness> adapter yet`) |
+| `runner/adapters/<harness>.mjs` | Real adapters, one per agent: `claude.mjs` is built; codex, cursor and opencode are not (`loadAdapters` logs `no <harness> adapter yet`) |
 | `runner/delivery.mjs` | Delivery workflow: reserve, push, confirm, mark or release, expect-reply redelivery |
 | `lib/deliver-push.mjs` | Live push paths (socket, `codex queue`, OpenCode HTTP) and the ack tracker, shared with the UI dispatcher |
 | `lib/owned.mjs` | Owned-record read/write and `standsDown` |
