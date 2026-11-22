@@ -34,6 +34,48 @@ function RunRow({ run, open }) {
   </li>;
 }
 
+function TeamRoster({ pattern, members, editing, go, act, busy, disabled, notice }) {
+  const [text, setText] = useState(members.join("\n"));
+  const roster = text.split(/\r?\n/).map(member => member.trim()).filter(Boolean);
+  const savingDisabled = disabled || Boolean(busy) || !roster.length;
+  return <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-3 py-4 text-sm">
+    <div className="flex items-center gap-2">
+      <h2 className="font-mono text-base font-semibold">@{pattern.name}</h2>
+      <Tag>{pattern.removable ? "project team" : "global team"}</Tag>
+    </div>
+    {notice && <p role="alert" className="text-xs text-destructive">{notice}</p>}
+    {editing ? <form className="flex flex-col gap-3" onSubmit={event => {
+      event.preventDefault();
+      if (savingDisabled) return;
+      act("edit", { editTeam: true, team: pattern.name, members: roster }, () => go({ pattern: pattern.name }));
+    }}>
+      <label className="flex flex-col gap-1">
+        Members
+        <span className="text-xs text-muted-foreground">One harness or harness:model per line.</span>
+        <textarea className="rounded-lg border bg-background p-2 font-mono" rows={6} value={text}
+          disabled={Boolean(busy)} onChange={event => setText(event.target.value)}/>
+      </label>
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" disabled={savingDisabled}>Save roster</Button>
+        <Button type="button" size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => go({ pattern: pattern.name })}>Cancel</Button>
+      </div>
+    </form> : <>
+      <section className="flex flex-col gap-2">
+        <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Members</h3>
+        <ul className="flex flex-col gap-1.5">
+          {members.map((member, index) => <li key={index} className="rounded-lg border p-2 font-mono text-xs">{member}</li>)}
+        </ul>
+      </section>
+      {pattern.removable && <div className="flex gap-2">
+        <Button type="button" size="sm" variant="outline" disabled={disabled || Boolean(busy)}
+          onClick={() => go({ pattern: pattern.name, edit: "1" })}>Edit roster</Button>
+        <ConfirmButton label="Delete" question={`Delete team ${pattern.name}?`} confirmLabel="Delete" disabled={disabled || Boolean(busy)}
+          onConfirm={() => act("delete", { deletePattern: pattern.name }, () => go({}))}/>
+      </div>}
+    </>}
+  </div>;
+}
+
 function PatternInspect({ pattern, own, go, act, busy, disabled, notice, raw }) {
   const graph = toGraph(pattern);
   return <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-3 py-4 text-sm">
@@ -45,7 +87,6 @@ function PatternInspect({ pattern, own, go, act, busy, disabled, notice, raw }) 
     <p className="text-muted-foreground">{describe(pattern)}</p>
     {pattern.invalid && <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">{pattern.invalid}</p>}
     {canCopy(pattern.source) && <p className="text-xs text-muted-foreground">Read-only. Copy it to the project to change it.</p>}
-    {pattern.source === "team" && !pattern.removable && <p className="text-xs text-muted-foreground">Global team: remove it from teams.json.</p>}
 
     <section className="flex flex-col gap-2">
       <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Roles</h3>
@@ -97,7 +138,7 @@ export function PatternsPage({ data, project, selected, navigate, call, disabled
   const runs = data.runs ?? [];
   const go = next => navigate({ project, level: "patterns", ...next });
   // A notice or a pending action belongs to the view it began in; moving to another pattern or run clears both.
-  const view = selected.run || selected.pattern || "";
+  const view = selected.run || `${selected.pattern ?? ""}:${selected.edit ?? ""}`;
   useEffect(() => { setNotice(""); setBusy(""); }, [view]);
 
   async function act(label, payload, after) {
@@ -115,8 +156,16 @@ export function PatternsPage({ data, project, selected, navigate, call, disabled
     return <RunView key={run.id + ":" + (run.handoffs?.length ?? 0)} run={run} data={data} go={go} act={act} busy={busy} disabled={disabled} notice={notice}/>;
   }
 
+  const current = patterns.find(item => item.name === selected.pattern);
+  if (current?.legacy && !selected.author && selected.edit !== "new") {
+    if (selected.edit && !current.removable) return <p className="py-16 text-center text-sm text-muted-foreground">Global team rosters are read-only.</p>;
+    const members = data.teams?.find(team => team.id === current.name)?.members ?? [];
+    return <TeamRoster key={project + ":" + view} pattern={current} members={members} editing={Boolean(selected.edit)}
+      go={go} act={act} busy={busy} disabled={disabled} notice={notice}/>;
+  }
+
   if (selected.edit) {
-    const pattern = selected.edit === "new" ? null : patterns.find(item => item.name === selected.pattern);
+    const pattern = selected.edit === "new" ? null : current;
     if (selected.edit !== "new" && !pattern?.editable) return <p className="py-16 text-center text-sm text-muted-foreground">Only a project pattern can be edited here.</p>;
     // The author composer hands over the name typed there; the editor still starts a new team.
     return <TeamEditor key={selected.edit + (selected.pattern || selected.authorName || "")} pattern={selected.edit === "new" ? null : pattern} initialName={selected.authorName || ""} templates={data.templates ?? []} project={project} call={call} go={go} disabled={disabled}/>;
@@ -132,7 +181,7 @@ export function PatternsPage({ data, project, selected, navigate, call, disabled
   }
 
   if (selected.pattern) {
-    const pattern = patterns.find(item => item.name === selected.pattern);
+    const pattern = current;
     if (!pattern) return <p className="py-16 text-center text-sm text-muted-foreground">Unknown pattern &quot;{selected.pattern}&quot;.</p>;
     return <PatternInspect pattern={pattern} own={runsOf(runs, pattern.name)} go={go} act={act} busy={busy} disabled={disabled} notice={notice} raw={selected.raw}/>;
   }
