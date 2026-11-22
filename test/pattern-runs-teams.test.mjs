@@ -176,6 +176,35 @@ test("two fan-in edges into one target: a wait nothing live can end fails the ru
   assert.match(runStatus(cfg, id).error, /fan-in into "orch" stalled: no live instance can advance "pass" \(1 of 2 reviewers instances arrived\)/);
 });
 
+test("max_visits counts each instance: N=3 with one fail-and-resubmit round stays within 3", async (t) => {
+  const round = `digraph round {
+  graph [max_visits=3];
+  orch [agent="claude", prompt="O."];
+  workers [agent="codex", count=3, prompt="W."];
+  reviewers [agent="cursor", count=3, prompt="R."];
+  orch -> workers [on="dispatch", kind="broadcast", required=false];
+  workers -> reviewers [on="submit", kind="pair", required=false];
+  reviewers -> workers [on="fail", kind="pair", required=false, cap=3];
+  reviewers -> orch [on="pass", kind="fan-in", required=false];
+  orch -> done [on="finished", kind="pair", required=false];
+}
+`;
+  const { env, cfg } = await fixture(t, { round });
+  const { start } = fakeStart();
+  const now = clock();
+  const { id } = await startRun(cfg, "round", "x", env, { start, models: MODELS, now });
+  const at = (role, index) => sessionOf(cfg, id, role, index);
+  await advanceRun(cfg, id, "dispatch", { caller: at("orch", 0), env, start, now });
+  for (let i = 0; i < 3; i += 1) await advanceRun(cfg, id, "submit", { caller: at("workers", i), env, start, now });
+  for (let i = 0; i < 3; i += 1) await advanceRun(cfg, id, "fail", { caller: at("reviewers", i), env, start, now });
+  for (let i = 0; i < 3; i += 1) await advanceRun(cfg, id, "submit", { caller: at("workers", i), env, start, now });
+  for (let i = 0; i < 2; i += 1) await advanceRun(cfg, id, "pass", { caller: at("reviewers", i), env, start, now });
+  const last = await advanceRun(cfg, id, "pass", { caller: at("reviewers", 2), env, start, now });
+  assert.equal(last.status, "running", "no visit limit is hit");
+  const done = await advanceRun(cfg, id, "finished", { caller: at("orch", 0), env, start, now });
+  assert.equal(done.status, "done");
+});
+
 test("a role's fallback goes into its start brief as an instruction not to switch itself", async (t) => {
   const withFallback = `digraph fb {
   a [agent="claude", prompt="A.", fallback="codex:gpt-5"];
