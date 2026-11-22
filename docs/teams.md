@@ -66,8 +66,9 @@ Does not load (the file shows `invalid` with the line):
 
 - `required: true`: the run finishes only after this handoff has fired. `finished` before that is refused and names the missing handoff.
 - `required: false` (guidance): the active role may skip it.
-- `cap`: a handoff that has fired `cap` times fails the run and notifies the operator. Each advance that fires the handoff counts once.
-- `max_visits`: a role entered more often than `max_visits` fails the run. The entry role counts as its first visit.
+- `cap`: a handoff that would exceed `cap` suspends the run and notifies the operator. Each advance that fires the handoff counts once.
+- `max_visits`: a handoff that would exceed `max_visits` for a role instance suspends the run and notifies the operator. The entry role counts as its first visit.
+- In a suspended run, the operator can confirm the pending handoff in the run view. The confirmation applies to that handoff only and is recorded with the operator’s login.
 - `fallback`: part of the role's start brief. It says: if the role hits a usage or subscription limit, tell the operator and propose switching to the fallback; do not switch yourself. Nothing switches automatically.
 - A role whose session cannot start fails the run with the reason and notifies the operator.
 - Only a live instance's session can advance a run. The operator's UI can override and records the operator's login on the handoff.
