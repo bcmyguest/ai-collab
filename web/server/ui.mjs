@@ -22,6 +22,7 @@ import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } 
 import { availableHarnesses, availablePlaces, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
 import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
+import { LIMIT_TOOL, WAIT_LABEL, chooseLimit } from "../../lib/limit-alert.mjs";
 import { closedProjectNames, createTeam, deleteTeam, listTeams, readProjectsFile, removeProject, setProjectClosed, teamTask } from "../../lib/teams.mjs";
 import { clearFields, modelFields, sessionHistory } from "../../lib/session-events.mjs";
 import { compactionFields } from "../../lib/compaction.mjs";
@@ -774,8 +775,19 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       if (!["allow", "deny"].includes(decision)) reject(400, "Decision must be allow or deny");
       answer = decision;
     }
+    if (approval.tool === LIMIT_TOOL) return answerLimit(project, approval, answer);
     await publish(project.cfg, project.topic, `reply ${id} ${answer}`, { title: replyTitle(project.cfg, by) });
     return { sent: true, status: approval.questions ? "Answer sent" : decision === "allow" ? "Allow sent" : "Deny sent" };
+  }
+
+  // A limit card's pick: "Wait for reset" acknowledges; a replacement starts a session (lib/limit-alert.mjs chooseLimit). No ntfy reply: no hook waits.
+  async function answerLimit(project, approval, answer) {
+    const label = Object.values(parseChoice(approval.questions, answer) ?? {})[0];
+    if (label === WAIT_LABEL) return { sent: true, status: "Waiting for reset" };
+    const result = await chooseLimit(project.cfg, { id: approval.id, label, start, env });
+    if (result.status === "duplicate") reject(409, result.detail);
+    if (result.status === "failed") reject(400, result.detail);
+    return { sent: true, status: `Started ${result.session}`, session: result.session, detail: result.detail };
   }
 
   // An A2UI surface action: a choice's picks become the answers object, a question's text the reply body.
