@@ -30,7 +30,8 @@ test("resetClock formats a local HH:MM and is empty without a time", () => {
 test("limitLine names the agent, the window and the reset", () => {
   assert.equal(limitLine({ harness: "claude", model: "claude-opus-5-5", windowName: "5-hour", resetsAt: new Date(2026, 10, 22, 18, 0).getTime() }),
     "Limit reached · claude:claude-opus-5-5 · 5-hour · resets 18:00");
-  assert.equal(limitLine({ harness: "codex" }), "Limit reached · codex · reset time unknown");
+  assert.equal(limitLine({ harness: "codex" }), "Rate limited · codex · reset time unknown");
+  assert.equal(limitLine({ harness: "codex", wording: true }), "Limit reached · codex · reset time unknown");
 });
 
 test("replacementOptions puts a valid role fallback first and skips the current harness", () => {
