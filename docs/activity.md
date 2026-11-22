@@ -41,10 +41,11 @@ Every compact row carries `compaction: {trigger?, phase, tokensBefore?, tokensAf
 | Source | Phase | Where |
 |---|---|---|
 | Claude `compact_boundary` system message (`pre_tokens`, `post_tokens`), `@anthropic-ai/claude-agent-sdk` sdk.d.ts:4058 | finished, with token counts | runner/adapters/claude.mjs |
+| Claude `SessionStart` `source: "compact"` (sdk.d.ts:7266) | finished | lib/activity.mjs |
 | Codex `contextCompaction` item | started and finished together | runner/adapters/codex.mjs |
 | OpenCode `session.compaction.started`, `.ended`, `.failed` | started, finished, failed | runner/adapters/opencode.mjs |
 
-The compact row from a finished step reads `compacted · <trigger>`, and a failed one reads `compaction failed`. Hook rows (`PreCompact`) do not carry the field yet. Claude's `PostCompact` (sdk.d.ts:2778) and `SessionStart` with `source: "compact"` (sdk.d.ts:7266) are not wired yet.
+The compact row from a finished step reads `compacted · <trigger>`, and a failed one reads `compaction failed`. Claude's `SessionStart` with `source: "compact"` (sdk.d.ts:7266) is a finished compact row. `PreCompact` rows do not carry the field yet. Claude's `PostCompact` (sdk.d.ts:2778) is not in hooks/hooks.json yet.
 
 ## Cost to the agent
 

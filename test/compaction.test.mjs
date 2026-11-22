@@ -66,3 +66,10 @@ test("Claude's compact_boundary becomes one finished step with the SDK token cou
     { aiCollab: { compaction: { trigger: "auto", phase: "finished", tokensBefore: 182000, tokensAfter: 31000 } } }]]);
   await adapter.shutdown?.();
 });
+
+test("SessionStart from a compaction is a finished compact row; other sources stay start rows", async () => {
+  const { activityEvents } = await import("../lib/activity.mjs");
+  assert.deepEqual(activityEvents("claude", "sessionstart", { source: "compact" }),
+    [{ type: "compact", input: "compacted", compaction: { phase: "finished" } }]);
+  assert.deepEqual(activityEvents("claude", "sessionstart", { source: "clear" }), [{ type: "start", input: "session started · clear" }]);
+});
