@@ -176,6 +176,20 @@ test("two fan-in edges into one target: a wait nothing live can end fails the ru
   assert.match(runStatus(cfg, id).error, /fan-in into "orch" stalled: no live instance can advance "pass" \(1 of 2 reviewers instances arrived\)/);
 });
 
+test("a role's skill is named in its start brief", async (t) => {
+  const skilled = `digraph sk {
+  a [agent="claude", skill="diagnose-failure", prompt="A."];
+  b [agent="codex", prompt="B."];
+  a -> b [on="go"];
+  b -> done [on="finish"];
+}
+`;
+  const { env, cfg } = await fixture(t, { sk: skilled });
+  const { calls, start } = fakeStart();
+  await startRun(cfg, "sk", "go", env, { start, models: MODELS, now: clock() });
+  assert.match(calls[0].prompt, /Use the diagnose-failure skill\./);
+});
+
 test("max_visits counts each instance: N=3 with one fail-and-resubmit round stays within 3", async (t) => {
   const round = `digraph round {
   graph [max_visits=3];
