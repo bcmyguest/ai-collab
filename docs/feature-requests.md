@@ -26,7 +26,7 @@ Operator requests from chat and the terminal, newest last. Status: done (merged 
 | MCP `interrupt` tool | done |
 | Messages appear in the Claude terminal immediately (socket delivery, like Pulsar) | done (merged main 2026-11-21: `claude-socket.mjs`, dispatcher confirm + wait) |
 | Wake closed sessions on a message (durable, DBOS-like) | done in the runner; real wakes wait on harness adapters |
-| Owned sessions: runner service, durable workflows, AG-UI event names, four harness adapters | building (runner: broadcasts, runtime mode, approval timeout, scheduled workflows merged 2026-11-21; harness adapters next) |
+| Owned sessions: runner service, durable workflows, AG-UI event names, four harness adapters | building (runner: broadcasts, runtime mode, approval timeout, scheduled workflows, durable delivery/wake workflows merged 2026-11-22; harness adapters next) |
 | Copy T3 Code's code viewer (`@pierre/diffs`) for mobile and web | done (file edits render as diffs) |
 | Operator prompts and phone replies (ask_question answers) visible in session and project chat | done (merged main 2026-11-21; coordinator confirmed) |
 | Context management and slash commands from the phone: Compact, Clear/new, Model switch, any typed /cmd; context meter plus loaded files | done (compact partial for Claude/Codex; model and passthrough OpenCode only, unverified) |
