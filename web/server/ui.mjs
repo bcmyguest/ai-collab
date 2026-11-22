@@ -809,6 +809,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const cards = scope === "home" ? shown.flatMap(item => item === project ? sessionCards(item, list, mode)
       : item.failed ? [] : sessionCards(item, agents(item, lastMessages(item)), mode))
       : scope === "sessions" ? sessionCards(project, list, mode) : undefined;
+    const runs = listRuns(project.cfg);
     return {
       project: project.cfg.project, operator: project.operator.peer, mode, alerts: readAlertLevel(env),
       // Sessions per project as running and inactive, read by the sidebar rows; kept apart from projects.
@@ -840,8 +841,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       startPlaces: startPlaces(project),
       teams: Object.entries(listTeams(project.cfg, env)).map(([id, members]) => ({ id, members })),
       patterns: patternRows(project.cfg, env),
-      runs: listRuns(project.cfg).slice(0, 20),
-      tasks: taskBoard(project.root, list),
+      runs: runs.slice(0, 20),
+      tasks: taskBoard(project.root, list, runs),
     };
   }
 

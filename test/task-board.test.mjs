@@ -30,6 +30,17 @@ test("taskBoard lists tasks with owner presence, run and the last progress line"
   assert.deepEqual(board.tasks[1], { id: "two", title: "Two", status: "blocked", blockers: ["one"], last: null, updated: NOW });
 });
 
+test("taskBoard names the active session of a task's team run", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "task-board-"));
+  const doc = { v: 1, tasks: [] };
+  addTask(doc, { id: "run-task", title: "Run task" }, NOW);
+  doc.tasks[0].run = "lx9k2m-abc123";
+  writeTasks(root, doc);
+  const runs = [{ id: "lx9k2m-abc123", active: "reviewer", sessions: { lead: "claude#1122334455667788", reviewer: OWNER } }];
+  assert.equal(taskBoard(root, [], runs).tasks[0].runSession, OWNER);
+  assert.equal(taskBoard(root, [], []).tasks[0].runSession, undefined);
+});
+
 test("taskBoard marks an owner not seen as offline and reports an invalid store", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "task-board-"));
   const doc = { v: 1, tasks: [] };

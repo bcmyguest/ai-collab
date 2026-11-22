@@ -5,9 +5,12 @@ import { columnsOf, FILTERS, ageOf } from "@/lib/task-board";
 import { cn } from "@/lib/utils";
 
 const DOT = { open: "bg-muted-foreground", decided: "bg-sky-500", building: "bg-amber-500", blocked: "bg-destructive", done: "bg-emerald-500" };
+const CARD = "flex w-full min-w-0 flex-col gap-1.5 rounded-xl border bg-card p-3 text-left text-sm";
 
-function Card({ task, now }) {
-  return <li className="flex flex-col gap-1.5 rounded-xl border bg-card p-3 text-sm">
+function Card({ task, now, open }) {
+  // The owner's timeline, else the team run's active session; a card with neither is not a link.
+  const target = task.owner || task.runSession || "";
+  const body = <>
     <div className="flex min-w-0 items-start gap-2">
       <span className="min-w-0 flex-1 font-medium leading-snug break-words">{task.title}</span>
       <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{task.id}</span>
@@ -26,11 +29,16 @@ function Card({ task, now }) {
       <span className="min-w-0 flex-1 break-words">{task.last.text}</span>
       <span className="shrink-0 text-muted-foreground">{ageOf(task.last.at, now)} ago</span>
     </p>}
+  </>;
+  return <li>
+    {target
+      ? <button type="button" aria-label={`Open ${target}`} onClick={() => open(target)} className={cn(CARD, "transition-colors hover:bg-accent")}>{body}</button>
+      : <div className={CARD}>{body}</div>}
   </li>;
 }
 
 /** The status board: one column per status, stacked on a phone and side by side from md up, with a status filter. */
-export function TaskBoard({ board, now }) {
+export function TaskBoard({ board, now, open = () => {} }) {
   const [filter, setFilter] = useState("all");
   const tasks = board?.tasks || [];
   const columns = columnsOf(tasks, filter);
@@ -47,7 +55,7 @@ export function TaskBoard({ board, now }) {
         <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
           <span aria-hidden className={cn("inline-block size-2 rounded-full", DOT[status])}/>{status} · {list.length}
         </h2>
-        {list.length ? <ul className="flex flex-col gap-2">{list.map(task => <Card key={task.id} task={task} now={now}/>)}</ul>
+        {list.length ? <ul className="flex flex-col gap-2">{list.map(task => <Card key={task.id} task={task} now={now} open={open}/>)}</ul>
           : <p className="text-xs text-muted-foreground">No {status} tasks.</p>}
       </section>)}
     </div>

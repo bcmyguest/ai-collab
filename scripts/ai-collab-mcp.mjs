@@ -13,6 +13,7 @@ import { advanceRun, runStatus } from "../lib/pattern-runs.mjs";
 import { listModels } from "../lib/models.mjs";
 import { interruptSession } from "../lib/interrupt.mjs";
 import { listSessions } from "../lib/sessions.mjs";
+import { recordOwnerProgress } from "../lib/tasks.mjs";
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 const INSTRUCTIONS = "AI Collab connects this session to the human operator over a private ntfy server. "
@@ -253,6 +254,8 @@ async function sendToAll(cfg, { body, reply_to: replyTo, progress, attachment })
   const { mode } = storedMode(cfg);
   if (progress === true && mode === "quiet") return { sent: false, reason: "AFK mode is QUIET: progress posts are dropped." };
   await sendMessage(cfg, "all", body, { replyTo, attachment });
+  // A progress note also lands on the building tasks this session owns; a task store fault never fails the post.
+  if (progress === true) await recordOwnerProgress(cfg, body).catch(() => 0);
   return { sent: true, mode };
 }
 
