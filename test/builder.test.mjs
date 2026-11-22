@@ -205,3 +205,14 @@ test("sharedLibs lists a binary's libraries without glibc's own", async () => {
   assert.ok(Array.isArray(libs));
   assert.ok(libs.every((p) => path.isAbsolute(p) && !/^(libc|libm|libdl|libpthread|librt|ld-linux)\./.test(path.basename(p))));
 });
+
+test("a CODEX_HOME with no login falls back to the user's ~/.codex login", async () => {
+  const { toolSources } = await import("../lib/builder.mjs");
+  const { homedir } = await import("node:os");
+  const { existsSync, mkdtempSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const empty = mkdtempSync(join((await import("node:os")).tmpdir(), "ai-collab-codex-home-"));
+  const src = toolSources({ harness: "codex", root: empty }, { PATH: "", HOME: empty, CODEX_HOME: empty });
+  const own = join(homedir(), ".codex", "auth.json");
+  assert.equal(src.codexAuth, existsSync(own) ? own : "");
+});
