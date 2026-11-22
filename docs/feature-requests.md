@@ -39,4 +39,7 @@ Operator requests from chat and the terminal, newest last. Status: done (merged 
 | Message delivery as durable workflows in the runner (reserve, push, confirm, mark/release; durable backoff) instead of UI-server state | done (runner owns delivery; UI dispatcher stands down while it runs) |
 | Cursor-style tool groups between assistant messages in the session timeline | done |
 | Modern visual refresh of the whole UI | open (adapters merged 2026-11-22; ready to dispatch) |
+| Teams as wteam-style DOT graphs: team.dot per team (project and global), full wteam semantics (agent, count, skill, prompt; on, kind broadcast/pair/fan-in; description, max_visits), DOT text editor with live graph | building (operator 2026-11-22: list, graph and run view first; DOT storage and runner next) |
+| Inspect and edit teams in the UI | building |
+| Compaction in all agents: compact every harness, before/after tokens per compaction, a cross-agent compaction map, one compaction event model | building (operator 2026-11-22) |
 | Record feature requests | this file |
