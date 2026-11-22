@@ -1,5 +1,5 @@
-// The AI Collab A2UI catalog: the basic catalog plus OptionPicker, which ChoicePicker cannot express (per-option descriptions, Other, read-only).
-import { Catalog, DynamicStringListSchema, DynamicStringSchema } from "@a2ui/web_core/v0_9";
+// The AI Collab A2UI catalog: the basic catalog plus OptionPicker, which ChoicePicker cannot express (per-option descriptions, Other, read-only), and Chip.
+import { Catalog, ComponentIdSchema, DynamicStringListSchema, DynamicStringSchema } from "@a2ui/web_core/v0_9";
 import { basicCatalog } from "@a2ui/web_core/v0_9/basic_catalog";
 // zod 3 matches the copy @a2ui/web_core validates with; the root zod 4 cannot read its schemas.
 import { z } from "zod-v3";
@@ -18,7 +18,15 @@ export const OptionPickerApi = {
     readOnly: z.boolean().optional(),
     value: DynamicStringListSchema,
     other: DynamicStringSchema.optional(),
+    // Id of the TextField rendered as the last row of the list (the Other answer).
+    otherChild: ComponentIdSchema.optional(),
   }),
+};
+
+// A short tag, such as a question's header or a status badge.
+export const ChipApi = {
+  name: "Chip",
+  schema: z.object({ text: z.string(), tone: z.enum(["default", "muted"]).optional() }),
 };
 
 /** A catalog of the basic components and the given custom ones (API objects or React implementations). */
