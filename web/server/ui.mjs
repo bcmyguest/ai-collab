@@ -34,6 +34,7 @@ import { compactionFields } from "../../lib/compaction.mjs";
 import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern, savePattern, saveTeamText, teamTemplates, teamTextOf } from "../../lib/patterns.mjs";
 import { authorTeam, saveAuthoredTeam } from "../../lib/team-author.mjs";
 import { listOwned, readOwned } from "../../lib/owned.mjs";
+import { builderAssignment, recoverBuilder } from "../../lib/builder.mjs";
 import { openTasks } from "../../lib/tasks.mjs";
 import { priorityOf } from "../../lib/task-order.mjs";
 import { mentions, mentionedNames, mentionedTeams, startOnlyMentions, messageDestinations } from "../lib/message-routing.js";
@@ -59,7 +60,7 @@ import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a
 export { mentionedNames, mentionedTeams, startOnlyMentions };
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide"];
+const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "recover-builder"];
 const HOSTED_ACTIONS = new Set(["history", "messages", "send", "reply", "afk", "approve", "a2ui"]);
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
@@ -988,7 +989,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       patterns: hosted ? [] : patternRows(project.cfg, env),
       templates: teamTemplates(),
       runs: runs.slice(0, 20),
-      tasks: taskBoard(project.tasks, list, runs, project.tasks ? listOwned(project.cfg) : []),
+      tasks: taskBoard(project.tasks, list, runs, project.tasks ? listOwned(project.cfg) : [],
+        (task, sessions) => builderAssignment(project.cfg.project, task, sessions, env)),
     };
   }
 
@@ -1053,6 +1055,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   function push(client) {
     if (client.authorized && !client.authorized()) return client.disconnect();
     const current = snapshot(client);
+    client.hasOpenTasks = current.tasks.tasks.some(task => task.status !== "done");
     client.hasRunningJobs = current.agents.some(agent => agent.runningJobs) || current.sessions?.some(agent => agent.runningJobs);
     pushSurfaces(client, current);
     const state = JSON.stringify(buildEvent(EventType.STATE_SNAPSHOT, { snapshot: current }));
@@ -1153,8 +1156,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         keepalive = setInterval(() => {
           if (client.authorized && !client.authorized()) return client.disconnect();
           client.write(": keepalive\n\n");
-          // If the wrapper was killed, the job may exit without a registry write.
-          if (client.ready && client.hasRunningJobs && clients.has(client)) push(client);
+          // A process can exit without a task or job registry write.
+          if (client.ready && (client.hasRunningJobs || client.hasOpenTasks) && clients.has(client)) push(client);
         }, KEEPALIVE_MS);
         keepalive.unref?.();
         request.signal?.addEventListener("abort", close, { once: true });
@@ -1248,6 +1251,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const { cfg, operator, topic } = project;
       if (action === "approve") return json(201, await answerApproval(project, id, { decision, answers }, by));
       // The operator's decision on a task question goes straight into the task store; the next agent run reads it.
+      if (action === "recover-builder") {
+        if (!project.tasks || typeof id !== "string") reject(400, "Give the task id");
+        try { await recoverBuilder(cfg.project, id, harness, () => listOwned(cfg), env); }
+        catch (err) { reject(409, err.message); }
+        broadcast();
+        return json(201, { status: "Builder started", detail: id });
+      }
       if (action === "decide") {
         if (!project.tasks) reject(400, "This project has no task store");
         const text = typeof decisionText === "string" ? decisionText.trim() : "";

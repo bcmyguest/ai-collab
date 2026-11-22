@@ -1081,6 +1081,7 @@ function Console({ account }) {
       </div>}
       {!patterns && !composing && (tasksView ? <TaskBoard board={ready ? data.tasks : null} now={now} taskId={selected.task}
         back={() => navigate({ project, level: "tasks" })} compose={id => navigate({ project, level: "project", composeTask: id })}
+        recover={(id, harness) => action("recover-builder", { id, harness }, "Builder started")}
         decide={(id, answer) => action("decide", { id, answer }, "Decided")}
         open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatContainerRoot key={inbox ? "inbox" : home ? "home" : "conversation"} initial={home ? false : "instant"} contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
         <ChatContainerContent key={requested} className="mx-auto w-full max-w-3xl gap-5 px-3 py-4">

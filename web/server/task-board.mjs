@@ -1,7 +1,7 @@
 // The task board for the UI snapshot: each task with its owner's presence and its last progress line.
 
 /** Tasks of a project backend; an unreadable store reports its error instead of tasks. */
-export function taskBoard(backend, agents = [], runs = [], sessions = []) {
+export function taskBoard(backend, agents = [], runs = [], sessions = [], assignment) {
   if (!backend) return { tasks: [] };
   let list;
   try {
@@ -37,6 +37,7 @@ export function taskBoard(backend, agents = [], runs = [], sessions = []) {
         last: task.progress.at(-1) ?? null,
       ...(task.question ? { question: task.question } : {}),
         updated: task.updated,
+        ...assignment?.(task, sessions),
       };
     }),
   };
