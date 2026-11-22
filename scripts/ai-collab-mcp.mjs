@@ -13,7 +13,7 @@ import { advanceRun, runStatus } from "../lib/pattern-runs.mjs";
 import { listModels } from "../lib/models.mjs";
 import { interruptSession } from "../lib/interrupt.mjs";
 import { listSessions } from "../lib/sessions.mjs";
-import { PROGRESS_MAX, STATUSES, clipProgress, openTasks, ownedBuilding, recordOwnerProgress } from "../lib/tasks.mjs";
+import { PROGRESS_MAX, STATUSES, TASK_PRIORITIES, clipProgress, openTasks, ownedBuilding, priorityOf, recordOwnerProgress, sortTasks } from "../lib/tasks.mjs";
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 const INSTRUCTIONS = "AI Collab connects this session to the human operator over a private ntfy server. "
@@ -245,7 +245,7 @@ const TOOLS = [
   },
   {
     name: "task_list",
-    description: "List the project's tasks (id, status, owner, run, title, blockers, last progress). Pass status to filter.",
+    description: "List the project's tasks (id, title, priority, status, owner, run, blockers, last progress), sorted by priority then status. Pass status to filter.",
     inputSchema: {
       type: "object", required: ["session"], additionalProperties: false,
       properties: { status: { type: "string", enum: STATUSES }, session: IDENTITY },
@@ -253,11 +253,12 @@ const TOOLS = [
   },
   {
     name: "task_update",
-    description: "Change one task: status, title, detail, run (run id), owner (your session address), block_on (a task id it waits on), or progress (a one-line note; longer text is clipped to 500 characters).",
+    description: "Change one task: priority (P0-P3; a missing priority is P2), status, title, detail, run (run id), owner (your session address), block_on (a task id it waits on), or progress (a one-line note; longer text is clipped to 500 characters).",
     inputSchema: {
       type: "object", required: ["id", "session"], additionalProperties: false,
       properties: {
         id: { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$", maxLength: 40 },
+        priority: { type: "string", enum: TASK_PRIORITIES },
         status: { type: "string", enum: STATUSES },
         title: { type: "string", minLength: 1, maxLength: 300 },
         detail: { type: "string", maxLength: 2000 },
@@ -298,7 +299,7 @@ async function sendToAll(cfg, { body, reply_to: replyTo, progress, attachment },
 
 function taskView(task) {
   return {
-    id: task.id, title: task.title, status: task.status, ...(task.detail ? { detail: task.detail } : {}),
+    id: task.id, title: task.title, priority: priorityOf(task), status: task.status, ...(task.detail ? { detail: task.detail } : {}),
     ...(task.owner ? { owner: task.owner } : {}), ...(task.run ? { run: task.run } : {}), blockers: task.blockers,
     last: task.progress.at(-1) ?? null,
   };
@@ -308,7 +309,7 @@ function taskView(task) {
 async function updateTask(cfg, args, env) {
   const backend = openTasks(cfg.project, env);
   const patch = {};
-  for (const key of ["status", "title", "detail", "run", "owner"]) if (args[key] !== undefined) patch[key] = args[key];
+  for (const key of ["status", "title", "detail", "run", "owner", "priority"]) if (args[key] !== undefined) patch[key] = args[key];
   if (args.block_on !== undefined) patch.block = args.block_on;
   // The changes and the progress note are one store transaction: all of them are validated, or none is written.
   if (args.progress !== undefined) patch.progress = { by: `${cfg.peer}#${cfg.session}`, text: args.progress };
@@ -425,7 +426,7 @@ async function handle(request) {
         case "pattern_start": throw new Error("pattern_start is operator-only; ask the operator to start the run from chat, or run ai-collab pattern start from a shell.");
         case "pattern_status": result = runStatus(cfg, args.run); break;
         case "pattern_advance": result = await advanceRun(cfg, args.run, args.event, { note: args.note ?? "", caller: `${cfg.peer}#${cfg.session}`, env }); break;
-        case "task_list": result = { tasks: openTasks(cfg.project, env).list().filter((t) => !args.status || t.status === args.status).map(taskView) }; break;
+        case "task_list": result = { tasks: sortTasks(openTasks(cfg.project, env).list()).filter((t) => !args.status || t.status === args.status).map(taskView) }; break;
         case "task_update": result = await updateTask(cfg, args, env); break;
       }
       if (!controller.signal.aborted) {

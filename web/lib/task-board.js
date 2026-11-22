@@ -1,11 +1,15 @@
 // Task board view model: status columns, the status filter and relative ages.
+import { sortTasks } from "../../lib/task-order.mjs";
+
 export const COLUMNS = ["open", "decided", "building", "blocked", "done"];
 export const FILTERS = ["all", ...COLUMNS];
+// The stored status stays "decided"; the UI calls it Ready, the operator approved it and a builder has not started.
+export const STATUS_LABEL = { open: "open", decided: "Ready", building: "building", blocked: "blocked", done: "done" };
 
-/** [status, tasks] per column in column order, store order inside a column; a filter other than "all" keeps one column. */
+/** [status, tasks] per column in column order, each sorted by priority; a filter other than "all" keeps one column. */
 export function columnsOf(tasks, filter = "all") {
   const shown = filter === "all" ? COLUMNS : [filter];
-  return shown.map(status => [status, tasks.filter(task => task.status === status)]);
+  return shown.map(status => [status, sortTasks(tasks.filter(task => task.status === status))]);
 }
 
 /** {status: count} for every status, so the filter row does not rescan the list once per status. */
@@ -13,6 +17,11 @@ export function countsOf(tasks) {
   const counts = Object.fromEntries(COLUMNS.map(status => [status, 0]));
   for (const task of tasks) if (counts[task.status] !== undefined) counts[task.status] += 1;
   return counts;
+}
+
+/** The label a column or filter shows for a status: "Ready" for decided, the status itself otherwise. */
+export function statusLabel(status) {
+  return STATUS_LABEL[status] ?? status;
 }
 
 /** The age of a timestamp in the largest whole unit: "12s", "5m", "3h", "2d". */
