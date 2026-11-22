@@ -58,7 +58,7 @@ async function setup(t, { gate = "accept", listen = true } = {}) {
     t.after(() => new Promise((resolve) => server.close(resolve)));
   }
   writeFileSync(join(claudeDir, "sessions", `${process.pid}.json`), JSON.stringify({
-    pid: process.pid, sessionId: CLAUDE_ID, status: "idle", ...(listen ? { messagingSocketPath: socketPath } : {}),
+    pid: process.pid, sessionId: CLAUDE_ID, status: "idle", cwd: "/tmp", ...(listen ? { messagingSocketPath: socketPath } : {}),
   }));
   writeFileSync(join(claudeDir, "sessions", `${process.pid}.k1.key`), "peer-token\n");
   const bob = loadConfig(peerEnv(fake, { peer: "bob", AI_COLLAB_PEERS: env.AI_COLLAB_PEERS, AI_COLLAB_STATE_DIR: cfg.stateDir }));
