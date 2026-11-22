@@ -100,4 +100,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Scheduled jobs and agents shown apart: the PM agent is not its schedule entry (operator: agent != scheduled job) | open |
 | Schedule run kills builders the PM started: runner SIGKILLs the whole process group on exit (runner/schedules.mjs:129) | done |
 | Builders the PM starts live in the runner's cgroup, so a runner restart (deploy) kills them; launch each as its own systemd-run --user unit | building |
+| Sessions started from the UI live in the ai-collab-ui cgroup; a UI restart kills them (killed the Codex research session) | open |
+| Space to switch to local: a key in the terminal takes a phone-controlled session back to local control (as HAPI does) | open |
+| Reply to any message: when the server can't accept a reply id, send it as text quoting the first/last bit of the original instead of failing 'Invalid reply' | open |
 <!-- tasks:end -->
