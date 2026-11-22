@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { NODE, STATUS_FILL, layeredLayout, listLayout, taskGraph } from "@/lib/task-graph";
+import { priorityOf } from "../../lib/task-order.mjs";
 
 const ARROW = "task-arrow";
 // Keeps the 12 px page padding on each side of the canvas.
@@ -69,6 +70,7 @@ export function TaskGraph({ tasks, open = () => {} }) {
               <rect width="6" height={NODE.height} rx="3" fill={STATUS_FILL[task.status]}/>
               <text x="16" y="23" fontSize="13" fontWeight="500" className="fill-foreground">{label(task.title, laid.nodeWidth)}</text>
               <text x="16" y="43" fontSize="11" className="fill-muted-foreground">{task.status}{task.owner ? ` · ${task.owner.split("#")[0]}` : ""}</text>
+              <text x={laid.nodeWidth - 8} y="20" fontSize="10" textAnchor="end" className="fill-muted-foreground">{priorityOf(task)}</text>
             </g>;
           })}
         </svg>

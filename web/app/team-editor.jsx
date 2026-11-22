@@ -8,11 +8,11 @@ export const CHECK_MS = 300;
 
 // DOT text with a live graph above it (one column on phones, side by side on desktop). Each edit is checked after CHECK_MS;
 // while the text has an error the graph keeps the last valid one, and the error shows with its source line.
-export function TeamEditor({ pattern, templates, project, call, go, disabled }) {
+export function TeamEditor({ pattern, initialName = "", templates, project, call, go, disabled }) {
   const isNew = !pattern;
   const [templateName, setTemplateName] = useState(templates[0]?.name ?? "");
-  const [name, setName] = useState(pattern?.name ?? "");
-  const [text, setText] = useState(pattern ? pattern.dot ?? "" : renameTeam(templates[0]?.text ?? "", ""));
+  const [name, setName] = useState(pattern?.name ?? initialName ?? "");
+  const [text, setText] = useState(pattern ? pattern.dot ?? "" : renameTeam(templates[0]?.text ?? "", initialName ?? ""));
   const [check, setCheck] = useState(null);
   const [good, setGood] = useState(pattern ?? null);
   const [busy, setBusy] = useState(false);

@@ -352,15 +352,17 @@ Privacy: the server encrypts each payload end to end for the subscribed browser 
 
 ## Sidebar, projects, and notifications
 
+**Agents** is its own sidebar section above **Sessions**: each session that called `set_identity` with a `name` appears there by that name, the PM first and the rest alphabetically, with its activity line and address. Tapping one opens its direct chat. A session that only has a harness title or a fallback name stays under **Sessions**. The name is the registry's `identityName` field, which a later hook's title does not overwrite (`lib/sessions.mjs`).
+
 A session row shows **N running** when it has running subagents, and the session header shows the same count. Subagent runs nest under their session in the sidebar; a run idle for more than 30 minutes (`IDLE_HIDE_MS` in `web/lib/subagent-state.js`) sits behind **Show N idle**. A subagent that resumes after its stop counts as running again on its next row.
 
 The session view's **Working now** line names each agent running now: the session with an open tool call (`harness#label (session)`) and each running subagent (`<kind> subagent in <address>`). The activity data carries no model name, so the line shows no `:model`. Timeline groups and texts show the address of the agent that produced them.
 
 Each project has a **⋯** menu. **Close** hides the project from the sidebar and Home; **Closed projects** lists them with **Reopen**. A closed project is a `"closed": true` flag on its `projects.json` entry. **Delete** asks first and removes the entry only; repo files, worktrees and ntfy history stay. The UI hides a deleted project until it restarts. Projects found by auto-join have no entry, so they cannot be closed or deleted here.
 
-**Scheduled** lists the runner's schedules read-only: name, interval, command, last run, next run; tap a job for its recent runs. With no runner socket it shows **runner offline**.
+**Scheduled jobs** lists the runner's schedules read-only: name, interval, command, last run, next run; tap a job for its recent runs. With no runner socket it shows **runner offline**. A job is its schedule entry, not the agent it runs: when its command resumes a session the row says `resumes cursor#…` and the job's detail sheet carries the same **Resumes** row, while the agent itself is listed under **Agents**.
 
-A reply shows the replied message as a quote above its body (sender and the first 80 characters); tap it to scroll to the original. The composer shows the same quote with a × to cancel. A plain @mention shows no quote.
+A reply shows the replied message as a quote above its body (sender and the first 80 characters); tap it to scroll to the original. The composer shows the same quote with a × to cancel. A plain @mention shows no quote. When the server cannot carry the reply's message id (id longer than 64 characters, or with punctuation), the reply is still sent, as plain text whose first line quotes the original's first and last six words (`web/lib/reply-quote.js`); the toast says so instead of an **Invalid reply** error.
 
 Notifications carry a link: ntfy's `click` field, built from `AI_COLLAB_UI_URL` (`lib/deep-link.mjs`). Without that variable no link is sent. An agent's reply opens its session thread; questions, approvals and broadcasts open the project chat.
 
