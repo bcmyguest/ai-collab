@@ -24,6 +24,7 @@ import { PatternsPage } from "./patterns-page";
 import { TaskBoard } from "./tasks";
 import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
 import { TABS, parseSelection } from "@/lib/selection";
+import { namedAgents, unnamedAgents } from "@/lib/sidebar";
 import { subscribeUiEvents } from "@/lib/ui-events";
 import { ActivityRow, GoToAgent, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
@@ -183,6 +184,50 @@ function SessionName({ agent }) {
   return agent?.name ? <span className="block min-w-0 truncate text-xs text-foreground/80" title={agent.name}>{agent.name}</span> : null;
 }
 
+// One session row in the sidebar: its name, address, running count, waiting dot and last activity.
+// An agent row leads with its set_identity name; a plain row leads with its address.
+function SessionRow({ agent, project, selected, now, navigate, dispose, openRaw, disabled, lead = "address" }) {
+  // An agent row leads with the set_identity name, which a later harness title does not replace.
+  const name = lead === "name" ? agent.identityName || agent.name : "";
+  const label = name || short(agent.id);
+  return <li className="flex min-w-0 flex-col gap-1">
+    <div className="flex min-w-0 items-center gap-1">
+      <button type="button" aria-label={agent.waiting ? agent.id + ", waiting on you" : agent.id} title={agent.parent ? agent.id + " · started by " + agent.parent : agent.id} aria-current={selected.level === "session" && selected.session === agent.id ? "page" : undefined}
+        onClick={() => navigate({ project, level: "session", harness: agent.peer, session: agent.id, ...(selected.level === "session" && selected.session ? { tab: selected.tab } : {}) })}
+        className={cn("flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-sm transition-colors hover:bg-sidebar-accent",
+          selected.level === "session" && selected.session === agent.id && "bg-sidebar-accent")}>
+        <Avatar address={agent.id} className="size-6 text-[9px]"/>
+        <span className="flex min-w-0 flex-1 flex-col">
+          {lead === "name" ? <>
+            <span className="truncate font-medium" title={name}>{label}</span>
+            <span className="truncate font-mono text-[11px] text-muted-foreground">{short(agent.id)}</span>
+          </> : <>
+            <span className="truncate font-mono text-xs">{short(agent.id)}</span><SessionName agent={agent}/>
+          </>}
+          <span className="self-start"><RunningCount runs={agent.subagents} now={now}/></span>
+        </span>
+        {agent.waiting && <span role="img" aria-label="Waiting on you" title="Waiting on you" className="inline-block size-2.5 shrink-0 rounded-full bg-amber-500 ring-2 ring-amber-500/25"/>}
+        <Dot online={agent.online}/>
+        <span className="shrink-0 text-right text-[11px] leading-tight text-muted-foreground">{ago(agent.lastMessageAt, now)}{agent.activeAt ? <><br/>active {ago(agent.activeAt, now)}</> : null}</span>
+      </button>
+      {dispose && <SessionMenu node={{ ...agent, project }} disabled={disabled} dispose={dispose} raw={openRaw} map={() => navigate({ project, level: "compactions" })} label={"Session actions for " + agent.id}/>}
+    </div>
+    {/* An agent's activity line says what it is doing now; the harness title is beside it on the card views. */}
+    {lead === "name" && agent.activity && <p className="truncate px-2 text-[11px] text-muted-foreground" title={agent.activity}>{agent.activity}</p>}
+    <SubagentRuns runs={agent.subagents} now={now} open={run => navigate({ project, level: "session", harness: agent.peer, session: agent.id, tab: "subagents", run: run.run })}/>
+  </li>;
+}
+
+// The agents that set a name with set_identity, PM first; a tap opens that session's direct chat.
+function AgentList({ agents, project, selected, now, navigate, dispose, openRaw, disabled }) {
+  return <section aria-label="Agents">
+    <h2 className="px-2 pb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Agents</h2>
+    <ul className="flex flex-col gap-1">
+      {agents.map(agent => <SessionRow key={"agent:" + agent.id} agent={agent} project={project} selected={selected} now={now} navigate={navigate} dispose={dispose} openRaw={openRaw} disabled={disabled} lead="name"/>)}
+    </ul>
+  </section>;
+}
+
 function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, disabled, projectAction, openHash }) {
   const current = selected.project || data.project;
   // Home's state carries the server's default project's agents; they are not "this project" here.
@@ -213,7 +258,6 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
       </ul>
       {data.closedProjects?.length > 0 && <div className="pt-4"><ClosedProjects names={data.closedProjects} act={projectAction}/></div>}
     </section>
-    <ScheduledJobs project={home ? "" : current} openRun={openHash}/>
     {!home && <section className="px-2 pb-2">
       {/* The task board has its own entry, beside Patterns and teams, rather than a link beside SESSIONS. */}
       <button type="button" onClick={() => navigate({ project: current, level: "tasks" })} aria-current={selected.level === "tasks" ? "page" : undefined}
@@ -229,6 +273,10 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
         <span className="shrink-0 text-xs text-muted-foreground">{(data.patterns || []).length}</span>
       </button>
     </section>}
+    {/* Scheduled jobs are the runner's own entries, not agents: they stay in their own section below. */}
+    <ScheduledJobs project={home ? "" : current} openRun={openHash}/>
+    {/* Agents (sessions that set an identity name) sit apart from the plain session rows and from Scheduled jobs. */}
+    {!home && namedAgents(data.agents).length > 0 && <AgentList agents={namedAgents(data.agents)} project={current} selected={selected} now={now} navigate={navigate} dispose={dispose} openRaw={openRaw} disabled={disabled}/>}
     <section>
       <div className="flex items-center justify-between px-2 pb-2">
         <h2 className="min-w-0 truncate text-xs font-medium uppercase tracking-wider text-muted-foreground" title={home ? undefined : current}>{home ? "Sessions" : "Sessions · " + current}</h2>
@@ -237,24 +285,9 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
           className="shrink-0 rounded-full px-2 py-0.5 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">All sessions</button>
       </div>
       {home ? <p className="px-2 text-sm text-muted-foreground">Pick a project to list its sessions here.</p>
-        : data.agents.length === 0 && <p className="px-2 text-sm text-muted-foreground">No sessions seen yet.</p>}
+        : unnamedAgents(data.agents).length === 0 && namedAgents(data.agents).length === 0 && <p className="px-2 text-sm text-muted-foreground">No sessions seen yet.</p>}
       <ul className="flex flex-col gap-1">
-        {!home && data.agents.map(agent => <li key={agent.id} className="flex min-w-0 flex-col gap-1">
-          <div className="flex min-w-0 items-center gap-1">
-          <button type="button" aria-label={agent.waiting ? agent.id + ", waiting on you" : agent.id} title={agent.parent ? agent.id + " · started by " + agent.parent : agent.id} aria-current={selected.level === "session" && selected.session === agent.id ? "page" : undefined}
-            onClick={() => navigate({ project: current, level: "session", harness: agent.peer, session: agent.id, ...(selected.level === "session" && selected.session ? { tab: selected.tab } : {}) })}
-            className={cn("flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-sm transition-colors hover:bg-sidebar-accent",
-              selected.level === "session" && selected.session === agent.id && "bg-sidebar-accent")}>
-            <Avatar address={agent.id} className="size-6 text-[9px]"/>
-            <span className="flex min-w-0 flex-1 flex-col"><span className="truncate font-mono text-xs">{short(agent.id)}</span><SessionName agent={agent}/><span className="self-start"><RunningCount runs={agent.subagents} now={now}/></span></span>
-            {agent.waiting && <span role="img" aria-label="Waiting on you" title="Waiting on you" className="inline-block size-2.5 shrink-0 rounded-full bg-amber-500 ring-2 ring-amber-500/25"/>}
-            <Dot online={agent.online}/>
-            <span className="shrink-0 text-right text-[11px] leading-tight text-muted-foreground">{ago(agent.lastMessageAt, now)}{agent.activeAt ? <><br/>active {ago(agent.activeAt, now)}</> : null}</span>
-          </button>
-          {dispose && <SessionMenu node={{ ...agent, project: current }} disabled={disabled} dispose={dispose} raw={openRaw} map={() => navigate({ project: current, level: "compactions" })} label={"Session actions for " + agent.id}/>}
-          </div>
-          <SubagentRuns runs={agent.subagents} now={now} open={run => navigate({ project: current, level: "session", harness: agent.peer, session: agent.id, tab: "subagents", run: run.run })}/>
-        </li>)}
+        {!home && unnamedAgents(data.agents).map(agent => <SessionRow key={agent.id} agent={agent} project={current} selected={selected} now={now} navigate={navigate} dispose={dispose} openRaw={openRaw} disabled={disabled}/>)}
       </ul>
     </section>
   </nav>;
@@ -313,8 +346,7 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
         {at > 0 && <time dateTime={new Date(at).toISOString()} title={clock.format(at)}>{ago(at, now)}</time>}
         {replyFrom && message.kind !== "Approval" && <button type="button" aria-label={"Reply to " + sender} title="Reply" onClick={() => replyFrom({ id: message.id, sender, prefill, body: message.body })}
           className="rounded-full p-0.5 hover:bg-muted hover:text-foreground"><Reply className="size-3.5"/></button>}
-        {message.scope === "all" && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">to all</Badge>}
-        {message.urgent && <span role="img" aria-label="Sent now" title="Sent now: delivered at the agent's next tool call" data-urgent className="text-amber-500"><Zap className="size-3.5"/></span>}
+        {message.scope === "all" && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">to all</Badge>}        {message.urgent && <span role="img" aria-label="Sent now" title="Sent now: delivered at the agent's next tool call" data-urgent className="text-amber-500"><Zap className="size-3.5"/></span>}
         {outgoing && <Ticks state={message.receipt}/>}
         {/* Unread by its session: queued for the agent's next poll; Send now delivers it at the next tool call. */}
         {outgoing && message.to?.includes("#") && message.receipt && message.receipt !== "read" && <span data-queued className="flex items-center gap-1">
@@ -809,7 +841,9 @@ function Console({ account }) {
       if (at === route.current) {
         // A running session needs no wake note; its message's ticks tell the rest.
         const outcome = (result.wake && !["online", "queued"].includes(result.wake.status) && result.wake) || result.compact || (result.wake ? { status: result.status, detail: result.detail } : result);
-        setNotice([outcome.status, outcome.detail || outcome.message || outcome.reason].filter(Boolean).join(" · ") || fallback);
+        // A reply the server could not link says so, with the quote it sent instead.
+        const note = result.quoted ? [outcome.status || "Sent", "as plain text quoting the original"].filter(Boolean).join(" · ") : [outcome.status, outcome.detail || outcome.message || outcome.reason].filter(Boolean).join(" · ");
+        setNotice(note || fallback);
       }
       return true;
     } catch (err) { if (at === route.current) setNotice(err.message); return false; }
@@ -976,7 +1010,7 @@ function Console({ account }) {
           // Project chat never runs commands: a leading / there is ordinary chat.
           if (command && !question && level === "session" && selected.session) return runCommand(body);
           const sent = question ? await action("reply", { question, body }, "Reply sent")
-            : await action("send", { target, body, ...(urgent ? { urgent: true } : {}), ...(replyTo?.id ? { replyTo: replyTo.id } : {}) }, "Sent");
+            : await action("send", { target, body, ...(urgent ? { urgent: true } : {}), ...(replyTo ? { replyTo: replyTo.id, quote: { sender: replyTo.sender, body: replyTo.body } } : {}) }, "Sent");
           if (sent) { setQuestion(""); setReplyTo(null); stick.current?.scrollToBottom(); }
           return sent;
         }}/>}
