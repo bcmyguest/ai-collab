@@ -18,7 +18,7 @@ ai-collab builder stop <id>
 | `list` | Builders started by `start` that are still running: `unit, task, sandbox, phase, unit state`. `--all` adds finished ones. |
 | `stop` | `systemctl --user stop builder-<id>`, then deletes the sandbox. Refuses an id that `start` did not create, so hand-started `builder-*` units are never touched. The worktree and branch stay. |
 
-Defaults: Cursor `deepseek-v41-flash-1017-high`, Codex `gpt-6.2-sol`, Claude `sonnet` (the alias for the latest Sonnet). The id is the task id. State lives in `$XDG_STATE_HOME/ai-collab/builders/<id>/` (`state.json`, `brief.md`, `policy.yaml`); the unit's output is in `journalctl --user -u builder-<id>`.
+Defaults: Cursor `deepseek-v41-flash-1017-high`, Codex `gpt-6.2-sol`, Claude `haiku` (the alias for the latest Haiku). The id is the task id. State lives in `$XDG_STATE_HOME/ai-collab/builders/<id>/` (`state.json`, `brief.md`, `policy.yaml`); the unit's output is in `journalctl --user -u builder-<id>`.
 
 ## What the unit does
 
