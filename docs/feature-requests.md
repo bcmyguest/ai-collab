@@ -31,4 +31,5 @@ Operator requests from chat and the terminal, newest last. Status: done (merged 
 | Operator prompts and phone replies (ask_question answers) visible in session and project chat | building (operator: both chats) |
 | Context management and slash commands from the phone | open |
 | Reviews by Cursor `deepseek-v41-flash-1017` | adopted for reviews |
+| Agent questions asked in the terminal (Claude AskUserQuestion, etc.) also appear on the phone and can be answered there | open; operator 2026-11-21 |
 | Record feature requests | this file |
