@@ -99,11 +99,26 @@ test("a limit card expires at its reset, or 5 hours after the first alert when t
   assert.equal(unknown.expiresAt, now + 5 * 3600_000);
 });
 
+test("two sessions in one typed window share a card that lists both, and the first card closes", async (t) => {
+  const { fake, cfg } = await setup(t);
+  const deps = { listed: async () => LISTED, available: () => ["codex"] };
+  const other = "1111222233334444";
+  const first = await alertLimit({ ...cfg, session: SESSION }, { harness: "claude", limit: FIVE_HOUR, ...deps });
+  const second = await alertLimit({ ...cfg, session: other }, { harness: "claude", limit: FIVE_HOUR, ...deps });
+  assert.equal(second.status, "sent");
+  assert.equal(second.sessions, 2);
+  const published = cards(fake);
+  assert.equal(published.length, 2);
+  assert.match(published[1].summary, new RegExp(`Sessions: alice#${SESSION}, alice#${other}`));
+  const ends = fake.state.publishes.flatMap((p) => { try { const m = JSON.parse(p.message); return m.kind === "approval-end" ? [m] : []; } catch { return []; } });
+  assert.deepEqual(ends.map((m) => [m.id, m.reason]), [[first.id, "cancelled"]]);
+});
+
 test("a busy alert lock makes the limit a duplicate, not a second card", async (t) => {
   const { fake, cfg } = await setup(t);
   const sessionCfg = { ...cfg, session: SESSION };
   // Holds the lock the way a concurrent alert would, so the alert cannot take it.
-  mkdirSync(join(cfg.stateDir, cfg.project, "sessions", "alice", `${SESSION}.limits.json.lock`), { recursive: true });
+  mkdirSync(join(cfg.stateDir, cfg.project, "limit-alerts.lock"), { recursive: true });
   const deps = { listed: async () => LISTED, available: () => ["codex"] };
   assert.deepEqual(await alertLimit(sessionCfg, { harness: "claude", limit: FIVE_HOUR, ...deps }), { status: "duplicate" });
   assert.equal(cards(fake).length, 0);
