@@ -188,6 +188,28 @@ Context alerts post one `alert` envelope to the broadcast topic each time a sess
 | Cursor | `preCompact` hook `context_tokens` (sampled only before compaction) |
 | OpenCode 2 | last `session.step.ended` event's `tokens`: `input + cache.read + cache.write`, passed as `context_tokens` |
 
+## Slash commands and context
+
+A composer message that starts with `/` is a command for the open session, not chat. Typing `/` opens the command list; Tab inserts the highlighted command and Enter sends the whole message. Each command shows its support for the session's harness. `unsupported` entries are disabled with the reason in their tooltip; `unverified` entries run, and the list marks them. A `/` message in the project chat (no session open) is refused with a notice.
+
+| Command | Claude Code | Codex | OpenCode 2 | Cursor |
+|---|---|---|---|---|
+| `/compact` | `supported`: Agent SDK on a saved session; a running session gets the urgent request | `supported`: `thread/compact/start` | `supported`: `POST /api/session/:sessionID/compact` | `unsupported` |
+| `/model <provider/model>` | `unsupported`: the messaging socket delivers text only | `unsupported`: `turn/start` sets the model per turn, not on a thread | `unverified`: `POST /api/session/:sessionID/model`, body `{providerID, modelID}` not checked against a live service | `unsupported` |
+| `/clear` | `unsupported`: no documented clear over the socket | `unsupported`: `thread/start` makes a new thread id | `unsupported`: `POST /api/session` creates another session | `unsupported` |
+| any other `/name` | `unsupported`: the socket wraps each message in a `<cross-session-message>` envelope, so the name reaches Claude as text. Verified in the binary: `isSlashCommand` tests the raw value for a leading `/` | `unsupported`: no app-server method runs a slash command | `unverified`: `POST /api/session/:sessionID/command`, body `{command, arguments}` not checked | `unsupported` |
+
+The table is the source in `web/lib/slash-commands.js`. Sources: the Claude binary (`claude`, resolved with `readlink -f`), `codex app-server generate-json-schema`, the OpenCode 2.2.5 binary's operation list (`session.command`, `session.compact`, `session.switchModel`), and `cursor-agent --help`.
+
+The session header shows **Context** with the tokens in the session's last usage report (sources as in the table above). A window appears, with a percentage, only where the harness reports one: Codex, from `info.model_context_window` in the rollout's `token_count` event (also `ThreadTokenUsage.modelContextWindow` in the app-server schema). At 80% the meter turns amber ("near full"); at 95% red ("full"). Claude, Cursor and OpenCode show tokens without a percentage.
+
+The same panel lists:
+
+- **Files in context**: the instruction files Claude loaded, from its `InstructionsLoaded` hook (`file_path`, `memory_type` User, Project, Local or Managed, `load_reason` session_start, nested_traversal, path_glob_match, include or compact). Codex and the other harnesses record none.
+- **Files read**: paths of `Read` (or `read_file`) tool calls in the activity loaded for the session, with a count each, most recent first. Only activity already loaded in the view counts.
+
+The tokens and files live in the session's `.context.json` state file beside its other state. Alerts above 200,000 tokens are unchanged.
+
 ## Tailscale
 
 `setup` prints the short form:
