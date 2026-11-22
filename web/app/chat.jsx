@@ -245,9 +245,8 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
             className={cn("flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-sm transition-colors hover:bg-sidebar-accent",
               selected.level === "session" && selected.session === agent.id && "bg-sidebar-accent")}>
             <Avatar address={agent.id} className="size-6 text-[9px]"/>
-            <span className="flex min-w-0 flex-1 flex-col"><span className="truncate font-mono text-xs">{short(agent.id)}</span><SessionName agent={agent}/></span>
+            <span className="flex min-w-0 flex-1 flex-col"><span className="truncate font-mono text-xs">{short(agent.id)}</span><SessionName agent={agent}/><span className="self-start"><RunningCount runs={agent.subagents} now={now}/></span></span>
             {agent.waiting && <span role="img" aria-label="Waiting on you" title="Waiting on you" className="inline-block size-2.5 shrink-0 rounded-full bg-amber-500 ring-2 ring-amber-500/25"/>}
-            <RunningCount runs={agent.subagents} now={now}/>
             <Dot online={agent.online}/>
             <span className="shrink-0 text-right text-[11px] leading-tight text-muted-foreground">{ago(agent.lastMessageAt, now)}{agent.activeAt ? <><br/>active {ago(agent.activeAt, now)}</> : null}</span>
           </button>
