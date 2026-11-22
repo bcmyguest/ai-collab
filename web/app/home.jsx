@@ -71,6 +71,7 @@ function SessionCard({ node, now, open, openAddress, act, answer, dispose, raw, 
           </span>
           <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
             <span className="font-mono">{short(node.id)}</span>
+            {node.owner && <span title="Agent owner">· @{node.owner}</span>}
             {node.harness && <span title="Agent type">· {HARNESS_LABELS[node.harness] || node.harness}</span>}
             {node.where && <span title="Where it runs">· {node.where}</span>}
             {showProject && <span>· {node.project}</span>}

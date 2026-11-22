@@ -71,10 +71,10 @@ export function loadGithubConfig(dir) {
   try { raw = readFileSync(join(dir, "github.json"), "utf8"); } catch (err) { if (err.code === "ENOENT") return null; throw err; }
   const value = JSON.parse(raw);
   if (typeof value?.clientId !== "string" || !value.clientId || typeof value.clientSecretFile !== "string" || !isAbsolute(value.clientSecretFile) ||
-      !Array.isArray(value.users) || !value.users.length || !value.users.every(isGithubLogin)) {
+      (value.hosted !== undefined && typeof value.hosted !== "boolean") || !Array.isArray(value.users) || !value.users.length || !value.users.every(isGithubLogin)) {
     throw new Error("github.json needs clientId, an absolute clientSecretFile and a users list of GitHub logins");
   }
-  return { clientId: value.clientId, clientSecretFile: value.clientSecretFile, users: value.users.map(user => user.toLowerCase()) };
+  return { hosted: value.hosted === true, clientId: value.clientId, clientSecretFile: value.clientSecretFile, users: value.users.map(user => user.toLowerCase()) };
 }
 
 function page(status, text, headers = {}) {
@@ -150,5 +150,5 @@ export function createAuth({ dir, stateDir, origin, fetch: get = fetch, now = Da
     return redirect("/", [clear, cookie(SESSION_COOKIE, value, SESSION_TTL_S)]);
   }
 
-  return { user, route };
+  return { user, route, hosted: settings.hosted };
 }
