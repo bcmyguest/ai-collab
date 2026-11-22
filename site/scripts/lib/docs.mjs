@@ -105,7 +105,7 @@ export const PAGES = [
     source: 'docs/mission.md',
     group: 'Reference',
     title: 'PM mission file',
-    description: 'MISSION.md: the mission, goals and rules the PM owns, in git, read at every scheduled tick.',
+    description: 'MISSION.md: the mission, goals and rules the PM owns, in git, plus the review every scheduled run ends with.',
   },
 ];
 
