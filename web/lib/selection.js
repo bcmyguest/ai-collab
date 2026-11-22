@@ -10,7 +10,7 @@ export const TABS = { project: [], session: ["activity", "subagents", "raw"], ta
  * The patterns level carries the pattern, raw flag, run, the team editor (edit) and the author composer (author).
  */
 export function selectionHash(next = {}) {
-  if (next.level === "home") return "home";
+  if (next.level === "home" || next.level === "inbox") return next.level;
   const params = new URLSearchParams();
   for (const key of ["project", "level", "harness", "session"]) if (next[key]) params.set(key, next[key]);
   if ((TABS[next.level || "project"] || []).includes(next.tab)) params.set("tab", next.tab);
@@ -32,6 +32,7 @@ export function parseSelection(hash) {
   const params = new URLSearchParams(hash);
   const level = params.get("level");
   if (!hash || params.has("home") || level === "home") return { project: "", level: "home", harness: "", session: "", tab: "chat", run: "" };
+  if (params.has("inbox") || level === "inbox") return { project: "", level: "inbox", harness: "", session: "", tab: "chat", run: "" };
   const tab = params.get("tab");
   // An old link to the board (level=project&tab=tasks) opens the Tasks level.
   const named = level === "project" && tab === "tasks" ? "tasks" : level;

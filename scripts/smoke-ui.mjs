@@ -1,16 +1,102 @@
-// Loads the UI in headless Chrome after a deploy; exits 1 on a page error or a crash screen.
-import { chromium } from "/home/b/ai-collab/node_modules/playwright-core/index.mjs";
-const b = await chromium.launch({ executablePath: "/home/b/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome" });
-const p = await b.newPage({ viewport: { width: 390, height: 844 } });
-const errs = [];
-p.on("console", m => { if (m.type() === "error") errs.push("console: " + m.text().slice(0, 300)); });
-p.on("pageerror", e => errs.push("pageerror: " + String(e).slice(0, 300)));
-p.on("response", r => { if (r.status() >= 400) errs.push(r.status() + " " + r.url()); });
-await p.goto(process.argv[2] || "http://127.0.0.1:8795/", { waitUntil: "domcontentloaded", timeout: 20000 });
-await p.waitForTimeout(6000);
+// Loads the UI at phone width. Pass --decisions to exercise the built app against two fixture projects.
+import assert from "node:assert/strict";
+import { once } from "node:events";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { chromium } from "playwright-core";
 
-console.log(errs.slice(0, 15).join("\n") || "no errors");
-console.log("text:", (await p.innerText("body")).slice(0, 300).replace(/\n+/g, " | "));
-await b.close();
-const body = errs.join("\n");
-if (/pageerror|couldn.t load/.test(body) || errs.some(e => e.startsWith("pageerror"))) process.exit(1);
+async function decisionFixture() {
+  const { createUi, installUi } = await import("../web/server/ui.mjs");
+  const { broadcastTopic, loadProjects } = await import("../lib/config.mjs");
+  const { addTask, taskStoreFile, writeStore } = await import("../lib/tasks.mjs");
+  const { startFakeNtfy } = await import("../test/helpers/fake-ntfy.mjs");
+  const fake = await startFakeNtfy();
+  const dir = mkdtempSync(join(tmpdir(), "ai-collab-decisions-"));
+  const names = ["decision-first", "decision-second"];
+  const ids = ["123456789abc", "abcdef123456"];
+  const env = { PATH: process.env.PATH, HOME: dir, XDG_CONFIG_HOME: join(dir, ".config"),
+    XDG_DATA_HOME: join(dir, "data"), AI_COLLAB_STATE_DIR: join(dir, "state") };
+  const projectsConfig = names.map(project => {
+    const root = join(dir, project);
+    mkdirSync(root);
+    const doc = { v: 1, tasks: [] };
+    addTask(doc, { id: project, title: project === names[0] ? "Mobile layout" : "Publish draft", priority: "P1" });
+    writeStore(taskStoreFile(project, env), doc);
+    return { root, project, url: fake.url, peers: "claude" };
+  });
+  mkdirSync(join(env.XDG_CONFIG_HOME, "ai-collab"), { recursive: true });
+  writeFileSync(join(env.XDG_CONFIG_HOME, "ai-collab", "projects.json"), JSON.stringify(projectsConfig));
+  const projects = loadProjects(env, { host: "operator" });
+  fake.inject(broadcastTopic(names[0]), `Question from claude\n\nIMPORTANT, the agent waits for this answer: Use the new layout for #decision-first?\n\nReply in this topic: reply ${ids[0]} YOUR ANSWER`);
+  fake.inject(broadcastTopic(names[1]), JSON.stringify({ v: 1, kind: "approval", from: "claude", harness: "claude",
+    id: ids[1], tool: "Review", summary: "Publish the draft for #decision-second", expiresAt: Date.now() + 120_000 }));
+  const ui = installUi(createUi({ projects, env }));
+  const next = createRequire(import.meta.url)("next");
+  const app = next({ dir: fileURLToPath(new URL("../web", import.meta.url)), dev: false, hostname: "127.0.0.1" });
+  await app.prepare();
+  const server = createServer(app.getRequestHandler()).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  return {
+    url: `http://127.0.0.1:${server.address().port}`,
+    published: () => fake.state.publishes.filter(item => item.message.startsWith("reply ")).map(item => [item.topic, item.message]),
+    expected: [[broadcastTopic(names[0]), `reply ${ids[0]} Yes`], [broadcastTopic(names[1]), `reply ${ids[1]} allow`]],
+    async close() {
+      server.closeAllConnections();
+      server.close();
+      ui.close();
+      await app.close();
+      await fake.close();
+      rmSync(dir, { recursive: true, force: true });
+    },
+  };
+}
+
+async function checkDecisions(page, fixture) {
+  const home = page.getByRole("region", { name: "Operator decisions" });
+  await home.getByText("Operator decisions · 2", { exact: true }).waitFor();
+  await page.reload();
+  await home.getByText("Operator decisions · 2", { exact: true }).waitFor();
+  await home.getByRole("link", { name: "Mobile layout" }).waitFor();
+  await home.getByRole("link", { name: "Publish draft" }).waitFor();
+  assert.equal(await home.evaluate(node => node.getBoundingClientRect().top < innerHeight && node.scrollWidth <= node.clientWidth), true);
+  await home.getByRole("button", { name: "Open decision inbox" }).click();
+  const inbox = page.getByRole("region", { name: "Decision inbox" });
+  await page.reload();
+  await inbox.getByText("Waiting on you · 2", { exact: true }).waitFor();
+  await inbox.getByRole("textbox", { name: "Answer", exact: true }).fill("Yes");
+  await inbox.getByRole("button", { name: "Submit", exact: true }).click();
+  await inbox.getByText("Waiting on you · 1", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Home", exact: true }).click();
+  await home.getByText("Operator decisions · 1", { exact: true }).waitFor();
+  await home.getByRole("button", { name: "Open decision inbox" }).click();
+  await inbox.getByRole("button", { name: "Allow", exact: true }).click();
+  await inbox.getByText("No unresolved decisions.").waitFor();
+  assert.deepEqual(fixture.published(), fixture.expected);
+  await page.goto(fixture.url + "/#project=decision-first");
+  await page.getByText(/Answered: Yes/).first().waitFor();
+}
+
+const deployedChrome = "/home/b/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome";
+const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || (existsSync(deployedChrome) ? deployedChrome : undefined) });
+let fixture;
+try {
+  if (process.argv.includes("--decisions")) fixture = await decisionFixture();
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
+  page.on("pageerror", error => errors.push("pageerror: " + error.message));
+  page.on("response", response => { if (response.status() >= 400) errors.push(response.status() + " " + response.url()); });
+  await page.goto(fixture?.url || process.argv[2] || "http://127.0.0.1:8795/", { waitUntil: "domcontentloaded", timeout: 20000 });
+  if (fixture) await checkDecisions(page, fixture);
+  else await page.waitForTimeout(6000);
+  console.log(errors.slice(0, 15).join("\n") || "no errors");
+  console.log("text:", (await page.innerText("body")).slice(0, 300).replace(/\n+/g, " | "));
+  if (/pageerror|couldn.t load/.test(errors.join("\n"))) process.exitCode = 1;
+} finally {
+  await browser.close();
+  await fixture?.close();
+}

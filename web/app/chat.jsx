@@ -30,6 +30,7 @@ import { ActivityRow, GoToAgent, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
 import { SurfaceContext } from "@/components/a2ui/surface";
 import { NotifyToggle } from "./notify";
+import { DecisionQueue } from "./decisions";
 import { SessionList, SessionMenu, SubagentList } from "./home";
 import { RunningCount, SubagentRuns } from "./subagent-runs";
 import { ClosedProjects, ProjectMenu } from "./project-menu";
@@ -71,7 +72,7 @@ function selection() {
 /** The /api/events query for a selection, and which view it shows. */
 function streamOf(selected) {
   const stream = new URLSearchParams();
-  const home = selected.level === "home";
+  const home = selected.level === "home" || selected.level === "inbox";
   const session = selected.level === "session" && Boolean(selected.session);
   if (selected.project && !home) stream.set("project", selected.project);
   if (session) stream.set("session", selected.session);
@@ -281,12 +282,13 @@ function AgentList({ agents, project, selected, now, navigate, dispose, openRaw,
 function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, disabled, projectAction, openHash }) {
   const current = selected.project || data.project;
   // Home's state carries the server's default project's agents; they are not "this project" here.
-  const home = selected.level === "home";
+  const home = selected.level === "home" || selected.level === "inbox";
   return <nav aria-label="Projects" className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto p-4">
     <button type="button" onClick={() => navigate({ level: "home" })} aria-current={selected.level === "home" ? "page" : undefined}
       className="flex items-center gap-2 rounded-xl px-2 text-left text-sm font-semibold tracking-tight" title="Home: every project's sessions">
       <span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground">ai</span>AI Collab
     </button>
+    <Button variant="ghost" className="justify-start" onClick={() => navigate({ level: "inbox" })} aria-current={selected.level === "inbox" ? "page" : undefined}>Decision inbox</Button>
     <section>
       <h2 className="px-2 pb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Projects</h2>
       <ul className="flex flex-col gap-1">
@@ -724,17 +726,22 @@ function Console({ account }) {
   const { home, watching, subagents, inline, raw, listing, tasks, compactions, requested } = streamOf(selected);
   route.current = requested;
   // Home and a Sessions list remember their scroll and Offline group; other views open at the newest message.
-  const memoryKey = home ? "home" : listing ? "sessions " + (selected.project || data.project || "") : "";
+  const memoryKey = home ? (selected.level === "home" ? "home" : "") : listing ? "sessions " + (selected.project || data.project || "") : "";
   const [, remembered] = useState(0);
   useEffect(() => {
     if (!ready) return;
     const list = stick.current?.scrollRef.current;
+    if (home && list) {
+      stick.current.stopScroll();
+      list.scrollTop = 0;
+      return;
+    }
     const saved = memoryKey && views.get(memoryKey, {}).scrollTop;
     if (!list || !saved) { stick.current?.scrollToBottom("instant"); return; }
     // Leaving the bottom lock first stops use-stick-to-bottom pulling the restored list down on its next resize.
     stick.current.stopScroll();
     list.scrollTop = saved;
-  }, [ready, requested]);
+  }, [ready, requested, home]);
   useEffect(() => {
     const list = stick.current?.scrollRef.current;
     if (!ready || !memoryKey || !list) return;
@@ -895,7 +902,8 @@ function Console({ account }) {
   const target = level === "session" ? selected.session : "all";
   const missing = level === "session" && !target;
   const patterns = level === "patterns";
-  const title = home ? "Home" : patterns ? "Patterns" : tasksView ? "Tasks" : level === "session" ? short(selected.session) || "Sessions" : project;
+  const inbox = level === "inbox";
+  const title = inbox ? "Decision inbox" : home ? "Home" : patterns ? "Patterns" : tasksView ? "Tasks" : level === "session" ? short(selected.session) || "Sessions" : project;
   // A home or Sessions card opens its session, or one of its subagent runs.
   const openCard = (node, run = "") => navigate({ project: node.project, level: "session", harness: node.harness || peerOf(node.id), session: node.id, ...(run ? { tab: "subagents", run } : {}) });
   // The session's ⋯ menu opens its raw activity: every tool call, unfolded.
@@ -994,7 +1002,7 @@ function Console({ account }) {
             <Menu/>{anyWaiting && <span aria-hidden className="absolute right-1.5 top-1.5 size-2.5 rounded-full bg-amber-500 ring-2 ring-background"/>}
           </Button>
           {/* Back one level: a session returns to its project chat, a project to Home. */}
-          {!home && <Button variant="ghost" size="icon" aria-label={level === "session" ? "Back to " + project : "Home"} title={level === "session" ? "Back to the " + project + " chat" : "Home: every project's sessions"}
+          {(!home || inbox) && <Button variant="ghost" size="icon" aria-label={level === "session" ? "Back to " + project : "Home"} title={level === "session" ? "Back to the " + project + " chat" : "Home: every project's sessions"}
             onClick={() => navigate(level === "session" || patterns ? { project, level: "project" } : { level: "home" })}><ArrowLeft/></Button>}
           {level === "session" && selected.session && <Avatar address={selected.session} className="size-8 shrink-0"/>}
           <div className="min-w-0 flex-1">
@@ -1058,18 +1066,20 @@ function Console({ account }) {
       {!patterns && !composing && (tasksView ? <TaskBoard board={ready ? data.tasks : null} now={now} taskId={selected.task}
         back={() => navigate({ project, level: "tasks" })} compose={id => navigate({ project, level: "project", composeTask: id })}
         decide={(id, answer) => action("decide", { id, answer }, "Decided")}
-        open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatContainerRoot contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
+        open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatContainerRoot key={inbox ? "inbox" : home ? "home" : "conversation"} initial={home ? false : "instant"} contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
         <ChatContainerContent key={requested} className="mx-auto w-full max-w-3xl gap-5 px-3 py-4">
           {!ready && (home || listing || subagents || compactions) && !loadError && <p className="py-16 text-center text-sm text-muted-foreground">Loading sessions…</p>}
           {ready && (home || listing) && <>
             {home && data.unavailable?.length > 0 && <p role="alert" className="text-xs text-destructive">Unavailable: {data.unavailable.join(", ")}</p>}
-            <SessionList sessions={data.sessions} now={now} open={openCard} raw={openRaw} disabled={working} showProject={home} compact={home}
+            {home && <DecisionQueue decisions={data.decisions} inbox={inbox} now={now} disabled={working} action={action}
+              openInbox={() => navigate({ level: "inbox" })}/>}
+            {!inbox && <SessionList sessions={data.sessions} now={now} open={openCard} raw={openRaw} disabled={working} showProject={home} compact={home}
               offlineOpen={Boolean(views.get(memoryKey, {}).offline)} onOfflineToggle={rememberOffline}
               deadOpen={Boolean(views.get(memoryKey, {}).dead)} onDeadToggle={rememberDead}
               openAddress={(address, at) => navigate({ project: at, level: "session", harness: peerOf(address), session: address })}
               empty={home ? "No sessions in any project yet." : "No sessions in " + project + " yet."}
               dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}
-              act={payload => action("approve", payload, "Sent")} answer={(at, id, body) => action("reply", { project: at, question: id, body }, "Reply sent")}/>
+              act={payload => action("approve", payload, "Sent")} answer={(at, id, body) => action("reply", { project: at, question: id, body }, "Reply sent")}/>}
           </>}
           {ready && compactions && <CompactionMap agents={data.agents || []} now={now}/>}
           {ready && subagents && <SubagentList rows={rows} session={selected.session} run={selected.run} when={at => ago(at, now)} now={now}

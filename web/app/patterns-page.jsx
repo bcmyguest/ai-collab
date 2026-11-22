@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toDot, toGraph } from "@/lib/pattern-graph";
 import { SCOPE_LABELS, canCopy, canDelete, handoffLine, firedCounts, pendingEvents, runsOf } from "@/lib/pattern-view";
+import { SuspensionCard } from "./cards";
 import { ConfirmButton, HandoffDiagram, RoleGraph } from "./pattern-graph";
 import { TeamAuthor } from "./team-author";
 import { TeamEditor } from "./team-editor";
@@ -272,13 +273,9 @@ function RunView({ run, data, go, act, busy, disabled, notice }) {
       </ol> : <p className="text-xs text-muted-foreground">No handoffs yet.</p>}
     </section>
 
-    {run.status === "suspended" && run.suspension && <section className="flex flex-col gap-2 rounded-xl border p-3">
-      <p role="alert" className="text-xs">{run.suspension.reason}. Waiting for operator confirmation.</p>
-      <ConfirmButton key={run.suspension.id} label="Resume handoff" confirmLabel="Resume"
-        question={`Allow ${run.suspension.from} → ${run.suspension.to} on "${run.suspension.on}" to exceed the limit?`}
-        disabled={disabled || Boolean(busy)}
-        onConfirm={() => act("advance", { advanceRun: run.id, advanceConfirmation: run.suspension.id }, () => go({ run: run.id }))}/>
-    </section>}
+    {run.status === "suspended" && run.suspension && <SuspensionCard key={run.suspension.id} suspension={run.suspension}
+      disabled={disabled || Boolean(busy)}
+      resume={() => act("advance", { advanceRun: run.id, advanceConfirmation: run.suspension.id }, () => go({ run: run.id }))}/>}
     {run.status === "running" && <section className="flex flex-col gap-2 rounded-xl border p-3">
       <h3 className="text-xs font-medium">Operator advance</h3>
       <p className="text-xs text-muted-foreground">Takes the active role&apos;s handoff without its session. The handoff is recorded with your login.</p>

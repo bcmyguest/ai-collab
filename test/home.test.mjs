@@ -133,6 +133,9 @@ test("home stream covers every project: names, states, subagents, parents, pendi
   assert.equal(by["claude:demo"].lastAction.subagent, "Explore");
   assert.equal(by["claude:second"].online, false);
   assert.deepEqual(by["claude:second"].pending.map(p => [p.kind, p.blocking, p.project]), [["Approval", true, "second"], ["Question", true, "second"]]);
+  assert.deepEqual(data.decisions.map(item => [item.project, item.from, item.kind]), [
+    ["second", `claude#${other.session}`, "Approval"], ["second", `claude#${other.session}`, "Question"],
+  ]);
   const now = Date.now();
   const tree = sessionTree(data.sessions, now);
   assert.deepEqual(tree.map(n => [n.harness + ":" + n.project, n.group]), [["claude:second", "waiting"], ["claude:demo", "working"]]);
@@ -146,6 +149,18 @@ test("home stream covers every project: names, states, subagents, parents, pendi
   assert.ok(fake.state.publishes.some(p => p.topic === broadcastTopic("second") && p.message === `reply ${approvalId} allow`));
   const after = await stateWhere(ui, "view=home", d => d.sessions?.find(s => s.project === "second")?.pending.length === 1, ctrl.signal);
   assert.equal(after.sessions.find(s => s.project === "second").pending[0].kind, "Question");
+  assert.deepEqual(after.decisions.map(item => item.question), ["123456789abc"]);
+  const reply = () => ui.handle(new Request(`${base}/api/reply`, {
+    method: "POST", headers: { Origin: base, "Content-Type": "application/json" },
+    body: JSON.stringify({ project: "second", question: "123456789abc", body: "Ship it" }),
+  }), "reply");
+  const responses = await Promise.all([reply(), reply()]);
+  assert.deepEqual(responses.map(response => response.status).sort(), [201, 409]);
+  assert.deepEqual(fake.state.publishes.filter(item => item.message === "reply 123456789abc Ship it")
+    .map(item => item.topic), [broadcastTopic("second")]);
+  await stateWhere(ui, "view=home", data => data.decisions?.length === 0, ctrl.signal);
+  const original = await stateWhere(ui, "project=second", data => data.messages.some(item => item.answer === "Ship it"), ctrl.signal);
+  assert.equal(original.messages.find(item => item.question === "123456789abc").answer, "Ship it");
 
   // view=sessions lists one project's cards only.
   const one = await stateWhere(ui, "project=demo&view=sessions", d => d.sessions?.length === 2, ctrl.signal);
