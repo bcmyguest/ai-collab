@@ -20,6 +20,7 @@ export async function startFakeNtfy({ token = "" } = {}) {
     limitNext: 0,
     delayMs: 0,
     files: new Map(),
+    fileReads: [],
   };
 
   const push = (topic, message, title = "", attachment) => {
@@ -97,6 +98,7 @@ export async function startFakeNtfy({ token = "" } = {}) {
     const fileMatch = url.pathname.match(/^\/file\/([^/]+)$/);
     if (req.method === "GET" && fileMatch && state.files.has(fileMatch[1])) {
       const { data, type } = state.files.get(fileMatch[1]);
+      state.fileReads.push(fileMatch[1]);
       res.writeHead(200, { "content-type": type });
       return res.end(data);
     }

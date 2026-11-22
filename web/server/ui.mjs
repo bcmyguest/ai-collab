@@ -9,6 +9,7 @@ import { loadConfig, loadProjects, activityTopic, startDefaultSetting, broadcast
 import { ACTIVITY_TYPES } from "../../lib/activity.mjs";
 import { stripControl } from "../../lib/format.mjs";
 import { NTFY_MESSAGE_MAX_BYTES, latestStatuses, markUrgent, parseEnvelope, sendMessage } from "../../lib/inbox.mjs";
+import { IMAGE_FILE, TEXT_FILE, attachmentOf, ensureAttachment, cachedAttachment, readAttachmentFile } from "../../lib/attachment-cache.mjs";
 import { publish } from "../../lib/ntfy.mjs";
 import { parsePhoneReply, parseQuestionText } from "../../lib/questions.mjs";
 import { disposeSession, listSessions, sessionPlace } from "../../lib/sessions.mjs";
@@ -101,20 +102,8 @@ function latestMode(events) {
   return latest;
 }
 
-const FILE_NAME = /^[A-Za-z0-9]{1,32}\.(?:png|jpe?g|gif|webp)$/;
-const TEXT_FILE_NAME = /^[A-Za-z0-9]{1,32}\.txt$/;
-const TEXT_TYPE = /^text\/plain(?:;|$)/;
+const FILE_NAME = IMAGE_FILE;
 const activityCache = new WeakMap();
-
-// ntfy attachment metadata, exposed by file name only; the UI fetches it through /api/file/<file>.
-// Chat topics carry images only; text/plain is accepted only on the activity topic (text = true).
-function attachmentOf(event, { text = false } = {}) {
-  const a = event.attachment;
-  const file = typeof a?.url === "string" ? a.url.slice(a.url.lastIndexOf("/") + 1) : "";
-  const ok = text ? TEXT_FILE_NAME.test(file) && TEXT_TYPE.test(a.type || "") : FILE_NAME.test(file) && /^image\//.test(a.type || "");
-  if (!ok) return undefined;
-  return { file, name: String(a.name || file).slice(0, 200), type: a.type, size: Number(a.size) || 0 };
-}
 
 const cleanText = (value, max) => typeof value === "string" && value ? stripControl(value).slice(0, max) : undefined;
 
@@ -1298,29 +1287,35 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   /**
    * Serves an attachment that appears in a loaded project's history; anything else is 404.
    * Images come from chat topics; text/plain comes only from the activity topic (a large tool result).
+   * The first request downloads the file into the shared local cache; later ones read it from disk, so
+   * ntfy's attachment bandwidth is spent once per file however many tabs, reloads or devices ask.
    */
   async function file(name, request) {
     if (auth && !(request && auth.user(request))) return json(401, { error: "Sign in with GitHub" });
-    const text = TEXT_FILE_NAME.test(name);
+    const text = TEXT_FILE.test(name);
     if (!text && !FILE_NAME.test(name)) return new Response("Not found", { status: 404 });
     for (const project of projects.values()) {
       const topics = text ? [project.activity] : [project.topic, ...project.inboxes.values()];
       const found = topics.some(topic => project.hub.events(topic).some(event => attachmentOf(event, { text })?.file === name));
       if (!found) continue;
-      const res = await fetch(`${project.cfg.url}/file/${name}`, {
-        headers: project.cfg.token ? { authorization: `Bearer ${project.cfg.token}` } : {},
-        signal: AbortSignal.timeout(30_000),
-      }).catch(() => null);
-      const type = res?.headers.get("content-type") || "";
-      if (!res?.ok || !(text ? TEXT_TYPE.test(type) : /^image\//.test(type))) {
-        await res?.arrayBuffer().catch(() => {});
-        return new Response("Attachment unavailable", { status: 502 });
+      let cached = cachedAttachment(project.cfg, name);
+      if (!cached) {
+        cached = await ensureAttachment(project.cfg, name, { signal: request?.signal })
+          .catch(() => null);
       }
-      return new Response(res.body, { headers: {
-        "content-type": text ? "text/plain; charset=utf-8" : type, "cache-control": "private, max-age=3600",
+      if (!cached) return new Response("Attachment unavailable", { status: 502 });
+      const headers = {
+        "content-type": cached.type, "cache-control": "private, max-age=3600",
         "x-content-type-options": "nosniff", "content-disposition": "inline",
+        "content-length": String(cached.size),
         ...(text ? { "content-security-policy": "sandbox; default-src 'none'" } : {}),
-      } });
+      };
+      // A HEAD or a conditional request needs no body; send the same headers with no read.
+      if (request?.method === "HEAD") return new Response(null, { headers });
+      const ifNoneMatch = request?.headers?.get?.("if-none-match");
+      const etag = `"${name}-${cached.size}"`;
+      if (ifNoneMatch === etag) return new Response(null, { status: 304, headers: { ...headers, etag } });
+      return new Response(readAttachmentFile(cached), { headers: { ...headers, etag } });
     }
     return new Response("Not found", { status: 404 });
   }

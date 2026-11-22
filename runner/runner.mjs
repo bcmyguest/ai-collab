@@ -7,10 +7,11 @@ import { setTimeout as delay } from "node:timers/promises";
 import { EventType } from "@ag-ui/core";
 import { statePath } from "../lib/state.mjs";
 import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, receiptsTopic, sessionLabel } from "../lib/config.mjs";
-import { RESERVE_MS, claimInbox, markDelivered, parseEnvelope, releaseOwned, reserveOwned } from "../lib/inbox.mjs";
+import { RESERVE_MS, ATTACHMENT_BUDGET_MS, claimInbox, markDelivered, parseEnvelope, releaseOwned, reserveOwned } from "../lib/inbox.mjs";
 import { parsePhoneReply, parseQuestionText } from "../lib/questions.mjs";
 import { replyDecision, APPROVAL_ID } from "../lib/approvals.mjs";
 import { formatInbox, identityLine } from "../lib/format.mjs";
+import { attachmentOf, cacheAttachmentsWithin, localizedAttachment } from "../lib/attachment-cache.mjs";
 import { streamEvents } from "../lib/ntfy.mjs";
 import { listSessions, recordSession } from "../lib/sessions.mjs";
 import { claudeConfirmedSince, claudeSnapshot, claudeWindowMs } from "../lib/claude-socket.mjs";
@@ -387,7 +388,8 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         }
         batch = batch.filter((m) => got.owned.includes(m.id));
         if (!batch.length) break;
-        const text = formatInbox(batch, { session: label });
+        const shown = await cacheAttachmentsWithin(scfg, batch, { budgetMs: ATTACHMENT_BUDGET_MS });
+        const text = formatInbox(shown, { session: label });
         const messageIds = batch.map((m) => m.id);
         const sent = await wf.step("wake.send", async () => {
           // A harness that refused the turn without starting it and says the session is still closing (a codex thread
@@ -508,9 +510,10 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       await acks.refresh(configs.get(project), topics);
       return acks.acked(message.id, address);
     },
-    textFor: (scfg, message, attemptNo) => {
+    textFor: async (scfg, message, attemptNo) => {
       const shown = attemptNo > 1 ? { ...message, attempt: attemptNo, attempts: MAX_ATTEMPTS } : message;
-      return [identityLine(scfg), formatInbox([shown], { session: scfg.session })].filter(Boolean).join("\n");
+      const [cached] = await cacheAttachmentsWithin(scfg, [shown], { budgetMs: ATTACHMENT_BUDGET_MS });
+      return [identityLine(scfg), formatInbox([cached], { session: scfg.session })].filter(Boolean).join("\n");
     },
   };
   const deps = { ...deliveryDeps, ...delivery };
@@ -789,12 +792,14 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     if (!m && broadcast) return deliverPlain(cfg, ev);
     if (m?.kind !== "msg" || typeof m.body !== "string" || !isValidName(m.from)) return;
     const sender = typeof m.session === "string" && SESSION_LABEL.test(m.session) ? m.session : "";
+    const attachment = attachmentOf(ev);
     const item = (s) => ({
       id: ev.id, from: sender ? `${m.from}#${sender}` : m.from, to: s.record.address, ts: typeof m.ts === "string" ? m.ts : "", body: m.body,
       ...(m.operatorThread === true && m.from === "operator" ? { operatorThread: true } : {}),
       ...(m.from === "operator" && broadcast ? { operatorBroadcast: true } : {}),
       ...(m.urgent === true ? { urgent: true } : {}),
       ...(m.from === "operator" && typeof m.mentionedIn === "string" ? { mentionedIn: m.mentionedIn } : {}),
+      ...(attachment ? { attachment: localizedAttachment(cfg, attachment) } : {}),
     });
     if (typeof m.toSession === "string") {
       // A direct message or @mention for one owned session.
@@ -837,7 +842,10 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       if (isDirect) wake(cfg, s, message);
       return;
     }
-    const text = formatInbox([message], { session: s.record.label });
+    // A live session gets the message only after any attachment is in the shared cache, so it reads the file
+    // rather than downloading it again.
+    const [cached] = await cacheAttachmentsWithin({ ...cfg, peer: s.record.harness, session: s.record.label }, [message], { budgetMs: ATTACHMENT_BUDGET_MS });
+    const text = formatInbox([cached], { session: s.record.label });
     await send(s.record.address, { text, steer: urgent, messageIds: [message.id], dedupe: `ntfy:${message.id}:${s.record.label}` }).catch((error) => log(`delivery failed: ${error.message}`));
   }
 

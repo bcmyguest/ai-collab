@@ -57,7 +57,7 @@ export function deliveryWorkflow(deps) {
       const got = await wf.step("reserve", () => deps.reserve(scfg, [id], { owner, allowSeen }));
       if (got.busy) return "failed";
       if (!got.owned.length) return "skipped";
-      const text = deps.textFor(scfg, message, attemptNo);
+      const text = await Promise.resolve().then(() => deps.textFor(scfg, message, attemptNo));
       const pushed = await wf.step("push", () => deps.push(session, { text, urgent: message.urgent === true, ids: [id] }), {
         onCut: async () => ({ status: await deps.waitConfirmed(session, [id], snap) ? "delivered" : "cut" }),
       });

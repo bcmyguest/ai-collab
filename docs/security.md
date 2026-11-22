@@ -22,7 +22,7 @@ Any client that can write the broadcast topic can approve a permission prompt, e
 
 The UI has no login unless you add [GitHub sign-in](github-sign-in.md). Access control is the loopback bind plus Tailscale. Every `POST /api/*` must come from the UI's own origin, which blocks cross-site request forgery, and pages carry a per-request script nonce in their Content Security Policy. The server keeps ntfy tokens and raw harness session IDs; the browser sees only `peer#label` identities.
 
-Attachments: ntfy's `/file/<id>` URLs need no token, so the unguessable ID and the loopback/tailnet binding are the protection. The UI serves an image through `/api/file/<id>` only when that ID appears in a loaded topic.
+Attachments: ntfy's `/file/<id>` URLs need no token, so the unguessable ID and the loopback/tailnet binding are the protection. The UI serves an image through `/api/file/<id>` only when that ID appears in a loaded topic, and downloads each file once into a local cache that agents read too ([one download per attachment](messaging.md#one-download-per-attachment)); a cached file is user-only, mode 0600, under the state dir.
 
 Push payloads are encrypted end to end for the subscribed browser; the vendor's push service sees only ciphertext, size, time, and endpoint. See [Push notifications](phone-ui.md#push-notifications).
 

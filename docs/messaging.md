@@ -48,6 +48,13 @@ Peer agents' messages carry no reply hint. An agent's own `ask_question` post is
 
 `send --file /abs/image.png`, and the `attachment` field of the MCP `send_to_all` and `reply_to_operator` tools, upload one image as an ntfy attachment. Allowed: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, at most 15 MB, with file bytes that match the extension (a renamed text file is refused). The UI shows the image inline and serves it through `/api/file/<id>` only when that ID appears in a loaded topic. ntfy keeps attachments for the cache duration (12 h); its `/file/<id>` URLs need no token, so the unguessable ID and the loopback/tailnet binding are the protection.
 
+### One download per attachment
+
+ntfy bills attachment downloads against a daily bandwidth quota, so nothing here fetches a file twice. Both the UI and the agents read one cache under `<state dir>/<project>/attachments/` (`lib/attachment-cache.mjs`): whichever asks first downloads the file into a temporary name and renames it, under a lock that makes concurrent readers (two tabs, a hook and the UI, two sessions) share the one download. Every later request is served from disk, including a browser reload or a second device.
+
+An agent is told the cached path. `claimInbox`, the dispatcher's push and the runner's delivery all cache a message's attachment (within a 4-second budget, never failing the message) and `formatInbox` then prints `attachment="shot.png" local_path="/…/attachments/f1.png"`, so the agent reads the file instead of fetching it. A message that arrives before any copy exists carries the attachment name only. The cache keeps files for 7 days and the newest 200; a pruned file is downloaded again on the next request, which also works after ntfy's own 12-hour expiry. A download that fails or exceeds the size limit writes nothing.
+
+
 ## Stop continuation
 
 The Stop hook reads the inbox. When messages wait, it keeps the agent going with those messages instead of letting it stop:
