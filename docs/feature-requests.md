@@ -69,11 +69,12 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Two near-identical bell icons: make them distinct or merge | done merged 4c444e5, deployed |
 | task add treats --help as a title; add help output and a remove command | open |
 | Runner wake.send retries a codex thread that is closing (runner/runner.mjs:379-399) | open |
-| Limit card: typed rate_limit_event suppressed by earlier untyped StopFailure card (lib/limit-alert.mjs:207) | building |
-| Fan-in hangs when another role stays live (lib/pattern-runs.mjs:354-360) | building |
-| Limit card: two open cards for one window when resetsAt differs (lib/limit-alert.mjs:202) | open |
-| Cursor limit detection drops error.code/data and exit-path text (runner/adapters/cursor.mjs:109,95) | open |
-| OpenCode 429 branch unreachable: status not forwarded (lib/limits.mjs:81, opencode.mjs:165) | open |
-| onOverage true on overageEnabled even when overageStatus rejected (lib/limits.mjs:37-38) | open |
-| DOT prompt optional in parser but required by validatePattern (lib/dot.mjs:150-155) | open |
+| Limit card: typed rate_limit_event suppressed by earlier untyped StopFailure card (lib/limit-alert.mjs:207) | blocked Fix needs test/limit-alert.test.mjs:135-136 changed (upgrade republishes the card) or a state-only upgrade |
+| Fan-in hangs when another role stays live (lib/pattern-runs.mjs:354-360) | done branch cursor-verify-fixes (Cursor deepseek, started 16:23); do not dispatch |
+| Limit card: two open cards for one window when resetsAt differs (lib/limit-alert.mjs:202) | done branch cursor-verify-fixes (Cursor deepseek, started 16:23); do not dispatch |
+| Cursor limit detection drops error.code/data and exit-path text (runner/adapters/cursor.mjs:109,95) | done branch cursor-verify-fixes (Cursor deepseek, started 16:23); do not dispatch |
+| OpenCode 429 branch unreachable: status not forwarded (lib/limits.mjs:81, opencode.mjs:165) | done branch cursor-verify-fixes (Cursor deepseek, started 16:23); do not dispatch |
+| onOverage true on overageEnabled even when overageStatus rejected (lib/limits.mjs:37-38) | done branch cursor-verify-fixes (Cursor deepseek, started 16:23); do not dispatch |
+| DOT prompt optional in parser but required by validatePattern (lib/dot.mjs:150-155) | blocked Strict parseDot breaks 15 tests in test/dot.test.mjs; alternative: report missing prompt in checkTeamText |
+| System messages (compact request etc.) render as from operator; give them a system sender | open |
 <!-- tasks:end -->
