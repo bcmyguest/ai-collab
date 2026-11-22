@@ -7,17 +7,16 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 <!-- tasks:start -->
 | Request | Priority | Status |
 |---|---|---|
-| Queue bar: queued messages listed with Edit/Cancel/Steer, replacing the one-way queued badge (HAPI idea, clean-room) | P2 | building |
-| Inspect and edit teams in the UI | P2 | building |
+| Draft guard: hold a phone message while the terminal has unsent text; Send anyway row (HAPI idea, clean-room) | P2 | building |
+| Queue bar: queued messages listed with Edit/Cancel/Steer, replacing the one-way queued badge (HAPI idea, clean-room) | P2 | building builder builder-queue-bar-queued-messages-listed-with-ed exited 1 with 0 commit(s) and set no status |
+| Operator's pending messages in project chat | P2 | building builder builder-operators-pending-messages-in-project-ch exited 1 with 0 commit(s) and set no status |
+| Inspect and edit teams in the UI | P2 | building builder builder-inspect-and-edit-teams-in-the-ui exited 1 with 0 commit(s) and set no status |
 | Team runs live in the runner and run in OpenShell, not the project folder (operator: yes) | P2 | blocked Committed 66347ec. Runner-owned DOT team runs use shared OpenShell workspaces for supported adapters. Cursor is the only supported adapter, so the built-in Claude team cannot start and live OpenShell was unavailable. Focused tests, isolated UI build, and oncebitten passed. Required npm test and browser smoke are blocked by missing npm and Chromium/host Playwright paths. |
-| Session view shows which agent is running now | P2 | blocked builder builder-session-view-shows-which-agent-is-runnin exited 1 with 0 commit(s) and set no status |
-| Operator's pending messages in project chat | P2 | blocked builder builder-operators-pending-messages-in-project-ch exited 1 with 0 commit(s) and set no status |
 | PM tracked handoffs: builders start as runner-owned sessions linked to tasks (rides on team-runs/OpenShell) | P2 | blocked Task linkage implemented and verified; builder launch cutover requires the runner-owned team-runs/OpenShell path. This base has standalone builder units and only Cursor supports runner-owned OpenShell starts. |
+| Owned sessions: runner service, durable workflows, AG-UI event names, four harness adapters | P2 | open runner adapters on: claude, codex (2026-11-22); cursor/opencode need auth |
 | Space to switch to local: a key in the terminal takes a phone-controlled session back to local control (as HAPI does) | P2 | decided Design: /dev/shm/research/hapi-steal.md §2.1. HAPI is AGPL-3.0: clean-room, copy no code. |
-| Draft guard: hold a phone message while the terminal has unsent text; Send anyway row (HAPI idea, clean-room) | P2 | decided |
 | Read state and durable history with search; ntfy as transport only (HAPI idea, clean-room) | P2 | decided |
 | Move to AG-UI end to end (official @ag-ui packages) | P2 | open (operator yes 2026-11-22: plugin 0.11.0 everywhere, then AI_COLLAB_WIRE=agui default; coordinator starting) |
-| Owned sessions: runner service, durable workflows, AG-UI event names, four harness adapters | P2 | open runner adapters on: claude, codex (2026-11-22); cursor/opencode need auth |
 | Cursor in run-everything mode inside OpenShell | P2 | open OpenShell branch merged a30cd83; live verification on phone still open |
 | Code-mode workflows: inference decides, code executes — map to DOT teams, runner/DBOS, OpenShell sandbox | P2 | decided Research /dev/shm/research/code-mode.md; operator agreed 2026-11-22; split into tasks A, team-runs, B, cap-suspend |
 | Hosted multi-user: users reach only their own agents; agents from other users are identified as such | P2 | open shelved by operator 2026-11-22; draft + Opus review on branch worktree-agent-ae3bb980a5eec65ea, unmerged |
@@ -25,6 +24,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Modern visual refresh of the whole UI | P2 | open (last; coordinator shows 2–3 design directions first; do not PM-dispatch) |
 | Move off ntfy eventually, so attachments and links work | P2 | open (operator 2026-11-22) |
 | Phone model switch: switch a runner-owned Claude session's model from the phone via SDK Query.setModel (sdk.d.ts:3227) | P2 | open deferred by operator |
+| Session view shows which agent is running now | P2 | done builder builder-session-view-shows-which-agent-is-runnin exited 1 with 0 commit(s) and set no status |
 | Code mode B now: compile team.dot to a runner durable workflow; agents keep pattern advance (operator: yes) | P2 | done Implemented and committed as 0f6dd10. Focused pattern and runner tests and oncebitten pass. The required isolated suite gate is blocked: npm is absent and the equivalent node --test reproduces baseline builder, limit-alert, plugin import, and process-group failures on main. |
 | cap/max_visits hit suspends the run for the operator instead of failing it (operator: yes, confirm) | P2 | done |
 | Deploys break the live site: next build rewrites web/.next under the running server (missing chunks) until the restart; build to a fresh dir and switch on restart | P2 | done Committed 84cdfdc. Local webpack deploy verified old assets remain available and restart selects the new build. Required verification blocked in sandbox: mise Node 24.18.0 npm is absent, isolated node --test reports failures outside the new regression coverage, default Turbopack cannot resolve next/package.json, and smoke-ui cannot load its hard-coded host Playwright path. oncebitten passed. |
