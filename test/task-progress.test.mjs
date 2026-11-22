@@ -76,3 +76,28 @@ async function waitFor(check, ms = 5000) {
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
 }
+
+test("a corrupt task store does not fail or repeat a progress post", { timeout: 15000 }, async (t) => {
+  const fake = await startFakeNtfy();
+  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-task-broken-"));
+  const root = path.join(home, "repo");
+  mkdirSync(root);
+  mkdirSync(path.join(home, "config", "ai-collab"), { recursive: true });
+  writeFileSync(path.join(home, "config", "ai-collab", "projects.json"), JSON.stringify([{ root, project: "demo", url: fake.url, peers: "claude" }]));
+  const env = { ...peerEnv(fake, { peer: "claude", stateDir: path.join(home, "state") }), XDG_CONFIG_HOME: path.join(home, "config"), XDG_DATA_HOME: path.join(home, "data"), HOME: home };
+  const store = taskStoreFile("demo", env);
+  mkdirSync(path.dirname(store), { recursive: true });
+  writeFileSync(store, "{not json");
+
+  const script = fileURLToPath(new URL("../scripts/ai-collab-mcp.mjs", import.meta.url));
+  const child = spawn(process.execPath, [script, "claude"], { env, stdio: ["pipe", "pipe", "pipe"] });
+  t.after(() => { child.kill(); return fake.close(); });
+  const output = createInterface({ input: child.stdout })[Symbol.asyncIterator]();
+  child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "send_to_all", arguments: { body: "still posted", session: LABEL, progress: true } } }) + "\n");
+  const result = JSON.parse((await output.next()).value).result;
+  assert.ok(!result.isError);
+  const sent = JSON.parse(result.content[0].text);
+  assert.equal(sent.sent, true);
+  assert.match(sent.notes[0], /task store unavailable/);
+  assert.equal(fake.state.publishes.filter((p) => p.topic === "ai-collab-demo--to--all").length, 1);
+});
