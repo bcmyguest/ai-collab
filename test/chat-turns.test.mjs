@@ -72,5 +72,5 @@ test("the summary falls back to the first tool input, then to the task", () => {
 test("the thread orders messages and turns by time, the fold before its final message", () => {
   const ask = { id: "m0", time: 99, kind: "Message", from: "operator", body: "go" };
   const thread = chatThread([ask], grouped(finished), A);
-  assert.deepEqual(thread.map(item => item.message ? item.message.id : item.activity.type), ["m0", "turn", "final:t2"]);
+  assert.deepEqual(thread.map(item => item.message ? item.message.id : item.activity.type), ["m0", "group", "text", "group", "final:t2"]);
 });

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { CodeBlockCode } from "@/components/ui/code-block";
 import { MessageContent } from "@/components/ui/message";
 import { cn } from "@/lib/utils";
-import { turnLabel } from "@/lib/chat-turns";
+import { groupLabel } from "@/lib/chat-turns";
 import { inputBlocks, readableText, resultLanguage, runState, subagentLabel, summarize, working } from "@/lib/activity-rows";
 import { toolDiff } from "@/lib/tool-diff";
 import { ChoiceCard, askedQuestions } from "./cards";
@@ -147,19 +147,19 @@ function SubagentRun({ row, when, now, goRun }) {
   </div>;
 }
 
-// One collapsed row per finished turn: its tool calls and intermediate text; tapping it shows them, indented.
-function TurnRun({ row, when }) {
-  const [open, setOpen] = useState(() => expandedRuns.has(row.id));
-  const toggle = () => { if (open) expandedRuns.delete(row.id); else expandedRuns.add(row.id); setOpen(!open); };
+// One row per run of tool uses between two messages: "Ran …" when collapsed; the live run stays open until a message follows.
+function ToolGroupRun({ row, when, now, goRun }) {
+  const [manual, setManual] = useState(null);
+  const open = manual ?? row.live;
   return <div className="flex min-w-0 flex-col gap-2">
-    <button type="button" aria-expanded={open} onClick={toggle}
+    <button type="button" aria-expanded={open} onClick={() => setManual(!open)}
       className="flex min-w-0 items-center gap-2 rounded-lg border border-dashed bg-card px-2.5 py-1.5 text-left text-sm">
-      <Wrench className="size-4 shrink-0 text-muted-foreground"/>
-      <span className="min-w-0 flex-1 truncate">{turnLabel(row)}</span>
+      {row.live ? <LoaderCircle className="size-4 shrink-0 animate-spin text-muted-foreground"/> : <Wrench className="size-4 shrink-0 text-muted-foreground"/>}
+      <span className="min-w-0 flex-1 truncate">{groupLabel(row)}</span>
       <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")}/>
     </button>
-    {open && <div data-turn={row.id} className="ml-3 flex min-w-0 flex-col gap-3 border-l pl-3">
-      {row.rows.map(item => <ActivityRow key={item.id} row={item} when={when}/>)}
+    {open && <div data-group={row.id} className="ml-3 flex min-w-0 flex-col gap-3 border-l pl-3">
+      {row.rows.map(item => <ActivityRow key={item.id} row={item} when={when} now={now} goRun={goRun}/>)}
     </div>}
   </div>;
 }
@@ -177,7 +177,7 @@ export function ActivityRow({ row, when, now, goRun }) {
   if (row.type === "subagent") return <article data-type="subagent" className="flex min-w-0 flex-col gap-1">
     <SubagentRun row={row} when={when} now={now} goRun={goRun}/>
   </article>;
-  if (row.type === "turn") return <article data-type="turn" className="flex min-w-0 flex-col gap-1"><TurnRun row={row} when={when}/></article>;
+  if (row.type === "group") return <article data-type="group" className="flex min-w-0 flex-col gap-1"><ToolGroupRun row={row} when={when} now={now} goRun={goRun}/></article>;
   return <article data-type={row.type} className={cn("flex min-w-0 flex-col gap-1", row.type === "prompt" && "items-end")}>
     <div className="flex max-w-full items-center gap-1.5 text-xs text-muted-foreground">
       {row.type === "prompt" && <span className="font-medium text-foreground">Prompt</span>}
