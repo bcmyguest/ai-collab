@@ -25,7 +25,7 @@ import { listModels } from "../../lib/models.mjs";
 import { closedProjectNames, createTeam, deleteTeam, listTeams, readProjectsFile, removeProject, setProjectClosed, teamTask } from "../../lib/teams.mjs";
 import { clearFields, modelFields, sessionHistory } from "../../lib/session-events.mjs";
 import { compactionFields } from "../../lib/compaction.mjs";
-import { copyPattern, listPatterns, removableNames, removePattern, savePattern } from "../../lib/patterns.mjs";
+import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern, savePattern, saveTeamText, teamTemplates, teamTextOf } from "../../lib/patterns.mjs";
 import { openTasks } from "../../lib/tasks.mjs";
 import { taskBoard } from "./task-board.mjs";
 import { advanceRun, listRuns, startRun } from "../../lib/pattern-runs.mjs";
@@ -857,6 +857,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       startPlaces: startPlaces(project),
       teams: Object.entries(listTeams(project.cfg, env)).map(([id, members]) => ({ id, members })),
       patterns: patternRows(project.cfg, env),
+      templates: teamTemplates(),
       runs: runs.slice(0, 20),
       tasks: taskBoard(project.tasks, list, runs),
     };
@@ -865,9 +866,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   // Listed patterns for the Patterns page; removable marks the project's own patterns and teams (global teams stay in teams.json).
   function patternRows(cfg, env) {
     const removable = removableNames(cfg, env);
-    return Object.values(listPatterns(cfg, env)).map(({ name, source, legacy, invalid, description, roles, handoffs }) => ({
-      name, source, legacy: legacy === true, removable: removable.has(name), ...(invalid ? { invalid } : {}), ...(description ? { description } : {}), roles, handoffs,
-    }));
+    return Object.values(listPatterns(cfg, env)).map((entry) => {
+      const { name, source, legacy, invalid, description, roles, handoffs } = entry;
+      return {
+        name, source, legacy: legacy === true, removable: removable.has(name), ...(invalid ? { invalid } : {}), ...(description ? { description } : {}), roles, handoffs,
+        ...(source !== "team" ? { dot: teamTextOf(entry) } : {}), ...(source === "project" ? { editable: true } : {}),
+      };
+    });
   }
 
   // One session's activity, or every allowed agent's for the project overview, oldest first.
@@ -1025,7 +1030,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
-      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, team: teamName, members, delete: deleteTeamName, replyTo, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, forwardedProps } = await payload(request);
+      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, team: teamName, members, delete: deleteTeamName, replyTo, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, forwardedProps } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -1064,6 +1069,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         return json(201, await createTeam(cfg, String(teamName), members.map(String), env, modelList));
       }
       if (action === "pattern") {
+        // The team editor: checkDot parses team.dot for its live preview (no write); teamDot saves it as the project's team file.
+        if (checkDot !== undefined) return json(200, checkTeamText(cfg, String(teamName ?? ""), String(checkDot)));
+        if (teamDot !== undefined) {
+          const modelList = await models(cfg.stateDir, env, { peers: cfg.peers });
+          return json(201, await saveTeamText(cfg, String(teamName ?? ""), String(teamDot), env, modelList).catch((error) => reject(400, error.message)));
+        }
         if (deletePatternName) return json(201, removePattern(cfg, String(deletePatternName), env));
         if (copyPatternName) return json(201, await copyPattern(cfg, String(copyPatternName), env, await models(cfg.stateDir, env, { peers: cfg.peers })).catch((error) => reject(400, error.message)));
         if (startPattern) {

@@ -2,7 +2,7 @@
 export const DONE_ID = "done";
 export const DEFAULT_KIND = "pair";
 export const NODE_W = 120;
-export const NODE_H = 48;
+export const NODE_H = 60;
 export const SLOT_GAP = 176;
 export const DEPTH_GAP = 100;
 export const PAD = 16;

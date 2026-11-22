@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { toDot, toGraph } from "@/lib/pattern-graph";
 import { SCOPE_LABELS, canCopy, canDelete, handoffLine, firedCounts, pendingEvents, runsOf } from "@/lib/pattern-view";
 import { ConfirmButton, HandoffDiagram, RoleGraph } from "./pattern-graph";
+import { TeamEditor } from "./team-editor";
 
 const clock = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -66,8 +67,9 @@ function PatternInspect({ pattern, own, go, act, busy, disabled, notice, raw }) 
       <div className="flex gap-2">
         <Button type="button" size="sm" variant={raw ? "outline" : "default"} onClick={() => go({ pattern: pattern.name })}>Graph</Button>
         <Button type="button" size="sm" variant={raw ? "default" : "outline"} onClick={() => go({ pattern: pattern.name, raw: "1" })}>Raw</Button>
+        {pattern.editable && <Button type="button" size="sm" variant="outline" onClick={() => go({ pattern: pattern.name, edit: "1" })}>Edit</Button>}
       </div>
-      {raw && <pre className="overflow-x-auto rounded-xl border bg-muted/40 p-3 font-mono text-xs leading-relaxed">{toDot(graph, pattern.name)}</pre>}
+      {raw && <pre className="overflow-x-auto rounded-xl border bg-muted/40 p-3 font-mono text-xs leading-relaxed">{pattern.dot || toDot(graph, pattern.name)}</pre>}
     </section>
 
     <section className="flex flex-col gap-2">
@@ -111,6 +113,12 @@ export function PatternsPage({ data, project, selected, navigate, call, disabled
     return <RunView key={run.id + ":" + (run.handoffs?.length ?? 0)} run={run} data={data} go={go} act={act} busy={busy} disabled={disabled} notice={notice}/>;
   }
 
+  if (selected.edit) {
+    const pattern = selected.edit === "new" ? null : patterns.find(item => item.name === selected.pattern);
+    if (selected.edit !== "new" && !pattern?.editable) return <p className="py-16 text-center text-sm text-muted-foreground">Only a project pattern can be edited here.</p>;
+    return <TeamEditor key={selected.edit + (selected.pattern || "")} pattern={pattern} templates={data.templates ?? []} project={project} call={call} go={go} disabled={disabled}/>;
+  }
+
   if (selected.pattern) {
     const pattern = patterns.find(item => item.name === selected.pattern);
     if (!pattern) return <p className="py-16 text-center text-sm text-muted-foreground">Unknown pattern &quot;{selected.pattern}&quot;.</p>;
@@ -120,7 +128,10 @@ export function PatternsPage({ data, project, selected, navigate, call, disabled
   const projectCount = patterns.filter(item => !item.legacy).length;
   const running = runs.filter(run => run.status === "running").length;
   return <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-3 py-4 text-sm">
-    <p className="text-xs text-muted-foreground">{projectCount} patterns · {patterns.length - projectCount} teams · {running} running</p>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <p className="text-xs text-muted-foreground">{projectCount} patterns · {patterns.length - projectCount} teams · {running} running</p>
+      <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => go({ edit: "new" })}>New team</Button>
+    </div>
     {notice && <p role="alert" className="text-xs text-destructive">{notice}</p>}
     {!patterns.length && <p className="py-8 text-center text-muted-foreground">No patterns or teams yet.</p>}
     <ul className="flex flex-col gap-1.5">
