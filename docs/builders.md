@@ -126,3 +126,29 @@ UNVERIFIED:
 | `test/helpers/fake-systemd-run.mjs` | fake `systemd-run` (runs the unit in the foreground) and `systemctl` |
 | `test/helpers/fake-builder-agent.mjs` | fake agent: commits, fires a capture hook, records task calls |
 | `test/helpers/fake-oncebitten.mjs` | fake `oncebitten capture` and `check` |
+
+## Calling tools from sandbox programs
+
+Node.js programs can import `lib/tool-api.mjs` from the checkout inside
+OpenShell. `listTools()` returns the same names and input schemas as MCP.
+`callTool()` resolves with the tool's data and rejects with an error on failure.
+Pass an `AbortSignal` as the third argument's `signal` to cancel a supported
+wait.
+
+```js
+import { toolClient } from "./lib/tool-api.mjs";
+
+const tools = toolClient();
+const { agents } = await tools.callTool("list_agents");
+```
+
+The client executes in the sandbox process. OpenShell's filesystem and
+network policy applies to every call. The operator configures access when
+setting up the sandbox, and the client uses the regular AI Collab project,
+peer, and session settings in that environment. For ntfy-backed tools, set
+`AI_COLLAB_URL` to the policy-allowed endpoint (for example,
+`http://host.openshell.internal:8794` under the builder policy), and provide
+credentials inside the sandbox if the endpoint requires them. Tools that
+operate on files use the sandbox's own AI Collab state. The builder's
+recorded `ai-collab task set` and `task progress` calls remain the way to
+apply task changes to the host store.
