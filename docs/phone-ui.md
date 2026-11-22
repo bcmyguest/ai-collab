@@ -188,6 +188,30 @@ Context alerts post one context alert to the broadcast topic each time a session
 | Cursor | `preCompact` hook `context_tokens` (sampled only before compaction) |
 | OpenCode 2 | last `session.step.ended` event's `tokens`: `input + cache.read + cache.write`, passed as `context_tokens` |
 
+## Slash commands and context
+
+A composer message is a command for the open session only when its first word is a known command (`compact`, `model`, `clear`) or a name the picker inserted; `/home/x is broken` is chat. Typing `/` opens the command list; Tab inserts the highlighted entry, and a name no known command matches is offered as a passthrough entry. Enter sends the whole message; Escape closes the list. Each entry shows its support for the session's harness: `partial` and `unverified` entries run and carry a badge, and `unsupported` entries are disabled with the reason in their tooltip. The draft clears only when the session ran the command (`succeeded`) or the compaction was `requested`; any other result keeps the draft. The project chat never runs commands.
+
+`/compact` takes no instructions: each harness here either has no verified channel for them, or its request body is unchecked, so `/compact <text>` is refused with the reason.
+
+| Command | Claude Code | Codex | OpenCode 2 | Cursor |
+|---|---|---|---|---|
+| `/compact` | `partial`: Agent SDK on a saved session; a running session gets the urgent request | `partial`: `thread/compact/start` when the thread is loaded and idle in the app-server daemon; otherwise the urgent request | `supported`: `POST /api/session/:sessionID/compact` | `unsupported` |
+| `/model <provider/model>` | `unsupported`: the messaging socket delivers text only | `unsupported`: `turn/start` sets the model per turn, not on a thread | `unverified`: `POST /api/session/:sessionID/model`, body `{providerID, modelID}` not checked against a live service | `unsupported` |
+| `/clear` | `unsupported`: no documented clear over the socket | `unsupported`: `thread/start` makes a new thread id | `unsupported`: `POST /api/session` creates another session | `unsupported` |
+| any other `/name` | `unsupported`: the socket wraps each message in a `<cross-session-message>` envelope, so the name reaches Claude as text. Verified in the binary: `isSlashCommand` tests the raw value for a leading `/` | `unsupported`: no app-server method runs a slash command | `unverified`: `POST /api/session/:sessionID/command`, body `{command, arguments}` not checked | `unsupported` |
+
+The table is the source in `web/lib/slash-commands.js`. Sources: the Claude binary (`claude`, resolved with `readlink -f`), `codex app-server generate-json-schema`, the OpenCode 2.2.5 binary's operation list (`session.command`, `session.compact`, `session.switchModel`), and `cursor-agent --help`.
+
+The session header shows **Context** with the tokens in the session's last usage report (sources as in the table above). A window appears, with a percentage, only where the harness reports one: Codex, from `info.model_context_window` in the rollout's `token_count` event (also `ThreadTokenUsage.modelContextWindow` in the app-server schema). At 80% the meter turns amber ("near full"); at 95% red ("full"). Claude, Cursor and OpenCode show tokens without a percentage. Home session cards show the same meter on their metadata line once a token count is recorded.
+
+The same panel lists:
+
+- **Files in context**: the instruction files Claude loaded, from its `InstructionsLoaded` hook (`file_path`, `memory_type` User, Project, Local or Managed, `load_reason` session_start, nested_traversal, path_glob_match, include or compact). Codex and the other harnesses record none. A `compact` load drops the earlier `nested_traversal` and `path_glob_match` entries, since compaction removes on-demand files from the context; this takes effect only when a compact load arrives, so a compaction that reloads no file leaves the list unchanged.
+- **Files read**: paths of `Read` (or `read_file`) tool calls in the activity loaded for the session, with a count each, most recent first. Only this session's rows in the loaded activity count. The section appears once that activity has loaded; before then it is hidden.
+
+The tokens and files live in the session's `.context.json` state file beside its other state. Alerts above 200,000 tokens are unchanged.
+
 ## Tailscale
 
 `setup` prints the short form:
