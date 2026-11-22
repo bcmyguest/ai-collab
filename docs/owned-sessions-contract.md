@@ -249,6 +249,24 @@ Rules for every adapter:
 - Reject `open` with an `Error` whose message the operator can act on. Never print secrets into it.
 - No real CLI runs in tests: drive the adapter against a fake transport (a stub JSON-RPC peer, a stub HTTP server) plus `test/helpers/fake-ntfy.mjs`.
 
+### OpenCode adapter facts (`runner/adapters/opencode.mjs`)
+
+Verified means the string appears in the local OpenCode 2.2.5 binary (`strings`); no request reached a live service. UNVERIFIED means no local source confirmed it.
+
+| Fact | Status | Evidence |
+|---|---|---|
+| Routes: `POST /api/session`, `POST /api/session/:id/prompt`, `POST .../interrupt`, `GET .../permission`, `POST .../permission/:requestID/reply`, `GET /api/event`, `GET /api/model`, `GET /api/command`, `GET /api/info` | Verified names | binary route strings |
+| Create body `{location: {directory}, model?}`; reply `{id}` as `data.id` | Partly: `location` and `data` verified, `model` key shape (`providerID`, `modelID`) UNVERIFIED | `session.create` schema |
+| Prompt body `{text, delivery: "queue" \| "steer", resume: true}` | Verified names; live effect UNVERIFIED | `session.prompt` schema |
+| Permission reply body `{decision: "once" \| "reject", message?}` (`always` is never sent) | Verified | `session.permission.reply` schema |
+| Event envelope `{type, data: {sessionID, ...}}`; event names `session.execution.*`, `session.text.ended`, `session.tool.*`, `session.compaction.*`, `permission.asked`, `permission.replied` | Names verified; wire framing and `callID` field UNVERIFIED | binary strings, plugin consumer code |
+| Pending asks list `GET .../permission` returns `{data: [...]}` | Route verified; response shape UNVERIFIED beyond `data` array | `session.permission.list` schema |
+| `GET /api/model` and `GET /api/command` response items | UNVERIFIED | none |
+| Approval id is the `permission.asked` `data.id`; asks with an auto-reply action get `once` without a card | Adapter behaviour; not run against a live service | test file |
+| `AI_COLLAB_PARENT` export into the agent shell | Not done: the service runs its own shell, so the adapter cannot set a per-session env | owned-sessions.md |
+| Hook stand-down | Keyed by owned record (session id), not by env, because the service is shared | `lib/owned.mjs` `standsDown` |
+| Not implemented | `contextUsage`, `setModel`, question forms (`/form` replies), `resumeData` | |
+
 ## Adapter events
 
 Adapters emit the supported subset of AG-UI events from `@ag-ui/core`. The runner checks the official schemas and validates its application fields. See the [event model](ag-ui.md).
@@ -426,6 +444,7 @@ Unsolved:
 | `runner/adapters/cursor.mjs` | Cursor adapter: ACP over stdio, optional OpenShell exec |
 | `runner/adapters/<harness>.mjs` | Real adapters, one per agent; claude, codex and opencode not written yet (`loadAdapters` logs `no <harness> adapter yet`) |
 | `test/runner-adapter-cursor.test.mjs`, `test/helpers/fake-cursor-agent.mjs`, `test/helpers/fake-openshell.mjs` | Cursor adapter tests; fake ACP child and fake openshell |
+| `runner/adapters/<harness>.mjs` | Real adapters, one per agent. `opencode.mjs` exists; claude, codex and cursor are not written yet (`loadAdapters` logs `no <harness> adapter yet`) |
 | `runner/delivery.mjs` | Delivery workflow: reserve, push, confirm, mark or release, expect-reply redelivery |
 | `lib/deliver-push.mjs` | Live push paths (socket, `codex queue`, OpenCode HTTP) and the ack tracker, shared with the UI dispatcher |
 | `lib/owned.mjs` | Owned-record read/write and `standsDown` |
@@ -434,6 +453,7 @@ Unsolved:
 
 Environment: `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (minutes before an unanswered owned approval is denied; default 30), `AI_COLLAB_RUNNER_SOCKET`, `AI_COLLAB_RUNNER_DB` (default `$AI_COLLAB_STATE_DIR/runner.db`), `AI_COLLAB_RUNNER_HARNESSES` (comma list), `AI_COLLAB_RUNNER_ADAPTER_DIR` (directory the adapters load from; default `runner/adapters`), `AI_COLLAB_SCHEDULES` (path of `schedules.json`), and the usual `AI_COLLAB_*` project settings, read through `loadProjects`.
 Environment: `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (minutes before an unanswered owned approval is denied; default 30), `AI_COLLAB_RUNNER_SOCKET`, `AI_COLLAB_RUNNER_DB` (default `$AI_COLLAB_STATE_DIR/runner.db`), `AI_COLLAB_RUNNER_HARNESSES` (comma list; `none` loads no adapter; unset loads all four), `AI_COLLAB_RUNNER_ADAPTER_DIR` (directory the adapter modules load from; default `runner/adapters`), `AI_COLLAB_SCHEDULES` (path of `schedules.json`), and the usual `AI_COLLAB_*` project settings, read through `loadProjects`.
+Environment: `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (minutes before an unanswered owned approval is denied; default 30), `AI_COLLAB_RUNNER_SOCKET`, `AI_COLLAB_RUNNER_DB` (default `$AI_COLLAB_STATE_DIR/runner.db`), `AI_COLLAB_RUNNER_HARNESSES` (comma list; empty means all four; `none` loads no adapter), `AI_COLLAB_SCHEDULES` (path of `schedules.json`), and the usual `AI_COLLAB_*` project settings, read through `loadProjects`.
 
 ## Operator decisions (2026-11-21)
 
