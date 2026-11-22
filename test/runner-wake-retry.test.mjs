@@ -155,4 +155,3 @@ test("the codex adapter marks a refused turn/start retryable but never a timed-o
     await adapter.shutdown();
   }
 });
-
