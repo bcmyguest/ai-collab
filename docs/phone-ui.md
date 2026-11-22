@@ -117,16 +117,27 @@ The **AFK** switch in the header sets the operator mode to `on`, `off`, or `quie
 
 ## Start a session from the phone
 
-Each project in the sidebar has a **+** button (the **New session** panel), a chat whose composer starts the agent: type `@codex:gpt-5-codex fix the tests` (`@codex fix the tests` uses the default model) and send. The text after the tag is the prompt. The panel opens the session's chat once it reports. The server accepts only a project name from `projects.json` and one of `claude`, `codex`, `cursor`, `opencode` that is in the project's peers and on `PATH` (plus Node's directory and `~/.local/bin`). It never takes a path from the client. It spawns the harness detached, with `shell: false`, in the project's `root`, at most once every 10 seconds:
+Each project in the sidebar has a **+** button that opens the **New session** panel, a composer shaped like Cursor's new-agent composer. The prompt box comes first (placeholder **Plan, search, build anything**), and under it one toolbar row of pills: **mode** (Agent / Ask / Plan), **model** and **place** (Local folder / New git worktree / OpenShell sandbox). Enter sends and Shift+Enter inserts a newline on a keyboard; on a phone Return types a newline and the round arrow at the end of the row sends. The model list is searchable and grouped by harness, the harness comes from the chosen model rather than from text typed into the prompt, and the panel opens the session's chat once it reports.
+
+The panel opens on `defaults.json`'s `startDefault` (built in: `cursor:deepseek-v41-flash-1017-high`) when that harness can start here and lists the model, else on the first startable harness with its first listed model. The mode pill lists only the modes the chosen harness has, each mapped to that harness's own read-only switch, and Agent (the normal, editing mode) adds no flag:
+
+| Harness | Ask | Plan |
+|---|---|---|
+| Claude Code | — | `--permission-mode plan` |
+| Codex | — | `-s read-only` |
+| Cursor | `--mode ask` | `--mode plan` |
+| OpenCode 2 | — | `--agent plan` |
+
+The place pill lists only the places the project's snapshot reports: the folder always, a new git worktree when the root is a git repo and `git` is installed, the OpenShell sandbox when `AI_COLLAB_OPENSHELL_SANDBOX` names one and `openshell` is installed. The server accepts only a project name from `projects.json` and one of `claude`, `codex`, `cursor`, `opencode` that is in the project's peers and on `PATH` (plus Node's directory and `~/.local/bin`). It never takes a path from the client. It spawns the harness detached, with `shell: false`, in the project's `root`, at most once every 10 seconds:
 
 | Harness | argv |
 |---|---|
-| Claude Code | `claude --bg [--model <m>] <prompt>` |
-| Codex | `codex exec --json [-m <m>] <prompt>` |
-| Cursor | `cursor-agent -p --output-format stream-json --workspace <root> [--model <m>] <prompt>` |
-| OpenCode 2 | `opencode run --format json [-m <provider/model>] <prompt>` (cwd is the root or worktree; the run uses OpenCode's background server, where the plugin runs) |
+| Claude Code | `claude --bg [--worktree <name>] [--permission-mode plan] [--model <m>] <prompt>` |
+| Codex | `codex exec --json [-s read-only] [-m <m>] <prompt>` |
+| Cursor | `cursor-agent -p --trust --output-format stream-json --workspace <root> [--mode ask\|plan] [--model <m>] <prompt>` |
+| OpenCode 2 | `opencode run --format json [--agent plan] [-m <provider/model>] <prompt>` (cwd is the root or worktree; the run uses OpenCode's background server, where the plugin runs) |
 
-The start request body is `{project, harness, prompt, model?, worktree?, openshell?}` (`worktree: true` and `openshell: true` choose the place; both at once is rejected). A `model` must be in the harness's allowlist, which the `models` action (`POST /api/models`, body `{}`) returns as `{claude:[...], codex:[...], cursor:[...], opencode:[...]}` (`opencode` is empty unless the project's peers list it, or list nothing). The panel's composer takes the model from the `@harness:model` tag, which the mention picker lists from that action:
+The start request body is `{project, harness, prompt, model?, startMode?, place?, worktree?, openshell?}` (`startMode` is the mode pill's `agent`, `ask` or `plan`, and an unnamed mode is `agent`; `worktree: true` and `openshell: true` choose the place; both at once is rejected). A `startMode` the harness does not have is rejected with 400 before anything spawns. A `model` must be in the harness's allowlist, which the `models` action (`POST /api/models`, body `{}`) returns as `{claude:[...], codex:[...], cursor:[...], opencode:[...]}` (`opencode` is empty unless the project's peers list it, or list nothing). The panel's model pill lists those names grouped by harness; the mention picker in the ordinary chat composer lists the same names as `@harness:model` tags:
 
 | Harness | Allowlist source |
 |---|---|

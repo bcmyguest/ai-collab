@@ -18,6 +18,7 @@ import { interruptSession } from "../../lib/interrupt.mjs";
 import { slashCommand } from "../../lib/slash.mjs";
 import { readContext } from "../../lib/usage.mjs";
 import { parseCommand } from "../lib/slash-commands.js";
+import { startModes } from "../lib/start-mode.js";
 import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } from "../../lib/approvals.mjs";
 import { availableHarnesses, availablePlaces, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
 import { cleanName } from "../../lib/names.mjs";
@@ -1049,7 +1050,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
-      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, team: teamName, members, delete: deleteTeamName, replyTo, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, forwardedProps } = await payload(request);
+      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, startMode, team: teamName, members, delete: deleteTeamName, replyTo, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, forwardedProps } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -1123,9 +1124,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (chosen !== undefined && (typeof chosen !== "string" || !(await models(cfg.stateDir, env, { peers: cfg.peers }))[harness]?.includes(chosen))) {
           reject(400, "That model is not available for this harness");
         }
+        // The dialogue's Agent / Ask / Plan pill; an unnamed mode is the harness's normal, editing one.
+        const chosenMode = startMode === undefined || startMode === null || startMode === "" ? "agent" : startMode;
+        if (typeof chosenMode !== "string" || !startModes(harness).includes(chosenMode)) reject(400, "That mode is not available for this harness");
         if (Date.now() - lastStartAt < START_GAP_MS) reject(429, "Wait 10 seconds between starts");
         lastStartAt = Date.now();
-        return json(201, await start(cfg, { harness, prompt: checked.text, env, place: where || "folder", ...(chosen !== undefined ? { model: chosen } : {}) }));
+        return json(201, await start(cfg, { harness, prompt: checked.text, env, place: where || "folder", mode: chosenMode, ...(chosen !== undefined ? { model: chosen } : {}) }));
       }
       // A queued message is already on ntfy: the urgent marker makes the recipient's next hook poll at once.
       if (action === "nudge") {
