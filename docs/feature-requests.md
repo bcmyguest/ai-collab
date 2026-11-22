@@ -7,14 +7,12 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 <!-- tasks:start -->
 | Request | Priority | Status |
 |---|---|---|
+| System messages (compact request etc.) render as from operator; give them a system sender | P2 | building |
 | Posts that only @harness:model-start a session still wake running agents (ui.mjs routeMentions) | P2 | building |
 | Notification settings lost after UI rebuild: alert level and/or browser push not surviving deploy | P2 | building |
 | #task tags: tapping a task opens a message tagged #<id>; it goes direct to the task's owner agent, else to the project chat | P2 | building |
-| Reply to any message: when the server can't accept a reply id, send it as text quoting the first/last bit of the original instead of failing 'Invalid reply' | P2 | building |
-| Left panel lists named agents (PM and other set_identity names); tapping one opens a direct chat, no address needed | P2 | building |
 | Builders the PM starts live in the runner's cgroup, so a runner restart (deploy) kills them; launch each as its own systemd-run --user unit | P2 | building |
 | Sessions started from the UI live in the ai-collab-ui cgroup; a UI restart kills them (killed the Codex research session) | P2 | building |
-| Scheduled jobs and agents shown apart: the PM agent is not its schedule entry (operator: agent != scheduled job) | P2 | building |
 | Codex exec builders in a fresh worktree: ai-collab hooks fail (SessionStart/UserPromptSubmit/PostToolUse 'Failed'), so the session never registers or shows in the UI | P2 | open |
 | Scheduler card: a skipped extra trigger (previous run still going) must not replace the last real run's status | P2 | open |
 | Session view: hide dead sessions older than a day by default (one tap shows them), and drop sessions whose worktree is gone | P2 | open |
@@ -37,13 +35,15 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Code mode B now: compile team.dot to a runner durable workflow; agents keep pattern advance (operator: yes) | P2 | open |
 | Team runs live in the runner and run in OpenShell, not the project folder (operator: yes) | P2 | open |
 | Code mode A: ai-collab tool-API client for programs in the OpenShell sandbox; sandbox policy replaces per-call approval (operator: yes) | P2 | open |
-| System messages (compact request etc.) render as from operator; give them a system sender | P2 | open |
 | Hosted multi-user: users reach only their own agents; agents from other users are identified as such | P2 | open shelved by operator 2026-11-22; draft + Opus review on branch worktree-agent-ae3bb980a5eec65ea, unmerged |
 | task add treats --help as a title; add help output and a remove command | P2 | open |
 | A UI message to one session stays out of the project chat | P2 | decided |
 | Modern visual refresh of the whole UI | P2 | open (last; coordinator shows 2–3 design directions first; do not PM-dispatch) |
 | Move off ntfy eventually, so attachments and links work | P2 | open (operator 2026-11-22) |
 | Phone model switch: switch a runner-owned Claude session's model from the phone via SDK Query.setModel (sdk.d.ts:3227) | P2 | open deferred by operator |
+| Scheduled jobs and agents shown apart: the PM agent is not its schedule entry (operator: agent != scheduled job) | P2 | done |
+| Left panel lists named agents (PM and other set_identity names); tapping one opens a direct chat, no address needed | P2 | done |
+| Reply to any message: when the server can't accept a reply id, send it as text quoting the first/last bit of the original instead of failing 'Invalid reply' | P2 | done |
 | Chat to design teams: a Team Author agent that writes and edits team.dot from a plain-language conversation instead of the DOT editor | P2 | done |
 | Task priority P0-P3 (default P2): set via CLI/MCP, shown on cards, lists and board ordered by priority; 'decided' shown as 'Ready' (approved, waiting for a builder) | P2 | done |
 | Task board glitches while scrolling large lists | P2 | done |
