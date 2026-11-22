@@ -100,6 +100,13 @@ export const PAGES = [
     title: 'Development',
     description: 'Tests, git hooks, CI, releases, and re-recording the demo.',
   },
+  {
+    slug: 'mission',
+    source: 'docs/mission.md',
+    group: 'Reference',
+    title: 'PM mission file',
+    description: 'MISSION.md: the mission, goals and rules the PM owns, in git, read at every scheduled tick.',
+  },
 ];
 
 /**
