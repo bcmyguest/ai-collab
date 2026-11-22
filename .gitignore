@@ -4,3 +4,5 @@ web/.next/
 web/.next-demo/
 .claude/worktrees/
 .cursor/cli.json
+.claude/settings.local.json
+web/AGENTS.md
