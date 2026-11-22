@@ -215,3 +215,10 @@ export function readableText(raw) {
   const wrapped = WRAPPED.exec(text);
   return wrapped ? { label: "", text: wrapped[2].trim() } : { label: "", text: String(raw || "") };
 }
+
+/** Agents working now: sessions with an open tool call and running subagent runs, as {key, agent, kind}. */
+export function activeAgents(rows, now) {
+  const sessions = working(rows.filter(row => row.type !== "subagent"), now).map(agent => ({ key: agent, agent, kind: "" }));
+  const runs = rows.filter(row => row.type === "subagent" && runState(row, now) === "running").map(run => ({ key: run.id, agent: run.agent, kind: run.kind || "agent" }));
+  return [...sessions, ...runs];
+}

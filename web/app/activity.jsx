@@ -5,7 +5,7 @@ import { CodeBlockCode } from "@/components/ui/code-block";
 import { MessageContent } from "@/components/ui/message";
 import { cn } from "@/lib/utils";
 import { groupLabel } from "@/lib/chat-turns";
-import { inputBlocks, readableText, resultLanguage, runState, subagentLabel, summarize, working } from "@/lib/activity-rows";
+import { activeAgents, inputBlocks, readableText, resultLanguage, runState, subagentLabel, summarize } from "@/lib/activity-rows";
 import { toolDiff } from "@/lib/tool-diff";
 import { ChoiceCard, askedQuestions } from "./cards";
 import { Counts, ToolDiff } from "./tool-diff";
@@ -177,22 +177,24 @@ export function ActivityRow({ row, when, now, goRun }) {
   if (row.type === "subagent") return <article data-type="subagent" className="flex min-w-0 flex-col gap-1">
     <SubagentRun row={row} when={when} now={now} goRun={goRun}/>
   </article>;
-  if (row.type === "group") return <article data-type="group" className="flex min-w-0 flex-col gap-1"><ToolGroupRun row={row} when={when} now={now} goRun={goRun}/></article>;
-  return <article data-type={row.type} className={cn("flex min-w-0 flex-col gap-1", row.type === "prompt" && "items-end")}>
+  if (row.type === "group") return <article data-type="group" data-agent={row.agent} className="flex min-w-0 flex-col gap-1"><p className="font-mono text-[11px] text-muted-foreground">{row.agent}</p><ToolGroupRun row={row} when={when} now={now} goRun={goRun}/></article>;
+  return <article data-type={row.type} data-agent={row.agent} className={cn("flex min-w-0 flex-col gap-1", row.type === "prompt" && "items-end")}>
     <div className="flex max-w-full items-center gap-1.5 text-xs text-muted-foreground">
       {row.type === "prompt" && <span className="font-medium text-foreground">Prompt</span>}
       {row.type === "text" && <span className="font-medium text-foreground">{readableText(row.output).label || row.tool || "Agent"}</span>}
+      {row.type === "text" && row.agent && <span className="font-mono text-[11px]">{row.agent}</span>}
       {row.time > 0 && <time dateTime={new Date(row.time * 1000).toISOString()}>{when(row.time * 1000)}</time>}
     </div>
     <Body item={row}/>
   </article>;
 }
 
-/** "Working…" while an agent's latest row is an open tool call. */
+/** "Working now" with each agent running: the session with an open tool call, and its running subagents. */
 export function Working({ rows, now }) {
-  const busy = working(rows, now);
+  const busy = activeAgents(rows, now);
   if (!busy.length) return null;
-  return <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-    <LoaderCircle className="size-4 animate-spin"/>Working…
+  return <p role="status" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+    <LoaderCircle className="size-4 animate-spin"/>Working now:
+    {busy.map(item => <span key={item.key} data-agent={item.agent} className="font-mono text-xs text-foreground">{item.kind ? item.kind + " subagent in " + item.agent : item.agent + " (session)"}</span>)}
   </p>;
 }
