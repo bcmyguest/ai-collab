@@ -267,7 +267,7 @@ A reply shows the replied message as a quote above its body (sender and the firs
 
 Notifications carry a link: ntfy's `click` field, built from `AI_COLLAB_UI_URL` (`lib/deep-link.mjs`). Without that variable no link is sent. An agent's reply opens its session thread; questions, approvals and broadcasts open the project chat.
 
-**Phone alerts** (the bell in the header) chooses which notifications buzz: **All**, **Questions and direct replies**, **Questions only**, or **None**. The level is stored in `alerts.json` in the config directory, so hooks, the runner and the UI read the same setting. A message the level silences still arrives; its ntfy priority is 1 (listed, no sound) and its Web Push is not sent. Questions cover `ask_question`, terminal question mirrors and approvals; direct replies are agent replies to the operator.
+**Phone alerts** (the bell in the header) chooses which notifications buzz: **All**, **Questions and direct replies**, **Questions only**, or **None**. The level is stored in `alerts.json` in the config directory, so hooks, the runner and the UI read the same setting. It applies only on the host where it was set: the file is local and is not published over ntfy, so a level set on one machine does not change alerts from sessions on another. A message the level silences still arrives; its ntfy priority is 1 (listed, no sound) and its Web Push is not sent. Questions cover `ask_question`, terminal question mirrors and approvals; direct replies are agent replies to the operator.
 
 ## Look and feel
 
