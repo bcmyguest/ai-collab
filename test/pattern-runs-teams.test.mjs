@@ -150,6 +150,32 @@ test("max_visits fails the run when a role is visited past the limit", async (t)
   assert.match(over.detail, /role "a" reached its max_visits of 2/);
 });
 
+const CHANGE = `digraph change {
+  orch      [agent="claude:claude-haiku-5-5", prompt="Orchestrate."];
+  workers   [agent="codex", count=2, prompt="Work."];
+  reviewers [agent="cursor", count=2, prompt="Review."];
+  orch -> workers [on="dispatch", kind="broadcast", required=false];
+  workers -> reviewers [on="submit", kind="pair", required=false];
+  reviewers -> workers [on="fail", kind="pair", required=false];
+  reviewers -> orch [on="pass", kind="fan-in", required=false];
+  workers -> orch [on="blocked", kind="fan-in", required=false];
+  orch -> done [on="finished", kind="pair", required=false];
+}
+`;
+
+test("two fan-in edges into one target: a wait nothing live can end fails the run instead of hanging", async (t) => {
+  const { env, cfg } = await fixture(t, { change: CHANGE });
+  const { start } = fakeStart();
+  const now = clock();
+  const { id } = await startRun(cfg, "change", "x", env, { start, models: MODELS, now });
+  await advanceRun(cfg, id, "dispatch", { caller: sessionOf(cfg, id, "orch"), env, start, now });
+  await advanceRun(cfg, id, "blocked", { caller: sessionOf(cfg, id, "workers", 1), env, start, now });
+  await advanceRun(cfg, id, "submit", { caller: sessionOf(cfg, id, "workers", 0), env, start, now });
+  const stalled = await advanceRun(cfg, id, "pass", { caller: sessionOf(cfg, id, "reviewers", 0), env, start, now });
+  assert.equal(stalled.status, "failed");
+  assert.match(runStatus(cfg, id).error, /fan-in into "orch" stalled: no live instance can advance "pass" \(1 of 2 reviewers instances arrived\)/);
+});
+
 test("a role's fallback goes into its start brief as an instruction not to switch itself", async (t) => {
   const withFallback = `digraph fb {
   a [agent="claude", prompt="A.", fallback="codex:gpt-5"];
