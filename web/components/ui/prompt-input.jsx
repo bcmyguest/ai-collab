@@ -129,7 +129,9 @@ function PromptInputTextarea({
   }
 
   const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    // On a phone (touch-only pointer) Return types a newline; the send button sends.
+    const touch = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches
+    if (e.key === "Enter" && !e.shiftKey && !touch) {
       e.preventDefault()
       onSubmit?.()
     }
