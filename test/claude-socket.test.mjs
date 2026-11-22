@@ -18,7 +18,7 @@ function fakeHome(t, { accept = "accept", socket = null, sessionId = SESSION_ID,
   t.after(() => rmSync(home, { recursive: true, force: true }));
   mkdirSync(join(home, "sessions"), { recursive: true });
   writeFileSync(join(home, "settings.json"), JSON.stringify(accept === null ? {} : { crossSessionInbound: accept }));
-  const rec = { pid: PID, sessionId, status: "idle" };
+  const rec = { pid: PID, sessionId, status: "idle", cwd: CWD };
   if (socket) rec.messagingSocketPath = socket;
   writeFileSync(join(home, "sessions", `${PID}.json`), JSON.stringify(rec));
   if (token) writeFileSync(join(home, "sessions", `${PID}.abc123.key`), `${token}\n`);

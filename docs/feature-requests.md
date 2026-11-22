@@ -36,4 +36,5 @@ Operator requests from chat and the terminal, newest last. Status: done (merged 
 | A UI message to one session stays out of the project chat | decided |
 | Move to AG-UI end to end (official @ag-ui packages) | building (Codex gpt-6.2-sol, branch agui) |
 | Render questions, approvals and choice cards with A2UI over AG-UI | open; research first |
+| Message delivery as durable workflows in the runner (reserve, push, confirm, mark/release; durable backoff) instead of UI-server state | planned after the AG-UI merge |
 | Record feature requests | this file |
