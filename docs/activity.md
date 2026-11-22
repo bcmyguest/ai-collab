@@ -34,6 +34,18 @@ Only on your ntfy server: with `deploy/compose.yaml`, messages stay in its cache
 | Subagent | `SubagentStart`, `SubagentStop`; `agent_id` on its hooks | `SubagentStart`, `SubagentStop`; `agent_id` on its hooks (schemas in the Codex 0.171 binary) | unsupported: `subagentStart` and `subagentStop` exist (cursor-agent 2026.11.19), but its tool hooks carry only an unverified `parent_tool_call_id`, and which conversation a subagent's hooks report is unclear | a child session (`parentID` set, e.g. the task tool): its first `prompt` is `SubagentStart`, its `experimental.idle` is `SubagentStop`; its hooks carry `agent_id` = the child session id and `agent_type` = its agent, under the root session |
 | Compaction | `PreCompact` (`trigger`, short `custom_instructions`) | `PreCompact` (`trigger`) | `preCompact` (`trigger`) | `session.compaction.started` (`reason` as `trigger`) |
 
+### Compaction
+
+Every compact row carries `compaction: {trigger?, phase, tokensBefore?, tokensAfter?}` (lib/compaction.mjs). `phase` is `started`, `finished` or `failed`; `trigger` is `auto` or `manual` and is absent when the harness does not report it. Sources:
+
+| Source | Phase | Where |
+|---|---|---|
+| Claude `compact_boundary` system message (`pre_tokens`, `post_tokens`), `@anthropic-ai/claude-agent-sdk` sdk.d.ts:4058 | finished, with token counts | runner/adapters/claude.mjs |
+| Codex `contextCompaction` item | started and finished together | runner/adapters/codex.mjs |
+| OpenCode `session.compaction.started`, `.ended`, `.failed` | started, finished, failed | runner/adapters/opencode.mjs |
+
+The compact row from a finished step reads `compacted · <trigger>`, and a failed one reads `compaction failed`. Hook rows (`PreCompact`) do not carry the field yet. Claude's `PostCompact` (sdk.d.ts:2778) and `SessionStart` with `source: "compact"` (sdk.d.ts:7266) are not wired yet.
+
 ## Cost to the agent
 
 Activity publishing starts before delivery and runs alongside it under one 1.5-second deadline; errors are swallowed. Claude's activity-only hooks run with `"async": true`, so Claude never waits for them. Measured on this machine against the in-process fake ntfy (median of 25 runs): an activity-only `PreToolUse` takes 49 ms with activity on versus 27 ms off (Node start-up plus one publish); hooks that also deliver messages add 2-4 ms.

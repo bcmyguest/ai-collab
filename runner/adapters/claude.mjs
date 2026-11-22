@@ -147,6 +147,10 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
           ...attribution,
         });
       }
+    } else if (msg.type === "system" && msg.subtype === "compact_boundary") {
+      // The SDK reports a compaction once it has finished, so only the finished step is emitted.
+      const { trigger, pre_tokens: tokensBefore, post_tokens: tokensAfter } = msg.compact_metadata ?? {};
+      ctx.emit({ type: EventType.STEP_FINISHED, stepName: "compact", metadata: { aiCollab: { compaction: { trigger, phase: "finished", tokensBefore, tokensAfter } } } });
     } else if (msg.type === "result") {
       finishRun(msg.is_error && !run?.cancelled ? { error: msg.errors?.join("; ") || msg.subtype } : {});
     }

@@ -172,9 +172,12 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
         return s.ctx.emit({ type: EventType.TOOL_CALL_CHUNK, toolCallId: data.callID, toolCallName: String(data.name), delta: JSON.stringify(data.input ?? {}) });
       case "session.tool.success": return toolResult(s, data, false);
       case "session.tool.failed": return toolResult(s, data, true);
-      case "session.compaction.started": return s.ctx.emit({ type: EventType.STEP_STARTED, stepName: "compact" });
+      case "session.compaction.started":
+        return s.ctx.emit({ type: EventType.STEP_STARTED, stepName: "compact", metadata: { aiCollab: { compaction: { trigger: data.reason, phase: "started" } } } });
       case "session.compaction.ended":
-      case "session.compaction.failed": return s.ctx.emit({ type: EventType.STEP_FINISHED, stepName: "compact" });
+        return s.ctx.emit({ type: EventType.STEP_FINISHED, stepName: "compact", metadata: { aiCollab: { compaction: { phase: "finished" } } } });
+      case "session.compaction.failed":
+        return s.ctx.emit({ type: EventType.STEP_FINISHED, stepName: "compact", metadata: { aiCollab: { compaction: { phase: "failed" } } } });
     }
   }
 
