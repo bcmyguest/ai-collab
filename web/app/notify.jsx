@@ -4,7 +4,8 @@ import { Bell, BellOff, BellRing } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { ALERT_LEVELS, AlertLevelItems } from "./alert-level";
+import { AlertLevelItems } from "./alert-level";
+import { isAlertLevel, readRememberedAlertLevel, rememberAlertLevel, shownAlertLevel, subscriptionUsesKey } from "@/lib/alert-level";
 
 const STATES = {
   loading: ["checking", Bell], off: ["off", Bell], on: ["on", BellRing],
@@ -24,12 +25,7 @@ function keyBytes(base64url) {
   return Uint8Array.from(raw, c => c.charCodeAt(0));
 }
 
-const sameKey = (sub, key) => {
-  const own = sub.options?.applicationServerKey;
-  if (!own) return true;
-  const a = new Uint8Array(own);
-  return a.length === key.length && a.every((byte, i) => byte === key[i]);
-};
+const sameKey = subscriptionUsesKey;
 
 async function call(method, path, body) {
   const res = await fetch("/api/push/" + path, body ? { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : { method });
@@ -39,7 +35,8 @@ async function call(method, path, body) {
 }
 
 // Header bell: one Notifications menu with the browser push state, its actions, and the phone alert level.
-export function NotifyToggle({ level = "all", levelDisabled = false, setLevel }) {
+// level is the server's stored level; undefined before the first state frame, so the last choice shows instead.
+export function NotifyToggle({ level, levelDisabled = false, setLevel }) {
   const [state, setState] = useState("loading");
   const [busy, setBusy] = useState(false);
 
@@ -58,6 +55,15 @@ export function NotifyToggle({ level = "all", levelDisabled = false, setLevel })
         if (!live) return;
         if (Notification.permission === "denied") return setState("blocked");
         if (!sub || Notification.permission !== "granted") return setState("off");
+        // A subscription made with an older VAPID key can never be delivered to; replace it before claiming "on".
+        const { publicKey } = await call("GET", "key").catch(() => ({}));
+        const key = publicKey ? keyBytes(publicKey) : null;
+        if (key && !sameKey(sub, key)) {
+          await sub.unsubscribe().catch(() => {});
+          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }).catch(() => null);
+          if (!live) return;
+          if (!sub) return setState("off");
+        }
         setState("on");
         // The server drops subscriptions the push service reports gone; resend so it holds this one.
         await call("POST", "subscribe", { subscription: sub.toJSON() }).catch(() => {});
@@ -118,8 +124,15 @@ export function NotifyToggle({ level = "all", levelDisabled = false, setLevel })
     }
   }
 
+  // The server's level wins; before the first state frame (and after a deploy reload) this browser's last choice shows.
+  const shown = shownAlertLevel(level, readRememberedAlertLevel(globalThis.localStorage));
+  const choose = next => {
+    if (!isAlertLevel(next)) return;
+    rememberAlertLevel(globalThis.localStorage, next);
+    setLevel?.(next);
+  };
   const [label, Icon] = STATES[state];
-  const alerts = ALERT_LEVELS.find(([id]) => id === level)?.[1] || "All";
+  const alerts = ALERT_LEVELS.find(([id]) => id === shown)?.[1] || "All";
   const summary = "Notifications: " + label + " · phone alerts " + alerts;
   return <DropdownMenu>
     <DropdownMenuTrigger asChild>
@@ -134,7 +147,7 @@ export function NotifyToggle({ level = "all", levelDisabled = false, setLevel })
         <DropdownMenuItem disabled={busy} onSelect={disable}>Turn off</DropdownMenuItem>
       </>}
       {HINTS[state] && <p className="px-2 py-1.5 text-xs text-muted-foreground">{HINTS[state]}</p>}
-      <AlertLevelItems level={level} set={setLevel}/>
+      <AlertLevelItems level={shown} set={choose}/>
     </DropdownMenuContent>
   </DropdownMenu>;
 }

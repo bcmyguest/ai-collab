@@ -1096,6 +1096,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }
       if (action === "alerts") {
         writeAlertLevel(env, alertLevel);
+        // The level rides the state snapshot, so push one: an open tab must show the new level without waiting for
+        // some later message to refresh it. Without this, the choice looks lost until the next unrelated event.
+        broadcast();
         return json(200, { status: "Alerts " + alertLevel, detail: alertLevel });
       }
       if (action === "delete") {
