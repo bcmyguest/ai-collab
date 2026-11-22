@@ -775,6 +775,8 @@ function Console({ account }) {
   const models = useModels(project);
   const level = selected.level;
   const tasksView = level === "project" && selected.tab === "tasks";
+  // The new-agent composer replaces the chat while it is open.
+  const composing = Boolean(creating) && creating === project && ready;
   const agent = level === "session" ? data.agents.find(item => item.id === selected.session) : undefined;
   const target = level === "session" ? selected.session : "all";
   const missing = level === "session" && !target;
@@ -892,8 +894,8 @@ function Console({ account }) {
             <Button variant="outline" size="sm" className="h-9 rounded-full" aria-label="Compact" disabled={!ready || working}
               onClick={() => action("compact", { target: selected.session }, "Compaction requested")}><Minimize2/>Compact</Button></span>}/>}
       </header>
-      <div className="flex flex-col gap-2 px-3 empty:hidden">
-        {creating && creating === project && ready && <NewAgentComposer key={project + ":" + (data.startable || []).join(",")} project={project} startable={data.startable || []} places={data.startPlaces || ["folder"]}
+      <div className={cn("flex flex-col gap-2 px-3 empty:hidden", composing && "min-h-0 flex-1 justify-center pb-[20vh]")}>
+        {composing && <NewAgentComposer key={project + ":" + (data.startable || []).join(",")} project={project} startable={data.startable || []} places={data.startPlaces || ["folder"]}
           startDefault={data.startDefault} agents={data.agents} models={models} disabled={!ready} start={startSession} close={() => setCreating("")} open={openAddress}/>}
         {agent?.wake?.status && <div className="mx-auto mt-2 flex w-full max-w-3xl flex-wrap items-center gap-2 rounded-xl border bg-muted/50 px-3 py-2 text-sm">
           Wake · {agent.wake.status}{agent.wake.detail && " · " + agent.wake.detail}
@@ -908,7 +910,7 @@ function Console({ account }) {
         {ready ? <PatternsPage data={data} project={project} selected={selected} navigate={navigate} call={patternCall} disabled={working}/>
           : <p className="py-16 text-center text-sm text-muted-foreground">Loading patterns…</p>}
       </div>}
-      {!patterns && (tasksView ? <TaskBoard board={data.tasks} now={now} open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatContainerRoot contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
+      {!patterns && !composing && (tasksView ? <TaskBoard board={data.tasks} now={now} open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatContainerRoot contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
         <ChatContainerContent key={requested} className="mx-auto w-full max-w-3xl gap-5 px-3 py-4">
           {!ready && (home || listing || subagents || compactions) && !loadError && <p className="py-16 text-center text-sm text-muted-foreground">Loading sessions…</p>}
           {ready && (home || listing) && <>
@@ -949,7 +951,7 @@ function Console({ account }) {
         </div>
       </ChatContainerRoot>)}
       <div role="status" hidden={!notice} className="mx-auto w-full max-w-3xl px-4 text-center text-xs text-muted-foreground">{notice}</div>
-      {!home && !listing && !patterns && <Composer key={requested} conversation={conversationKey(project, level === "session" ? selected.session : "")} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
+      {!home && !listing && !patterns && !composing && <Composer key={requested} conversation={conversationKey(project, level === "session" ? selected.session : "")} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
         placeholder={placeholder} question={question} cancel={() => setQuestion("")} urgentable={!question} replying={replyTo} cancelReply={() => setReplyTo(null)}
         onSend={async (body, urgent, command) => {
           // Project chat never runs commands: a leading / there is ordinary chat.
