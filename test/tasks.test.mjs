@@ -180,10 +180,10 @@ test("import maps the status word exactly and keeps the rest as detail", () => {
 test("render keeps the rows and the prose outside the markers", () => {
   const doc = importFeatureRequests(FIXTURE, NOW);
   const out = renderFeatureRequests(doc, FIXTURE);
-  assert.ok(out.startsWith("# Feature requests\n\nIntro line.\n\n" + TABLE_START + "\n| Request | Status |\n|---|---|\n"));
+  assert.ok(out.startsWith("# Feature requests\n\nIntro line.\n\n" + TABLE_START + "\n| Request | Priority | Status |\n|---|---|---|\n"));
   assert.ok(out.endsWith("\n" + TABLE_END + "\n\nOutro line.\n"));
-  assert.ok(out.includes("| Session menu | done (merged and deployed) |\n"));
-  assert.ok(out.includes("| Escaped \\| pipe | decided |\n"));
+  assert.ok(out.includes("| Session menu | P2 | done (merged and deployed) |\n"));
+  assert.ok(out.includes("| Escaped \\| pipe | P2 | decided |\n"));
   // Without markers, a full document is written.
   const fresh = renderFeatureRequests(doc, "");
   assert.match(fresh, /^# Feature requests\n/);
@@ -239,7 +239,7 @@ test("a title ending in a backslash round-trips through render and import", () =
   addTask(doc, { id: "slash", title: "Path C:\\dir\\", status: "open" }, NOW);
   const rendered = renderFeatureRequests(doc, "");
   // The row escapes each backslash, so the trailing one cannot escape the cell's closing pipe.
-  assert.ok(rendered.includes("| Path C:\\\\dir\\\\ | open |"), "the table row doubles the backslashes");
+  assert.ok(rendered.includes("| Path C:\\\\dir\\\\ | P2 | open |"), "the table row doubles the backslashes");
   const back = importFeatureRequests(rendered, NOW);
   assert.equal(back.tasks[0].title, "Path C:\\dir\\");
   assert.equal(renderFeatureRequests(back, rendered), rendered);
