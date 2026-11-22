@@ -30,7 +30,7 @@ import { WAITER_MAX_S, runWaiter, takeWaiterSlot } from "../lib/waiter.mjs";
 import { contextTokens, reportContext } from "../lib/usage.mjs";
 import { activityEvents, publishActivity } from "../lib/activity.mjs";
 import { sendReceipts, settleReceipts } from "../lib/receipts.mjs";
-import { closeTerminalCards, decideApproval } from "../lib/approvals.mjs";
+import { closeTerminalCards, decideApproval, decideQuestion } from "../lib/approvals.mjs";
 import { standsDown } from "../lib/owned.mjs";
 
 const HOSTS = new Set(["claude", "codex", "cursor", "opencode"]);
@@ -187,6 +187,12 @@ async function main() {
   const typed = (key === "userpromptsubmit" || key === "beforesubmitprompt") && operatorPrompt(msg.prompt);
   // A subagent's hooks carry the parent's session id; its cwd (often a worktree) must not rename the parent.
   const subagent = typeof msg.agent_id === "string" && msg.agent_id !== "";
+  // The PreToolUse matcher for AskUserQuestion blocks until the phone answers or the terminal dialog takes over.
+  if (key === "pretooluse" && msg.tool_name === "AskUserQuestion" && !activityOnly) {
+    const ctrl = new AbortController();
+    for (const name of ["SIGTERM", "SIGINT", "SIGHUP"]) process.once(name, () => ctrl.abort());
+    return emit(subagent ? {} : await decideQuestion(cfg, { host, input: msg, signal: ctrl.signal }));
+  }
   if (event || events.length) {
     try {
       if (!subagent) await recordSession(cfg, {

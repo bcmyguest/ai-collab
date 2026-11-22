@@ -3,7 +3,10 @@
   "hooks": {
     "SessionStart": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --host claude", "timeout": 20 }, { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --rewake --host claude", "asyncRewake": true, "timeout": 3600, "rewakeMessage": "ai-collab delivered peer messages while this session was idle.", "rewakeSummary": "ai-collab: new peer message" }] }],
     "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --host claude", "timeout": 10 }, { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --rewake --host claude", "asyncRewake": true, "timeout": 3600, "rewakeMessage": "ai-collab delivered peer messages while this session was idle.", "rewakeSummary": "ai-collab: new peer message" }] }],
-    "PreToolUse": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --activity --host claude", "async": true }] }],
+    "PreToolUse": [
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --activity --host claude", "async": true }] },
+      { "matcher": "AskUserQuestion", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --host claude", "timeout": 600 }] }
+    ],
     "PostToolUse": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --host claude", "timeout": 10 }] }],
     "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --activity --host claude", "async": true }] }],
     "MessageDisplay": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --activity --host claude", "async": true }] }],
