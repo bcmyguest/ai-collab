@@ -29,7 +29,7 @@ import { ownedFile, readOwned, writeOwned } from "../lib/owned.mjs";
 import { modelFields } from "../lib/session-events.mjs";
 import { limitFromRunError } from "../lib/limits.mjs";
 import { alertLimit } from "../lib/limit-alert.mjs";
-import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, LIMIT, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, permissionSettings } from "./contract.mjs";
+import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, LIMIT, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, OPENSHELL_PERMISSION, permissionSettings } from "./contract.mjs";
 import { sessionOfCommand } from "../lib/schedule-session.mjs";
 import { DELIVERY, deliveryWorkflow } from "./delivery.mjs";
 import { publishApproval, publishApprovalEnd, publishEnded, publishEvent, publishReceipts } from "./publish.mjs";
@@ -715,7 +715,8 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     if (!configs.has(project)) fail(400, "Unknown project");
     const adapter = adapterOf(harness);
     if (!PLACES.includes(place)) fail(400, "Unknown start place");
-    const mode = permissionMode ?? defaultPermission(harness, place);
+    // OpenShell is the boundary: every harness there runs with approvals off, whatever mode the caller named.
+    const mode = place === "openshell" ? OPENSHELL_PERMISSION : permissionMode ?? defaultPermission(harness, place);
     if (!PERMISSION_MODES.includes(mode) || !adapter.capabilities.permissionModes.includes(mode)) fail(400, `${harness} does not support permission mode ${mode}`);
     const permission = permissionSettings(harness, mode, place);
     if (permission.error) fail(400, permission.error);
@@ -935,6 +936,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     const s = find(address);
     const r = s.record;
     if (r.status === "ended") fail(409, "The owned session has ended");
+    if (r.place === "openshell" && mode !== OPENSHELL_PERMISSION) fail(400, "An OpenShell session always runs with full access");
     if (!PERMISSION_MODES.includes(mode) || !adapterOf(r.harness).capabilities.permissionModes.includes(mode)) fail(400, `${r.harness} does not support permission mode ${mode}`);
     const permission = permissionSettings(r.harness, mode, r.place);
     if (permission.error) fail(400, permission.error);

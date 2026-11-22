@@ -445,6 +445,8 @@ test("starting a Cursor session in OpenShell defaults to full-access and complet
       .find((entry) => entry.kind === "argv");
     assert.deepEqual(launch?.args, ["acp", "--force"]);
     assert.equal(launch.owned, "cursor");
+    // The sandbox is the boundary, so an OpenShell session keeps approvals off: a mode change is refused.
+    await assert.rejects(runner.setMode(started.session, "supervised"), /full access/);
     assert.deepEqual(await runner.close(started.session), { status: "ended" });
     assert.deepEqual(JSON.parse(readFileSync(ctx.env.FAKE_OPENSHELL_STATE, "utf8")).sandboxes, []);
   } finally {
