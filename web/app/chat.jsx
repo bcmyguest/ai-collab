@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { HarnessLogo, hasLogo } from "./logos";
-import { Activity, Square, ArrowLeft, ArrowUp, AtSign, Bell, BellOff, Bot, Check, CheckCheck, CircleCheck, Coffee, CornerLeftUp, FolderGit2, LoaderCircle, Menu, Minimize2, Monitor, Moon, Plus, Reply, RotateCw, Sun, X, Zap } from "lucide-react";
+import { Activity, Square, ArrowLeft, ArrowUp, AtSign, Bot, Check, CheckCheck, CircleCheck, Coffee, CornerLeftUp, FolderGit2, LoaderCircle, Menu, Minimize2, Monitor, Moon, Plus, Reply, RotateCw, Sun, VolumeX, X, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatContainerContent, ChatContainerRoot, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
@@ -29,7 +29,6 @@ import { ActivityRow, GoToAgent, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
 import { SurfaceContext } from "@/components/a2ui/surface";
 import { NotifyToggle } from "./notify";
-import { AlertLevel } from "./alert-level";
 import { SessionList, SessionMenu, SubagentList } from "./home";
 import { RunningCount, SubagentRuns } from "./subagent-runs";
 import { ClosedProjects, ProjectMenu } from "./project-menu";
@@ -57,7 +56,7 @@ const QUIET_RETRY_MS = 500;
 const RECONNECT_GRACE_MS = 3_000;
 const STALE_AFTER_MS = 20_000;
 const TICK_MS = 1000;
-const AFK_MODES = [["off", "Off", Bell], ["on", "On", Coffee], ["quiet", "Quiet", BellOff]];
+const AFK_MODES = [["off", "Off", Monitor], ["on", "On", Coffee], ["quiet", "Quiet", VolumeX]];
 const HARNESS_NAMES = { claude: "Claude Code", codex: "Codex", cursor: "Cursor", opencode: "OpenCode" };
 const RECEIPTS = { sent: ["Sent", Check], delivered: ["Read by some sessions", CheckCheck], read: ["Read", CheckCheck] };
 const clock = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -146,10 +145,10 @@ function Dot({ online }) {
 
 // Operator away mode, broadcast to every project's agents.
 function AfkToggle({ mode, disabled, set }) {
-  const Icon = AFK_MODES.find(([id]) => id === mode)?.[2] || Bell;
+  const Icon = AFK_MODES.find(([id]) => id === mode)?.[2] || Monitor;
   return <DropdownMenu>
     <DropdownMenuTrigger asChild>
-      <Button variant={mode === "off" ? "ghost" : "secondary"} size="sm" className="rounded-full" aria-label={"AFK mode: " + mode} disabled={disabled}>
+      <Button variant={mode === "off" ? "ghost" : "secondary"} size="sm" className="rounded-full" aria-label={"AFK mode: " + mode} title={"AFK mode: " + mode} disabled={disabled}>
         <Icon/><span className="text-xs">{mode === "off" ? "AFK" : "AFK " + mode}</span>
       </Button>
     </DropdownMenuTrigger>
@@ -913,8 +912,7 @@ function Console({ account }) {
             <Dot online={agent.online}/><span className="hidden sm:inline">{agent.online ? "online" : "offline"}</span></span>}
           {level === "session" && agent && <RunningCount runs={agent.subagents} now={now}/>}
           <AfkToggle mode={data.mode || "off"} disabled={!ready || working} set={mode => action("afk", { mode }, "AFK " + mode)}/>
-          <AlertLevel level={data.alerts || "all"} disabled={!ready || working} set={level => action("alerts", { level }, "Alerts set")}/>
-          <NotifyToggle/>
+          <NotifyToggle level={data.alerts || "all"} levelDisabled={!ready || working} setLevel={level => action("alerts", { level }, "Alerts set")}/>
           <ThemeToggle/>
         </div>
         {account.user && <p className="-mt-1 truncate text-right text-[11px] text-muted-foreground" data-account={account.user.login}>
