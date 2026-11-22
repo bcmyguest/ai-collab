@@ -14,7 +14,7 @@ The types live in `runner/types.d.ts`, the constants and validators in `runner/c
 | Codex | Its own `codex app-server` child per runner, launched with `-c thread_unload_delay_secs=0` | review |
 | Claude | Agent SDK `query()` with an `AsyncIterable` prompt; the adapter picks the session UUID and passes it as `options.sessionId` (sdk.d.ts L2273) | research |
 | OpenCode | The registered OpenCode service (`~/.local/state/opencode/service.json`), HTTP plus SSE; permission replies are always `once` | research, review |
-| Cursor | `cursor-agent acp`, in a git worktree outside OpenShell for now; `--force` inside an OpenShell sandbox later | operator |
+| Cursor | `cursor-agent acp`, one child per session, in a git worktree outside OpenShell; `--force` inside an OpenShell sandbox with no further limits (2026-11-22) | operator |
 | Events | AG-UI adapter events and a configurable [ntfy wire format](ag-ui.md) | operator |
 | Hook stand-down | Owned record keyed by session label; only the process the runner spawned stands down, and agents started inside it register as its children | operator |
 | Cut runs | Never resent. Every cut run, on every adapter, is marked interrupted | operator |
@@ -192,7 +192,7 @@ Wakes of one address run in sequence (a gate per address). A woken session is ow
 
 A session the user resumed outside the runner: the pump drops the adopted owned record of a session seen online in another process and serves it as live; a wake for a session seen online outside is skipped.
 
-Harness adapters: `runner/adapters/<harness>.mjs` is not built for claude, codex, cursor or opencode. Until one is built, `loadAdapters` logs `no <harness> adapter yet`, and wakes for that harness record `no-adapter`. The fake adapter drives the tests.
+Harness adapters: `runner/adapters/<harness>.mjs` is not built for claude, codex or opencode. Until one is built, `loadAdapters` logs `no <harness> adapter yet`, and wakes for that harness record `no-adapter`. The Cursor adapter is built (see [Cursor adapter](#cursor-adapter)). The fake adapter drives the tests.
 
 ### Pruning
 
@@ -223,21 +223,21 @@ Each adapter is `runner/adapters/<harness>.mjs` with a default export `(options:
 
 | Member | Contract | Claude | Codex | OpenCode | Cursor |
 |---|---|---|---|---|---|
-| `capabilities.resume` | `transcript` or `none` | `transcript` | `transcript` (own child dies with the runner) | `transcript` | `transcript` |
-| `capabilities.steer` | whether `steer()` exists | `streamInput` | `turn/steer` | `/prompt` `delivery:"steer"` | false until verified |
+| `capabilities.resume` | `transcript` or `none` | `transcript` | `transcript` (own child dies with the runner) | `transcript` | `transcript`; `session/load` replays history, no run is resumed (UNVERIFIED replay) |
+| `capabilities.steer` | whether `steer()` exists | `streamInput` | `turn/steer` | `/prompt` `delivery:"steer"` | false |
 | `available(env)` | `{ok, detail?}`, no tokens | CLI present | `codex --version` | service reachable | `cursor-agent --version` |
-| `open(options, ctx)` | Native session, no prompt. `handle.nativeId` is set when it resolves | `query()` with `sessionId` = new UUID | `initialize`, `thread/start` | create a session (endpoint unverified) | `initialize`, `session/new` |
-| `resume(record, ctx, env)` | Reattach to `record.nativeId` for the next input; a cut run is not resumed | `options.resume` | `thread/resume` | reconnect SSE, list pending permissions | `session/load` |
-| `handle.send(input)` | Starts a run; resolves `{runId}` once the harness accepted it | yield an `SDKUserMessage` | `turn/start` | `POST .../prompt` | `session/prompt` |
+| `open(options, ctx)` | Native session, no prompt. `handle.nativeId` is set when it resolves | `query()` with `sessionId` = new UUID | `initialize`, `thread/start` | create a session (endpoint unverified) | `initialize`, `session/new`; in openshell, `openshell sandbox` list/create/start, then `sandbox exec` |
+| `resume(record, ctx, env)` | Reattach to `record.nativeId` for the next input; a cut run is not resumed | `options.resume` | `thread/resume` | reconnect SSE, list pending permissions | `initialize` (must advertise `loadSession`), `session/load` |
+| `handle.send(input)` | Starts a run; resolves `{runId}` once the harness accepted it | yield an `SDKUserMessage` | `turn/start` | `POST .../prompt` | `session/prompt`; resolves once written to the child's stdin (UNVERIFIED that Cursor accepted it) |
 | `handle.steer(input)` | Adds input to the running run | `streamInput` | `turn/steer` | `delivery:"steer"` | — |
-| `handle.interrupt()` | Ends the run; the adapter then emits `RUN_FINISHED {outcome:{type:"cancelled"}}` | `query.interrupt()` | `turn/interrupt` | `POST .../interrupt` | `session/cancel` |
-| `handle.setPermissionMode(mode)` | Applies a mode from the permission table to the open session; called only by the runner on the operator's control-socket request | `query.setPermissionMode()` | next `turn/start` settings | the runner's auto-reply set | unverified |
-| `handle.respond(interruptId, decision)` | `{behavior:"allow"\|"deny", answers?}` | `canUseTool` resolves | approval response | `.../permission/:id/reply` `once` or `reject` | `request_permission` result |
-| `listModels(env)` | `[{id, label?, default?}]` | `initializationResult()` | `model/list` | `model.list` | unverified |
-| `listCommands(cwd, env)` | `[{name, description?, argumentHint?}]`, no tokens | `initializationResult()` (T3 ClaudeProvider.ts L520-L601) | `skills/list` | `command.list` | — |
+| `handle.interrupt()` | Ends the run; the adapter then emits `RUN_FINISHED {outcome:{type:"cancelled"}}` | `query.interrupt()` | `turn/interrupt` | `POST .../interrupt` | `session/cancel`; the pending `session/prompt` returns `cancelled` |
+| `handle.setPermissionMode(mode)` | Applies a mode from the permission table to the open session; called only by the runner on the operator's control-socket request | `query.setPermissionMode()` | next `turn/start` settings | the runner's auto-reply set | not built: `--force` is a process argument, so 409 |
+| `handle.respond(interruptId, decision)` | `{behavior:"allow"\|"deny", answers?}` | `canUseTool` resolves | approval response | `.../permission/:id/reply` `once` or `reject` | `request_permission` result: `selected` with an `allow_once` or `reject_once` option, else `cancelled` |
+| `listModels(env)` | `[{id, label?, default?}]` | `initializationResult()` | `model/list` | `model.list` | `cursor-agent --list-models` (UNVERIFIED output format) |
+| `listCommands(cwd, env)` | `[{name, description?, argumentHint?}]`, no tokens | `initializationResult()` (T3 ClaudeProvider.ts L520-L601) | `skills/list` | `command.list` | `[]` |
 | `handle.contextUsage()` | `{tokens, window?}` or null | `getContextUsage()` | last `thread/tokenUsage/updated` | session stats | — |
-| `handle.close()` | Ends the session's process; the native session stays resumable | end the prompt iterable | adapter decides | drop SSE | adapter decides |
-| `adapter.shutdown()` | Stops shared children after all sessions closed | — | kill the app-server child | — | kill the ACP child |
+| `handle.close()` | Ends the session's process; the native session stays resumable | end the prompt iterable | adapter decides | drop SSE | kill the session's ACP child |
+| `adapter.shutdown()` | Stops shared children after all sessions closed | — | kill the app-server child | — | kill tracked ACP children |
 
 Rules for every adapter:
 
@@ -345,13 +345,67 @@ Modes: `supervised`, `accept-edits`, `auto`, `full-access`. The table is `PERMIS
 | `supervised` | `default` | `untrusted` / `user` / `readOnly` | nothing; every ask goes to the phone (**default**) | ACP `request_permission` goes to the phone (**default**) |
 | `accept-edits` | `acceptEdits` | `on-request` / `user` / `workspaceWrite` | edit asks | — |
 | `auto` | `auto` (**default**) | `on-request` / `auto_review` / `workspaceWrite` (**default**) | — | — |
-| `full-access` | `bypassPermissions` | granular (only MCP elicitations ask) / `user` / `dangerFullAccess` | every ask | `--force`; only with `place: "openshell"` (rejected until OpenShell starts are built) |
+| `full-access` | `bypassPermissions` | granular (only MCP elicitations ask) / `user` / `dangerFullAccess` | every ask | `acp --force`; only with `place: "openshell"` (the runner refuses OpenShell starts until `placeCwd` in `runner/runner.mjs` is built) |
 
 Defaults: Claude `auto`, Codex `auto`, OpenCode `supervised`, Cursor `supervised` (`DEFAULT_PERMISSION`). With `place: "openshell"` the default is `full-access` for every harness (`defaultPermission(harness, place)`).
 
 The operator changes a running session's mode with `POST /v1/sessions/:harness/:label/mode` on the control socket (0600, the operator's user only). Neither ntfy nor the MCP server offers the operation, so an agent cannot raise its own mode; it can ask the operator. The runner validates the pair with `permissionSettings`, calls `handle.setPermissionMode`, updates the owned record and publishes a notice row.
 
 Cursor's `full-access` needs OpenShell. OpenCode replies are always `once`, never `always`, because an "always" grant covers the whole project. An adapter that cannot honour a mode leaves it out of `capabilities.permissionModes`, and the runner answers 400.
+
+## Cursor adapter
+
+`runner/adapters/cursor.mjs`. One `cursor-agent acp` child per owned session (stdio, newline-delimited JSON-RPC 2.0), spawned in the session's cwd. The adapter does not share one ACP child across sessions, so each child's environment is its own. `shutdown()` kills the children still tracked.
+
+Argv: `cursor-agent acp`, plus `--force` for full-access, plus `--model <m>` when a model is named. Outside OpenShell, `--force` is refused.
+
+| Capability | Status | Evidence |
+|---|---|---|
+| Open, prompt, streamed text, `RUN_FINISHED` | supported (fake ACP) | `test/runner-adapter-cursor.test.mjs` |
+| AG-UI events pass `eventProblem` | supported | same test |
+| Approval card, allow and deny map to `allow_once` and `reject_once` | supported (fake ACP) | same test |
+| Interrupt ends the run as `cancelled`, cancels open approvals | supported (fake ACP) | same test |
+| Resume by `session/load` | partial: needs `loadSession`; real replay UNVERIFIED | same test (fake) |
+| Tool calls and results | supported (fake ACP); field names follow the ACP spec | same test |
+| `setPermissionMode` | not built (409) | |
+| `steer`, `contextUsage`, `listCommands` | not built; `listCommands` returns `[]` | |
+| `listModels` | partial: `--list-models` output format UNVERIFIED | same test (fake output) |
+| `available` | supported | `cursor-agent --version` |
+| Real ACP schema, `protocolVersion: 1`, method names | UNVERIFIED: from the ACP spec, no schema dump from cursor-agent | |
+| `--force` applied by ACP mode | UNVERIFIED: the flag parses after `acp` (see below), not whether ACP honours it | |
+| `AI_COLLAB_PARENT` in the agent's shell | not built: the native session id is known only after `session/new`, after the child starts | |
+| Hooks stand down for the cursor child | not verified: `AI_COLLAB_OWNED=cursor` is set on the child | |
+
+Cursor help, `cursor-agent 2026.11.22-e9042b2` (read locally; nothing run against an account):
+
+- `acp` takes only `-h`. `-f, --force` and `--yolo` (alias) are top-level options. `cursor-agent acp --force` and `cursor-agent acp --model x` exit 0 with no unknown-option error; `cursor-agent acp --bogus-flag-x` exits 1 with `unknown option`.
+- `--list-models` lists models and exits. `--version` prints the version.
+
+## OpenShell
+
+`openshell 0.1.9`, read from `--help` only. The adapter creates no sandbox outside a test; tests inject `test/helpers/fake-openshell.mjs`.
+
+Adapter flow for `place: "openshell"`: `sandbox list -o json`, then `sandbox create` when no sandbox named `ai-collab-<project>` exists, or `sandbox start` (or `resume`) when its state says stopped (or suspended). Then `sandbox exec` runs `cursor-agent acp --force` with the owned marker.
+
+| Command | Used for | Flags confirmed from `--help` |
+|---|---|---|
+| `openshell sandbox list -o json` | find the project's sandbox | `-o json`, `--names`, `--selector`. Reply on the connected gateway: `{"next_page_token": "", "sandboxes": []}` |
+| `openshell sandbox create --name N --no-tty --detach` | create when missing | `--name`, `--no-tty`, `--detach`, `--no-keep` (delete after the command), `--from`, `--template`, `--policy`, `--provider`, `--env`, `--upload` |
+| `openshell sandbox start NAME` | start a stopped sandbox | positional name |
+| `openshell sandbox resume NAME` | resume a suspended sandbox | positional name (`suspend` keeps memory state) |
+| `openshell sandbox exec --no-tty -n N --env K=V -- <cmd...>` | run the agent | `-n`, `--no-tty`, `--env` (non-secret), `--workdir`, `--timeout`, `--no-login-shell`; command after `--`; help example pipes stdin into `exec` |
+| `openshell sandbox stop NAME`, `delete NAME` | not used by the adapter | `stop` keeps the workspace |
+
+UNVERIFIED: the sandbox JSON field names the adapter reads for state (`phase`, `state`, `status`). No sandbox exists to inspect. `--detach` without a command, and the result of `sandbox create` with no command, are UNVERIFIED.
+
+Unsolved:
+
+- **Cursor login inside the sandbox.** `cursor-agent login` opens a browser and writes to the sandbox filesystem. `cursor_login` is the ACP auth method (from `initialize` on this machine, `docs/research/owned-sessions.md`). A key via `--api-key` or `CURSOR_API_KEY` is a secret: attach it with `--provider` (help: secrets go in providers, not `--env`). Not built.
+- **File sync.** The adapter sends the host cwd as the ACP session cwd and sets no `--workdir`. No host mount was seen. `sandbox upload` and `download` exist but the adapter does not use them. Not built.
+- **ntfy access from inside.** Needs a sandbox policy (`--policy` YAML) that allows the ntfy host. Nothing in the sandbox runs `ai-collab`, so hooks do not run there. Not verified.
+- **Sandbox lifetime.** The adapter starts a stopped sandbox and never stops or deletes one. No idle cleanup. `--no-keep` is not set.
+- **Killing `sandbox exec`.** Whether closing the local `exec` client stops the remote `cursor-agent` is UNVERIFIED.
+- **Runner start path.** `runner/runner.mjs` `placeCwd` still rejects `place: "openshell"` (line 236), so the runner cannot start an OpenShell session yet. The adapter accepts it when the runner passes it.
 
 ## Files
 
@@ -369,6 +423,9 @@ Cursor's `full-access` needs OpenShell. OpenCode replies are always `once`, neve
 | `runner/adapters/fake.mjs` | Scripted adapter for tests and a template for real adapters |
 | `runner/adapters/codex.mjs` | Codex adapter: one `codex app-server` child per runner (`-c thread_unload_delay_secs=0`, env `AI_COLLAB_OWNED=codex`); tests in `test/runner-adapter-codex.test.mjs` drive `test/helpers/fake-codex-app-server.mjs` |
 | `runner/adapters/<harness>.mjs` | Real adapters, one per agent (Claude, Cursor, OpenCode not written yet; `loadAdapters` logs `no <harness> adapter yet`) |
+| `runner/adapters/cursor.mjs` | Cursor adapter: ACP over stdio, optional OpenShell exec |
+| `runner/adapters/<harness>.mjs` | Real adapters, one per agent; claude, codex and opencode not written yet (`loadAdapters` logs `no <harness> adapter yet`) |
+| `test/runner-adapter-cursor.test.mjs`, `test/helpers/fake-cursor-agent.mjs`, `test/helpers/fake-openshell.mjs` | Cursor adapter tests; fake ACP child and fake openshell |
 | `runner/delivery.mjs` | Delivery workflow: reserve, push, confirm, mark or release, expect-reply redelivery |
 | `lib/deliver-push.mjs` | Live push paths (socket, `codex queue`, OpenCode HTTP) and the ack tracker, shared with the UI dispatcher |
 | `lib/owned.mjs` | Owned-record read/write and `standsDown` |
@@ -376,6 +433,7 @@ Cursor's `full-access` needs OpenShell. OpenCode replies are always `once`, neve
 | `test/runner*.test.mjs` | Tests with the fake adapter and fake ntfy |
 
 Environment: `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (minutes before an unanswered owned approval is denied; default 30), `AI_COLLAB_RUNNER_SOCKET`, `AI_COLLAB_RUNNER_DB` (default `$AI_COLLAB_STATE_DIR/runner.db`), `AI_COLLAB_RUNNER_HARNESSES` (comma list), `AI_COLLAB_RUNNER_ADAPTER_DIR` (directory the adapters load from; default `runner/adapters`), `AI_COLLAB_SCHEDULES` (path of `schedules.json`), and the usual `AI_COLLAB_*` project settings, read through `loadProjects`.
+Environment: `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (minutes before an unanswered owned approval is denied; default 30), `AI_COLLAB_RUNNER_SOCKET`, `AI_COLLAB_RUNNER_DB` (default `$AI_COLLAB_STATE_DIR/runner.db`), `AI_COLLAB_RUNNER_HARNESSES` (comma list; `none` loads no adapter; unset loads all four), `AI_COLLAB_RUNNER_ADAPTER_DIR` (directory the adapter modules load from; default `runner/adapters`), `AI_COLLAB_SCHEDULES` (path of `schedules.json`), and the usual `AI_COLLAB_*` project settings, read through `loadProjects`.
 
 ## Operator decisions (2026-11-21)
 
@@ -414,3 +472,4 @@ Codex 0.171.0 (`codex-cli`). Protocol facts come from `codex app-server generate
 | `item/completed` for `mcpToolCall` results | partial | result content left empty; `status` values `failed`/`declined` UNVERIFIED |
 | `thread/unsubscribe` on close | UNVERIFIED | method present in schema; effect on a later `thread/resume` not checked live |
 | `error` notification (`willRetry`) | partial | non-retry errors become `ai-collab.error`; turn failures come through `turn/completed` |
+- **7 Cursor run-everything (2026-11-22):** Cursor runs `cursor-agent acp --force` (run everything) inside an OpenShell sandbox with no further limits for now. Outside OpenShell it stays supervised. Full-access is refused outside OpenShell.
