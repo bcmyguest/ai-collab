@@ -1014,7 +1014,15 @@ function Console({ account }) {
           signed in as <span className="font-medium text-foreground" title={account.user.name || undefined}>{account.user.login}</span>
           {" · "}<button type="button" className="underline-offset-2 hover:underline" onClick={signOut}>sign out</button></p>}
         {!home && !patterns && <ZoomControls data={data} selected={selected} now={now} navigate={navigate}
-          compact={level === "session" && agent?.session && <span className="ml-auto flex items-center gap-2">
+          compact={level === "session" && agent?.session && <span className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            {agent.modelControl && modelsOf(models, "claude").length > 0 && <select
+              aria-label="Claude model" className="h-9 w-28 truncate rounded-full border bg-background px-2 text-sm"
+              value={agent.modelControl.current} disabled={!ready || working || agent.modelControl.busy}
+              onChange={event => action("model", { target: selected.session, model: event.target.value }, "Model switched")}>
+              <option value="" disabled>Default model</option>
+              {Array.from(new Set([agent.modelControl.current, ...modelsOf(models, "claude")])).filter(Boolean)
+                .map(model => <option key={model} value={model}>{model}</option>)}
+            </select>}
             <ContextChip context={agent.context || {}} rows={rows.filter(row => row.agent === agent.id)}/>
             {agent.online && ["codex", "opencode"].includes(agent.peer) && <Button variant="outline" size="sm" className="h-9 rounded-full" aria-label="Interrupt" disabled={!ready || working}
               onClick={() => action("interrupt", { target: selected.session }, "Interrupt requested")}><Square/>Interrupt</Button>}

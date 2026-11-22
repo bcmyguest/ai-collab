@@ -33,7 +33,7 @@ import { clearFields, modelFields, sessionHistory } from "../../lib/session-even
 import { compactionFields } from "../../lib/compaction.mjs";
 import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern, savePattern, saveTeamText, teamTemplates, teamTextOf } from "../../lib/patterns.mjs";
 import { authorTeam, saveAuthoredTeam } from "../../lib/team-author.mjs";
-import { listOwned } from "../../lib/owned.mjs";
+import { listOwned, readOwned } from "../../lib/owned.mjs";
 import { openTasks } from "../../lib/tasks.mjs";
 import { taskTags } from "../lib/task-tags.js";
 import { taskBoard } from "./task-board.mjs";
@@ -54,7 +54,7 @@ import { answerMessage, answerText, terminalMessages } from "../lib/operator-mes
 import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a2ui.js";
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide"];
+const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide"];
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
 const PARENT = /^[a-z0-9-]{1,24}#[a-f0-9]{16}$/;
@@ -937,7 +937,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       // Unfinished subagent runs ride on each agent for the composer's @session/run picker.
       agents: list.map(agent => {
         const subagents = [...(runsOf.get(agent.id) || []), ...(kids.get(agent.id) || [])];
-        const base = subagents.length ? { ...agent, subagents } : agent;
+        const owned = agent.peer === "claude" && agent.id === session ? readOwned(project.cfg, agent.session) : null;
+        const modelControl = owned?.address === agent.id && ["idle", "running"].includes(owned.status)
+          ? { current: owned.model || "", busy: owned.status === "running" } : null;
+        const base = { ...agent, ...(subagents.length ? { subagents } : {}), ...(modelControl ? { modelControl } : {}) };
         // Context telemetry and instruction files from the session's state file (lib/usage.mjs).
         const context = readContext({ stateDir: project.cfg.stateDir, project: project.cfg.project, peer: agent.peer, session: agent.session });
         const withContext = context.tokens !== null || context.files.length ? { ...base, context } : base;
@@ -1356,6 +1359,16 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           ? async peer => (await runnerCompact(peer.id, runner, env)) ?? control("compact", peer, { cfg })
           : peer => control("compact", peer, { cfg });
         return json(200, await slashCommand(session, parsed, { compact }));
+      }
+      if (action === "model") {
+        const harness = recipient(cfg, target, true);
+        const owned = readOwned(cfg, target.split("#")[1]);
+        if (harness !== "claude" || owned?.address !== target) reject(404, "Select a runner-owned Claude session");
+        const result = await runner({ socket: runnerSocket(env) }).setModel(target, model)
+          .catch(() => reject(503, "The session runner is unavailable"));
+        if (result.status !== 200) reject(result.status, result.body.error || "The runner refused the model switch");
+        broadcast();
+        return json(200, result.body);
       }
       if (action === "compact" || action === "wake") {
         recipient(cfg, target, true);

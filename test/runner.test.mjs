@@ -15,6 +15,7 @@ import { settleReceipts } from "../lib/receipts.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
+import { wrapOpen } from "./helpers/fake-adapter-hooks.mjs";
 import { listenControl } from "../runner/control.mjs";
 import { runnerClient } from "../runner/client.mjs";
 import { loadAdapters } from "../runner/main.mjs";
@@ -450,6 +451,38 @@ test("main serves the control socket with no adapters and exits on SIGTERM", asy
     assert.equal(await exited, 0);
   } finally {
     child.kill("SIGKILL");
+    await fake.close();
+  }
+});
+
+test("the control socket saves and publishes only accepted Claude model switches", async () => {
+  const fake = await startFakeNtfy();
+  const ctx = setup(fake);
+  const adapter = wrapOpen(createFakeAdapter({ harness: "claude" }), async (options, context, open) => ({
+    ...(await open(options, context)),
+    async setModel(model) {
+      if (model === "haiku") throw new Error("SDK rejected model");
+    },
+  }));
+  const runner = makeRunner(ctx, adapter);
+  await runner.boot();
+  const socket = path.join(ctx.home, "run", "runner.sock");
+  const control = await listenControl(runner, socket);
+  try {
+    const { session, nativeId } = await runner.start({ project: "demo", harness: "claude", prompt: "hi", model: "opus" });
+    const client = runnerClient({ socket });
+    await until(() => rows(fake).some(row => row.type === "stop"), "stop row");
+    assert.equal((await client.setModel(session, "haiku")).status, 500);
+    assert.equal(readOwned(ctx.cfg, sessionLabel(nativeId)).model, "opus");
+    assert.equal((await client.setModel(session, "sonnet")).body.model, "sonnet");
+    assert.equal(readOwned(ctx.cfg, sessionLabel(nativeId)).model, "sonnet");
+    await runner.settle();
+    assert.deepEqual(rows(fake).filter(row => row.type === "model").map(row => row.modelSwitch), [
+      { from: "opus", to: "sonnet" },
+    ]);
+  } finally {
+    await control.close();
+    await runner.stop();
     await fake.close();
   }
 });

@@ -216,6 +216,11 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
       cancelPending("cancelled");
       await q.interrupt();
     },
+    async setModel(model) {
+      if (closed || ended) throw new Error("the claude session has ended");
+      if (run || compactWatch.size) throw new Error("claude: wait for the current operation to finish before switching models");
+      await q.setModel(model);
+    },
     // "/compact" typed into the session: the CLI runs its own compaction on the live conversation.
     // The CLI reports it with a compact_boundary (finished with token counts) and a status message.
     async compact() {
