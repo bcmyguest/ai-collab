@@ -68,7 +68,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Context info fits the phone (no cutoff at 390px) | done merged 4c444e5, deployed |
 | Two near-identical bell icons: make them distinct or merge | done merged 4c444e5, deployed |
 | task add treats --help as a title; add help output and a remove command | open |
-| Runner wake.send retries a codex thread that is closing (runner/runner.mjs:379-399) | building |
+| Runner wake.send retries a codex thread that is closing (runner/runner.mjs:379-399) | done merged 0d2bd07 + 31cd4e3; retryable JSON-RPC refusals retried 3x, backoff capped 4s; mayHaveStarted never retried |
 | Limit card: typed rate_limit_event suppressed by earlier untyped StopFailure card (lib/limit-alert.mjs:207) | blocked Fix needs test/limit-alert.test.mjs:135-136 changed (upgrade republishes the card) or a state-only upgrade |
 | Fan-in hangs when another role stays live (lib/pattern-runs.mjs:354-360) | done branch cursor-verify-fixes (Cursor deepseek, started 16:23); do not dispatch |
 | Limit card: two open cards for one window when resetsAt differs (lib/limit-alert.mjs:202) | done branch cursor-verify-fixes (Cursor deepseek, started 16:23); do not dispatch |
