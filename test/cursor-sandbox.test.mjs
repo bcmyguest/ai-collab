@@ -127,6 +127,16 @@ test("a failed open releases the sandbox it claimed", async () => {
   assert.deepEqual(JSON.parse(readFileSync(t.env.FAKE_OPENSHELL_STATE, "utf8")).sandboxes, [], "no sandbox is left behind");
 });
 
+test("a sandbox session asks session/new for the sandbox path, not the host path", async () => {
+  const t = lab();
+  const handle = await cursorAdapter({ env: t.env }).open({
+    project: "demo", cwd: t.root, place: "openshell", permissionMode: "full-access", permission: { force: true }, env: t.env,
+  }, ctx());
+  const created = lines(t.env.FAKE_CURSOR_LOG).find((e) => e.kind === "rpc" && e.method === "session/new");
+  assert.equal(created.params.cwd, "/sandbox/work/repo", "the CLI runs inside the sandbox, so it needs the sandbox path");
+  await handle.close();
+});
+
 test("a sandbox prompt streams through exec and finishes the run", async () => {
   const t = lab();
   const c = ctx();

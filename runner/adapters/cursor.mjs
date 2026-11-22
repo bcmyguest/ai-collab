@@ -235,6 +235,8 @@ export default function cursorAdapter(config = {}) {
           staged: stagedTrees, log: (l) => ctx.log(l),
         });
         argv = execArgv({ openshell: openshellBin, sandbox, args: cursorArgs, workdir: prepared.workdir, env: prepared.env });
+        // The CLI runs in the sandbox, so it must be told the sandbox path, not the host's.
+        session.remoteCwd = prepared.workdir;
       } else {
         argv = [cursorBin, ...cursorArgs];
       }
@@ -449,7 +451,7 @@ export default function cursorAdapter(config = {}) {
     async open(options, ctx) {
       const attached = await attach({ ...options, requireLoad: false }, ctx);
       try {
-        const created = await attached.conn.request("session/new", { cwd: options.cwd, mcpServers: [] }, SETUP_TIMEOUT_MS);
+        const created = await attached.conn.request("session/new", { cwd: attached.session.remoteCwd ?? options.cwd, mcpServers: [] }, SETUP_TIMEOUT_MS);
         attached.session.sessionId = created.sessionId;
         return makeHandle(attached);
       } catch (error) {
@@ -469,7 +471,7 @@ export default function cursorAdapter(config = {}) {
       }, ctx);
       try {
         attached.session.sessionId = record.nativeId;
-        await attached.conn.request("session/load", { sessionId: record.nativeId, cwd: record.cwd, mcpServers: [] }, TOOL_TIMEOUT_MS);
+        await attached.conn.request("session/load", { sessionId: record.nativeId, cwd: attached.session.remoteCwd ?? record.cwd, mcpServers: [] }, TOOL_TIMEOUT_MS);
         return makeHandle(attached);
       } catch (error) {
         attached.conn.kill();
