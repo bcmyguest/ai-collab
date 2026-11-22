@@ -3,13 +3,13 @@ import { Button } from "@/components/ui/button";
 
 const DONE = "done";
 
-// The shipped "fix-and-review" pattern as an editable starting point; harnesses are filled from the startable list.
+// The shipped "fix-and-review" pattern as an editable starting point; mirrors BUILT_IN_PATTERNS in lib/patterns.mjs.
 const TEMPLATE = {
   name: "fix-and-review",
   roles: [
-    { id: "lead", responsibility: "Scope the task into one change with acceptance criteria. Hand off to the implementer.", model: "" },
-    { id: "implementer", responsibility: "Edit the code and add or run tests. Hand off the diff and test results to the reviewer.", model: "" },
-    { id: "reviewer", responsibility: "Review the diff against the scope. Approve, or request changes with specific points.", model: "" },
+    { id: "lead", responsibility: "Scope the task into one change with acceptance criteria. Hand off to the implementer.", harness: "claude", model: "claude-haiku-5-5" },
+    { id: "implementer", responsibility: "Edit the code and add or run tests. Hand off the diff and test results to the reviewer.", harness: "claude", model: "claude-haiku-5-5" },
+    { id: "reviewer", responsibility: "Review the diff against the scope. Approve, or request changes with specific points.", harness: "cursor", model: "deepseek-v41-flash-1017-high" },
   ],
   handoffs: [
     { from: "lead", to: "implementer", on: "scope", required: false, cap: "" },
@@ -20,11 +20,10 @@ const TEMPLATE = {
   ],
 };
 
-function starterState(startable) {
-  const harness = startable[0] || "";
+function starterState() {
   return {
     name: TEMPLATE.name,
-    roles: TEMPLATE.roles.map(role => ({ ...role, harness })),
+    roles: TEMPLATE.roles.map(role => ({ ...role })),
     handoffs: TEMPLATE.handoffs.map(handoff => ({ ...handoff })),
   };
 }
@@ -57,7 +56,7 @@ export function HandoffDiagram({ handoffs }) {
 }
 
 export function PatternBuilder({ project, startable, disabled, create, close }) {
-  const [state, setState] = useState(() => starterState(startable));
+  const [state, setState] = useState(starterState);
   const [error, setError] = useState("");
   const roleIds = state.roles.map(role => role.id.trim()).filter(Boolean);
   const targets = [...roleIds, DONE];

@@ -73,14 +73,14 @@ test("@pattern in a chat starts a run of the saved pattern with the text as its 
   t.after(() => fake.close());
   const p = project();
   writeFileSync(path.join(p.home, ".config", "ai-collab", "projects.json"), JSON.stringify([
-    { root: p.root, project: "demo", url: fake.url, peers: "claude,codex" },
+    { root: p.root, project: "demo", url: fake.url, peers: "claude,codex,cursor" },
   ]));
-  const env = { ...peerEnv(fake, { peer: "operator", stateDir: p.stateDir, AI_COLLAB_PEERS: "claude,codex" }), HOME: p.home, PATH: p.bin + path.delimiter + process.env.PATH };
+  const env = { ...peerEnv(fake, { peer: "operator", stateDir: p.stateDir, AI_COLLAB_PEERS: "claude,codex,cursor" }), HOME: p.home, PATH: p.bin + path.delimiter + process.env.PATH };
   const cfg = loadConfig(env);
   const starts = [];
   const ui = createUi({
     cfg, env,
-    models: async () => ({ claude: ["haiku"], codex: ["gpt-5"] }),
+    models: async () => ({ claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] }),
     start: async (_cfg, options) => { starts.push(options); return { status: "started", session: `${options.harness}#0123456789abcdef`, detail: "ok" }; },
   });
   t.after(() => ui.close());

@@ -38,7 +38,7 @@ Abbreviated; `fix-and-review` ships in full in `lib/patterns.mjs`.
 
 - Project: `patterns` map in the project's entry in `projects.json`.
 - Global: `patterns.json` in the config directory.
-- Built-in: `fix-and-review` (lead, implementer, reviewer; all `claude`). A saved pattern with the same name overrides it.
+- Built-in: `fix-and-review`: lead and implementer on `claude:claude-haiku-5-5`, reviewer on `cursor:deepseek-v41-flash-1017-high`. A saved pattern with the same name overrides it.
 - Teams stay in `teams` maps and appear in pattern listings with `source: team`.
 
 ## Surfaces

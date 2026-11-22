@@ -28,16 +28,16 @@ async function fixture(t) {
   mkdirSync(root);
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
   writeFileSync(path.join(home, ".config", "ai-collab", "projects.json"), JSON.stringify([
-    { root, project: "demo", url: fake.url, peers: "claude,codex" },
+    { root, project: "demo", url: fake.url, peers: "claude,codex,cursor" },
   ]));
-  const env = { ...peerEnv(fake, { peer: "operator", stateDir, AI_COLLAB_PEERS: "claude,codex", AI_COLLAB_PROJECT: "demo" }), HOME: home };
+  const env = { ...peerEnv(fake, { peer: "operator", stateDir, AI_COLLAB_PEERS: "claude,codex,cursor", AI_COLLAB_PROJECT: "demo" }), HOME: home };
   return { fake, env, cfg: loadConfig(env) };
 }
 
 test("fix-and-review runs in order, loops on changes requested, and finishes only after approval", async (t) => {
   const { env, cfg } = await fixture(t);
   const { calls, start } = fakeStart();
-  const models = { claude: ["haiku"], codex: ["gpt-5"] };
+  const models = { claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] };
   const started = await startRun(cfg, "fix-and-review", "add retry to fetch", env, { start, models });
   assert.equal(started.status, "running");
   assert.equal(started.active, "lead");
@@ -71,7 +71,7 @@ test("fix-and-review runs in order, loops on changes requested, and finishes onl
 test("completion is refused until the required approval has fired", async (t) => {
   const { env, cfg } = await fixture(t);
   const { start } = fakeStart();
-  const { id } = await startRun(cfg, "fix-and-review", "fix it", env, { start, models: { claude: [], codex: [] } });
+  const { id } = await startRun(cfg, "fix-and-review", "fix it", env, { start, models: { claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] } });
   await advanceRun(cfg, id, "scope", { env, start });
   await advanceRun(cfg, id, "diff and test results", { env, start });
   await assert.rejects(advanceRun(cfg, id, "finished", { env, start }), /no handoff "finished" from reviewer/);
