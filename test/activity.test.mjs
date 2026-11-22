@@ -119,8 +119,9 @@ test("hooks publish each harness's activity to the activity topic only, and Curs
   const claude = async (input) => JSON.parse((await runHook(["--activity", "--host", "claude"], { session_id: "s-claude", ...input }, env)).out);
   assert.deepEqual(await claude({ hook_event_name: "PreToolUse", tool_name: "Read", tool_input: { file_path: "/tmp/a" }, tool_use_id: "toolu_9" }), {});
   assert.deepEqual(await claude({ hook_event_name: "MessageDisplay", message_id: "m", index: 0, final: true, delta: "Reading it." }), {});
-  const cursor = await runHook(["--activity", "--host", "cursor"], { hook_event_name: "beforeSubmitPrompt", conversation_id: "c-1", prompt: "hi" }, { ...env, AI_COLLAB_PEER: "cursor" });
+  const cursor = await runHook(["--activity", "--host", "cursor"], { hook_event_name: "beforeSubmitPrompt", conversation_id: "c-1", prompt: "hi" }, { ...env, AI_COLLAB_PEER: "cursor", AI_COLLAB_SYSTEM_PROMPT: "1" });
   assert.deepEqual(JSON.parse(cursor.out), { continue: true });
+  assert.equal(activity(fake).find(event => event.type === "prompt")?.system, true);
   const codex = await runHook(["--host", "codex"], { hook_event_name: "Stop", session_id: "s-codex", last_assistant_message: "All done", stop_hook_active: false }, { ...env, AI_COLLAB_PEER: "codex" });
   assert.deepEqual(JSON.parse(codex.out), {});
 

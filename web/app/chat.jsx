@@ -410,7 +410,7 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
   const outgoing = sender === operator;
   // A signed-in family member's message names them; the viewer's own stays "You".
   const other = message.by && message.by !== me ? message.by : "";
-  const label = ["Question", "Reply", "Approval"].includes(message.kind) ? message.kind + " · " + (message.by || short(sender)) : short(sender);
+  const label = message.system ? "System" : ["Question", "Reply", "Approval"].includes(message.kind) ? message.kind + " · " + (message.by || short(sender)) : short(sender);
   const at = message.time ? message.time * 1000 : 0;
   // An agent's avatar and name open its session (or harness) view; the operator's own, system and ntfy posts stay plain.
   const openable = !outgoing && sender !== "ntfy" && sender !== "operator" && sender !== "system";
