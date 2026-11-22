@@ -11,7 +11,6 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | PM mission file: a file the PM owns and edits (mission, goals, rules), versioned in git, read each tick | P2 | building |
 | System messages (compact request etc.) render as from operator; give them a system sender | P2 | building |
 | Posts that only @harness:model-start a session still wake running agents (ui.mjs routeMentions) | P2 | building |
-| Notification settings lost after UI rebuild: alert level and/or browser push not surviving deploy | P2 | building |
 | sandbox smoke test: add one line to docs/builders.md | P2 | blocked builder builder-sandbox-smoke-test-add-one-line-to-docs exited 1 with 0 commit(s) and set no status |
 | Codex exec builders in a fresh worktree: ai-collab hooks fail (SessionStart/UserPromptSubmit/PostToolUse 'Failed'), so the session never registers or shows in the UI | P2 | open |
 | Scheduler card: a skipped extra trigger (previous run still going) must not replace the last real run's status | P2 | open |
@@ -39,6 +38,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Modern visual refresh of the whole UI | P2 | open (last; coordinator shows 2–3 design directions first; do not PM-dispatch) |
 | Move off ntfy eventually, so attachments and links work | P2 | open (operator 2026-11-22) |
 | Phone model switch: switch a runner-owned Claude session's model from the phone via SDK Query.setModel (sdk.d.ts:3227) | P2 | open deferred by operator |
+| Notification settings lost after UI rebuild: alert level and/or browser push not surviving deploy | P2 | done |
 | task add treats --help as a title; add help output and a remove command | P2 | done |
 | #task tags: tapping a task opens a message tagged #<id>; it goes direct to the task's owner agent, else to the project chat | P2 | done |
 | Sessions started from the UI live in the ai-collab-ui cgroup; a UI restart kills them (killed the Codex research session) | P2 | done |
