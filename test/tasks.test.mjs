@@ -249,9 +249,12 @@ test("the file backend reports store changes to its watcher and stops on request
   const backend = createFileBackend(tempFile());
   let calls = 0;
   const stop = backend.watch(() => { calls++; });
-  await backend.add({ id: "watched", title: "Watched" }, NOW);
-  const until = Date.now() + 5000;
-  while (calls === 0 && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 50));
+  // watchFile takes its baseline stat asynchronously, so a write before that stat is missed: keep writing until one is seen.
+  const until = Date.now() + 15_000;
+  for (let n = 0; calls === 0 && Date.now() < until; n++) {
+    await backend.add({ id: `watched-${n}`, title: "Watched" }, NOW);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
   assert.ok(calls > 0, "the watcher fired after the write");
   stop();
 });

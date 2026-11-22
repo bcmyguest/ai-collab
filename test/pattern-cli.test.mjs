@@ -89,7 +89,7 @@ test("@pattern in a chat starts a run of the saved pattern with the text as its 
     body: JSON.stringify({ target: "all", body: "@fix-and-review add retry to fetch" }),
   }), "send").then((r) => r.json());
   assert.equal(starts.length, 1);
-  assert.equal(starts[0].harness, "claude");
+  assert.equal(starts[0].harness, "cursor");
   assert.match(starts[0].prompt, /Pattern "fix-and-review" run .*role "lead"/);
   assert.match(starts[0].prompt, /Task: add retry to fetch/);
   assert.match(broadcast.detail, /@fix-and-review run [a-z0-9]+ running/);

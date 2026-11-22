@@ -10,7 +10,7 @@ Abbreviated; the shipped `fix-and-review` is in `lib/patterns.mjs` (`BUILT_IN_PA
 {
   "name": "fix-and-review",
   "roles": [
-    { "id": "lead", "responsibility": "Scope the task.", "harness": "claude", "model": "claude-haiku-5-5" }
+    { "id": "lead", "responsibility": "Scope the task.", "harness": "cursor", "model": "deepseek-v41-flash-1017-high" }
   ],
   "handoffs": [
     { "from": "reviewer", "to": "implementer", "on": "changes requested", "required": false, "cap": 3 },
@@ -48,7 +48,7 @@ Run state: `<stateDir>/<project>/pattern-runs/<run>.json`. `pattern status <run>
 
 - Project: a `patterns` map in the project's entry in `projects.json`.
 - Global: `patterns.json` in the config directory.
-- Built-in: `fix-and-review`. Lead and implementer on `claude:claude-haiku-5-5`; reviewer on `cursor:deepseek-v41-flash-1017-high`. The cursor id is not in the repo's model lists and was not checked against `cursor-agent --list-models`. A saved pattern with the same name overrides the built-in.
+- Built-in: `fix-and-review`. Lead and reviewer on `cursor:deepseek-v41-flash-1017-high`; implementer on `claude:claude-haiku-5-5`. The cursor id is not in the repo's model lists and was not checked against `cursor-agent --list-models`. A saved pattern with the same name overrides the built-in.
 - Teams stay in the `teams` maps and appear in pattern listings with `source: team`.
 
 ## Surfaces
