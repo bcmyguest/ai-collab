@@ -300,6 +300,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   const known = new Set();
   // Projects deleted in this process; they stay hidden until the next start.
   const removed = new Set();
+  // Closed or deleted projects: hidden from the UI and silent in notifications.
+  const hiddenProjects = () => new Set([...closedProjectNames(env), ...removed]);
   const projects = new Map();
   let pushTimer = null;
   let lastStartAt = 0;
@@ -362,6 +364,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   // New approvals, choice cards, questions, and direct messages to the operator become one push each.
   function notifyActions(project, topic, added) {
     const name = project.cfg.project;
+    if (hiddenProjects().has(name)) return;
     const fresh = added.filter(event => Date.now() - event.time * 1000 < NOTIFY_RECENT_MS);
     // The phone alert level decides which pushes go out; the message itself stays in the chat.
     const send = (id, fields) => {
@@ -795,7 +798,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const runsOf = new Map(own.map(card => [card.id, card.subagents]));
     // Child sessions join their parent's subagents on the agent list only; the cards nest them already (sessionTree).
     const kids = childRuns(own);
-    const hidden = new Set([...closedProjectNames(env), ...removed]);
+    const hidden = hiddenProjects();
     const shown = [...projects.values()].filter(item => !hidden.has(item.cfg.project));
     const cards = scope === "home" ? shown.flatMap(item => item === project ? sessionCards(item, list, mode)
       : item.failed ? [] : sessionCards(item, agents(item, lastMessages(item)), mode))
