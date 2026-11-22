@@ -101,6 +101,10 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Schedule run kills builders the PM started: runner SIGKILLs the whole process group on exit (runner/schedules.mjs:129) | done |
 | Builders the PM starts live in the runner's cgroup, so a runner restart (deploy) kills them; launch each as its own systemd-run --user unit | building |
 | Sessions started from the UI live in the ai-collab-ui cgroup; a UI restart kills them (killed the Codex research session) | open |
-| Space to switch to local: a key in the terminal takes a phone-controlled session back to local control (as HAPI does) | open |
+| Space to switch to local: a key in the terminal takes a phone-controlled session back to local control (as HAPI does) | open Design: /dev/shm/research/hapi-steal.md §2.1. HAPI is AGPL-3.0: clean-room, copy no code. |
 | Reply to any message: when the server can't accept a reply id, send it as text quoting the first/last bit of the original instead of failing 'Invalid reply' | open |
+| Draft guard: hold a phone message while the terminal has unsent text; Send anyway row (HAPI idea, clean-room) | open |
+| Queue bar: queued messages listed with Edit/Cancel/Steer, replacing the one-way queued badge (HAPI idea, clean-room) | open |
+| Job meters: sessions report real jobs (ai-collab job run); a running job counts as working, so 'building' claims are honest (HAPI idea, clean-room) | open |
+| Read state and durable history with search; ntfy as transport only (HAPI idea, clean-room) | open |
 <!-- tasks:end -->
