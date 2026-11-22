@@ -217,7 +217,7 @@ Detection (`lib/limits.mjs`). "Typed" means the pattern appears in a type defini
 | Claude | Failed result text: "usage limit", "plan limit", "rate limit", "quota" | UNVERIFIED |
 | Codex | Turn error with `codexErrorInfo: "usageLimitExceeded"`, forwarded in RUN_ERROR metadata by `runner/adapters/codex.mjs` | UNVERIFIED: the field name is not in the repo's schema snapshot. |
 | Codex | Turn error text | UNVERIFIED |
-| OpenCode | Provider error with HTTP 429 | UNVERIFIED. `runner/adapters/opencode.mjs` forwards only the message, not the status, so the status check never fires. |
+| OpenCode | Provider error with HTTP 429 | UNVERIFIED. `runner/adapters/opencode.mjs` forwards the provider's HTTP status in `RUN_ERROR` metadata (`aiCollab.status`) and `limitFromRunError` passes it to the classifier. The field names it reads are UNVERIFIED. |
 | OpenCode | Provider error text | UNVERIFIED |
 | Cursor | ACP error text | UNVERIFIED |
 

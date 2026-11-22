@@ -24,6 +24,12 @@ const threadOf = (sessionID) => `opencode#${sessionLabel(sessionID)}`;
 const summaryOf = (req) => (typeof req.message === "string" && req.message) || (Array.isArray(req.resources) ? req.resources.map(String).join(" ") : "");
 const contentText = (content) => (typeof content === "string" ? content : JSON.stringify(content ?? ""));
 const errorText = (data) => (typeof data.error === "string" && data.error) || data.error?.message || data.message || "OpenCode run failed";
+// The HTTP status a provider error carries, from the error itself or the event data; undefined when neither names one.
+const statusOf = (data) => {
+  const raw = data.status ?? data.statusCode ?? data.error?.status ?? data.error?.statusCode ?? data.error?.data?.statusCode;
+  const status = Number(raw);
+  return Number.isInteger(status) && status > 0 ? status : undefined;
+};
 const sleep = (ms, signal) => new Promise((resolve) => {
   const timer = setTimeout(resolve, ms);
   signal.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
@@ -161,8 +167,11 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
         return ours(s, data) && endRun(s, (runId) => ({ type: EventType.RUN_FINISHED, threadId: s.threadId, runId, outcome: { type: "success" } }));
       case "session.execution.interrupted":
         return ours(s, data) && endRun(s, (runId) => ({ type: EventType.RUN_FINISHED, threadId: s.threadId, runId, outcome: { type: "cancelled" } }));
-      case "session.execution.failed":
-        return ours(s, data) && endRun(s, (runId) => ({ type: EventType.RUN_ERROR, message: errorText(data), metadata: { aiCollab: { runId } } }));
+      case "session.execution.failed": {
+        // The provider's HTTP status rides in the RUN_ERROR metadata, so lib/limits.mjs can classify a bare 429 (UNVERIFIED field names).
+        const status = statusOf(data);
+        return ours(s, data) && endRun(s, (runId) => ({ type: EventType.RUN_ERROR, message: errorText(data), metadata: { aiCollab: { runId, ...(status ? { status } : {}) } } }));
+      }
       case "session.text.ended":
         if (s.run) s.ctx.emit({ type: EventType.TEXT_MESSAGE_CHUNK, messageId: data.assistantMessageID, role: "assistant", delta: String(data.text ?? "") });
         return;
