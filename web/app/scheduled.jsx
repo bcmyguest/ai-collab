@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { CalendarClock } from "lucide-react";
+import { CalendarClock, SquareArrowOutUpRight } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { jobDetail } from "@/lib/scheduled";
+import { jobDetail, runLabel, runLink } from "@/lib/scheduled";
 
 const POLL_MS = 60_000;
 
@@ -17,24 +17,36 @@ async function getJson(path) {
   }
 }
 
-/** The job's recent tick rows, newest first: status, time and any error. */
-function RunList({ runs }) {
+/** One run row: status, time and any error; a run whose command resumes a session opens that run's timeline. */
+function RunRow({ run, link, open }) {
+  const body = <span className="flex min-w-0 items-baseline gap-2">
+    <span className="shrink-0 font-medium">{run.status}</span>
+    <span className="min-w-0 truncate text-muted-foreground">{when(run.scheduledTime)}</span>
+    {runLabel(run) && <span className="shrink-0 text-muted-foreground">{runLabel(run)}{run.finishedAt && Number.isSafeInteger(run.startedAt) ? " · " + Math.max(0, Math.round((run.finishedAt - run.startedAt) / 1000)) + "s" : ""}</span>}
+    {link && <SquareArrowOutUpRight aria-hidden className="ml-auto size-3.5 shrink-0 text-muted-foreground"/>}
+  </span>;
+  return <li className="flex min-w-0 flex-col gap-0.5 rounded-lg border px-2 py-1.5">
+    {link ? <a href={link} onClick={event => { event.preventDefault(); open(link); }}
+      aria-label={run.status + " run at " + when(run.scheduledTime) + ", open its session timeline"}
+      className="flex min-w-0 rounded-md text-xs underline-offset-2 hover:underline">{body}</a>
+      : <span className="flex min-w-0 text-xs">{body}</span>}
+    {run.error && <span className="break-words text-xs text-destructive">{run.error}</span>}
+  </li>;
+}
+
+/** The job's recent tick rows, newest first: status, time and any error; a run links to its session timeline. */
+function RunList({ runs, project, open }) {
   if (!runs) return <p className="text-xs text-muted-foreground">Loading runs…</p>;
   if (runs.error) return <p className="text-xs text-muted-foreground">{runs.error}</p>;
   if (!runs.length) return <p className="text-xs text-muted-foreground">No runs yet.</p>;
-  return <ul aria-label="Recent runs" className="flex flex-col gap-2 text-xs">
-    {runs.map(run => <li key={run.id} className="flex min-w-0 flex-col gap-0.5 rounded-lg border px-2 py-1.5">
-      <span className="flex min-w-0 items-baseline gap-2">
-        <span className="shrink-0 font-medium">{run.status}</span>
-        <span className="min-w-0 truncate text-muted-foreground">{when(run.scheduledTime)}</span>
-      </span>
-      {run.error && <span className="break-words text-destructive">{run.error}</span>}
-    </li>)}
+  // Each run's window is clamped against its neighbours, so the runs link to different slices of one timeline.
+  return <ul aria-label="Recent runs" className="flex flex-col gap-2">
+    {runs.map(run => <RunRow key={run.id} run={run} link={runLink(run, project, runs)} open={open}/>)}
   </ul>;
 }
 
-/** The runner's schedules in the sidebar; tap a job for its read-only detail sheet. */
-export function ScheduledJobs() {
+/** The runner's schedules in the sidebar; tap a job for its read-only detail sheet. A run opens its session timeline. */
+export function ScheduledJobs({ project = "", openRun }) {
   const [list, setList] = useState(null);
   const [open, setOpen] = useState("");
   const [runs, setRuns] = useState({});
@@ -52,6 +64,8 @@ export function ScheduledJobs() {
     setRuns(prev => ({ ...prev, [name]: next.error ? { error: next.error } : next }));
   }
   const job = (list?.schedules || []).find(item => item.name === open);
+  // A run link is the console's own hash: close the sheets and hand it to the console, which parses it like any hash.
+  const openAt = hash => { setOpen(""); openRun?.(hash); };
   return <section aria-label="Scheduled jobs" className="px-2 pb-2">
     <h2 className="flex items-center gap-1.5 pb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground"><CalendarClock className="size-3.5"/>Scheduled</h2>
     {!list ? <p className="px-1 text-sm text-muted-foreground">Loading schedules…</p>
@@ -82,7 +96,7 @@ export function ScheduledJobs() {
             </div>)}
           </dl>
           <h3 className="px-4 pb-2 pt-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">Recent runs</h3>
-          <div className="px-4 pb-6"><RunList runs={runs[job.name]}/></div>
+          <div className="px-4 pb-6"><RunList runs={runs[job.name]} project={project} open={openAt}/></div>
         </>}
       </SheetContent>
     </Sheet>
