@@ -164,16 +164,14 @@ export function GoToAgent({ label = "Go to agent", onClick, className }) {
   </button>;
 }
 
-/** One activity row; agent renders the overview's agent link, or nothing inside a session thread; goRun opens a subagent run. */
-export function ActivityRow({ row, when, agent, now, goRun }) {
+/** One activity row; goRun opens a subagent run. */
+export function ActivityRow({ row, when, now, goRun }) {
   if (row.type === "subagent") return <article data-type="subagent" className="flex min-w-0 flex-col gap-1">
-    {agent && <div className="flex max-w-full items-center gap-1.5 text-xs text-muted-foreground">{agent(row.agent, row.id)}</div>}
     <SubagentRun row={row} when={when} now={now} goRun={goRun}/>
   </article>;
   if (row.type === "turn") return <article data-type="turn" className="flex min-w-0 flex-col gap-1"><TurnRun row={row} when={when}/></article>;
   return <article data-type={row.type} className={cn("flex min-w-0 flex-col gap-1", row.type === "prompt" && "items-end")}>
     <div className="flex max-w-full items-center gap-1.5 text-xs text-muted-foreground">
-      {agent?.(row.agent, row.id)}
       {row.type === "prompt" && <span className="font-medium text-foreground">Prompt</span>}
       {row.type === "text" && <span className="font-medium text-foreground">{readableText(row.output).label || row.tool || "Agent"}</span>}
       {row.time > 0 && <time dateTime={new Date(row.time * 1000).toISOString()}>{when(row.time * 1000)}</time>}
@@ -182,11 +180,11 @@ export function ActivityRow({ row, when, agent, now, goRun }) {
   </article>;
 }
 
-/** "Working…" while an agent's latest row is an open tool call; the overview names the agents. */
-export function Working({ rows, now, overview }) {
+/** "Working…" while an agent's latest row is an open tool call. */
+export function Working({ rows, now }) {
   const busy = working(rows, now);
   if (!busy.length) return null;
   return <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-    <LoaderCircle className="size-4 animate-spin"/>{overview ? busy.map(agent => agent.slice(0, agent.indexOf("#") + 9)).join(", ") + " working…" : "Working…"}
+    <LoaderCircle className="size-4 animate-spin"/>Working…
   </p>;
 }

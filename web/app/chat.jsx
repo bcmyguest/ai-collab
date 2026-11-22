@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { HarnessLogo, hasLogo } from "./logos";
-import { Activity, Square, ArrowLeft, ArrowUp, AtSign, Bell, BellOff, Bot, Check, CheckCheck, Coffee, CornerLeftUp, FolderGit2, Menu, Minimize2, Monitor, Moon, Plus, Reply, RotateCw, Sun, X, Zap } from "lucide-react";
+import { Activity, Square, ArrowLeft, ArrowUp, AtSign, Bell, BellOff, Bot, Check, CheckCheck, CircleCheck, Coffee, CornerLeftUp, FolderGit2, LoaderCircle, Menu, Minimize2, Monitor, Moon, Plus, Reply, RotateCw, Sun, X, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatContainerContent, ChatContainerRoot, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
@@ -18,11 +18,13 @@ import { fuzzyRank } from "@/lib/fuzzy";
 import { agentDetail } from "@/lib/agent-detail";
 import { withMentions } from "@/lib/mentions";
 import { chatThread } from "@/lib/chat-turns";
+import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
+import { TABS, parseSelection } from "@/lib/selection";
 import { ActivityRow, GoToAgent, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
 import { NotifyToggle } from "./notify";
 import { SessionList, SessionMenu, SubagentList } from "./home";
-import { activityRows, groupSubagents, interleave, runningSubagents } from "@/lib/activity-rows";
+import { activityRows, groupSubagents } from "@/lib/activity-rows";
 import { conversationKey, drafts, views } from "@/lib/view-memory";
 import { toast } from "sonner";
 
@@ -30,9 +32,6 @@ const initial = { projects: [], harnesses: [], agents: [], messages: [] };
 const ACTIVITY_MAX = 500;
 const PULL_THRESHOLD_PX = 70;
 const PULL_MAX_PX = 110;
-const LEVELS = [["project", "Project"], ["session", "Sessions"]];
-// Tabs other than chat each level accepts in the hash.
-const TABS = { project: ["activity"], session: ["activity", "subagents"] };
 const PLACES = { folder: "In the project folder", worktree: "In a new git worktree", openshell: "In the openshell sandbox" };
 const HARNESS_COLORS = {
   claude: "[&_[data-slot=avatar-fallback]]:bg-claude", codex: "[&_[data-slot=avatar-fallback]]:bg-codex",
@@ -53,20 +52,7 @@ const clock = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyl
 const AUTH_CHECK = "ai-collab:auth-check";
 
 function selection() {
-  const params = new URLSearchParams(location.hash.slice(1));
-  const level = params.get("level");
-  // An empty hash, #home, or level=home opens the Home overview of every project.
-  if (!location.hash.slice(1) || params.has("home") || level === "home") return { project: "", level: "home", harness: "", session: "", tab: "chat", run: "" };
-  const tab = params.get("tab");
-  const at = LEVELS.some(([id]) => id === level) ? level : "project";
-  return {
-    project: params.get("project") || "",
-    level: at,
-    harness: params.get("harness") || "",
-    session: params.get("session") || "",
-    tab: (TABS[at] || []).includes(tab) ? tab : "chat",
-    run: at === "session" && tab === "subagents" ? params.get("run") || "" : "",
-  };
+  return parseSelection(location.hash.slice(1));
 }
 
 /** The /api/events query for a selection, and which view it shows. */
@@ -76,16 +62,17 @@ function streamOf(selected) {
   const session = selected.level === "session" && Boolean(selected.session);
   if (selected.project && !home) stream.set("project", selected.project);
   if (session) stream.set("session", selected.session);
-  // The project's Activity tab is the overview; a session's Activity tab interleaves its rows with its chat.
-  const watching = selected.tab === "activity" && selected.level === "project";
+  // The project chat reads activity for its completion and live rows; a session's timeline, raw view and subagents read it too.
+  const watching = selected.level === "project";
   const subagents = session && selected.tab === "subagents";
   const inline = session && selected.tab === "activity";
+  const raw = session && selected.tab === "raw";
   // Sessions with none picked lists the project's sessions under the selector.
   const listing = selected.level === "session" && !selected.session;
-  if (watching || inline || subagents) stream.set("view", "activity");
+  if (watching || inline || subagents || raw) stream.set("view", "activity");
   else if (home) stream.set("view", "home");
   else if (listing) stream.set("view", "sessions");
-  return { home, watching, subagents, inline, listing, requested: stream.toString() };
+  return { home, watching, subagents, inline, raw, listing, requested: stream.toString() };
 }
 
 async function api(path, payload) {
@@ -210,7 +197,7 @@ function CreateTeam({ project, teams, startable, models, disabled, create, close
   </div>;
 }
 
-function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamOpen, createTeam, dispose, disabled }) {
+function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamOpen, createTeam, dispose, openRaw, disabled }) {
   const current = selected.project || data.project;
   // Home's state carries the server's default project's agents; they are not "this project" here.
   const home = selected.level === "home";
@@ -237,16 +224,6 @@ function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamO
             title="New session" onClick={() => newSession(project.id)}><Plus/></Button>
         </li>)}
       </ul>
-    </section>
-    <section>
-      <button type="button" aria-current={selected.level === "project" && selected.tab === "activity" ? "page" : undefined}
-        onClick={() => navigate({ project: current, level: "project", tab: "activity" })}
-        className={cn("flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left text-sm transition-colors hover:bg-sidebar-accent",
-          selected.level === "project" && selected.tab === "activity" && "bg-sidebar-accent font-medium")}>
-        <Activity className="size-4 shrink-0 text-muted-foreground"/>
-        <span className="min-w-0 flex-1 truncate">Activity</span>
-        <span className="text-xs text-muted-foreground">all agents</span>
-      </button>
     </section>
     {!home && <section className="px-2 pb-2">
       <div className="mb-1 flex items-center justify-between gap-2">
@@ -280,7 +257,7 @@ function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamO
             <Dot online={agent.online}/>
             <span className="shrink-0 text-right text-[11px] leading-tight text-muted-foreground">{ago(agent.lastMessageAt, now)}{agent.activeAt ? <><br/>active {ago(agent.activeAt, now)}</> : null}</span>
           </button>
-          {dispose && <SessionMenu node={{ ...agent, project: current }} disabled={disabled} dispose={dispose} label={"Session actions for " + agent.id}/>}
+          {dispose && <SessionMenu node={{ ...agent, project: current }} disabled={disabled} dispose={dispose} raw={openRaw} label={"Session actions for " + agent.id}/>}
         </li>)}
       </ul>
     </section>
@@ -290,21 +267,16 @@ function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamO
 function ZoomControls({ data, selected, now, navigate, compact }) {
   const project = selected.project || data.project;
   return <div className="flex flex-wrap items-center gap-2">
-    {/* Projects and sessions live in the sidebar (the menu on a phone); the header keeps only the view tabs. */}
-    {selected.level === "session" && selected.session && <Tabs value={selected.tab} onValueChange={tab => navigate({ ...selected, project, tab, run: "" })}>
-      <TabsList aria-label="Session view" className="h-9">
-        <TabsTrigger value="chat" className="px-3">Chat</TabsTrigger>
-        <TabsTrigger value="activity" className="px-3"><Activity/>Activity</TabsTrigger>
-        <TabsTrigger value="subagents" className="px-3"><Bot/>Subagents</TabsTrigger>
-      </TabsList>
-    </Tabs>}
+    {/* Projects and sessions live in the sidebar (the menu on a phone); the header keeps only the session views. */}
+    {selected.level === "session" && selected.session && (selected.tab === "raw"
+      ? <Button variant="outline" size="sm" className="h-9 rounded-full" onClick={() => navigate({ ...selected, project, tab: "activity", run: "" })}><ArrowLeft/>Timeline</Button>
+      : <Tabs value={selected.tab} onValueChange={tab => navigate({ ...selected, project, tab, run: "" })}>
+        <TabsList aria-label="Session view" className="h-9">
+          <TabsTrigger value="activity" className="px-3"><Activity/>Timeline</TabsTrigger>
+          <TabsTrigger value="subagents" className="px-3"><Bot/>Subagents</TabsTrigger>
+        </TabsList>
+      </Tabs>)}
     {compact}
-    {selected.level === "project" && <Tabs value={selected.tab} onValueChange={tab => navigate({ ...selected, project, tab })}>
-      <TabsList aria-label="View" className="h-9">
-        <TabsTrigger value="chat" className="px-3">Chat</TabsTrigger>
-        <TabsTrigger value="activity" className="px-3"><Activity/>Activity</TabsTrigger>
-      </TabsList>
-    </Tabs>}
   </div>;
 }
 
@@ -522,6 +494,25 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
   </div>;
 }
 
+// A session's finished turn in the project chat: its first line of the final message; tap opens the session.
+function CompletionRow({ row, when, open }) {
+  return <button type="button" data-type="completion" onClick={() => open(row.agent)} title={row.agent}
+    className="flex min-w-0 items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent">
+    <CircleCheck className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400"/>
+    <span className="min-w-0 flex-1 truncate"><span className="font-mono text-foreground">{short(row.agent)}</span> finished{row.text && " · " + row.text}</span>
+    {row.time > 0 && <time className="shrink-0 text-xs" dateTime={new Date(row.time * 1000).toISOString()}>{when(row.time * 1000)}</time>}
+  </button>;
+}
+
+// A busy session in the project chat: its current turn's summary; tap opens the session.
+function LiveRow({ row, open }) {
+  return <button type="button" data-type="live" onClick={() => open(row.agent)} title={row.agent}
+    className="flex min-w-0 items-center gap-2 rounded-xl border border-dashed bg-card px-2.5 py-1.5 text-left text-sm">
+    <LoaderCircle className="size-4 shrink-0 animate-spin text-muted-foreground"/>
+    <span className="min-w-0 flex-1 truncate"><span className="font-mono">{short(row.agent)}</span> · working on {row.summary}</span>
+  </button>;
+}
+
 // With GitHub sign-in on, a signed-out visitor sees only the sign-in button; a 401 or closed stream checks again.
 export default function Chat() {
   const [account, setAccount] = useState(null);
@@ -576,7 +567,7 @@ function Console({ account }) {
   const shown = useRef(false);
   const autoRetry = useRef(true);
   const hiddenAt = useRef(0);
-  const { home, watching, subagents, inline, listing, requested } = streamOf(selected);
+  const { home, watching, subagents, inline, raw, listing, requested } = streamOf(selected);
   route.current = requested;
   // Home and a Sessions list remember their scroll and Offline group; other views open at the newest message.
   const memoryKey = home ? "home" : listing ? "sessions " + (selected.project || data.project || "") : "";
@@ -728,6 +719,8 @@ function Console({ account }) {
   const title = home ? "Home" : level === "session" ? short(selected.session) || "Sessions" : project;
   // A home or Sessions card opens its session, or one of its subagent runs.
   const openCard = (node, run = "") => navigate({ project: node.project, level: "session", harness: node.harness || peerOf(node.id), session: node.id, ...(run ? { tab: "subagents", run } : {}) });
+  // The session's ⋯ menu opens its raw activity: every tool call, unfolded.
+  const openRaw = node => navigate({ project: node.project, level: "session", harness: node.harness || peerOf(node.id), session: node.id, tab: "raw" });
   const placeholder = missing ? "Pick a session first" : level === "session" ? "Message " + short(selected.session) + " directly…"
     : "Message everyone in " + (project || "the project") + "…";
   async function action(path, payload, fallback) {
@@ -744,25 +737,24 @@ function Console({ account }) {
     } catch (err) { if (at === route.current) setNotice(err.message); return false; }
     finally { setWorking(false); }
   }
-  // Overview rows name their agent (tap opens its session thread); its newest row shows a badge counting running subagents.
-  const agentLink = (address, id) => <><button type="button" aria-label={"Open activity for " + address} title={address}
-    onClick={() => navigate({ project, level: "session", harness: peerOf(address), session: address, tab: "activity" })}
-    className="flex min-w-0 items-center gap-1.5 rounded-full py-0.5 pr-2 font-mono text-foreground hover:bg-accent">
-    <Avatar address={address} className="size-5 text-[8px]"/>{short(address)}</button>
-    <GoToAgent onClick={() => navigate({ project, level: "session", harness: peerOf(address), session: address, tab: "activity" })} className="size-6"/>
-    {running.get(address) > 0 && newest.get(address) === id && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]" title="Running subagents">{running.get(address)} subagent{running.get(address) === 1 ? "" : "s"}</Badge>}</>;
   // A tapped sender or @tag: a session address opens its thread, a bare harness name the session list.
   function openAddress(address) {
     const [peer, session] = String(address).split("#");
     if (!peer || peer === "all" || peer === "operator" || peer === "ntfy") return;
     navigate(session ? { project, level: "session", harness: peer, session: address } : { project, level: "session" });
   }
-  const rows = useMemo(() => watching || inline || subagents ? groupSubagents(activityRows(activity)) : [], [activity, watching, inline, subagents]);
-  const running = runningSubagents(rows, now);
+  // The raw view keeps every tool call as its own row; the timeline and subagents fold them into turns and runs.
+  const rows = useMemo(() => watching || inline || subagents ? groupSubagents(activityRows(activity)) : raw ? activityRows(activity) : [], [activity, watching, inline, subagents, raw]);
   const goRun = row => navigate({ project, level: "session", harness: peerOf(row.agent), session: row.agent, tab: "subagents", run: row.run });
-  const newest = new Map(rows.map(row => [row.agent, row.id]));
-  // The overview interleaves only the operator's own messages with every agent's activity.
-  const thread = inline ? chatThread(data.messages, rows, selected.session) : interleave(watching ? data.messages.filter(item => item.from === data.operator || item.kind === "Approval") : data.messages, rows);
+  // Answers whose card is listed show in the card, so their bubbles stay out of both threads.
+  const visible = useMemo(() => withoutAnswered(data.messages), [data.messages]);
+  const turns = useMemo(() => sessionTurns(rows), [rows]);
+  // The project chat shows finished turns and busy sessions, not every tool call.
+  const live = useMemo(() => watching ? liveRows(turns, rows, now) : [], [turns, rows, watching, now]);
+  const thread = useMemo(() => inline ? chatThread(visible, rows, selected.session)
+    : watching ? projectThread(visible, turns)
+    : raw ? rows.map(activity => ({ activity }))
+    : visible.map(message => ({ message })), [visible, turns, rows, inline, watching, raw, selected.session]);
   const newSession = id => { setCreating(id); if (id !== project || level !== "project") navigate({ project: id, level: "project" }); else setNavOpen(false); };
   async function startSession(payload) {
     try { return await api("start", { project, ...payload }); } catch (err) { return { status: "failed", detail: err.message }; }
@@ -771,7 +763,7 @@ function Console({ account }) {
     try { return await api("team", payload); } catch (err) { return { error: err.message }; }
   }
   const sidebar = <Sidebar data={data} selected={selected} now={now} navigate={navigate} newSession={newSession} teamOpen={teamOpen} setTeamOpen={setTeamOpen}
-    createTeam={saveTeam} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}/>;
+    createTeam={saveTeam} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")} openRaw={openRaw}/>;
   const anyWaiting = data.projects.some(project => project.waiting > 0);
   return <div className="flex h-dvh w-full overflow-hidden">
     <aside className="hidden w-72 shrink-0 border-r bg-sidebar text-sidebar-foreground md:block">{sidebar}</aside>
@@ -793,7 +785,7 @@ function Console({ account }) {
             onClick={() => navigate(level === "session" ? { project, level: "project" } : { level: "home" })}><ArrowLeft/></Button>}
           {level === "session" && selected.session && <Avatar address={selected.session} className="size-8 shrink-0"/>}
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xs text-muted-foreground">{home ? "All projects" : level === "project" ? (watching ? "Activity · all agents" : "Project") : project + " · session"}</p>
+            <p className="truncate text-xs text-muted-foreground">{home ? "All projects" : level === "project" ? "Project" : raw ? "Raw activity · " + project : project + " · session"}</p>
             <h1 className="truncate text-base font-semibold leading-tight" title={level === "session" ? selected.session : undefined}>{title}</h1>
             {level === "session" && agent?.name && <p className="line-clamp-2 break-words text-xs text-muted-foreground" title={agent.name}>{agent.name}</p>}
             {level === "session" && agent?.parent && <button type="button" onClick={() => openAddress(agent.parent)} title={"Started by " + agent.parent}
@@ -810,9 +802,11 @@ function Console({ account }) {
           signed in as <span className="font-medium text-foreground" title={account.user.name || undefined}>{account.user.login}</span>
           {" · "}<button type="button" className="underline-offset-2 hover:underline" onClick={signOut}>sign out</button></p>}
         {!home && <ZoomControls data={data} selected={selected} now={now} navigate={navigate}
-          compact={level === "session" && agent?.session && <span className="ml-auto flex gap-2">
+          compact={level === "session" && agent?.session && <span className="ml-auto flex items-center gap-2">
             {agent.online && ["codex", "opencode"].includes(agent.peer) && <Button variant="outline" size="sm" className="h-9 rounded-full" aria-label="Interrupt" disabled={!ready || working}
               onClick={() => action("interrupt", { target: selected.session }, "Interrupt requested")}><Square/>Interrupt</Button>}
+            <SessionMenu node={{ ...agent, project }} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}
+              raw={openRaw} label={"Session actions for " + selected.session}/>
             <Button variant="outline" size="sm" className="h-9 rounded-full" aria-label="Compact" disabled={!ready || working}
               onClick={() => action("compact", { target: selected.session }, "Compaction requested")}><Minimize2/>Compact</Button></span>}/>}
       </header>
@@ -833,7 +827,7 @@ function Console({ account }) {
           {!ready && (home || listing || subagents) && !loadError && <p className="py-16 text-center text-sm text-muted-foreground">Loading sessions…</p>}
           {ready && (home || listing) && <>
             {home && data.unavailable?.length > 0 && <p role="alert" className="text-xs text-destructive">Unavailable: {data.unavailable.join(", ")}</p>}
-            <SessionList sessions={data.sessions} now={now} open={openCard} disabled={working} showProject={home} compact={home}
+            <SessionList sessions={data.sessions} now={now} open={openCard} raw={openRaw} disabled={working} showProject={home} compact={home}
               offlineOpen={Boolean(views.get(memoryKey, {}).offline)} onOfflineToggle={rememberOffline}
               openAddress={(address, at) => navigate({ project: at, level: "session", harness: peerOf(address), session: address })}
               empty={home ? "No sessions in any project yet." : "No sessions in " + project + " yet."}
@@ -842,19 +836,21 @@ function Console({ account }) {
           </>}
           {ready && subagents && <SubagentList rows={rows} session={selected.session} run={selected.run} when={at => ago(at, now)} now={now}
             childRuns={(agent?.subagents || []).filter(run => run.child)} openChild={child => navigate({ project, level: "session", harness: child.kind, session: child.id })}
-            back={() => navigate({ ...selected, project, tab: "chat", run: "" })}
+            back={() => navigate({ ...selected, project, tab: "activity", run: "" })}
             pick={run => navigate({ ...selected, project, tab: "subagents", run })}/>}
-          {!home && !listing && !subagents && (!ready || thread.length === 0) && <p className="py-16 text-center text-sm text-muted-foreground">
-            {ready ? (watching ? "No activity yet." : "No messages yet.") : loadError ? "" : watching ? "Loading activity…" : "Loading conversation…"}</p>}
+          {!home && !listing && !subagents && (!ready || thread.length + live.length === 0) && <p className="py-16 text-center text-sm text-muted-foreground">
+            {ready ? (raw ? "No activity yet." : "No messages yet.") : loadError ? "" : watching ? "Loading project chat…" : "Loading conversation…"}</p>}
           {ready && !home && !listing && !subagents && thread.map(({ message, activity: row }) => row
-            ? <ActivityRow key={row.id} row={row} when={at => ago(at, now)} agent={watching ? agentLink : undefined} now={now} goRun={goRun}/>
+            ? row.type === "completion" ? <CompletionRow key={row.id} row={row} when={at => ago(at, now)} open={openAddress}/>
+              : <ActivityRow key={row.id} row={row} when={at => ago(at, now)} now={now} goRun={goRun}/>
             : <ChatMessage key={message.id} message={message} operator={data.operator} me={account.user?.login} now={now} open={openAddress} disabled={!ready || working}
               detail={agentDetail(data.agents.find(agent => agent.id === message.from))}
               act={payload => action("approve", payload, "Sent")} answer={(id, body) => action("reply", { question: id, body }, "Reply sent")}
               nudge={to => action("nudge", { target: to }, "Sending now")}
               reply={id => { setQuestion(id); setNotice(""); document.getElementById("composer")?.focus(); }}
               replyFrom={target => setReplyTo(target)}/>)}
-          {ready && (watching || inline) && <Working rows={rows} now={now} overview={watching}/>}
+          {ready && watching && live.map(row => <LiveRow key={row.id} row={row} open={openAddress}/>)}
+          {ready && inline && <Working rows={rows} now={now}/>}
           <ChatContainerScrollAnchor/>
         </ChatContainerContent>
         <div aria-hidden className={cn("pointer-events-none absolute inset-x-0 z-20 flex justify-center", pullSide === "top" ? "top-0" : "bottom-0")} style={{ transform: `translateY(${pullSide === "top" ? Math.min(pull, PULL_MAX_PX) - 44 : 44 - Math.min(pull, PULL_MAX_PX)}px)`, opacity: pull ? 1 : 0 }}>

@@ -3,7 +3,7 @@ import { interleave, readableText, summarize } from "./activity-rows.js";
 
 const SUMMARY_CHARS = 60;
 // Seconds around a turn in which a chat message from the agent counts as the same text as its final row.
-const SLACK_S = 30;
+export const SLACK_S = 30;
 
 const isStep = row => row.type === "tool_call" || row.type === "subagent" || ((row.type === "tool_result" || row.type === "error") && Boolean(row.tool));
 const oneLine = text => text.replace(/\s+/g, " ").trim();
