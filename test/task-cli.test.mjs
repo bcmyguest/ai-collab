@@ -108,3 +108,51 @@ test("task CLI renders feature-requests.md, imports once, and imports a store fi
   assert.equal(store.endsWith("demo.json"), true);
   assert.equal(env.XDG_DATA_HOME.endsWith("data"), true);
 });
+
+test("task add --help prints usage instead of adding a task called --help", async () => {
+  const { store, cli } = project();
+  const help = await cli("add", "--help");
+  assert.equal(help.code, 0);
+  assert.match(help.out, /usage: task add "<title>"/);
+  assert.equal(help.err, "");
+  assert.equal(readStore(store).tasks.length, 0);
+
+  // A bare task --help, task help and any other subcommand with --help all print usage and add nothing.
+  for (const argv of [["--help"], ["help"], ["set", "--help"], ["remove", "-h"]]) {
+    const result = await cli(...argv);
+    assert.equal(result.code, 0, argv.join(" "));
+    assert.match(result.out, /usage: task /, argv.join(" "));
+  }
+  assert.equal(readStore(store).tasks.length, 0);
+
+  // --help among real words is still help: it never reaches a title.
+  const mixed = await cli("add", "Fix", "--help");
+  assert.equal(mixed.code, 0);
+  assert.match(mixed.out, /usage: task add/);
+  assert.equal(readStore(store).tasks.length, 0);
+
+  // An unknown subcommand with --help still fails.
+  assert.equal((await cli("bogus", "--help")).code, 1);
+});
+
+test("task remove deletes a task and refuses one another task is blocked on", async () => {
+  const { store, cli } = project();
+  await cli("add", "Alpha");
+  await cli("add", "Beta");
+  await cli("block", "beta", "alpha");
+
+  const blocked = await cli("remove", "alpha");
+  assert.equal(blocked.code, 1);
+  assert.match(blocked.err, /blocked on by beta/);
+  assert.deepEqual(readStore(store).tasks.map((t) => t.id), ["alpha", "beta"]);
+
+  assert.deepEqual(await cli("remove", "beta"), { code: 0, out: "beta removed\n", err: "" });
+  assert.deepEqual(await cli("remove", "alpha"), { code: 0, out: "alpha removed\n", err: "" });
+  assert.deepEqual(readStore(store).tasks, []);
+
+  const missing = await cli("remove", "alpha");
+  assert.equal(missing.code, 1);
+  assert.match(missing.err, /no task alpha/);
+  assert.equal((await cli("remove")).code, 1);
+  assert.equal((await cli("remove", "a", "b")).code, 1);
+});
