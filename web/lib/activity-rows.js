@@ -100,7 +100,7 @@ export function groupSubagents(rows) {
     const launch = AGENT_TOOL.test(row.tool || "") ? agentLaunch(row.type === "tool_call" ? row.result?.output : row.type === "tool_result" ? row.output : "") : null;
     if (launch) {
       launches.set(row.agent + "|" + launch.id, launch);
-      if (launch.done) finished.set(row.agent + "|" + launch.id, row.time);
+      if (launch.done) finished.set(row.agent + "|" + launch.id, row.result?.time ?? row.time);
     }
     // Claude tells the parent with a <task-notification> prompt when a background run ends.
     const notice = row.type === "prompt" || row.type === "text" ? TASK_DONE.exec(row.input || row.output || "") : null;
@@ -121,8 +121,10 @@ export function groupSubagents(rows) {
   for (const [key, run] of runs) {
     run.lastTime = Math.max(...run.rows.map(row => row.time || 0));
     // A resumed run (follow-up message, no new start) reopens: done only when a stop ends the rows or a finish marker is newest.
-    const endedAt = finished.get(key);
-    run.done = run.rows.at(-1).type === "stop" || (endedAt !== undefined && run.lastTime <= endedAt);
+    // Hooks arrive out of order, so the newest end marker (stop or finish) decides, not the last array row.
+    const stopAt = Math.max(-Infinity, ...run.rows.filter(row => row.type === "stop").map(row => row.time || 0));
+    const endAt = Math.max(stopAt, finished.get(key) ?? -Infinity);
+    run.done = endAt !== -Infinity && endAt >= run.lastTime;
     // A step is one tool use: its call row, or its result alone when the call row never arrived.
     run.steps = run.rows.filter(row => row.type === "tool_call" || ((row.type === "tool_result" || row.type === "error") && row.tool)).length;
     run.description = launches.get(key)?.description || "";
