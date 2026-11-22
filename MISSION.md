@@ -10,7 +10,7 @@ Give the operator one place to run, watch and steer a coding agents from a phone
 - [x] OpenShell sandbox for every new builder (ai-collab builder start)
 - [x] Code-mode A tool client in sandbox
 - [x] Honest job meters for building status
-- [ ] Standing goal, never done: work the backlog. Every tick, keep 4 builders running (`ai-collab builder list`). Start new ones from Ready tasks first, then open tasks the operator already approved ("operator: yes" in the title, HAPI ideas), highest priority first. A tick that merges must still top up to 4 before it ends.
+- [ ] Standing goal: keep 4 sandbox builders running each tick; Ready/operator-yes tasks first; top up after merges.
 
 ## Rules
 

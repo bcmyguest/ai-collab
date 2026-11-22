@@ -75,7 +75,7 @@ Does not load (the file shows `invalid` with the line):
 - A run uses the pattern snapshot taken at start; later edits to the file do not change it.
 - Handoff notes reach the next role labeled as untrusted data.
 - A finished or failed run sends each role's session a closing message ("Stop work on this run"). The operator gets a project broadcast on failure.
-- Starts, including handoff launches, share one 10-second gate per project. `pattern start`, `@pattern` chats and the UI all use it.
+- DOT role launches share the runner’s start rate limit. Legacy JSON patterns use the project’s 10-second start gate.
 
 ## Runs and kinds
 
@@ -86,6 +86,8 @@ A role with `count` N runs N live instances; each has its own session and its br
 - `fan-in`: the handoff waits until every live instance of the source has advanced on this event, then activates the target.
 
 `pattern start <name> "<task>"` creates a run with the entry role live and starts its sessions with the task and its allowed events. `pattern advance <run> "<event>" ["note"]` takes the handoff named by the event from the calling live instance. The next role receives an ai-collab message; a role with no session yet starts one.
+
+DOT patterns start through the local runner. It checkpoints the compiled graph and queues advances in its durable log. A run waiting for an event resumes after a restart. If a restart interrupts a start or handoff, the run fails when repeating the operation could duplicate an agent launch or a message.
 
 Run state: `<stateDir>/<project>/pattern-runs/<run>.json`. `pattern status <run>` lists the role sessions, notes and handoff log.
 
