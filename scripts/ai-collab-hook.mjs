@@ -35,6 +35,8 @@ import { clearFields } from "../lib/session-events.mjs";
 import { sendReceipts, settleReceipts } from "../lib/receipts.mjs";
 import { closeTerminalCards, decideApproval, decideQuestion } from "../lib/approvals.mjs";
 import { standsDown } from "../lib/owned.mjs";
+import { classifyLimit } from "../lib/limits.mjs";
+import { alertLimit } from "../lib/limit-alert.mjs";
 
 const HOSTS = new Set(["claude", "codex", "cursor", "opencode"]);
 const EVENTS = new Map([
@@ -200,6 +202,9 @@ async function main() {
   const dropped = key === "postcompact" ? dropOnDemandFiles(cfg).catch(() => false) : Promise.resolve(false);
   // A view-only approval card (AFK off) closes once a later event shows the terminal prompt resolved.
   const closing = closeTerminalCards(cfg, { host, key, input: msg }).catch(() => []);
+  // Claude's StopFailure with error rate_limit: a limit card for this session, one per window (lib/limit-alert.mjs).
+  const limit = key === "stopfailure" && host === "claude" && !(typeof msg.agent_id === "string" && msg.agent_id) ? classifyLimit("claude", { kind: "stop_failure", ...msg }) : null;
+  const limited = limit ? alertLimit(cfg, { harness: "claude", limit }).catch(() => ({})) : Promise.resolve({});
   const event = EVENTS.get(key);
   let output = neutral(host, key);
   // A prompt the operator typed (not a wake run, agent hand-back or ai-collab's own text); recorded, AFK unchanged.
@@ -227,7 +232,7 @@ async function main() {
     }
   }
   emit(output);
-  await Promise.all([activity, closing, dropped, settleReceipts()]);
+  await Promise.all([activity, closing, dropped, limited, settleReceipts()]);
 }
 
 try {
