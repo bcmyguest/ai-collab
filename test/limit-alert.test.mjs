@@ -87,6 +87,16 @@ test("a limit alert never spawns a harness CLI to list models", async (t) => {
   assert.equal(cards(fake).length, 1);
 });
 
+test("a busy alert lock makes the limit a duplicate, not a second card", async (t) => {
+  const { fake, cfg } = await setup(t);
+  const sessionCfg = { ...cfg, session: SESSION };
+  // Holds the lock the way a concurrent alert would, so the alert cannot take it.
+  mkdirSync(join(cfg.stateDir, cfg.project, "sessions", "alice", `${SESSION}.limits.json.lock`), { recursive: true });
+  const deps = { listed: async () => LISTED, available: () => ["codex"] };
+  assert.deepEqual(await alertLimit(sessionCfg, { harness: "claude", limit: FIVE_HOUR, ...deps }), { status: "duplicate" });
+  assert.equal(cards(fake).length, 0);
+});
+
 test("a session in a pattern run puts its role's fallback first on the card", async (t) => {
   const { fake, cfg } = await setup(t);
   const runs = join(cfg.stateDir, cfg.project, "pattern-runs");
