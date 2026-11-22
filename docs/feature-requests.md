@@ -88,7 +88,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Code mode B now: compile team.dot to a runner durable workflow; agents keep pattern advance (operator: yes) | open |
 | cap/max_visits hit suspends the run for the operator instead of failing it (operator: yes, confirm) | open |
 | Notification settings lost after UI rebuild: alert level and/or browser push not surviving deploy | open |
-| PM run detail: each schedule run links to the PM session timeline (tool calls, messages, builders started) | open |
+| PM run detail: each schedule run links to the PM session timeline (tool calls, messages, builders started) | building |
 | PM mission file: a file the PM owns and edits (mission, goals, rules), versioned in git, read each tick | open |
 | PM feedback loop: each run ends with a review; lessons go to openmem (substrate approved) and the mission file | open |
 | PM tracked handoffs: builders start as runner-owned sessions linked to tasks (rides on team-runs/OpenShell) | open |
@@ -99,5 +99,5 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Left panel lists named agents (PM and other set_identity names); tapping one opens a direct chat, no address needed | open |
 | Scheduled jobs and agents shown apart: the PM agent is not its schedule entry (operator: agent != scheduled job) | open |
 | Schedule run kills builders the PM started: runner SIGKILLs the whole process group on exit (runner/schedules.mjs:129) | done |
-| Builders the PM starts live in the runner's cgroup, so a runner restart (deploy) kills them; launch each as its own systemd-run --user unit | open |
+| Builders the PM starts live in the runner's cgroup, so a runner restart (deploy) kills them; launch each as its own systemd-run --user unit | building |
 <!-- tasks:end -->
