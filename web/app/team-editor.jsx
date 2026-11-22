@@ -46,7 +46,7 @@ export function TeamEditor({ pattern, templates, project, call, go, disabled }) 
 
   async function save() {
     setBusy(true); setNotice("");
-    const result = await call({ project, team: name, teamDot: text });
+    const result = await call({ project, team: name, teamDot: text, teamNew: isNew });
     setBusy(false);
     if (result?.error) { setNotice(result.error); return; }
     go({ pattern: result.name });

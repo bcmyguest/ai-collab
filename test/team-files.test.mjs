@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
-import { parseDot, serializeDot } from "../lib/dot.mjs";
+import { parseDot } from "../lib/dot.mjs";
 import { createPattern, listPatterns, saveTeamText } from "../lib/patterns.mjs";
 
 const MODELS = { claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] };
@@ -91,7 +91,7 @@ test("saveTeamText writes canonical text and reads back as a project team", asyn
   assert.equal(saved.source, "project");
   const file = path.join(root, ".ai-collab", "teams", "pipe", "team.dot");
   assert.equal(saved.file, file);
-  assert.equal(readFileSync(file, "utf8"), serializeDot(parseDot(dot("pipe"))));
+  assert.equal(readFileSync(file, "utf8"), dot("pipe"), "the file keeps the text as written");
   assert.equal(listPatterns(cfg, env).pipe.roles[1].harness, "codex");
 });
 

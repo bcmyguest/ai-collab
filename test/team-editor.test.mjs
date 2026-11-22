@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
-import { checkTeamText, listPatterns, saveTeamText, teamTemplates, teamTextOf } from "../lib/patterns.mjs";
+import { checkTeamText, createPattern, listPatterns, saveTeamText, teamTemplates, teamTextOf } from "../lib/patterns.mjs";
 import { renameTeam, sourceLine } from "../web/lib/team-editor.js";
 
 const MODELS = { claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] };
@@ -73,4 +73,23 @@ test("sourceLine returns the line a parse error names", () => {
   assert.equal(sourceLine("a\nb\nc", 2), "b");
   assert.equal(sourceLine("a\nb", 0), "");
   assert.equal(sourceLine("a", 9), "");
+});
+
+test("a new team with an existing name is refused and the file is untouched", async () => {
+  const { env, cfg, root } = setup();
+  await saveTeamText(cfg, "pipe", TEXT, env, MODELS, { create: true });
+  const file = path.join(root, ".ai-collab", "teams", "pipe", "team.dot");
+  const before = readFileSync(file, "utf8");
+  await assert.rejects(saveTeamText(cfg, "pipe", TEXT.replace('"A."', '"Changed."'), env, MODELS, { create: true }), /already exists/);
+  assert.equal(readFileSync(file, "utf8"), before);
+});
+
+test("an edit save keeps the operator's comments and removes the JSON pattern it replaces", async () => {
+  const { env, cfg, root } = setup();
+  await createPattern(cfg, { name: "pipe", roles: [{ id: "a", responsibility: "A.", harness: "claude" }, { id: "b", responsibility: "B.", harness: "codex" }], handoffs: [{ from: "a", to: "b", on: "go", required: true }, { from: "b", to: "done", on: "finish", required: true }] }, env, MODELS);
+  const text = `// hand-written note\n${TEXT}`;
+  await saveTeamText(cfg, "pipe", text, env, MODELS);
+  assert.equal(readFileSync(path.join(root, ".ai-collab", "teams", "pipe", "team.dot"), "utf8"), text);
+  const projects = JSON.parse(readFileSync(path.join(env.HOME, ".config", "ai-collab", "projects.json"), "utf8"));
+  assert.equal(projects[0].patterns?.pipe, undefined, "the JSON entry is gone");
 });
