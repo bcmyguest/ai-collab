@@ -20,6 +20,7 @@ import { contextMeter, filesRead } from "@/lib/context-view";
 import { agentDetail } from "@/lib/agent-detail";
 import { withMentions } from "@/lib/mentions";
 import { chatThread } from "@/lib/chat-turns";
+import { startDefaultDraft } from "@/lib/start-default";
 import { PatternsPage } from "./patterns-page";
 import { TaskBoard } from "./tasks";
 import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
@@ -354,7 +355,7 @@ function useModels(project) {
 
 const modelsOf = (models, harness) => Array.isArray(models[harness]) ? models[harness].filter(id => typeof id === "string" && id) : [];
 
-function NewSession({ project, harnesses = [], startable = [], places = ["folder"], agents, models, now, disabled, start, close, open }) {
+function NewSession({ project, harnesses = [], startable = [], places = ["folder"], startDefault, agents, models, now, disabled, start, close, open }) {
   const [place, setPlace] = useState("folder");
   const [result, setResult] = useState(null);
   const joined = result?.session && agents.some(agent => agent.id === result.session) ? result.session : "";
@@ -379,7 +380,7 @@ function NewSession({ project, harnesses = [], startable = [], places = ["folder
         <SelectTrigger aria-label="Where to start" className="h-8 w-48 text-xs"><SelectValue/></SelectTrigger>
         <SelectContent position="popper">{places.map(id => <SelectItem key={id} value={id}>{PLACES[id] || id}</SelectItem>)}</SelectContent>
       </Select>}
-      <Composer conversation={conversationKey(project, "new")} agents={agents} harnesses={harnesses} startable={startable} models={models} now={now} disabled={disabled}
+      <Composer conversation={conversationKey(project, "new")} agents={agents} harnesses={harnesses} startable={startable} models={models} now={now} disabled={disabled} initialDraft={startDefaultDraft({ startable, models, setting: startDefault })}
         placeholder="@codex:gpt-6 fix the tests" onSend={submit}/>
     </>}
     {result && <p role="status" className={cn("text-xs", result.status === "started" ? "text-muted-foreground" : "text-destructive")}>
@@ -389,8 +390,8 @@ function NewSession({ project, harnesses = [], startable = [], places = ["folder
   </section>;
 }
 
-function Composer({ conversation, agents, harnesses, teams = [], startable = [], models = {}, now, disabled, placeholder, onSend, question, cancel, urgentable, replying, cancelReply, harness = "" }) {
-  const [draft, setDraftState] = useState(() => drafts.get(conversation, ""));
+function Composer({ conversation, agents, harnesses, teams = [], startable = [], models = {}, now, disabled, placeholder, onSend, question, cancel, urgentable, replying, cancelReply, harness = "", initialDraft = "" }) {
+  const [draft, setDraftState] = useState(() => drafts.get(conversation, "") || initialDraft);
   const [urgent, setUrgent] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -929,7 +930,7 @@ function Console({ account }) {
       </header>
       <div className="flex flex-col gap-2 px-3 empty:hidden">
         {creating && creating === project && ready && <NewSession key={project + ":" + (data.startable || []).join(",")} project={project} harnesses={data.harnesses} startable={data.startable || []} places={data.startPlaces}
-          agents={data.agents} models={models} now={now} disabled={!ready} start={startSession} close={() => setCreating("")} open={openAddress}/>}
+          startDefault={data.startDefault} agents={data.agents} models={models} now={now} disabled={!ready} start={startSession} close={() => setCreating("")} open={openAddress}/>}
         {agent?.wake?.status && <div className="mx-auto mt-2 flex w-full max-w-3xl flex-wrap items-center gap-2 rounded-xl border bg-muted/50 px-3 py-2 text-sm">
           Wake · {agent.wake.status}{agent.wake.detail && " · " + agent.wake.detail}
           {agent.wake.status === "failed" && !agent.online && <Button size="sm" variant="outline" disabled={working} onClick={() => action("wake", { target: selected.session }, "Wake requested")}>Retry wake</Button>}
