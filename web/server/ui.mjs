@@ -34,6 +34,7 @@ import { compactionFields } from "../../lib/compaction.mjs";
 import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern, savePattern, saveTeamText, teamTemplates, teamTextOf } from "../../lib/patterns.mjs";
 import { authorTeam, saveAuthoredTeam } from "../../lib/team-author.mjs";
 import { listOwned, readOwned } from "../../lib/owned.mjs";
+import { stoppedBuilder } from "../../lib/builder.mjs";
 import { openTasks } from "../../lib/tasks.mjs";
 import { priorityOf } from "../../lib/task-order.mjs";
 import { mentions, mentionedNames, mentionedTeams, startOnlyMentions, messageDestinations } from "../lib/message-routing.js";
@@ -59,7 +60,7 @@ import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a
 export { mentionedNames, mentionedTeams, startOnlyMentions };
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide"];
+const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "continue-builder"];
 const HOSTED_ACTIONS = new Set(["history", "messages", "send", "reply", "afk", "approve", "a2ui"]);
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
@@ -993,7 +994,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       patterns: hosted ? [] : patternRows(project.cfg, env),
       templates: teamTemplates(),
       runs: runs.slice(0, 20),
-      tasks: taskBoard(project.tasks, list, runs, project.tasks ? listOwned(project.cfg) : []),
+      tasks: taskBoard(project.tasks, list, runs, project.tasks ? listOwned(project.cfg) : [],
+        hosted ? undefined : task => stoppedBuilder(project.cfg.project, task, env)),
     };
   }
 
@@ -1253,6 +1255,15 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const { cfg, operator, topic } = project;
       if (action === "approve") return json(201, await answerApproval(project, id, { decision, answers }, by));
       // The operator's decision on a task question goes straight into the task store; the next agent run reads it.
+      if (action === "continue-builder") {
+        if (!startable(project).includes(harness)) reject(400, "Select an available harness");
+        const result = await runner({ socket: runnerSocket(env), timeoutMs: 120_000 })
+          .continueBuilder({ project: name, taskId: id, harness })
+          .catch(() => reject(503, "The session runner is unavailable"));
+        if (result.status !== 201) reject(result.status, result.body.error || "The runner refused the continuation");
+        broadcast();
+        return json(201, result.body);
+      }
       if (action === "decide") {
         if (!project.tasks) reject(400, "This project has no task store");
         const text = typeof decisionText === "string" ? decisionText.trim() : "";

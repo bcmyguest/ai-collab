@@ -19,6 +19,7 @@ export const runnerClient = (options = {}) => ({
   deliveries: () => runnerRequest("GET", "/v1/deliveries", undefined, options),
   schedules: () => runnerRequest("GET", "/v1/schedules", undefined, options),
   runSchedule: (name, caller = "client") => runnerRequest("POST", `/v1/schedules/${encodeURIComponent(name)}/run?caller=${encodeURIComponent(caller)}`, {}, options),
+  continueBuilder: (input) => runnerRequest("POST", "/v1/builder-continuations", input, options),
   start: (input) => runnerRequest("POST", "/v1/sessions", input, options),
   get: (address) => runnerRequest("GET", sessionPath(address), undefined, options),
   send: (address, text, { steer = false } = {}) => runnerRequest("POST", `${sessionPath(address)}/send`, { text, steer }, options),

@@ -1,7 +1,7 @@
 // The task board for the UI snapshot: each task with its owner's presence and its last progress line.
 
 /** Tasks of a project backend; an unreadable store reports its error instead of tasks. */
-export function taskBoard(backend, agents = [], runs = [], sessions = []) {
+export function taskBoard(backend, agents = [], runs = [], sessions = [], previousBuilder = () => null) {
   if (!backend) return { tasks: [] };
   let list;
   try {
@@ -20,7 +20,11 @@ export function taskBoard(backend, agents = [], runs = [], sessions = []) {
   return {
     tasks: list.map(task => {
       const owner = task.owner || sessionOf.get(task.id)?.address;
+      const previous = previousBuilder(task);
+      const continuation = previous && !sessions.some(session => session.status !== "ended"
+        && (session.cwd === previous.worktree || session.address === owner));
       return {
+        ...(continuation ? { previousHarness: (owner || previous.address)?.split("#")[0] || previous.harness } : {}),
         id: task.id,
         title: task.title,
         ...(task.priority ? { priority: task.priority } : {}),
