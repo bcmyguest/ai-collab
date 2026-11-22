@@ -4,9 +4,10 @@ import { test } from "node:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { broadcastTopic, inboxTopic, loadConfig, loadProjects, statusTopic } from "../lib/config.mjs";
+import { broadcastTopic, inboxTopic, loadConfig, loadProjects, sessionLabel, statusTopic } from "../lib/config.mjs";
 import { claimInbox, publishStatus, replyToOperator, sendMessage } from "../lib/inbox.mjs";
 import { waitForAnswer } from "../lib/questions.mjs";
+import { recordSession } from "../lib/sessions.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
@@ -193,4 +194,32 @@ test("AFK mode publishes to every project, streams the latest mode, and stays ou
 
   assert.equal((await post({ mode: "on" })).status, 201);
   for await (const { data } of stream) if (data.mode === "on") break;
+});
+
+test("a terminal draft holds a phone message until retry or explicit override", async (t) => {
+  const fake = await startFakeNtfy();
+  t.after(() => fake.close());
+  const cfg = loadConfig(peerEnv(fake, { peer: "alice" }));
+  const id = "codex-draft-session";
+  const bob = { ...cfg, peer: "bob", session: sessionLabel(id) };
+  const target = `bob#${bob.session}`;
+  await recordSession(bob, { id, cwd: process.cwd(), harness: "codex", event: "Stop" });
+  let drafting = true;
+  const ui = createUi({ cfg, hasDraft: session => session.id === target && drafting });
+  t.after(() => ui.close());
+  const post = (body, options) => ui.handle(new Request(`${base}/api/send`, {
+    method: "POST", headers: { Origin: base, "Content-Type": "application/json" },
+    body: JSON.stringify({ target, body, ...options }),
+  }), "send");
+
+  const held = await post("first", { urgent: true });
+  assert.deepEqual(await held.json(), { sent: false, draftHeld: true });
+  assert.deepEqual(await claimInbox(bob), []);
+  assert.equal((await post("first", { urgent: true, sendAnyway: true })).status, 201);
+  assert.deepEqual((await claimInbox(bob)).map(({ body, urgent }) => [body, urgent]), [["first", true]]);
+
+  assert.equal((await (await post("second")).json()).draftHeld, true);
+  drafting = false;
+  assert.equal((await post("second")).status, 201);
+  assert.deepEqual((await claimInbox(bob)).map(({ body }) => body), ["second"]);
 });

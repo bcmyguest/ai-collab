@@ -1,3 +1,4 @@
+import { terminalHasDraft } from "../../lib/terminal-draft.mjs";
 import { EventType } from "@ag-ui/core";
 import { operatorPrompt, publishMode as publishModeAll } from "../../lib/mode.mjs";
 import { buildEvent, envelopeToEvent, projectEvent, readWireRecord } from "../../lib/agui.mjs";
@@ -336,7 +337,7 @@ function originalOf(quote) {
   return { sender: typeof source.sender === "string" ? source.sender : "", body: typeof source.body === "string" ? source.body : "" };
 }
 
-export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start = startSession, models = listModels, push: notifier = null, auth = null, runner = runnerClient }) {
+export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start = startSession, models = listModels, push: notifier = null, auth = null, runner = runnerClient, hasDraft = terminalHasDraft }) {
   if (!configs.length) throw new Error("No ai-collab project is configured");
   for (const item of configs) if (!item.enabled) throw new Error(item.reason);
   if (allowedOrigin && (!allowedOrigin.startsWith("https://") || new URL(allowedOrigin).origin !== allowedOrigin)) {
@@ -1109,7 +1110,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
-      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, startMode, codeMode, team: teamName, members, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText } = await payload(request);
+      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, sendAnyway, model, startMode, codeMode, team: teamName, members, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -1283,6 +1284,14 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (!reply?.quoted && replyTo !== undefined && replyTo !== null && replyTo !== ""
           && (typeof replyTo !== "string" || !/^[a-zA-Z0-9-]{1,64}$/.test(replyTo))) reject(400, "Invalid reply ID");
         for (const to of destinations) recipient(cfg, to);
+        if (action === "send") {
+          if (sendAnyway !== undefined && typeof sendAnyway !== "boolean") reject(400, "sendAnyway must be true or false");
+          if (!sendAnyway && [...destinations].some(to => to.includes("#"))) {
+            const held = await Promise.all(listSessions(cfg).filter(session => destinations.has(session.id))
+              .map(session => hasDraft(session, { env })));
+            if (held.some(Boolean)) return json(200, { sent: false, draftHeld: true });
+          }
+        }
         const sender = action === "send" ? operator : cfg;
         for (const to of destinations) {
           const direct = action === "send" && to.includes("#");

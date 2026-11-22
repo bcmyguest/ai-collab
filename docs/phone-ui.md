@@ -117,6 +117,7 @@ The mention picker lists configured teams. Post `@light-team <task>` in the proj
 The Patterns page (sidebar **Patterns and teams**) lists patterns, teams and recent runs. Open a pattern to see its roles, graph, handoffs and runs; **Raw** shows its `team.dot` text. **Edit** opens the DOT editor for a project pattern: a graph above the text on a phone (390 px), side by side on desktop. The graph redraws about 300 ms after each edit; a parse error shows its line and that source line. **New team** starts from the shipped template. Details: [Teams and patterns](teams.md).
 
 **Send now** adds `urgent: true` to the send request, and a message whose envelope has `urgent: true` shows ⚡. See [Urgent messages](messaging.md#urgent-messages-send-now).
+When a direct phone message targets a Claude or Codex session with a visible draft in a local tmux pane, the composer holds the message before publishing. Tap **Send anyway** to publish it immediately, or use **Send** again after clearing or submitting the terminal draft. The check is best effort and uses the terminal cursor row.
 
 The **AFK** switch in the header sets the operator mode to `on`, `off`, or `quiet`. Each change publishes a mode record to the broadcast topic of every project. The latest mode envelope in history is the current mode (none means `off`); the chat never shows mode envelopes. See [AFK mode](afk.md).
 
