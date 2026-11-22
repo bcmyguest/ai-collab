@@ -1,6 +1,6 @@
 // Pure grouping of a session's activity rows: the session timeline's flow of texts and tool groups, and the turns the project feed reads.
 import { interleave, readableText, summarize } from "./activity-rows.js";
-import { pairCompactions } from "./compaction-view.js";
+import { foldCompactionRestarts, pairCompactions } from "./compaction-view.js";
 import { operatorPrompt } from "../../lib/machine-prompt.mjs";
 
 const SUMMARY_CHARS = 60;
@@ -99,7 +99,7 @@ export function chatFlow(rows, messages = [], session = "") {
   const own = messages.filter(item => item.from === session);
   const out = [];
   const finals = [];
-  for (const turn of splitTurns(pairCompactions(rows))) {
+  for (const turn of splitTurns(foldCompactionRestarts(pairCompactions(rows)))) {
     const body = [...turn.rows];
     if (turn.done) {
       const final = takeFinal(turn, body, own);

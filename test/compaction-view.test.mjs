@@ -1,7 +1,7 @@
 // Compaction timeline text and the started-to-finished pairing; pure functions, no UI.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compactionText, pairCompactions, tokenCount } from "../web/lib/compaction-view.js";
+import { compactionText, foldCompactionRestarts, pairCompactions, tokenCount } from "../web/lib/compaction-view.js";
 
 test("tokens read as k from 1000 up", () => {
   assert.equal(tokenCount(182000), "182k");
@@ -73,4 +73,13 @@ test("pairing stays within one subagent run", () => {
     { type: "compact", id: "b", agent: "c#1", subagent: { id: "run-1" }, compaction: { phase: "finished" } },
   ];
   assert.deepEqual(pairCompactions(rows).map(row => row.id), ["a", "b"]);
+});
+
+test("the start row after a compaction is folded away; other start rows stay", () => {
+  const rows = [
+    { type: "start", input: "session started · compact" },
+    { type: "start", input: "session started · startup" },
+    { type: "compact", input: "compacted", compaction: { phase: "finished" } },
+  ];
+  assert.deepEqual(foldCompactionRestarts(rows), [rows[1], rows[2]]);
 });

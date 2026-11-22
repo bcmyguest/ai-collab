@@ -20,6 +20,14 @@ export function compactionText(compaction) {
 }
 
 /** Each finished compaction takes its tokensBefore and filesDropped from the started row before it. */
+// The start row SessionStart writes after a compaction (source "compact", activity.mjs); the compaction row already says it.
+const RESTART_AFTER_COMPACT = "session started · compact";
+
+/** Drops the start row a compaction's SessionStart leaves behind, so one compaction is one timeline row. */
+export function foldCompactionRestarts(rows) {
+  return rows.filter(row => !(row.type === "start" && row.input === RESTART_AFTER_COMPACT));
+}
+
 /** Tokens left under the window, or null unless the harness reported both counts; the auto-compact point is never guessed. */
 export function headroom({ tokens, window } = {}) {
   if (!Number.isSafeInteger(tokens) || !Number.isSafeInteger(window) || window <= 0) return null;
