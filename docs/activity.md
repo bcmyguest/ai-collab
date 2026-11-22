@@ -61,3 +61,15 @@ Activity publishing starts before delivery and runs alongside it under one 1.5-s
 ## In the UI
 
 See [Phone UI](phone-ui.md#chat-and-activity-views) for how the UI renders activity rows, subagent runs, and step counts.
+
+## Running jobs
+
+Wrap a foreground build, test, or other command in `ai-collab job run -- <command> [args...]` to report it as active work for your session. Use the session's usual project configuration and set `AI_COLLAB_PEER` and `AI_COLLAB_SESSION` to the two parts of its registered address. For example, replace the label below with yours.
+
+```sh
+AI_COLLAB_PEER=codex AI_COLLAB_SESSION=0123456789abcdef ai-collab job run -- npm test
+```
+
+The wrapper inherits the terminal streams and returns the command's exit status. It tracks the foreground command for as long as that process runs. If the command launches background work, have it wait for that work before exiting.
+
+Job counts are local to the machine that runs the wrapper. A running job keeps `wait idle:<address>` waiting and counts as working on the session card. Building task cards show the owner's running job count when the owner reports jobs. The count covers the whole session. Job reporting leaves the task's stored status under the task owner's control.
