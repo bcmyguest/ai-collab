@@ -770,10 +770,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     } else {
       const peers = new Set([...project.inboxes.keys(), ...activityList(project).map(item => peerOf(item.agent))]);
       const inbox = [...peers].flatMap(peer => entries(project, inboxOf(project, peer), () => true));
-      const pending = inbox.filter(item => item.kind === "Message" && item.from === "operator" && item.to?.includes("#")
-        && !item.startOnly && !project.reads.get(item.id)?.has(item.to));
-      // Read messages still suppress terminal echoes after they leave the project chat.
-      list = [...shared, ...pending, ...answers.map(answerMessage), ...terminalPrompts(project, null, [...topic, ...inbox])];
+      // Inbox messages suppress terminal echoes of direct sends.
+      list = [...shared, ...answers.map(answerMessage), ...terminalPrompts(project, null, [...topic, ...inbox])];
     }
     const { ends, replies, senders } = outcomes(project.hub.events(project.topic));
     // A reply carries its replied message's sender and opening text, even when that message is off the page.
