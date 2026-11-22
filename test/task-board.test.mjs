@@ -60,3 +60,11 @@ test("taskBoard marks an owner not seen as offline and reports an invalid store"
   assert.match(taskBoard(createFileBackend(broken)).error, /invalid JSON/);
   assert.deepEqual(taskBoard(createFileBackend(broken)).tasks, []);
 });
+
+test("taskBoard uses a live linked session when the task has no explicit owner", () => {
+  const backend = backendWith(doc => addTask(doc, { id: "handoff", title: "Handoff" }, NOW));
+  const agents = [{ id: OWNER, online: true }];
+  const session = { address: OWNER, taskId: "handoff", status: "running", createdAt: NOW };
+  assert.equal(taskBoard(backend, agents, [], [session]).tasks[0].owner, OWNER);
+  assert.equal(taskBoard(backend, agents, [], [{ ...session, status: "ended" }]).tasks[0].owner, undefined);
+});

@@ -9,6 +9,7 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { readOwned, standsDown } from "../lib/owned.mjs";
 import { listSessions } from "../lib/sessions.mjs";
+import { openTasks } from "../lib/tasks.mjs";
 import { settleReceipts } from "../lib/receipts.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
@@ -64,7 +65,13 @@ test("start opens a session, claims the registry, and publishes prompt, text and
   const runner = makeRunner(ctx, adapter);
   await runner.boot();
   try {
-    const started = await runner.start({ project: "demo", harness: "codex", prompt: "hello there" });
+    const input = { project: "demo", harness: "codex", prompt: "hello there", taskId: "handoff" };
+    await assert.rejects(runner.start(input), { status: 400, message: "Unknown task in this project" });
+    await openTasks("demo", ctx.env).add({ id: "handoff", title: "Handoff" });
+    const started = await runner.start(input);
+    assert.equal(started.taskId, "handoff");
+    assert.equal(runner.get(started.session).taskId, "handoff");
+    assert.equal(readOwned(ctx.cfg, sessionLabel(started.nativeId)).taskId, "handoff");
     assert.equal(started.status, "started");
     const label = sessionLabel(started.nativeId);
     assert.equal(started.session, `codex#${label}`);

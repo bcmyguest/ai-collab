@@ -65,6 +65,7 @@ export interface OwnedRecord {
   label: string;
   address: string;
   workflowId: string;
+  taskId?: string;
   harness: Harness;
   nativeId: string;
   project: string;
