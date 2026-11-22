@@ -61,5 +61,5 @@ test("a replacement starts in the folder its session ran in", async (t) => {
   assert.equal(out.status, "started");
   assert.equal(calls[0].origin, cwd);
   assert.equal(calls[0].place, "folder");
-  assert.match(calls[0].prompt, /Original task: Fix the redirect/);
+  assert.match(calls[0].prompt, /Session title: "Fix the redirect"/);
 });

@@ -35,7 +35,7 @@ test("chooseLimit starts a replacement once with the handoff, and a second pick 
   assert.equal(calls[0].model, "gpt-5");
   assert.equal(calls[0].place, "folder");
   assert.match(calls[0].prompt, /Continue the work that alice#aabbccddeeff0011 \(claude\) left when it hit a 5-hour limit/);
-  assert.match(calls[0].prompt, /Original task: not recorded/);
+  assert.match(calls[0].prompt, /Session title: not recorded\./);
   assert.equal((await chooseLimit(cfg, { id: sent.id, label: "codex:gpt-5", start: startOk(calls) })).status, "duplicate");
   assert.equal(calls.length, 1);
 });
