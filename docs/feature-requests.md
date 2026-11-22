@@ -20,7 +20,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Agents can read the project's public channel | done (`ai-collab history`, MCP `channel_history`) |
 | Model and worktree beside the agent id in chat | done |
 | Cursor starts without the trust prompt | done (`--trust`) |
-| Cursor in run-everything mode inside OpenShell | building (operator yes 2026-11-22; OpenShell, no limits for now; coordinator starting) |
+| Cursor in run-everything mode inside OpenShell | building OpenShell branch merged a30cd83; live verification on phone still open |
 | Agent text in the activity feed | done (Claude sessions need `/reload-plugins` to load the hook) |
 | Bash rows show the command and its output | done |
 | Terminal-typed prompts appear in session chat | done |
@@ -69,7 +69,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Two near-identical bell icons: make them distinct or merge | done merged 4c444e5, deployed |
 | task add treats --help as a title; add help output and a remove command | open |
 | Runner wake.send retries a codex thread that is closing (runner/runner.mjs:379-399) | done merged 0d2bd07 + 31cd4e3; retryable JSON-RPC refusals retried 3x, backoff capped 4s; mayHaveStarted never retried |
-| Limit card: typed rate_limit_event suppressed by earlier untyped StopFailure card (lib/limit-alert.mjs:207) | building Fix needs test/limit-alert.test.mjs:135-136 changed (upgrade republishes the card) or a state-only upgrade |
+| Limit card: typed rate_limit_event suppressed by earlier untyped StopFailure card (lib/limit-alert.mjs:207) | done merged on main (limit-alert republish); cherry-pick empty = already present |
 | Fan-in hangs when another role stays live (lib/pattern-runs.mjs:354-360) | done branch cursor-verify-fixes (Cursor deepseek, started 16:23); do not dispatch |
 | Limit card: two open cards for one window when resetsAt differs (lib/limit-alert.mjs:202) | done branch cursor-verify-fixes (Cursor deepseek, started 16:23); do not dispatch |
 | Cursor limit detection drops error.code/data and exit-path text (runner/adapters/cursor.mjs:109,95) | done branch cursor-verify-fixes (Cursor deepseek, started 16:23); do not dispatch |
@@ -92,8 +92,8 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | PM mission file: a file the PM owns and edits (mission, goals, rules), versioned in git, read each tick | open |
 | PM feedback loop: each run ends with a review; lessons go to openmem (substrate approved) and the mission file | open |
 | PM tracked handoffs: builders start as runner-owned sessions linked to tasks (rides on team-runs/OpenShell) | open |
-| Compact button really compacts the session (today it only asks the agent by message) | open |
-| Task board as its own left-sidebar entry, not a link beside SESSIONS | open |
+| Compact button really compacts the session (today it only asks the agent by message) | building |
+| Task board as its own left-sidebar entry, not a link beside SESSIONS | building |
 | Task board glitches while scrolling large lists | open |
 | #task tags: tapping a task opens a message tagged #<id>; it goes direct to the task's owner agent, else to the project chat | open |
 | Left panel lists named agents (PM and other set_identity names); tapping one opens a direct chat, no address needed | open |
