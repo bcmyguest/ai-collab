@@ -43,26 +43,29 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Message delivery as durable workflows in the runner (reserve, push, confirm, mark/release; durable backoff) instead of UI-server state | done (runner owns delivery; UI dispatcher stands down while it runs) |
 | Cursor-style tool groups between assistant messages in the session timeline | done |
 | Modern visual refresh of the whole UI | open (last; coordinator shows 2–3 design directions first; do not PM-dispatch) |
-| Teams as wteam-style DOT graphs: team.dot per team (project and global), full wteam semantics (agent, count, skill, prompt; on, kind broadcast/pair/fan-in; description, max_visits), DOT text editor with live graph | building (operator 2026-11-22: list, graph and run view first; DOT storage and runner next) |
+| Teams as wteam-style DOT graphs: team.dot per team (project and global), full wteam semantics (agent, count, skill, prompt; on, kind broadcast/pair/fan-in; description, max_visits), DOT text editor with live graph | building agent started 2026-11-22 |
 | Inspect and edit teams in the UI | building |
-| Compaction in all agents: compact every harness, before/after tokens per compaction, a cross-agent compaction map, one compaction event model | building (operator 2026-11-22) |
-| Structured task list (tasks.json) with status board, dependency graph and live links to agents | building (operator 2026-11-22) |
-| Clear and model/provider switch tracked like compaction, phone commands for every harness | building (operator 2026-11-22) |
+| Compaction in all agents: compact every harness, before/after tokens per compaction, a cross-agent compaction map, one compaction event model | done merged 706b619, deployed 2026-11-22 |
+| Structured task list (tasks.json) with status board, dependency graph and live links to agents | done merged 706b619, deployed 2026-11-22 |
+| Clear and model/provider switch tracked like compaction, phone commands for every harness | done tracking merged 706b619; phone Clear/Model commands deferred (phone model switch row) |
 | Running-subagent count; hide long-idle subagents; fix 2 shown of 4 running | done (UI merge 21a47722, deployed 2026-11-22) |
 | Session view shows which agent is running now | building |
 | Close or delete a project | done (UI merge 21a47722, deployed 2026-11-22) |
 | Operator's pending messages in project chat | building |
 | Sidebar projects show running/inactive counts, not harness types | done (UI merge 21a47722, deployed 2026-11-22) |
 | Subscription limits: phone alert with a choice card to pick the replacement model; no auto-switch | decided (operator 2026-11-22: alert only; 9router rejected, proxies subscription OAuth) |
-| Fallback instructions per team role (e.g. a `fallback` attribute in team.dot that agents follow on a limit) | building (DOT teams agent; operator 2026-11-22) |
+| Fallback instructions per team role (e.g. a `fallback` attribute in team.dot that agents follow on a limit) | building in the DOT teams build |
 | Move off ntfy eventually, so attachments and links work | open (operator 2026-11-22) |
 | Scheduled jobs in the left panel | done (UI merge 21a47722; detail view still building) |
-| Tap a scheduled job for read-only detail (schedule, next run, command/prompt, recent runs) | building (operator 2026-11-22) |
+| Tap a scheduled job for read-only detail (schedule, next run, command/prompt, recent runs) | done merged 706b619, deployed 2026-11-22 |
 | Reply shows a quote of the replied message; reply-to visible in composer (quote bar: sender + first line) | done (UI merge 21a47722, deployed 2026-11-22) |
 | Tap a notification opens the right view | done (UI merge 21a47722, deployed 2026-11-22) |
 | Notification filter: all / questions and replies / questions only / none | done (UI merge 21a47722; sidebar alert level, deployed 2026-11-22) |
-| Fix-and-review team: lead/reviewer uses deepseek (reviews policy) | building (operator 2026-11-22) |
+| Fix-and-review team: lead/reviewer uses deepseek (reviews policy) | done merged 706b619, deployed 2026-11-22 |
 | Hosted multi-user: users reach only their own agents; agents from other users are identified as such | open (operator 2026-11-22; needs design: user identity, tenancy, agent credentials, cross-user policy) |
 | Record feature requests | done this file |
 | Phone model switch: switch a runner-owned Claude session's model from the phone via SDK Query.setModel (sdk.d.ts:3227) | open deferred by operator |
+| Context info fits the phone (no cutoff at 390px) | done merged 4c444e5, deployed |
+| Two near-identical bell icons: make them distinct or merge | done merged 4c444e5, deployed |
+| task add treats --help as a title; add help output and a remove command | open |
 <!-- tasks:end -->
