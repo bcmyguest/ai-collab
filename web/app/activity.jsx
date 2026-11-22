@@ -1,6 +1,6 @@
 "use client";
 import { Bot, ChevronRight, CirclePlay, CircleStop, FileText, Globe, ListTodo, LoaderCircle, Minimize2, Paperclip, Pencil, Plug, Search, SquareArrowOutUpRight, Terminal, TriangleAlert, Wrench } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { CodeBlockCode } from "@/components/ui/code-block";
 import { MessageContent } from "@/components/ui/message";
 import { cn } from "@/lib/utils";
@@ -70,6 +70,8 @@ function ToolName({ tool, error, summary, className }) {
 
 function ToolCall({ item }) {
   const [open, setOpen] = useState(false);
+  // A file edit shows its diff: the files it changes in the summary, their diffs when open.
+  const diff = useMemo(() => toolDiff(item.tool, item.input, item.result?.output), [item.tool, item.input, item.result?.output]);
   // An AskUserQuestion call shows its questions as a read-only card; a pending one is answered from its approval card.
   const questions = askedQuestions(item.tool, item.input);
   if (questions) return <div className="flex min-w-0 flex-col gap-1.5">
@@ -77,8 +79,6 @@ function ToolCall({ item }) {
     {item.result && <Result item={item.result} input={item.input}/>}
   </div>;
   const Icon = iconOf(item.tool);
-  // A file edit shows its diff: the files it changes in the summary, their diffs when open.
-  const diff = toolDiff(item.tool, item.input);
   const summary = diff ? diff.files.map(file => file.path).join(", ") : summarize(item.input);
   const blocks = open && !diff ? inputBlocks(item.tool, item.input) : [];
   return <div className="flex min-w-0 flex-col gap-1.5">
@@ -90,8 +90,8 @@ function ToolCall({ item }) {
         {diff && <Counts added={diff.files.reduce((sum, file) => sum + file.added, 0)} removed={diff.files.reduce((sum, file) => sum + file.removed, 0)} className="text-xs"/>}
         <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"/>
       </summary>
-      {open && diff && <div className="border-t p-2">
-        <ToolDiff files={diff.files}/>
+      {open && diff && <div className="max-h-96 overflow-auto border-t p-2">
+        <ToolDiff files={diff.files} truncated={diff.truncated}/>
       </div>}
       {open && !diff && <div className="max-h-96 overflow-auto border-t">
         {blocks.length ? blocks.map((block, i) => <Code key={i} code={block.code} language={block.language} className={i > 0 && "border-t"}/>)
