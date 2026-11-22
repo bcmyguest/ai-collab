@@ -397,6 +397,7 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
   const [activeIndex, setActiveIndex] = useState(0);
   const [commandsOpen, setCommandsOpen] = useState(false);
   const [posting, setPosting] = useState(false);
+  const [held, setHeld] = useState(null);
   // Command names the picker inserted in this draft; only these and known commands make the message a command.
   const picked = useRef(new Set());
   const pending = useRef(false);
@@ -422,7 +423,7 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
   const busy = disabled || posting;
 
   // Every edit is kept per conversation, so a tab or view switch that remounts the composer restores it.
-  function setDraft(next) { drafts.set(conversation, next); setDraftState(next); }
+  function setDraft(next) { setHeld(null); drafts.set(conversation, next); setDraftState(next); }
   function focus() { document.getElementById("composer")?.focus(); }
   useEffect(() => {
     if (!initialDraft || disabled || prefillFocused.current) return;
@@ -455,20 +456,26 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
     setActiveIndex(0);
     focus();
   }
-  async function send() {
+  async function send(sendAnyway = false) {
     if (pending.current || busy || !draft.trim()) return;
     pending.current = true;
     setPosting(true);
     const text = draft.trim();
     try {
       // onSend returns true only when the message was sent (or a command ran or was requested); otherwise the draft stays.
-      if (await onSend(text, urgentable && urgent, commandFor(text, picked.current) !== null)) {
+      const result = await onSend(text, urgentable && urgent, commandFor(text, picked.current) !== null, sendAnyway);
+      if (result === "draftHeld") setHeld({ text, replying, question });
+      if (result === true) {
         setDraft(""); setShowPicker(false); setUrgent(false); picked.current.clear();
       }
     }
     finally { pending.current = false; setPosting(false); focus(); }
   }
   return <div className="relative mx-auto w-full max-w-3xl px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
+    {held?.text === draft.trim() && held.replying === replying && held.question === question && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-sm">
+      <span role="status">The terminal has an unsent draft.</span>
+      <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => send(true)}>Send anyway</Button>
+    </div>}
     {question && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-sm">
       <span className="min-w-0 truncate">Replying to question {question}</span>
       <Button variant="ghost" size="sm" onClick={cancel}>Cancel</Button>
@@ -520,7 +527,7 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
       else return;
       event.preventDefault(); event.stopPropagation();
     }}>
-      <PromptInput value={draft} onValueChange={change} onSubmit={send} disabled={busy} className="rounded-3xl bg-card shadow-sm">
+      <PromptInput value={draft} onValueChange={change} onSubmit={() => send()} disabled={busy} className="rounded-3xl bg-card shadow-sm">
         <PromptInputTextarea id="composer" aria-label="Message" placeholder={placeholder} className="text-[15px]"/>
         <PromptInputActions className="justify-between px-1 pt-1">
           <PromptInputAction tooltip="Mention an agent">
@@ -533,7 +540,7 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
                 onClick={() => setUrgent(!urgent)}><Zap/>Send now</Button>
             </PromptInputAction>}
             <PromptInputAction tooltip="Send">
-              <Button type="button" size="icon" className="rounded-full" aria-label="Send" disabled={busy || !draft.trim()} onClick={send}><ArrowUp/></Button>
+              <Button type="button" size="icon" className="rounded-full" aria-label="Send" disabled={busy || !draft.trim()} onClick={() => send()}><ArrowUp/></Button>
             </PromptInputAction>
           </div>
         </PromptInputActions>
@@ -848,6 +855,7 @@ function Console({ account }) {
     setWorking(true);
     try {
       const result = await api(path, { project, ...payload });
+      if (result.draftHeld) return "draftHeld";
       if (at === route.current) {
         // A running session needs no wake note; its message's ticks tell the rest.
         const outcome = (result.wake && !["online", "queued"].includes(result.wake.status) && result.wake) || result.compact || (result.wake ? { status: result.status, detail: result.detail } : result);
@@ -1021,13 +1029,13 @@ function Console({ account }) {
       <div role="status" hidden={!notice} className="mx-auto w-full max-w-3xl px-4 text-center text-xs text-muted-foreground">{notice}</div>
       {!home && !listing && !patterns && !tasksView && !composing && <Composer key={requested + ":" + composeTask} conversation={conversationKey(project, composeTask ? "#" + composeTask : level === "session" ? selected.session : "")} initialDraft={composeTask ? `#${composeTask} ` : ""} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
         placeholder={placeholder} question={question} cancel={() => setQuestion("")} urgentable={!question} replying={replyTo} cancelReply={() => setReplyTo(null)}
-        onSend={async (body, urgent, command) => {
+        onSend={async (body, urgent, command, sendAnyway) => {
           // Project chat never runs commands: a leading / there is ordinary chat.
           if (command && !question && level === "session" && selected.session) return runCommand(body);
           const composeHash = composeTask && location.hash;
           const sent = question ? await action("reply", { question, body }, "Reply sent")
-            : await action("send", { target, body, ...(urgent ? { urgent: true } : {}), ...(replyTo ? { replyTo: replyTo.id, quote: { sender: replyTo.sender, body: replyTo.body } } : {}) }, "Sent");
-          if (sent) {
+            : await action("send", { target, body, ...(sendAnyway ? { sendAnyway: true } : {}), ...(urgent ? { urgent: true } : {}), ...(replyTo ? { replyTo: replyTo.id, quote: { sender: replyTo.sender, body: replyTo.body } } : {}) }, "Sent");
+          if (sent === true) {
             setQuestion(""); setReplyTo(null); stick.current?.scrollToBottom();
             if (composeHash && location.hash === composeHash) navigate({ project, level: "project" });
           }
