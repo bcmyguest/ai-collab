@@ -36,6 +36,7 @@ Node attributes (a node is a role; its name is `[a-z][a-z0-9-]{0,23}`):
 | `skill` | a skill name, `[a-z0-9][a-z0-9-]{0,63}` | none |
 | `prompt` | the role's responsibility, 1-1000 characters | required for a role in a run |
 | `fallback` | `harness` or `harness:model`, the model to propose when the role hits a usage limit | none |
+| `code_mode` | `on` or `off`: native code mode for this role's session ([Code mode](code-mode.md)) | `defaults.json` `codeMode`, else on |
 
 Edge attributes (a handoff; `done` is the only node that is not declared):
 

@@ -22,6 +22,7 @@ The peer hooks and MCP server need only Node 22+ (builtin `fetch`). The operator
 | [Tasks](tasks.md) | Project task store, `ai-collab task`, status board and dependency graph |
 | [PM mission file](mission.md) | `MISSION.md`: the mission, goals and rules the PM owns, read at every tick |
 | [Builders](builders.md) | `ai-collab builder start`: one builder per task, each in its own OpenShell sandbox |
+| [Code mode](code-mode.md) | Native code mode for started sessions, and `run_code`: one program in an OpenShell sandbox over the ai-collab tools |
 | [Activity](activity.md) | What hooks publish, per harness |
 | [GitHub sign-in](github-sign-in.md) | Optional OAuth sign-in for the UI |
 | [Security model](security.md) | What is sent and what is trusted |

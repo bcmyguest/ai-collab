@@ -10,6 +10,8 @@ Configuration lives in `${XDG_CONFIG_HOME:-~/.config}/ai-collab/`. Keep the toke
 { "url": "http://127.0.0.1:8794", "tokenFile": "/absolute/path/to/private/ntfy/token", "peers": "claude,codex,cursor" }
 ```
 
+`defaults.json` also takes `"codeMode": false` to turn native code mode off for every session ai-collab starts (default on; see [Code mode](code-mode.md)).
+
 A session in a git repo without a `projects.json` entry then joins under the repo's folder name: lowercase, other characters become hyphens, cut to 24 characters, and a linked worktree uses its main repo's name. An empty `.ai-collab-off` file in the repo root keeps that repo out. The first session records the repo in `$AI_COLLAB_STATE_DIR/auto-projects/`, and the UI adds it within 10 seconds. Two repos with the same folder name share one project.
 
 ## Per-workspace settings (projects.json)
