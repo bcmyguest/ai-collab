@@ -137,6 +137,8 @@ test("a tick whose scheduled time is under an edited interval after the last run
   const row = second.status(`beat@${iso(1_260_000)}`);
   assert.equal(row.status, "SKIPPED");
   assert.match(row.output.skipped, /interval changed/);
+  // The card still shows the run before the skip, not the skipped tick's status.
+  assert.deepEqual([second.schedules()[0].last.id, second.schedules()[0].last.status], [`beat@${iso(1_200_000)}`, "SUCCESS"]);
   await second.close();
 });
 
