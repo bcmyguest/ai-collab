@@ -46,7 +46,7 @@ async function waitFor(predicate, ms = 2000) {
 
 test("a rejected rate_limit_event emits one LIMIT event with the window and reset", async () => {
   const sdk = scriptedSdk((message, api) => {
-    api.emit({ type: "rate_limit_event", uuid: "00000000-0000-4000-8000-000000000001", session_id: "s1", rate_limit_info: { status: "rejected", rateLimitType: "five_hour", resetsAt: 1793113200 } });
+    api.emit({ type: "rate_limit_event", uuid: "00000000-0000-4000-8000-000000000001", session_id: "s1", rate_limit_info: { status: "rejected", rateLimitType: "five_hour", resetsAt: 1893113200 } });
     api.emit({ type: "rate_limit_event", uuid: "00000000-0000-4000-8000-000000000002", session_id: "s1", rate_limit_info: { status: "allowed_warning", rateLimitType: "seven_day", utilization: 0.9 } });
     api.result();
   });
@@ -59,7 +59,7 @@ test("a rejected rate_limit_event emits one LIMIT event with the window and rese
   assert.equal(eventProblem(limit), null);
   assert.equal(limit.value.harness, "claude");
   assert.equal(limit.value.window, "five_hour");
-  assert.equal(limit.value.resetsAt, 1793113200000);
+  assert.equal(limit.value.resetsAt, 1893113200000);
   assert.equal(events.filter((e) => e.name === LIMIT).length, 1);
   await handle.close();
 });

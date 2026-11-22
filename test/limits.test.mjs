@@ -16,7 +16,14 @@ for (const harness of HARNESSES) {
         continue;
       }
       assert.equal(found?.harness, harness, name);
-      for (const key of ["window", "windowName", "resetsAt", "verified"]) assert.equal(found[key], expect[key], `${name}: ${key}`);
+      for (const key of ["window", "windowName", "verified"]) assert.equal(found[key], expect[key], `${name}: ${key}`);
+      if (expect.resetsAt === "clamped") {
+        // A reset in the past is held to 5 minutes from now.
+        const floor = Date.now() + 5 * 60_000;
+        assert.ok(found.resetsAt >= floor - 1000 && found.resetsAt <= floor + 5000, `${name}: resetsAt ${found.resetsAt}`);
+      } else {
+        assert.equal(found.resetsAt, expect.resetsAt, `${name}: resetsAt`);
+      }
       assert.ok(found.source, `${name}: source`);
     }
   });
