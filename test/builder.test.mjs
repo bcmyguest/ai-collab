@@ -2,14 +2,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCli } from "../lib/cli.mjs";
 import {
-  briefNotes, builderPaths, builderSandbox, builderPolicy, captureHooks, harnessCommand, hostCaptureEvents, parseRecordedCall, replayable, sharedLibs,
+  briefNotes, builderPaths, builderAssignment, builderSandbox, builderPolicy, captureHooks, harnessCommand, hostCaptureEvents, parseRecordedCall, replayable, sharedLibs,
 } from "../lib/builder.mjs";
+import { createUi } from "../web/server/ui.mjs";
+import { listOwned } from "../lib/owned.mjs";
 import { taskStoreFile } from "../lib/tasks.mjs";
 import { saveTeamText } from "../lib/patterns.mjs";
 import { loadConfig } from "../lib/config.mjs";
@@ -20,6 +22,7 @@ import { listenControl } from "../runner/control.mjs";
 import codexAdapter from "../runner/adapters/codex.mjs";
 import { startTaskWakes } from "../runner/task-wake.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { firstUpdate } from "./helpers/ui-stream.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OPENSHELL = path.join(HERE, "helpers", "fake-openshell.mjs");
@@ -237,7 +240,7 @@ test("builder list shows live builders and stop ends only builders it started", 
   assert.ok(!readJsonLines(l.env.FAKE_SYSTEMD_LOG).some((a) => a[0] === "systemctl" && a.includes("stop")));
   const stop = await l.cli("builder", "stop", "smoke-task");
   assert.equal(stop.code, 0);
-  assert.equal(stop.out, "builder-smoke-task\tstopped\tsandbox deleted\n");
+  assert.equal(stop.out, "builder-smoke-task\tstopped\n");
   assert.ok(readJsonLines(l.env.FAKE_SYSTEMD_LOG).some((a) => a[0] === "systemctl" && a.join(" ") === "systemctl --user stop builder-smoke-task"));
 });
 
@@ -357,6 +360,9 @@ async function ownedBuilderTest(t, prompt) {
     assert.deepEqual(JSON.parse(readFileSync(l.env.FAKE_OPENSHELL_STATE, "utf8")).sandboxes, []);
     return;
   }
+  assert.equal(builderAssignment("demo", task(l), listOwned(cfg), l.env), null);
+  const paths = builderPaths("smoke-task", l.env);
+  appendFileSync(path.join(l.home, "sandboxes", SANDBOX, "work", path.basename(paths.worktree), "notes.md"), "pending Codex edit\n");
   const stopped = await l.cli("builder", "stop", "smoke-task");
   assert.equal(stopped.code, 0, stopped.err);
   assert.equal(runner.get(address).status, "ended");
@@ -371,6 +377,30 @@ async function ownedBuilderTest(t, prompt) {
   assert.equal(task(l).status, "blocked");
   assert.equal(task(l).owner, address);
   assert.deepEqual(JSON.parse(readFileSync(l.env.FAKE_OPENSHELL_STATE, "utf8")).sandboxes, []);
+  const { recovery } = builderAssignment("demo", task(l), listOwned(cfg), l.env);
+  assert.equal(recovery.worktree, paths.worktree);
+  assert.equal(recovery.commits, 1);
+  const ui = createUi({ cfg, env: l.env, allowedOrigin: "https://localhost" });
+  t.after(() => ui.close());
+  const stream = new AbortController();
+  try {
+    const snapshot = await firstUpdate(ui.events(new Request("https://localhost/api/events?project=demo", { signal: stream.signal })), "state");
+    assert.deepEqual(snapshot.tasks.tasks[0].recovery, recovery);
+    assert.match(snapshot.tasks.tasks[0].last.text, /1 commit/);
+  } finally {
+    stream.abort();
+  }
+  const response = await ui.handle(new Request("https://localhost/api/recover-builder", {
+    method: "POST", headers: { "content-type": "application/json", origin: "https://localhost" },
+    body: JSON.stringify({ project: "demo", id: "smoke-task", harness: "cursor" }),
+  }), "recover-builder");
+  assert.equal(response.status, 201, await response.text());
+  assert.match(wtGit(l, "show", "HEAD:notes.md"), /pending Codex edit\na line from the builder/);
+  assert.equal(task(l).owner, undefined);
+  assert.equal(runner.get(address).status, "ended");
+  const [replacement, ...otherLaunches] = readJsonLines(l.env.FAKE_BUILDER_LOG);
+  assert.deepEqual(otherLaunches, []);
+  assert.match(replacement.args.at(-1), /Recover the unfinished assignment[\s\S]*Last task update:/);
 }
 
 test("Codex builder links its task before sending the brief", (t) => ownedBuilderTest(t, "hang"));

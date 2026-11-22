@@ -433,6 +433,13 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         }, { onCut: () => null });
       }
     }
+    if (builder) {
+      await wf.step("builder.finish", async () => {
+        await s.live?.close().catch(() => {});
+        s.live = null;
+        await finishOwnedBuilder(builder, staged, 1, env, log);
+      });
+    }
     return wf.step("close", () => endSession(s, "closed by the operator"));
   }
 
