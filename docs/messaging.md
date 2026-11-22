@@ -77,7 +77,7 @@ Six MCP tools (plus the options below) follow the agent-messaging interface of t
 | `wait` | Blocks up to `seconds` (max 45) for a new message to this session; returns it marked read. `until: "idle:<address>"` blocks until that agent has no turn running (`idle`), its process ended (`ended`) or the timeout. | stream waiter + `claimInbox`; `lib/idle.mjs` | `ai-collab wait [N]`, `ai-collab wait idle:<address> [N]`, `ai-collab wait reply:<id> [N]` |
 | `inbox` | Reads new messages and marks them delivered; publishes read receipts. `peek: true` leaves them unread. | `claimInbox`, `lib/receipts.mjs` | `ai-collab inbox [--peek]` |
 | `history` | Lists the last `limit` (default 30, max 100) project-channel messages, oldest first; read-only, no cursor or receipts. | `channelHistory` | `ai-collab history [--limit N]` |
-| `set_identity` | Stores `name`, `activity` (one line, at most 200 characters) and `tags` (at most 10, e.g. `pr:12`, `role:reviewer`) in this session's registry entry. The name also becomes the registry's `identityName`, which the UI sidebar lists under **Agents** (PM first) and a later harness title does not replace. | session registry | `ai-collab identity [--name N] [--activity T] [--tag T]...` |
+| `set_identity` | Stores `name`, `activity` (one line, at most 200 characters) and `tags` (at most 10, e.g. `pr:12`, `role:reviewer`) in this session's registry entry. | session registry | `ai-collab identity [--name N] [--activity T] [--tag T]...` |
 
 A `respond` answer is a msg envelope with `replyTo` and an optional `state` field; clients that predate it show it as an ordinary message. Tool results label each message with `answer_with`. The tools and the hooks share one inbox cursor per session, so a message read through `wait` or `inbox` is not delivered again by a hook. The 45-second cap keeps a call under Codex's default MCP tool timeout; call `wait` again to keep listening. `ai-collab wait reply:<id> [N]` reads the inbox history for a reply, done or declined, to that message id. It neither claims nor marks messages, so a reply a hook already claimed is still found. On a reply it prints that message as one line (the same line as `inbox`, without the untrusted-data header) and exits 0; on timeout it prints `no reply yet` and exits 1. An empty or malformed id exits 1 with a usage line. `send --await` is separate: it exits 0 whether or not a reply arrives.
 
@@ -138,6 +138,10 @@ A socket delivery with `expect_reply` is redelivered like any other push (see be
 ### Priority
 
 `priority` is `normal` (wakes an idle session), `urgent` (same as `urgent: true`) or `fyi` (queued; no waiter or dispatcher wakes the session for it). A hook still delivers an `fyi` message at the next hook event, including a Stop that already runs.
+
+### Start-only posts
+
+A project-chat post whose `@` tags are all `harness:model` pairs (for example `@codex:gpt-5-codex build the header`) starts those sessions and addresses nobody running: `sendMessage(..., { startOnly: true })` sets `startOnly` on the envelope, and every reader skips such a post — `claimInbox` refuses it on the broadcast topic, so no hook, Stop wait or asyncRewake waiter wakes a running session, and the runner's broadcast path does not feed it to an owned session. The post still sits in the project channel, so the phone shows it with no delivery ticks. One tag that is not a model start (a plain harness, a session or a team) makes the post an ordinary broadcast. `startOnly` must go with the project chat (`all`), never a direct message.
 
 ### Redelivery with `expect_reply`
 

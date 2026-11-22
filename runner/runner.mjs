@@ -803,7 +803,8 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       const s = sessions.get(`${m.to}#${m.toSession}`);
       if (s) await deliver(cfg, s, item(s), m.urgent === true, m.from, sender, true);
     } else if (broadcast && m.to === "all") {
-      // A project-chat broadcast reaches every owned session of the project.
+      // A project-chat broadcast reaches every owned session of the project, except a start-only post.
+      if (m.from === "operator" && m.startOnly === true) return;
       for (const s of sessions.values()) await deliver(cfg, s, item(s), m.urgent === true, m.from, sender);
     }
   }
