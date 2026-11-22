@@ -52,7 +52,7 @@ The compact row from a finished step reads `compacted · <trigger>`, and a faile
 
 A `clear` row (`clear: {tokensBefore?, tokensAfter: 0}`) comes from Claude's `SessionStart` with `source: "clear"` (sdk.d.ts:7266). The hook script stamps `tokensBefore` from the meter's last reading. `tokensAfter` is 0 by definition: a clear empties the context. The text is `Cleared · 140k → 0`.
 
-A `model` row (`modelSwitch: {from, to}`) comes from Claude's `PostModelSwitch` hook (sdk.d.ts `PostModelSwitchHookInput`: `from_model`, `to_model`, resolved ids). **Unverified wiring:** the hook is not in hooks/hooks.json, because test/manifests.test.mjs pins the Claude hook list and no approval covered it. The runner emits a model row for a `STEP_FINISHED` step named `model` with `metadata.aiCollab.modelSwitch`; no adapter emits one yet. Codex, OpenCode and Cursor report no clear or model event.
+A `model` row (`modelSwitch: {from, to}`) comes from Claude's `PostModelSwitch` hook (sdk.d.ts `PostModelSwitchHookInput`: `from_model`, `to_model`, resolved ids), wired in hooks/hooks.json. The runner emits a model row for a `STEP_FINISHED` step named `model` with `metadata.aiCollab.modelSwitch`; no adapter emits one yet. Codex, OpenCode and Cursor report no clear or model event.
 
 ## Cost to the agent
 
