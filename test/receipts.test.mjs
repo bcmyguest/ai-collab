@@ -9,6 +9,7 @@ import { runCli } from "../lib/cli.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { sse } from "./helpers/ui-stream.mjs";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 const base = "http://127.0.0.1:8795";
@@ -21,23 +22,6 @@ function runHook(input, env) {
     child.on("close", (code) => resolve({ code, out }));
     child.stdin.end(JSON.stringify(input));
   });
-}
-
-async function* sse(response) {
-  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-  let buffer = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) return;
-    buffer += value;
-    let end;
-    while ((end = buffer.indexOf("\n\n")) >= 0) {
-      const block = buffer.slice(0, end);
-      buffer = buffer.slice(end + 2);
-      const event = /^event: (.+)$/m.exec(block)?.[1];
-      if (event) yield { event, data: JSON.parse(/^data: (.*)$/m.exec(block)[1]) };
-    }
-  }
 }
 
 const receipts = (fake) => fake.state.publishes.filter((p) => p.topic === receiptsTopic("demo")).map((p) => JSON.parse(p.message));

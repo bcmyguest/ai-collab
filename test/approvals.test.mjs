@@ -8,6 +8,7 @@ import { approvalMessage, approvalOutput, approvalRequest, decideApproval, parse
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { sse } from "./helpers/ui-stream.mjs";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 const ALL = "ai-collab-demo--to--all";
@@ -188,20 +189,16 @@ test("the UI shows approval cards with their outcome and answers them through th
   const choiceId = envelopes(fake, "approval").find(e => e.questions).id;
 
   // Reads state events until check holds for the approval cards.
-  const reader = ui.events(new Request(`${base}/api/events`, { signal: ctrl.signal })).body.pipeThrough(new TextDecoderStream()).getReader();
-  let buffer = "";
+  const stream = sse(ui.events(new Request(`${base}/api/events`, { signal: ctrl.signal })));
   async function until(check) {
     for (;;) {
-      const { value } = await reader.read();
-      buffer += value;
-      const blocks = buffer.split("\n\n");
-      buffer = blocks.pop();
-      for (const block of blocks) {
-        if (!block.startsWith("event: state")) continue;
-        const state = JSON.parse(/^data: (.*)$/m.exec(block)[1]);
-        const cards = state.messages.filter(m => m.kind === "Approval");
-        if (check(cards)) return { cards, state };
-      }
+      const { done, value } = await stream.next();
+      if (done) throw new Error("stream ended");
+      if (value.event === "problem") throw new Error(value.data.error);
+      if (value.event !== "state") continue;
+      const state = value.data;
+      const cards = state.messages.filter(m => m.kind === "Approval");
+      if (check(cards)) return { cards, state };
     }
   }
   const { cards } = await until(list => list.length === 2);

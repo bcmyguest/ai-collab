@@ -1,4 +1,5 @@
 // Shared contract for owned-session adapters; prose and rules live in docs/owned-sessions-contract.md.
+import type { AGUIEventOf, CustomEvent, EventType } from "@ag-ui/core";
 
 export type Harness = "claude" | "codex" | "cursor" | "opencode";
 export type PermissionMode = "supervised" | "accept-edits" | "auto" | "full-access";
@@ -19,26 +20,23 @@ export interface ContextUsage { tokens: number; window?: number }
 // The operator's answer to an interrupt; answers carries an AskUserQuestion-style choice.
 export interface Decision { behavior: "allow" | "deny"; answers?: Record<string, string>; message?: string }
 
-// Subagent attribution, as AG-UI's subagentRunId.
-interface Sub { subagentRunId?: string; subagentType?: string }
+type RunnerCustomEvent = CustomEvent & (
+  | { name: "ai-collab.notice" | "ai-collab.error"; value: string }
+  | { name: "ai-collab.approval-requested"; value: {
+      interruptId: string; reason: "tool_approval" | "question"; toolCallId?: string;
+      toolCallName: string; summary: string; questions?: unknown[];
+    } }
+  | { name: "ai-collab.approval-resolved"; value: {
+      interruptId: string; status: "resolved" | "cancelled"; reason: "allowed" | "denied" | "answered" | "cancelled";
+    } }
+);
 
-export interface JsonPatchOp { op: "add" | "replace" | "remove"; path: string; value?: unknown }
-
-// Normalized events, named after AG-UI 1.0 event types; adapters emit only these through SessionContext.emit.
-export type RunnerEvent =
-  | { type: "RUN_STARTED"; runId: string; prompt?: string }
-  | ({ type: "TEXT_MESSAGE_CHUNK"; messageId: string; delta: string } & Sub)
-  | ({ type: "TEXT_MESSAGE_END"; messageId: string; text: string } & Sub)
-  | ({ type: "TOOL_CALL_START"; toolCallId: string; toolCallName: string; args?: unknown } & Sub)
-  | ({ type: "TOOL_CALL_RESULT"; toolCallId: string; toolCallName: string; content?: unknown; ok: boolean } & Sub)
-  | { type: "INTERRUPT_REQUESTED"; interruptId: string; reason: "tool_approval" | "question"; toolCallId?: string; toolCallName: string; summary: string; args?: unknown; questions?: unknown[] }
-  | { type: "INTERRUPT_RESOLVED"; interruptId: string; status: "resolved" | "cancelled"; reason: "allowed" | "denied" | "answered" | "cancelled" }
-  | { type: "STEP_STARTED"; stepName: string; note?: string }
-  | { type: "STEP_FINISHED"; stepName: string }
-  | { type: "STATE_DELTA"; delta: JsonPatchOp[] }
-  | { type: "CUSTOM"; name: "notice" | "error"; value: string }
-  | { type: "RUN_FINISHED"; runId: string; outcome: "success" | "cancelled"; reason?: string }
-  | { type: "RUN_ERROR"; runId: string; message: string };
+export type RunnerEvent = RunnerCustomEvent | AGUIEventOf<
+  EventType.RUN_STARTED | EventType.RUN_FINISHED | EventType.RUN_ERROR |
+  EventType.TEXT_MESSAGE_CONTENT | EventType.TEXT_MESSAGE_CHUNK |
+  EventType.TOOL_CALL_CHUNK | EventType.TOOL_CALL_RESULT |
+  EventType.STEP_STARTED | EventType.STEP_FINISHED | EventType.STATE_DELTA
+>;
 
 export interface SessionContext {
   emit(event: RunnerEvent): void;

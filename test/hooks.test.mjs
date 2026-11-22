@@ -115,7 +115,7 @@ test("cursor sessionStart and postToolUse use additional_context; stop publishes
 
   const st = await runHook(["--host", "cursor"], { hook_event_name: "stop" }, aliceEnv);
   assert.equal(st.out.trim(), "{}");
-  assert.ok(fake.state.publishes.some((x) => JSON.parse(x.message).event === "stop"));
+  assert.ok(fake.state.publishes.some((x) => JSON.parse(x.message)?.event === "stop"));
 });
 
 test("codex SessionStart and UserPromptSubmit use the codex host label", async (t) => {

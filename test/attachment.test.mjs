@@ -9,28 +9,12 @@ import { parseEnvelope, sendMessage } from "../lib/inbox.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { sse } from "./helpers/ui-stream.mjs";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-attach-"));
 const png = path.join(dir, "shot.png");
 writeFileSync(png, PNG);
-
-async function* sse(response) {
-  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-  let buffer = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) return;
-    buffer += value;
-    let end;
-    while ((end = buffer.indexOf("\n\n")) >= 0) {
-      const block = buffer.slice(0, end);
-      buffer = buffer.slice(end + 2);
-      const event = /^event: (.+)$/m.exec(block)?.[1];
-      if (event) yield { event, data: JSON.parse(/^data: (.*)$/m.exec(block)[1]) };
-    }
-  }
-}
 
 test("attachments must be absolute image files whose bytes match the extension", () => {
   assert.equal(readAttachment(png).data.length, PNG.length);

@@ -1,6 +1,6 @@
 {
   "name": "ai-collab",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Best-effort messaging and status between coding-agent peers over a private ntfy server.",
   "license": "Apache-2.0",
   "type": "module",
@@ -41,6 +41,8 @@
     "demo": "AI_COLLAB_NEXT_DIST=.next-demo next build web && AI_COLLAB_NEXT_DIST=.next-demo node scripts/demo/record.mjs"
   },
   "dependencies": {
+    "@ag-ui/client": "^1.0.5",
+    "@ag-ui/core": "^1.0.5",
     "@anthropic-ai/claude-agent-sdk": "^0.3.330",
     "@pierre/diffs": "^1.6.4",
     "@tailwindcss/postcss": "^4.3.5",

@@ -20,6 +20,7 @@ import { withMentions } from "@/lib/mentions";
 import { chatThread } from "@/lib/chat-turns";
 import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
 import { TABS, parseSelection } from "@/lib/selection";
+import { subscribeUiEvents } from "@/lib/ui-events";
 import { ActivityRow, GoToAgent, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
 import { NotifyToggle } from "./notify";
@@ -614,7 +615,9 @@ function Console({ account }) {
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
-    const source = new EventSource("/api/events?" + requested);
+    let controller;
+    let subscription;
+    let closed = false;
     let bannerTimer = 0;
     let retryTimer = 0;
     // Error banners wait for one quiet reconnect; a manual Retry or a visible error ends in one toast.
@@ -626,44 +629,59 @@ function Console({ account }) {
       retrying.current = false; toast.error("Reconnect failed", { id: CONNECTION_TOAST, description: error });
     };
     const reconnect = () => { autoRetry.current = true; setRevision(n => n + 1); };
-    // EventSource reopens itself after a server restart; each opening checks the build once.
-    let checked = false;
-    source.addEventListener("open", () => { checked = false; });
-    source.addEventListener("state", event => {
-      if (requested !== route.current) return;
-      if (!checked) { checked = true; checkBuild(); }
-      clearTimeout(bannerTimer);
-      setData(JSON.parse(event.data)); setReady(true); setLoadError(""); setNow(Date.now());
-      // A healthy stream needs no toast; clear a "Reconnect failed" one.
-      toast.dismiss(CONNECTION_TOAST);
-      retrying.current = false; shown.current = false; autoRetry.current = true;
-    });
-    source.addEventListener("activity", event => {
-      if (requested !== route.current) return;
-      const { reset, items } = JSON.parse(event.data);
-      setActivity(list => (reset ? items : [...list, ...items]).slice(-ACTIVITY_MAX));
-    });
-    source.addEventListener("problem", event => { source.close(); fail(JSON.parse(event.data).error); });
-    source.onerror = () => {
-      if (source.readyState === EventSource.CLOSED) {
+    const disconnected = error => {
+      if (controller.signal.aborted || requested !== route.current) return;
+      controller.abort();
+      if (error?.status) {
+        closed = true;
         if (account.enabled) window.dispatchEvent(new Event(AUTH_CHECK));
         if (autoRetry.current && !retrying.current) { autoRetry.current = false; retryTimer = setTimeout(() => setRevision(n => n + 1), QUIET_RETRY_MS); return; }
         return fail("Connection closed");
       }
-      if (retrying.current) return fail("Server unreachable. Still retrying automatically.");
-      if (!bannerTimer) bannerTimer = setTimeout(() => show("Reconnecting…"), RECONNECT_GRACE_MS);
+      if (retrying.current) fail("Server unreachable. Still retrying automatically.");
+      else if (!bannerTimer) bannerTimer = setTimeout(() => show("Reconnecting…"), RECONNECT_GRACE_MS);
+      retryTimer = setTimeout(open, RECONNECT_GRACE_MS);
     };
+    function open() {
+      controller = new AbortController();
+      let checked = false;
+      subscription = subscribeUiEvents(() => fetch("/api/events?" + requested, {
+        headers: { Accept: "text/event-stream" }, signal: controller.signal,
+      }), {
+        next({ event, data }) {
+          if (requested !== route.current) return;
+          if (event === "state") {
+            if (!checked) { checked = true; checkBuild(); }
+            clearTimeout(bannerTimer); bannerTimer = 0;
+            setData(data); setReady(true); setLoadError(""); setNow(Date.now());
+            toast.dismiss(CONNECTION_TOAST);
+            retrying.current = false; shown.current = false; autoRetry.current = true;
+          } else if (event === "activity") {
+            const { reset, items } = data;
+            setActivity(list => (reset ? items : [...list, ...items]).slice(-ACTIVITY_MAX));
+          } else if (event === "problem") {
+            closed = true;
+            controller.abort();
+            subscription.unsubscribe();
+            fail(data.error);
+          }
+        },
+        error: disconnected,
+        complete: disconnected,
+      });
+    }
+    open();
     // Phones suspend background pages and can leave a dead stream open; reconnect quietly on return.
     const resume = () => {
       if (document.visibilityState === "hidden") { hiddenAt.current = Date.now(); return; }
       const away = hiddenAt.current && Date.now() - hiddenAt.current > STALE_AFTER_MS;
       hiddenAt.current = 0;
-      if (source.readyState === EventSource.CLOSED || away) reconnect();
+      if (closed || away) reconnect();
     };
     document.addEventListener("visibilitychange", resume);
     window.addEventListener("online", reconnect);
     return () => {
-      clearTimeout(bannerTimer); clearTimeout(retryTimer); source.close();
+      clearTimeout(bannerTimer); clearTimeout(retryTimer); controller.abort(); subscription.unsubscribe();
       document.removeEventListener("visibilitychange", resume);
       window.removeEventListener("online", reconnect);
     };

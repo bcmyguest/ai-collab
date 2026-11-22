@@ -40,7 +40,7 @@ Run `npm ci && npm run build` in the checkout before `systemctl --user restart a
 
 ## Live updates
 
-The browser opens one `EventSource` on `/api/events` and re-renders on each pushed `state` event; it never polls. In an Activity view (`view=activity`) the same stream also carries `activity` events: first `{reset:true, items}` with the history, then only new rows. The server holds a single ntfy streaming subscription (`/<topic1>,<topic2>/json`) shared by all browsers and by every project on the same ntfy server and account. It fetches a topic's history once (`poll=1&since=all`) when a browser first opens that project (broadcast, status, and each session inbox), and reconnects with `since=<last id>` after a drop, backing off 30 seconds on HTTP 429. The activity topic's history keeps the newest 3 MB of the cache, and the hub keeps 500 events per topic.
+The browser reads one AG-UI SSE stream from `/api/events` using `@ag-ui/client`. A `STATE_SNAPSHOT` refreshes the chat and session view. In an Activity view (`view=activity`), the same stream replays activity events and then sends new ones as they arrive. See the [AG-UI event protocol](ag-ui.md). The server holds a single ntfy streaming subscription (`/<topic1>,<topic2>/json`) shared by all browsers and by every project on the same ntfy server and account. It fetches a topic's history once (`poll=1&since=all`) when a browser first opens that project (broadcast, status, and each session inbox), and reconnects with `since=<last id>` after a drop, backing off 30 seconds on HTTP 429. The activity topic's history keeps the newest 3 MB of the cache, and the hub keeps 500 events per topic.
 
 On a phone, drag the list down from its top, or up from its bottom, past 70 px to refresh: the app reconnects its stream like **Retry** and shows the same toasts. The gesture uses touch events only and is ignored while text is selected or the composer has focus; the page keeps `overscroll-none`, so the browser's own reload never fires.
 
@@ -109,7 +109,7 @@ The mention picker lists configured teams. Post `@light-team <task>` in the proj
 
 **Send now** adds `urgent: true` to the send request, and a message whose envelope has `urgent: true` shows ⚡. See [Urgent messages](messaging.md#urgent-messages-send-now).
 
-The **AFK** switch in the header sets the operator mode to `on`, `off`, or `quiet`. Each change publishes `{v:1, kind:"mode", from:"operator", mode, ts}` to the broadcast topic of every project. The latest mode envelope in history is the current mode (none means `off`); the chat never shows mode envelopes. See [AFK mode](afk.md).
+The **AFK** switch in the header sets the operator mode to `on`, `off`, or `quiet`. Each change publishes a mode record to the broadcast topic of every project. The latest mode envelope in history is the current mode (none means `off`); the chat never shows mode envelopes. See [AFK mode](afk.md).
 
 ## Start a session from the phone
 
@@ -179,7 +179,7 @@ Concurrent requests for one session share a single run. A wake and a compact nev
 | `AI_COLLAB_WAKE_RUNNER` | `host` | `host` runs the harness directly. `openshell` runs it with `openshell sandbox exec`. |
 | `AI_COLLAB_OPENSHELL_SANDBOX` | — | Sandbox name, required when the runner is `openshell`. |
 
-Context alerts post one `alert` envelope to the broadcast topic each time a session's current context rises above 200,000 tokens. A sample of 200,000 or fewer re-arms the alert, and a failed publish retries on the next sample. Agents skip these envelopes. The sources are the harnesses' own counters, read locally:
+Context alerts post one context alert to the broadcast topic each time a session's current context rises above 200,000 tokens. A sample of 200,000 or fewer re-arms the alert, and a failed publish retries on the next sample. Agents skip these envelopes. The sources are the harnesses' own counters, read locally:
 
 | Harness | Source |
 |---|---|

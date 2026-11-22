@@ -40,7 +40,7 @@ test("one alert per crossing above 200,000; failed publish retries; a drop re-ar
   t.after(() => fake.close());
   const env = peerEnv(fake, { peer: "alice" });
   const cfg = loadConfig(env, { host: "claude", session: "aabbccddeeff0123" });
-  const alerts = () => fake.state.publishes.filter(p => JSON.parse(p.message).kind === "alert");
+  const alerts = () => fake.state.publishes.filter(p => JSON.parse(p.message)?.kind === "alert");
 
   assert.equal((await reportContext(cfg, 200_000)).alerted, false);
   assert.equal(alerts().length, 0);

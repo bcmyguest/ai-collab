@@ -1,5 +1,7 @@
 # Messaging
 
+Structured messages use the project's [ntfy wire format](ag-ui.md). Plain questions and replies remain human-readable in ntfy.
+
 ## CLI
 
 ```sh

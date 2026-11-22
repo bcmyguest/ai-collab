@@ -9,25 +9,9 @@ import { createUi } from "../web/server/ui.mjs";
 import { answerMessage, answerText, terminalMessages } from "../web/lib/operator-messages.js";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { sse } from "./helpers/ui-stream.mjs";
 
 const base = "http://127.0.0.1:8798";
-
-async function* sse(response) {
-  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-  let buffer = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) return;
-    buffer += value;
-    let end;
-    while ((end = buffer.indexOf("\n\n")) >= 0) {
-      const block = buffer.slice(0, end);
-      buffer = buffer.slice(end + 2);
-      const event = /^event: (.+)$/m.exec(block)?.[1];
-      if (event) yield { event, data: JSON.parse(/^data: (.*)$/m.exec(block)[1]) };
-    }
-  }
-}
 
 test("terminal prompts drop echoes to the same target, the peer or all, within the window", () => {
   const prompts = [

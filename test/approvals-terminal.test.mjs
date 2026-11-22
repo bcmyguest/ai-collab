@@ -8,6 +8,7 @@ import { closeTerminalCards, decideApproval } from "../lib/approvals.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { sse } from "./helpers/ui-stream.mjs";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 const ALL = "ai-collab-demo--to--all";
@@ -149,19 +150,16 @@ test("the UI shows a view-only card without answers, refuses replies, and closes
   const post = (body) => ui.handle(new Request(`${base}/api/approve`, {
     method: "POST", headers: { Origin: base, "Content-Type": "application/json" }, body: JSON.stringify(body),
   }), "approve");
-  const reader = ui.events(new Request(`${base}/api/events`, { signal: ctrl.signal })).body.pipeThrough(new TextDecoderStream()).getReader();
-  let buffer = "";
+  const stream = sse(ui.events(new Request(`${base}/api/events`, { signal: ctrl.signal })));
   async function until(check) {
     for (;;) {
-      const { value } = await reader.read();
-      buffer += value;
-      const blocks = buffer.split("\n\n");
-      buffer = blocks.pop();
-      for (const block of blocks) {
-        if (!block.startsWith("event: state")) continue;
-        const cards = JSON.parse(/^data: (.*)$/m.exec(block)[1]).messages.filter(m => m.kind === "Approval");
-        if (check(cards)) return cards;
-      }
+      const { done, value } = await stream.next();
+      if (done) throw new Error("stream ended");
+      if (value.event === "problem") throw new Error(value.data.error);
+      if (value.event !== "state") continue;
+      const state = value.data;
+      const cards = state.messages.filter(m => m.kind === "Approval");
+      if (check(cards)) return cards;
     }
   }
   await until(() => true);

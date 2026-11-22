@@ -1,4 +1,7 @@
+import { EventType } from "@ag-ui/core";
 import { operatorPrompt, publishMode as publishModeAll } from "../../lib/mode.mjs";
+import { buildEvent, envelopeToEvent, projectEvent, readWireRecord } from "../../lib/agui.mjs";
+import { ACTIVITY_BATCH, STREAM_ERROR } from "../lib/ui-events.js";
 import { mkdirSync, watch } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
 import { loadConfig, loadProjects, activityTopic, broadcastTopic, configDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.mjs";
@@ -6,7 +9,7 @@ import { ACTIVITY_TYPES } from "../../lib/activity.mjs";
 import { stripControl } from "../../lib/format.mjs";
 import { NTFY_MESSAGE_MAX_BYTES, latestStatuses, markUrgent, parseEnvelope, sendMessage } from "../../lib/inbox.mjs";
 import { publish } from "../../lib/ntfy.mjs";
-import { parsePhoneReply } from "../../lib/questions.mjs";
+import { parsePhoneReply, parseQuestionText } from "../../lib/questions.mjs";
 import { disposeSession, listSessions, sessionPlace } from "../../lib/sessions.mjs";
 import { readReceipts } from "../../lib/receipts.mjs";
 import { controlSession } from "../../lib/controls.mjs";
@@ -38,7 +41,6 @@ const MAX_REQUEST_BYTES = 32768;
 const ONLINE_MS = 30 * 60_000;
 const KEEPALIVE_MS = 25_000;
 const PUSH_DELAY_MS = 25;
-const questionPattern = /^Question from ([^\n]+)\n\n([\s\S]+)\n\nReply in this topic: reply ([a-f0-9]{12}) YOUR ANSWER$/;
 const MAX_MESSAGES = 100;
 const IMPORTANT = /^IMPORTANT, the agent waits for this answer: /;
 // The hub keeps the newest 500 events per topic; 3 MB of cached history covers 500 full 4 KB activity envelopes.
@@ -96,8 +98,10 @@ const cleanText = (value, max) => typeof value === "string" && value ? stripCont
 
 // One activity row per valid activity envelope; anything else on the topic is dropped. Cached per event object.
 function activityItem(event) {
-  if (activityCache.has(event)) return activityCache.get(event);
-  const e = parseEnvelope(event.message);
+  if (activityCache.has(event)) return activityCache.get(event).item;
+  const record = readWireRecord(event.message);
+  const original = record && record.v !== 1 ? record : null;
+  const e = original ? projectEvent(original) : record;
   let item = null;
   if (e?.kind === "activity" && isValidName(e.from) && typeof e.session === "string" && SESSION_LABEL.test(e.session) && ACTIVITY_TYPES.includes(e.type)) {
     item = { id: event.id, time: event.time, agent: e.from + "#" + e.session, harness: cleanText(e.harness, 10) || "other", type: e.type };
@@ -111,8 +115,26 @@ function activityItem(event) {
     const run = cleanText(e.agent?.id, ACTIVITY_NAME_MAX);
     if (run) item.subagent = { id: run, type: cleanText(e.agent.type, ACTIVITY_NAME_MAX) || "" };
   }
-  activityCache.set(event, item);
+  activityCache.set(event, { item, original });
   return item;
+}
+
+function activityFrame(source) {
+  const cached = activityCache.get(source);
+  if (cached.frame) return cached.frame;
+  const { item: row, original } = cached;
+  const { id, time, agent, subagent, attachment, ...fields } = row;
+  const [from, session] = agent.split("#");
+  const runId = original?.runId ?? original?.metadata?.aiCollab?.runId;
+  const run = typeof runId === "string" && {
+    type: original.type, runId, parentRunId: original.parentRunId, outcome: original.outcome, input: original.input,
+  };
+  const event = envelopeToEvent({
+    v: 1, kind: "activity", from, session, ts: time * 1000, ...fields,
+    ...(subagent ? { agent: subagent } : {}),
+  }, { id: original?.type === EventType.TOOL_CALL_RESULT ? original.messageId : id, run });
+  cached.frame = { ...event, metadata: { ...event.metadata, aiCollabUi: { id, time, attachment } } };
+  return cached.frame;
 }
 
 // One chat entry per ntfy event; status and alert envelopes are skipped.
@@ -125,6 +147,10 @@ function entry(event) {
 function baseEntry(event) {
   const { message, id, time } = event;
   const envelope = parseEnvelope(message);
+  if (!envelope || envelope.kind === "question") {
+    const question = parseQuestionText(envelope || message);
+    if (question) return { id, time, kind: "Question", sender: question.sender, from: question.sender, body: question.body, question: question.id };
+  }
   if (envelope) {
     if (envelope.kind === "approval" || envelope.kind === "approval-view") return approvalEntry(event, envelope);
     if (envelope.kind !== "msg" || typeof envelope.body !== "string") return null;
@@ -133,8 +159,6 @@ function baseEntry(event) {
     const by = envelope.from === "operator" && isGithubLogin(envelope.by) ? { by: envelope.by } : {};
     return { id, time, kind: "Message", sender, from: sender, to, body: envelope.body, thread: envelope.operatorThread === true, ...(envelope.urgent === true ? { urgent: true } : {}), ...by };
   }
-  const question = questionPattern.exec(message);
-  if (question) return { id, time, kind: "Question", sender: question[1], from: question[1], body: question[2], question: question[3] };
   const reply = parsePhoneReply(message);
   const by = replyBy(event);
   if (reply) return { id, time, kind: "Reply", sender: "ntfy", from: "ntfy", body: reply.answer, question: reply.id, ...(by ? { by } : {}) };
@@ -723,28 +747,37 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
 
   // One session's activity, or every allowed agent's for the project overview, oldest first.
   function activityList(project, session) {
+    return scopedActivity(project, session).map(activityItem);
+  }
+
+  function scopedActivity(project, session) {
     const { cfg } = project;
-    return project.hub.events(project.activity).map(activityItem).filter(item => item &&
-      (!cfg.peers.length || cfg.peers.includes(peerOf(item.agent))) && (!session || item.agent === session));
+    return project.hub.events(project.activity).filter(event => {
+      const item = activityItem(event);
+      return item && (!cfg.peers.length || cfg.peers.includes(peerOf(item.agent))) && (!session || item.agent === session);
+    });
   }
 
   // Activity travels as deltas: a reset with the full list, then only rows newer than the last one sent.
   function pushActivity(client) {
     if (!client.activity) return;
-    const list = activityList(client.project, client.session);
+    const list = scopedActivity(client.project, client.session);
     const at = client.activitySent === undefined ? -1 : list.findIndex(item => item.id === client.activitySent);
     const reset = at < 0 && !(client.activitySent === "" && list.length === 0);
     const items = reset ? list : list.slice(at + 1);
     if (!reset && !items.length) return;
     client.activitySent = list.at(-1)?.id ?? "";
-    client.write(`event: activity\ndata: ${JSON.stringify({ reset, items })}\n\n`);
+    for (const item of items) client.send(activityFrame(item));
+    client.send(buildEvent(EventType.CUSTOM, { name: ACTIVITY_BATCH, value: { reset } }));
   }
 
   function push(client) {
-    const state = JSON.stringify(snapshot(client));
+    const current = snapshot(client);
+    const state = JSON.stringify(buildEvent(EventType.STATE_SNAPSHOT, { snapshot: current }));
     if (state !== client.last) {
+      if (!client.last) client.write(`event: state\ndata: ${JSON.stringify(current)}\n\n`);
       client.last = state;
-      client.write(`event: state\ndata: ${state}\n\n`);
+      client.write(`data: ${state}\n\n`);
     }
     pushActivity(client);
   }
@@ -773,7 +806,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       client.ready = true;
       push(client);
     } catch (err) {
-      client.write(`event: problem\ndata: ${JSON.stringify({ error: failure(err).message })}\n\n`);
+      client.send(buildEvent(EventType.CUSTOM, { name: STREAM_ERROR, value: { error: failure(err).message } }));
     }
   }
 
@@ -822,6 +855,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       start(controller) {
         client = {
           ...selected, ready: false, last: "",
+          send(event) { this.write(`data: ${JSON.stringify(event)}\n\n`); },
           write(text) {
             try { controller.enqueue(encoder.encode(text)); } catch { close(); }
           },

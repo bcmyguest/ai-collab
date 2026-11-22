@@ -4,6 +4,7 @@ import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { EventType } from "@ag-ui/core";
 import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, sessionLabel } from "../lib/config.mjs";
 import { parseEnvelope } from "../lib/inbox.mjs";
 import { parsePhoneReply, parseQuestionText } from "../lib/questions.mjs";
@@ -13,7 +14,7 @@ import { streamEvents } from "../lib/ntfy.mjs";
 import { recordSession } from "../lib/sessions.mjs";
 import { childEnv, checkPrompt, findExecutable, projectRoot, worktreeNames } from "../lib/start.mjs";
 import { readOwned, writeOwned } from "../lib/owned.mjs";
-import { PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, permissionSettings } from "./contract.mjs";
+import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, permissionSettings } from "./contract.mjs";
 import { publishApproval, publishApprovalEnd, publishEnded, publishEvent, publishReceipts } from "./publish.mjs";
 
 export const START_TIMEOUT_MS = 60_000;
@@ -82,40 +83,45 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     const problem = eventProblem(e);
     if (problem) return log(`${s.record.harness}: dropped event (${problem})`);
     const r = s.record;
+    if ((e.type === EventType.RUN_STARTED || e.type === EventType.RUN_FINISHED) && e.threadId !== r.address) {
+      return log(`${r.harness}: dropped event (wrong threadId)`);
+    }
     switch (e.type) {
-      case "RUN_STARTED":
+      case EventType.RUN_STARTED:
         r.status = "running";
         r.run = { id: e.runId, startedAt: now() };
         delete r.cut;
         save(s);
         break;
-      case "RUN_FINISHED":
-      case "RUN_ERROR":
+      case EventType.RUN_FINISHED:
+      case EventType.RUN_ERROR:
         r.status = "idle";
         r.run = null;
         for (const card of [...r.approvals]) closeApproval(s, card.id, "cancelled");
         save(s);
-        s.finished.set(e.runId, e.type === "RUN_ERROR" ? { outcome: "error", message: e.message } : { outcome: e.outcome });
+        if (e.type === EventType.RUN_ERROR) s.finished.set(e.metadata.aiCollab.runId, { outcome: "error", message: e.message });
+        else s.finished.set(e.runId, { outcome: e.outcome?.type ?? "success" });
         s.wake();
         break;
-      case "INTERRUPT_REQUESTED": {
-        const id = randomBytes(6).toString("hex");
-        const card = { id, interruptId: e.interruptId, tool: e.toolCallName, summary: e.summary };
-        r.approvals.push(card);
-        s.pending.set(id, { ...card, questions: e.questions });
-        save(s);
-        // An unanswered card is denied after approvalMs.
-        const timer = setTimeout(() => respond(r.address, id, { decision: "deny" }).catch((error) => log(`approval timeout failed: ${error.message}`)), approvalMs);
-        timer.unref();
-        s.timers.set(id, timer);
-        enqueuePublish(s, () => publishApproval(s.cfg, r.harness, { ...card, questions: e.questions }, approvalMs).catch((error) => log(`approval publish failed: ${error.message}`)));
-        return;
-      }
-      case "INTERRUPT_RESOLVED": {
-        const card = r.approvals.find((a) => a.interruptId === e.interruptId);
-        if (card) closeApproval(s, card.id, e.reason);
-        return;
-      }
+    }
+    if (e.type === EventType.CUSTOM && e.name === APPROVAL_REQUESTED) {
+      const request = e.value;
+      const id = randomBytes(6).toString("hex");
+      const card = { id, interruptId: request.interruptId, tool: request.toolCallName, summary: request.summary };
+      r.approvals.push(card);
+      s.pending.set(id, { ...card, questions: request.questions });
+      save(s);
+      // An unanswered card is denied after approvalMs.
+      const timer = setTimeout(() => respond(r.address, id, { decision: "deny" }).catch((error) => log(`approval timeout failed: ${error.message}`)), approvalMs);
+      timer.unref();
+      s.timers.set(id, timer);
+      enqueuePublish(s, () => publishApproval(s.cfg, r.harness, { ...card, questions: request.questions }, approvalMs).catch((error) => log(`approval publish failed: ${error.message}`)));
+      return;
+    }
+    if (e.type === EventType.CUSTOM && e.name === APPROVAL_RESOLVED) {
+      const card = r.approvals.find((a) => a.interruptId === e.value.interruptId);
+      if (card) closeApproval(s, card.id, e.value.reason);
+      return;
     }
     enqueuePublish(s, () => publishEvent(s.cfg, r.harness, e));
   }
@@ -182,7 +188,10 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     r.status = "idle";
     r.run = null;
     save(s);
-    await enqueuePublish(s, () => publishEvent(s.cfg, r.harness, { type: "RUN_FINISHED", runId: runId || "unsent", outcome: "cancelled", reason }));
+    await enqueuePublish(s, () => publishEvent(s.cfg, r.harness, {
+      type: EventType.RUN_FINISHED, threadId: r.address, runId: runId || "unsent",
+      outcome: { type: "cancelled" }, metadata: { aiCollab: { reason } },
+    }));
     return { outcome: "cancelled", cut: true };
   }
 
@@ -236,7 +245,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     });
     const s = runtime(wf, readOwned(cfg, label) || fail(500, "owned record missing"), holder);
     await recordSession(cfg, { id: opened.nativeId, cwd, harness, event: "owned", proc }).catch(() => {});
-    if (!wf.replaying) await enqueuePublish(s, () => publishEvent(cfg, harness, { type: "CUSTOM", name: "notice", value: `owned session started (${permissionMode})` }));
+    if (!wf.replaying) await enqueuePublish(s, () => publishEvent(cfg, harness, { type: EventType.CUSTOM, name: NOTICE, value: `owned session started (${permissionMode})` }));
     claims.get(wf.id)?.(s);
     let next = { text: input.prompt, messageIds: [] };
     for (;;) {
@@ -259,7 +268,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
           if (s.signal.aborted) throw error;
           s.record.status = "idle";
           save(s);
-          await enqueuePublish(s, () => publishEvent(s.cfg, harness, { type: "CUSTOM", name: "error", value: `input not delivered: ${error.message}` }));
+          await enqueuePublish(s, () => publishEvent(s.cfg, harness, { type: EventType.CUSTOM, name: ERROR, value: `input not delivered: ${error.message}` }));
           return { error: error.message };
         }
       }, { onCut: () => cutRun(s, null, "runner restarted before the harness accepted the input") });
@@ -346,7 +355,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     const was = r.permissionMode;
     r.permissionMode = mode;
     save(s);
-    await enqueuePublish(s, () => publishEvent(s.cfg, r.harness, { type: "CUSTOM", name: "notice", value: `permission mode ${was} → ${mode}` }));
+    await enqueuePublish(s, () => publishEvent(s.cfg, r.harness, { type: EventType.CUSTOM, name: NOTICE, value: `permission mode ${was} → ${mode}` }));
     return { status: "changed", permissionMode: mode };
   }
 
