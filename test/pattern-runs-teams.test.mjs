@@ -150,6 +150,20 @@ test("max_visits fails the run when a role is visited past the limit", async (t)
   assert.match(over.detail, /role "a" reached its max_visits of 2/);
 });
 
+test("a role's fallback goes into its start brief as an instruction not to switch itself", async (t) => {
+  const withFallback = `digraph fb {
+  a [agent="claude", prompt="A.", fallback="codex:gpt-5"];
+  b [agent="codex", prompt="B."];
+  a -> b [on="go"];
+  b -> done [on="finish"];
+}
+`;
+  const { env, cfg } = await fixture(t, { fb: withFallback });
+  const { calls, start } = fakeStart();
+  await startRun(cfg, "fb", "go", env, { start, models: MODELS, now: clock() });
+  assert.match(calls[0].prompt, /If you hit a usage or subscription limit, tell the operator and propose switching to codex:gpt-5; do not switch yourself\./);
+});
+
 test("a pair edge between roles with different counts is an invalid team", async (t) => {
   const bad = `digraph bad {
   a [agent="claude", count=2, prompt="A."];

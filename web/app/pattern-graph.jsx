@@ -40,6 +40,9 @@ export function RoleGraph({ graph, active = "", used = null, label = "Pattern gr
         <text x={node.x + NODE_W / 2} y={node.y + 19} textAnchor="middle" fontSize="13" fontWeight="600" className={cn("font-mono", isActive ? "fill-primary-foreground" : "fill-foreground")}>{nodeTitle(node)}</text>
         {detail && <text x={node.x + NODE_W / 2} y={node.y + 36} textAnchor="middle" fontSize="10" className={cn(isActive ? "fill-primary-foreground" : "fill-muted-foreground")}>
           {detail.length > 22 ? `${detail.slice(0, 21)}…` : detail}</text>}
+        {node.fallback && <text x={node.x + NODE_W / 2} y={node.y + NODE_H + 12} textAnchor="middle" fontSize="9" className="fill-muted-foreground font-mono">
+          <title>{`Fallback when the subscription runs out: ${node.fallback}`}</title>
+          {`fallback ${node.fallback.length > 16 ? `${node.fallback.slice(0, 15)}…` : node.fallback}`}</text>}
       </g>;
     })}
   </svg>;

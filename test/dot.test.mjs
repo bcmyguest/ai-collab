@@ -143,3 +143,17 @@ test("the web graph's DOT text parses back into the same roles and edges", () =>
   assert.deepEqual(team.nodes.map((node) => [node.id, node.agent]), [["lead", "cursor:deepseek-v41-flash-1017-high"], ["implementer", "claude:claude-haiku-5-5"]]);
   assert.deepEqual(team.edges[1], { from: "implementer", to: "lead", on: "changes requested", kind: "pair", required: false, cap: 3 });
 });
+
+test("the web graph keeps count, skill, fallback and kind from a team", () => {
+  const team = parseDot(CHANGE);
+  const roles = team.nodes.map((node) => {
+    const [harness, ...rest] = node.agent.split(":");
+    return { id: node.id, responsibility: node.prompt ?? "", harness, ...(rest.length ? { model: rest.join(":") } : {}), count: node.count, skill: node.skill, fallback: node.fallback };
+  });
+  const handoffs = team.edges.map((edge) => ({ from: edge.from, to: edge.to, on: edge.on, required: edge.required, kind: edge.kind, ...(edge.cap !== undefined ? { cap: edge.cap } : {}) }));
+  const graph = toGraph({ name: team.name, description: team.description, maxVisits: team.maxVisits, roles, handoffs });
+  assert.equal(graph.maxVisits, 3);
+  assert.deepEqual(graph.nodes[2], { id: "reviewer", agent: "codex", count: 1, skill: "audit-agent-diff", fallback: "claude:claude-haiku-5-5" });
+  assert.equal(graph.nodes[1].count, 2);
+  assert.equal(graph.edges[0].kind, "broadcast");
+});
