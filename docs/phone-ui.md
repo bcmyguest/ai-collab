@@ -65,12 +65,12 @@ The sidebar (a drawer on phones) lists the projects. Inside a project, pick a le
 
 | Level | Tabs | Composer sends to |
 |---|---|---|
-| Project | **Chat**: the broadcast topic, all agents and the operator. **Activity**: the project overview. | `all` |
-| Sessions | A session selector. With no session picked, the project's session cards. A picked session has **Chat**, **Activity**, and **Subagents**. | The session directly; wakes it if offline. No composer on the session list. |
+| Project | **Chat**: the broadcast topic, agent questions and approvals, a completion row per finished session turn, and a live row per busy session. | `all` |
+| Sessions | A session selector. With no session picked, the project's session cards. A picked session has **Timeline** and **Subagents**; its ⋯ menu opens **Raw activity**. | The session directly; wakes it if offline. No composer on the session list. |
 
-The hash records the view: `level=session&session=<addr>&tab=activity|subagents`.
+The hash records the view: `level=session&session=<addr>&tab=activity|subagents|raw`. `tab=activity` is the timeline and the default; old `tab=chat` links open it too.
 
-Tapping a message's sender avatar or name, or an `@peer#session` tag, opens that session's **Chat** tab; an `@harness` tag opens the session list. Tapping an agent on an Activity-feed row opens that session's **Activity** tab. The operator's own messages stay plain.
+Tapping a message's sender avatar or name, or an `@peer#session` tag, opens that session's timeline; an `@harness` tag opens the session list. Tapping a completion or live row opens its session. The operator's own messages stay plain.
 
 **Session names** appear next to `harness#label` in the mention picker, the sidebar and the cards. Claude Code: the `session_title` field of its SessionStart and UserPromptSubmit hook input (in the Claude 2.1.330 hook schema). Codex: the thread's newest `thread_name` in `$CODEX_HOME/session_index.jsonl`. OpenCode: the session `title` from `ctx.session.get`, read when the plugin first sees the session. Hooks record it in the local registry at SessionStart, UserPromptSubmit and Stop (`lib/names.mjs`). Cursor gives none; the UI falls back to the folder name and the first six words of the session's earliest prompt still in the activity history.
 
@@ -80,7 +80,7 @@ A **Go to agent** button sits on every Home card, its "started by" parent, each 
 
 ## Chat and activity views
 
-A session's **Chat** tab shows its direct thread and its broadcast posts. Its **Activity** tab interleaves those messages with the session's activity rows by time, with the composer below. The project's **Activity** tab, also in the sidebar, is the overview: every agent's activity and the operator's own broadcasts interleaved by time, newest last, with a composer that sends to `all`.
+A session's **Timeline** interleaves its direct thread and broadcast posts with its activity rows by time: each finished turn folds into one **Working on … · N steps** row, and its final reply shows as a bubble. Live tool calls show while a turn runs. The composer sits below. The project chat shows the broadcast topic, with a **finished** row per completed session turn (its first line of the final reply) and a **working on** row per busy session; tool calls stay out of it. **Raw activity** (the session's ⋯ menu) lists every tool call unfolded.
 
 Rows render by type: prompts as user bubbles, assistant text as Markdown, tool calls as an icon, the tool name, and a one-line summary (tap to see the input), results as a collapsed preview (tap to expand; **Full output** opens the attachment), and errors in red. A call and its result share a row when the harness supplies a call ID. A `compact` row marks a context compaction. **Working…** shows while an agent's latest event is a tool call without a result (for at most 15 minutes). The view follows the newest row like the chat and keeps the last 500 rows.
 
@@ -88,9 +88,9 @@ Rows render by type: prompts as user bubbles, assistant text as Markdown, tool c
 
 ### Subagents
 
-Each subagent run folds into one collapsed row in its parent's thread, **Subagent · <type> · running/done · N steps** (N counts tool calls); tap it to show that run's rows indented below it. A step is one tool use: its call row, or its result alone. The page remembers which runs are open until it reloads. On the overview, a badge after an agent's name counts its running subagents.
+Each subagent run folds into one collapsed row in its parent's thread, **Subagent · <type> · running/done · N steps** (N counts tool calls); tap it to show that run's rows indented below it. A step is one tool use: its call row, or its result alone. The page remembers which runs are open until it reloads.
 
-A run is **running** while it has a row from the last 2 minutes, **idle** after that, and **done** at its stop row, at the parent's `<task-notification>` prompt with that `<task-id>` and a final `<status>`, or when the parent's Agent tool result says `"status": "completed"`; that result's `agentId` also gives the run its description. The "N subagents" badges on Home and the Activity overview count running runs only.
+A run is **running** while it has a row from the last 2 minutes, **idle** after that, and **done** at its stop row, at the parent's `<task-notification>` prompt with that `<task-id>` and a final `<status>`, or when the parent's Agent tool result says `"status": "completed"`; that result's `agentId` also gives the run its description. The "N subagents" badges on Home count running runs only.
 
 The session's **Subagents** tab lists each run: type, parent session, running or done, step count, description, start time and last action. Tap one to see only its rows (`&tab=subagents&run=<id>`).
 
