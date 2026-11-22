@@ -68,3 +68,7 @@ The store file is polled once a second, so CLI and agent edits reach open views.
 
 - The team run link opens the run's active session; there is no run page.
 - The 600 px-and-up graph scrolls sideways when its layers are wider than the screen.
+
+## Builders
+
+`ai-collab builder start --task <id> ...` implements a task in its own OpenShell sandbox and sets the task `building`, then `done` or `blocked` when the builder exits. See [Builders](builders.md).
