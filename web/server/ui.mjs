@@ -36,6 +36,7 @@ import { authorTeam, saveAuthoredTeam } from "../../lib/team-author.mjs";
 import { listOwned, readOwned } from "../../lib/owned.mjs";
 import { openTasks } from "../../lib/tasks.mjs";
 import { priorityOf } from "../../lib/task-order.mjs";
+import { mentions, mentionedNames, mentionedTeams, startOnlyMentions, messageDestinations } from "../lib/message-routing.js";
 import { taskTags } from "../lib/task-tags.js";
 import { taskBoard } from "./task-board.mjs";
 import { advanceRun, listRuns, startRun } from "../../lib/pattern-runs.mjs";
@@ -54,6 +55,8 @@ import { readScheduleRuns, readSchedules } from "./schedules.mjs";
 import { quotedReply, usableReplyId } from "../lib/reply-quote.js";
 import { answerMessage, answerText, terminalMessages } from "../lib/operator-messages.js";
 import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a2ui.js";
+
+export { mentionedNames, mentionedTeams, startOnlyMentions };
 
 const INSTANCE = Symbol.for("ai-collab.ui");
 const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide"];
@@ -223,36 +226,6 @@ function outcomes(events) {
   }
   return { ends, replies, senders };
 }
-
-const MENTION = /(^|[^\w#-])@([a-z0-9-]{1,24}(?:#[a-f0-9]{16}(?:\/[A-Za-z0-9_-]{1,64})?|:[A-Za-z0-9][A-Za-z0-9._/-]{0,119})?)(?![\w-])/g;
-
-/** Session addresses, subagent runs (@session/run), harness names and harness:model pairs tagged with @ in a post, limited to the project's peers. */
-export function mentionedNames(body, peers = [], teams = []) {
-  // A full stop after @harness:model ends the sentence, not the model name.
-  const teamSet = new Set(teams);
-  const names = new Set([...String(body).matchAll(MENTION)].map(match => match[2].replace(/\.+$/, "")));
-  return [...names].filter(name => {
-    if (teamSet.has(name)) return false;
-    const peer = name.split(/[#:]/)[0];
-    return peer !== "operator" && peer !== "all" && (!peers.length || peers.includes(peer));
-  });
-}
-
-/**
- * True when a post addresses only the sessions its tags start: at least one @harness:model tag, every tag a model start,
- * and no team or pattern tagged. Such a post must not reach, or wake, a session that is already running.
- */
-export function startOnlyMentions(body, peers = [], otherNames = []) {
-  const names = mentionedNames(body, peers, otherNames);
-  return names.length > 0 && names.every((name) => name.includes(":")) && !otherNames.some((name) => mentions(body, name));
-}
-
-/** Team names tagged with @ in a post. */
-export function mentionedTeams(body, teams = []) {
-  return teams.filter((name) => mentions(body, name));
-}
-
-const mentions = (body, name) => new RegExp(`(^|[^\\w#-])@${name}(?![\\w-])`).test(body);
 
 function reject(status, message) {
   throw Object.assign(new Error(message), { status });
@@ -1004,6 +977,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         decisions: shown.flatMap(item => item.failed ? [] : projectDecisions(item,
           item === project ? runs : listRuns(item.cfg), item === project ? list : cards.filter(card => card.project === item.cfg.project))),
         unavailable: shown.filter(item => item.failed).map(item => item.cfg.project) } : {}),
+      ...(hosted ? { hosted: true } : {}),
       startable: startable(project),
       // The new-session default (defaults.json startDefault, else cursor on deepseek); the form prefills it when available.
       startDefault: startDefaultSetting(env),
@@ -1451,10 +1425,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       recipient(cfg, target);
       const reply = replyTo === undefined || replyTo === null || replyTo === "" ? null : replyQuote(replyTo, body, quote);
       const text = reply?.quoted ? reply.body : body.trim();
-      const tags = action === "send" && project.tasks ? taskTags(text) : [];
-      const ids = new Set(tags.map(match => match[2]));
-      const tagged = ids.size ? project.tasks.list().filter(task => ids.has(task.id)) : [];
-      const destinations = new Set(tagged.length ? tagged.map(task => task.owner || "all") : [target]);
+      const { tagged, destinations } = messageDestinations(text, target,
+        action === "send" && project.tasks ? () => project.tasks.list() : null);
       const [primary] = destinations;
       // A post tagged only @harness:model starts sessions; it names nobody running, so no running session takes it.
       const startOnly = !hosted && action === "send" && !reply?.quoted && destinations.size === 1 && primary === "all"
