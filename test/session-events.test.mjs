@@ -61,10 +61,11 @@ test("timeline text for clears and model switches", () => {
   assert.equal(modelText({ from: "claude-haiku-5-5", to: "claude-opus-5-5" }), "Model claude-haiku-5-5 → claude-opus-5-5");
 });
 
-test("a started and finished compaction take one history slot", () => {
+test("a started and finished compaction take one history slot; a subagent's compaction is not the parent's", () => {
   const items = [
     { id: "s", agent: "claude#a", time: 10, type: "compact", compaction: { phase: "started", tokensBefore: 90000, filesDropped: 2 } },
     { id: "f", agent: "claude#a", time: 11, type: "compact", compaction: { phase: "finished", tokensAfter: 20000 } },
+    { id: "r", agent: "claude#a", time: 12, subagent: { id: "run-1" }, type: "compact", compaction: { phase: "finished" } },
   ];
   assert.deepEqual(sessionHistory(items, 1).get("claude#a"), [
     { id: "f", at: 11000, kind: "compaction", phase: "finished", tokensBefore: 90000, tokensAfter: 20000, filesDropped: 2 },
