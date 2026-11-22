@@ -114,6 +114,20 @@ test("two sessions in one typed window share a card that lists both, and the fir
   assert.deepEqual(ends.map((m) => [m.id, m.reason]), [[first.id, "cancelled"]]);
 });
 
+test("one limit reported by the hook and the runner yields one card, whichever arrives first", async (t) => {
+  const deps = { listed: async () => LISTED, available: () => ["codex"] };
+  const untyped = { window: null, windowName: null, resetsAt: null, wording: true, verified: true, source: "test" };
+  const typed = FIVE_HOUR;
+  const first = await setup(t);
+  await alertLimit({ ...first.cfg, session: SESSION }, { harness: "claude", limit: untyped, ...deps });
+  assert.equal((await alertLimit({ ...first.cfg, session: SESSION }, { harness: "claude", limit: typed, ...deps })).status, "duplicate");
+  assert.equal(cards(first.fake).length, 1);
+  const second = await setup(t);
+  await alertLimit({ ...second.cfg, session: SESSION }, { harness: "claude", limit: typed, ...deps });
+  assert.equal((await alertLimit({ ...second.cfg, session: SESSION }, { harness: "claude", limit: untyped, ...deps })).status, "duplicate");
+  assert.equal(cards(second.fake).length, 1);
+});
+
 test("a busy alert lock makes the limit a duplicate, not a second card", async (t) => {
   const { fake, cfg } = await setup(t);
   const sessionCfg = { ...cfg, session: SESSION };
