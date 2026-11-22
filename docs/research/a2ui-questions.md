@@ -131,3 +131,10 @@ Over AG-UI (assistant-ui convention), this object arrives as `forwardedProps.a2u
 
 - Target spec version (v0.8, v0.9.1, or v1.0). Renderer 0.15.0 targets v0.9 per its README. Confirm before building.
 - Whether to use the `@ag-ui/a2ui-middleware` convention or a private `activityType`. The AG-UI spec allows any `activityType`, so a private name works but drops interop.
+
+## Operator decisions (2026-11-21)
+
+- Spec: target the latest A2UI (v1.0 per the site header).
+- Transport: the AG-UI middleware convention, ACTIVITY_SNAPSHOT with activityType "a2ui-surface"; answers return as forwardedProps.a2uiAction.
+- Renderer: @a2ui/react plus one custom catalog component for options with descriptions.
+- Open: @a2ui/react 0.15.0 documents v0.9; confirm its v1.0 support before building, else pin v0.9.1 messages until it catches up.
