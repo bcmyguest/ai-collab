@@ -6,7 +6,7 @@ import { ACTIVITY_BATCH, STREAM_ERROR } from "../lib/ui-events.js";
 import { mkdirSync, watch } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
 import { buzzes, readAlertLevel, writeAlertLevel } from "../../lib/alerts.mjs";
-import { loadConfig, loadProjects, activityTopic, startDefaultSetting, broadcastTopic, configDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.mjs";
+import { loadConfig, loadProjects, activityTopic, startDefaultSetting, broadcastTopic, configDir, stateDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.mjs";
 import { ACTIVITY_TYPES } from "../../lib/activity.mjs";
 import { stripControl } from "../../lib/format.mjs";
 import { NTFY_MESSAGE_MAX_BYTES, latestStatuses, changeQueuedMessage, queuedMessage, markUrgent, parseEnvelope, sendMessage } from "../../lib/inbox.mjs";
@@ -42,6 +42,7 @@ import { formatTeamOrchestrator } from "../../lib/format.mjs";
 import { activityRows, groupSubagents, summarize } from "../lib/activity-rows.js";
 import { childRuns } from "../lib/child-subagents.js";
 import { fallbackName, sessionCounts, visibleWake, waitingOn } from "../lib/session-state.js";
+import { createHostedUi } from "./hosted.mjs";
 import { createAuth } from "./auth.mjs";
 import { createHub } from "./hub.mjs";
 import { createPush, notice } from "./push.mjs";
@@ -55,6 +56,7 @@ import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a
 
 const INSTANCE = Symbol.for("ai-collab.ui");
 const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide"];
+const HOSTED_ACTIONS = new Set(["history", "messages", "send", "reply", "afk", "approve", "a2ui"]);
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
 const PARENT = /^[a-z0-9-]{1,24}#[a-f0-9]{16}$/;
@@ -338,7 +340,7 @@ function originalOf(quote) {
   return { sender: typeof source.sender === "string" ? source.sender : "", body: typeof source.body === "string" ? source.body : "" };
 }
 
-export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start = startSession, models = listModels, push: notifier = null, auth = null, runner = runnerClient, hasDraft = terminalHasDraft }) {
+export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start = startSession, models = listModels, push: notifier = null, auth = null, runner = runnerClient, hasDraft = terminalHasDraft, hosted = false }) {
   if (!configs.length) throw new Error("No ai-collab project is configured");
   for (const item of configs) if (!item.enabled) throw new Error(item.reason);
   if (allowedOrigin && (!allowedOrigin.startsWith("https://") || new URL(allowedOrigin).origin !== allowedOrigin)) {
@@ -388,7 +390,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const watcher = watch(registry, broadcast);
     watcher.unref();
     // Task edits from the CLI or an agent reach open streams through the backend's watch.
-    const tasks = tasksOf(item.project, env);
+    const tasks = hosted ? null : tasksOf(item.project, env);
     const unwatchTasks = tasks ? tasks.watch(broadcast) : () => {};
     const project = {
       cfg: item, hub: hubs.get(key), watcher, tasks, unwatchTasks,
@@ -447,7 +449,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
 
   function projectFor(name) {
     if (name === undefined || name === null || name === "") return fallback;
-    if (!projects.has(name)) reject(400, "Unknown project");
+    if (!projects.has(name)) reject(hosted ? 404 : 400, "Unknown project");
     return projects.get(name);
   }
 
@@ -543,6 +545,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   function wakeAgent(project, target, session) {
+    if (hosted) return { status: "unsupported", detail: "The agent will receive this on its next poll." };
     const { wakes, cfg } = project;
     if (!session) return { status: "unsupported", detail: "This agent must register its local session before it can be woken." };
     // A running session needs no wake; receipts show when it reads the message.
@@ -610,6 +613,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     }
     const prompts = firstPrompts(project);
     for (const [id, data] of found) {
+      if (cfg.owner) data.owner = cfg.owner;
       data.lastMessageAt = last.get(id) || 0;
       // Without a harness name: the folder and the first prompt's words, from activity in memory.
       if (!data.name) {
@@ -862,6 +866,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
 
   // A limit card's pick: "Wait for reset" acknowledges; a replacement starts a session (lib/limit-alert.mjs chooseLimit). No ntfy reply: no hook waits.
   async function answerLimit(project, approval, answer) {
+    if (hosted) reject(403, "Handle usage limits on the agent machine");
     const label = Object.values(parseChoice(approval.questions, answer) ?? {})[0];
     const result = await chooseLimit(project.cfg, { id: approval.id, label, start, env });
     if (result.status === "duplicate") reject(409, result.detail);
@@ -889,12 +894,14 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
 
   // Harnesses each project can start, cached because it scans PATH.
   function startable(project) {
+    if (hosted) return [];
     if (!project.startable || Date.now() - project.startable.at > STARTABLE_CACHE_MS) project.startable = { at: Date.now(), list: availableHarnesses(project.cfg, env) };
     return project.startable.list;
   }
 
   // Start places (folder, worktree, openshell) for the project, cached like startable().
   function startPlaces(project) {
+    if (hosted) return [];
     if (!project.places || Date.now() - project.places.at > STARTABLE_CACHE_MS) project.places = { at: Date.now(), list: availablePlaces(project.cfg, env) };
     return project.places.list;
   }
@@ -929,7 +936,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         return { id: item.cfg.project, peers: item.cfg.peers, ...(count ? { waiting: count } : {}) };
       }),
       // Registered projects marked closed, listed so the sidebar can reopen them.
-      closedProjects: closedProjectNames(env).filter(name => !removed.has(name)),
+      closedProjects: closedProjectNames(env).filter(name => !removed.has(name) && (!hosted || projects.has(name))),
       // Projects auto-joined from a session's repo have no projects.json entry, so Close and Delete do not apply.
       autoProjects: shown.map(item => item.cfg.project).filter(name => !readProjectsFile(env).some(entry => entry?.project === name)),
       view: { harness, session, ...(scope ? { scope } : {}) },
@@ -956,8 +963,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       // Native code mode for new starts (defaults.json codeMode, default on); the composer prefills its toggle.
       codeModeDefault: codeModeDefault(env),
       startPlaces: startPlaces(project),
-      teams: Object.entries(listTeams(project.cfg, env)).map(([id, members]) => ({ id, members })),
-      patterns: patternRows(project.cfg, env),
+      teams: Object.entries(hosted ? {} : listTeams(project.cfg, env)).map(([id, members]) => ({ id, members })),
+      patterns: hosted ? [] : patternRows(project.cfg, env),
       templates: teamTemplates(),
       runs: runs.slice(0, 20),
       tasks: taskBoard(project.tasks, list, runs, project.tasks ? listOwned(project.cfg) : []),
@@ -1023,6 +1030,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
 
   // Surfaces go before the state frame: a client that stops reading at the state frame must not get frames after it.
   function push(client) {
+    if (client.authorized && !client.authorized()) return client.disconnect();
     const current = snapshot(client);
     client.hasRunningJobs = current.agents.some(agent => agent.runningJobs) || current.sessions?.some(agent => agent.runningJobs);
     pushSurfaces(client, current);
@@ -1110,6 +1118,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       start(controller) {
         client = {
           ...selected, ready: false, last: "", surfaces: new Map(),
+          ...(hosted ? {
+            authorized: () => Boolean(auth.user(request)),
+            disconnect() { if (clients.has(client)) { close(); controller.close(); } },
+          } : {}),
           send(event) { this.write(`data: ${JSON.stringify(event)}\n\n`); },
           write(text) {
             try { controller.enqueue(encoder.encode(text)); } catch { close(); }
@@ -1117,6 +1129,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         };
         clients.add(client);
         keepalive = setInterval(() => {
+          if (client.authorized && !client.authorized()) return client.disconnect();
           client.write(": keepalive\n\n");
           // If the wrapper was killed, the job may exit without a registry write.
           if (client.ready && client.hasRunningJobs && clients.has(client)) push(client);
@@ -1182,6 +1195,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     try {
       if (request.method !== "POST" || !ACTIONS.includes(action)) reject(404, "Unknown route");
       const by = caller(request)?.login;
+      if (hosted && !HOSTED_ACTIONS.has(action)) reject(403, "This action is unavailable in hosted mode");
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
       if (action === "history") return history(request, by, await payload(request));
@@ -1394,7 +1408,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const destinations = new Set(tagged.length ? tagged.map(task => task.owner || "all") : [target]);
       const [primary] = destinations;
       // A post tagged only @harness:model starts sessions; it names nobody running, so no running session takes it.
-      const startOnly = action === "send" && !reply?.quoted && destinations.size === 1 && primary === "all"
+      const startOnly = !hosted && action === "send" && !reply?.quoted && destinations.size === 1 && primary === "all"
         && startOnlyMentions(text, cfg.peers, [...Object.keys(listTeams(cfg, env)), ...Object.keys(listPatterns(cfg, env))]);
       const notes = [];
       let wake;
@@ -1405,7 +1419,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         for (const to of destinations) recipient(cfg, to);
         if (action === "send") {
           if (sendAnyway !== undefined && typeof sendAnyway !== "boolean") reject(400, "sendAnyway must be true or false");
-          if (!sendAnyway && [...destinations].some(to => to.includes("#"))) {
+          if (!hosted && !sendAnyway && [...destinations].some(to => to.includes("#"))) {
             const held = await Promise.all(listSessions(cfg).filter(session => destinations.has(session.id))
               .map(session => hasDraft(session, { env })));
             if (held.some(Boolean)) return json(200, { sent: false, draftHeld: true });
@@ -1427,7 +1441,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (err.message.includes("-byte limit")) reject(400, `Message exceeds ${NTFY_MESSAGE_MAX_BYTES} encoded bytes`);
         throw err;
       }
-      if (action === "send") notes.push(...await routeMentions(project, text, primary, by, destinations));
+      if (!hosted && action === "send") notes.push(...await routeMentions(project, text, primary, by, destinations));
       const detail = notes.length ? { status: "Sent", detail: notes.join(" · ") } : {};
       const quoted = reply?.quoted ? { quoted: true } : {};
       return json(201, { sent: true, ...detail, ...quoted, ...(wake ? { wake } : {}) });
@@ -1487,7 +1501,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }
       if (!cached) return new Response("Attachment unavailable", { status: 502 });
       const headers = {
-        "content-type": cached.type, "cache-control": "private, max-age=3600",
+        "content-type": cached.type, "cache-control": hosted ? "no-store" : "private, max-age=3600",
         "x-content-type-options": "nosniff", "content-disposition": "inline",
         "content-length": String(cached.size),
         ...(text ? { "content-security-policy": "sandbox; default-src 'none'" } : {}),
@@ -1543,13 +1557,19 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
 // Process-wide instance shared by every route bundle; tests may install their own first.
 export function ui() {
   if (!globalThis[INSTANCE]) {
+    const auth = createAuth({ dir: configDir(process.env), stateDir: stateDir(process.env), origin: process.env.AI_COLLAB_UI_ORIGIN });
+    if (auth?.hosted) {
+      globalThis[INSTANCE] = createHostedUi({
+        auth, projects: loadProjects(process.env, { host: "operator" }),
+        stateDir: stateDir(process.env), origin: process.env.AI_COLLAB_UI_ORIGIN, createUi,
+      });
+      return globalThis[INSTANCE];
+    }
     const listed = loadProjects(process.env, { host: "operator" });
     const projects = listed.length ? listed
       : [loadConfig(process.env, { cwd: process.env.AI_COLLAB_UI_WORKSPACE || process.cwd(), host: "operator" })];
     // VAPID subject: the UI's HTTPS origin, or a mailto: placeholder without one.
     const push = createPush({ dir: join(projects[0].stateDir, "push"), subject: process.env.AI_COLLAB_UI_ORIGIN || "mailto:ai-collab@localhost.invalid" });
-    // GitHub sign-in turns on with ${configDir}/github.json.
-    const auth = createAuth({ dir: configDir(process.env), stateDir: projects[0].stateDir, origin: process.env.AI_COLLAB_UI_ORIGIN });
     const instance = createUi({ projects, allowedOrigin: process.env.AI_COLLAB_UI_ORIGIN, push, auth });
     // Repos that auto-join after start-up appear within one refresh interval.
     setInterval(() => instance.refresh(loadProjects(process.env, { host: "operator" })), REFRESH_MS).unref();

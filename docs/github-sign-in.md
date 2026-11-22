@@ -39,3 +39,15 @@ The UI follows GitHub's [web application flow](https://docs.github.com/en/apps/o
 ## What agents see
 
 Routing stays `from: "operator"`. Messages gain an envelope field `by` (the login), and hooks render the sender as `from=operator (octocat)`. Question answers and approvals stay the plain `reply <id> <answer>` text, with the login in the ntfy title (`Reply from operator (octocat)`), which the UI shows next to the answer. AFK mode envelopes carry `by` too.
+
+## Hosted project isolation
+
+Set `"hosted": true` in `github.json` to scope the UI to each signed-in GitHub login. For every project on the UI host, add an explicit `projects.json` entry with its GitHub `owner` and the absolute path to its ntfy `tokenFile`. Keep project names unique. The UI uses the first project assigned to each login as that user's default and shows the configured owner on agent cards. Ownership comes from the host's configuration.
+
+Provision a dedicated ntfy account per owner before enabling hosted mode. On a shared broker, use deny-by-default ACLs and grant each account access to only its own project topics. Use a separate private broker per owner if tenants can reach the broker's file endpoint, since ntfy attachments use bearer URLs. Give agent machines the corresponding restricted credentials. Keep setup's admin credentials on the broker host. The UI rejects missing owners or credentials and rejects a token reused across owners. The broker administrator configures and verifies the underlying ACLs.
+
+Use fresh project topic names when assigning existing projects to new owners. ntfy can replay cached messages on reused topics. Restart the UI when changing owners or removing a login, and revoke the corresponding broker credentials separately. The hosted UI keeps its history and attachment caches under `$AI_COLLAB_STATE_DIR/hosted/<login>`.
+
+Hosted mode supports chat, questions, approvals, activity, history, and per-owner AFK. Run agents on their owners' machines. Local starts and session controls, schedules, push notifications, and team or task management are unavailable in hosted mode.
+
+Cross-user delivery stays closed in this phase. Cross-user collaboration requires separately provisioned agent identities, verified message origin, and an explicit delivery policy. An agent's self-reported sender name cannot establish cross-user ownership.

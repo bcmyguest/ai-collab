@@ -253,6 +253,7 @@ function SessionRow({ agent, project, selected, now, navigate, dispose, openRaw,
           </> : <>
             <span className="truncate font-mono text-xs">{short(agent.id)}</span><SessionName agent={agent}/>
           </>}
+          {agent.owner && <span className="truncate text-[11px] text-muted-foreground">@{agent.owner}</span>}
           <span className="self-start"><RunningCount runs={agent.subagents} now={now}/></span>
         </span>
         {agent.waiting && <span role="img" aria-label="Waiting on you" title="Waiting on you" className="inline-block size-2.5 shrink-0 rounded-full bg-amber-500 ring-2 ring-amber-500/25"/>}
