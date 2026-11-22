@@ -42,7 +42,7 @@ export async function main(env = process.env) {
   const projects = loadProjects(env, { host: "runner" });
   if (!projects.length) log("no enabled project; serving the control socket only");
   const names = String(env.AI_COLLAB_RUNNER_HARNESSES || HARNESSES.join(",")).split(",").map((s) => s.trim()).filter(Boolean);
-  const adapters = await loadAdapters(names, { env, log });
+  const adapters = await loadAdapters(names, { dir: env.AI_COLLAB_RUNNER_ADAPTER_DIR || undefined, env, log });
   const db = runnerDb(env);
   mkdirSync(dirname(db), { recursive: true, mode: 0o700 });
   const release = acquireLock(join(dirname(db), "runner.lock"));

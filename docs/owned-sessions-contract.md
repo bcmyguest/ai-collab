@@ -367,14 +367,15 @@ Cursor's `full-access` needs OpenShell. OpenCode replies are always `once`, neve
 | `runner/control.mjs`, `runner/client.mjs` | Control socket server and client |
 | `runner/main.mjs` | Service entry (`npm run runner`) |
 | `runner/adapters/fake.mjs` | Scripted adapter for tests and a template for real adapters |
-| `runner/adapters/<harness>.mjs` | Real adapters, one per agent (not written yet; `loadAdapters` logs `no <harness> adapter yet`) |
+| `runner/adapters/codex.mjs` | Codex adapter: one `codex app-server` child per runner (`-c thread_unload_delay_secs=0`, env `AI_COLLAB_OWNED=codex`); tests in `test/runner-adapter-codex.test.mjs` drive `test/helpers/fake-codex-app-server.mjs` |
+| `runner/adapters/<harness>.mjs` | Real adapters, one per agent (Claude, Cursor, OpenCode not written yet; `loadAdapters` logs `no <harness> adapter yet`) |
 | `runner/delivery.mjs` | Delivery workflow: reserve, push, confirm, mark or release, expect-reply redelivery |
 | `lib/deliver-push.mjs` | Live push paths (socket, `codex queue`, OpenCode HTTP) and the ack tracker, shared with the UI dispatcher |
 | `lib/owned.mjs` | Owned-record read/write and `standsDown` |
 | `deploy/ai-collab-runner.service` | User unit template; not installed |
 | `test/runner*.test.mjs` | Tests with the fake adapter and fake ntfy |
 
-Environment: `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (minutes before an unanswered owned approval is denied; default 30), `AI_COLLAB_RUNNER_SOCKET`, `AI_COLLAB_RUNNER_DB` (default `$AI_COLLAB_STATE_DIR/runner.db`), `AI_COLLAB_RUNNER_HARNESSES` (comma list), `AI_COLLAB_SCHEDULES` (path of `schedules.json`), and the usual `AI_COLLAB_*` project settings, read through `loadProjects`.
+Environment: `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (minutes before an unanswered owned approval is denied; default 30), `AI_COLLAB_RUNNER_SOCKET`, `AI_COLLAB_RUNNER_DB` (default `$AI_COLLAB_STATE_DIR/runner.db`), `AI_COLLAB_RUNNER_HARNESSES` (comma list), `AI_COLLAB_RUNNER_ADAPTER_DIR` (directory the adapters load from; default `runner/adapters`), `AI_COLLAB_SCHEDULES` (path of `schedules.json`), and the usual `AI_COLLAB_*` project settings, read through `loadProjects`.
 
 ## Operator decisions (2026-11-21)
 
@@ -388,3 +389,28 @@ Environment: `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (minutes before an unanswered owne
 - **4 Approval expiry:** an unanswered owned approval is denied after `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (default 30).
 - **5 Who approves:** anyone who can post to the project topic, as today.
 - **6 Nested agents:** only the process the runner spawned stands down; agents started inside it join AI Collab as its children.
+
+## Codex adapter status
+
+Codex 0.171.0 (`codex-cli`). Protocol facts come from `codex app-server generate-json-schema` (dumped to `/dev/shm`, not committed) and `codex app-server --help`, and the `thread_unload_delay_secs` key from the binary's strings. No live app-server run: every behaviour below is checked against the fake server only.
+
+| Capability | Status | Evidence |
+|---|---|---|
+| open (`thread/start`), no prompt | supported | schema `ThreadStartParams`; test "open starts a thread" |
+| resume by native id (`thread/resume`, `excludeTurns`) | supported | schema `ThreadResumeParams`; test "resume reattaches" |
+| send (`turn/start`) → RUN_STARTED / RUN_FINISHED | supported | `turn/started`, `turn/completed` status enum; fake |
+| steer (`turn/steer`, `expectedTurnId`) | supported | schema `TurnSteerParams`; fake |
+| interrupt (`turn/interrupt`) → cancelled | supported | schema `TurnInterruptParams`; fake |
+| approvals (command, file change, permissions) → cards; allow `accept`, deny `decline` | supported | schema `CommandExecutionApprovalDecision`; fake |
+| permission modes (`PERMISSION_TABLE.codex`) | supported | `thread/start` `sandbox` enum mapped from `sandboxPolicy.type` |
+| unanswered server requests | error reply plus notice | fake |
+| child exit mid-run → RUN_ERROR; next input re-attaches | supported | fake "crash" |
+| context tokens (`thread/tokenUsage/updated`) | supported | `tokenUsage.last.totalTokens` as used in `lib/codex-compact.mjs`; fake |
+| models (`model/list`), commands (`skills/list`) | partial | fake only; `model` as the id and `SkillMetadata.name` UNVERIFIED |
+| `AI_COLLAB_PARENT` for agents the session starts | not implemented | a shared child has one env; a per-thread shell env setting (`shell_environment_policy.set`) is UNVERIFIED in the schema |
+| hooks stand down on `AI_COLLAB_OWNED=codex` | UNVERIFIED | no hook reads the marker yet; Codex passing the child env to its hooks is not checked |
+| `auto` mode: approvals routed to `auto_review` | UNVERIFIED | the reviewer may answer without a request reaching the adapter (`item/autoApprovalReview/*` notifications not handled) |
+| permissions allow echoes the requested profile | UNVERIFIED | `GrantedPermissionProfile` shape not compared with `RequestPermissionProfile` |
+| `item/completed` for `mcpToolCall` results | partial | result content left empty; `status` values `failed`/`declined` UNVERIFIED |
+| `thread/unsubscribe` on close | UNVERIFIED | method present in schema; effect on a later `thread/resume` not checked live |
+| `error` notification (`willRetry`) | partial | non-retry errors become `ai-collab.error`; turn failures come through `turn/completed` |
