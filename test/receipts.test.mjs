@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { publishActivity } from "../lib/activity.mjs";
 import { loadConfig, NTFY_MESSAGE_MAX_BYTES, receiptsTopic, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, publishStatus, sendMessage } from "../lib/inbox.mjs";
 import { readReceipts, receiptMessages, sendReceipts, settleReceipts } from "../lib/receipts.mjs";
@@ -113,11 +114,15 @@ test("UI ticks: a direct message goes sent then read; a broadcast sent, delivere
   const direct = sse(ui.events(new Request(`${base}/api/events?session=carol%23${carol.session}`, { signal: ctrl.signal })));
   assert.equal((await post({ target: `carol#${carol.session}`, body: "dm" })).status, 201);
   await states(direct, "dm", "sent");
+  await publishActivity(carol, "claude", [{ type: "prompt", input: "dm" }]);
+  const all = sse(ui.events(new Request(`${base}/api/events`, { signal: ctrl.signal })));
+  const project = (await all.next()).value;
+  assert.equal(project.event, "state");
+  assert.equal(project.data.messages.some(m => m.body === "dm"), false);
   await publishStatus(carol, { event: "start", harness: "claude" });
   await deliver(carol);
   await states(direct, "dm", "read");
 
-  const all = sse(ui.events(new Request(`${base}/api/events`, { signal: ctrl.signal })));
   assert.equal((await post({ target: "all", body: "everyone" })).status, 201);
   await states(all, "everyone", "sent");
   await deliver(bob);
