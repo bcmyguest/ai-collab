@@ -15,6 +15,7 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { fuzzyRank } from "@/lib/fuzzy";
+import { matchCommands, parseCommand } from "@/lib/slash-commands";
 import { agentDetail } from "@/lib/agent-detail";
 import { withMentions } from "@/lib/mentions";
 import { chatThread } from "@/lib/chat-turns";
@@ -391,7 +392,7 @@ function NewSession({ project, harnesses = [], startable = [], places = ["folder
   </section>;
 }
 
-function Composer({ conversation, agents, harnesses, teams = [], startable = [], models = {}, now, disabled, placeholder, onSend, question, cancel, urgentable, replying, cancelReply }) {
+function Composer({ conversation, agents, harnesses, teams = [], startable = [], models = {}, now, disabled, placeholder, onSend, question, cancel, urgentable, replying, cancelReply, harness = "" }) {
   const [draft, setDraftState] = useState(() => drafts.get(conversation, ""));
   const [urgent, setUrgent] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
@@ -411,6 +412,11 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
     option => [option.id, option.name, option.label, HARNESS_NAMES[option.harness === true ? option.id : option.harness], option.model, ...(option.team ? option.members || [] : [])]);
   const picking = showPicker && matches.length > 0;
   const chosen = Math.min(activeIndex, matches.length - 1);
+  // "/comp" while typing a command for the selected session: its names with support from web/lib/slash-commands.js.
+  const typedCommand = harness && /^\/[a-z0-9-]*$/i.test(draft) ? draft.slice(1) : null;
+  const commands = typedCommand === null ? [] : matchCommands(harness, typedCommand);
+  const commandPicking = commands.length > 0 && !picking;
+  const commandChosen = Math.min(activeIndex, commands.length - 1);
   const busy = disabled || posting;
 
   // Every edit is kept per conversation, so a tab or view switch that remounts the composer restores it.
@@ -434,6 +440,11 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
     setShowPicker(false);
     focus();
   }
+  function insertCommand(command) {
+    setDraft("/" + command.name + (command.args ? " " : ""));
+    setActiveIndex(0);
+    focus();
+  }
   async function send() {
     if (pending.current || busy || !draft.trim()) return;
     pending.current = true;
@@ -450,6 +461,17 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
       <span className="min-w-0 truncate">Replying to {short(replying.sender)}</span>
       <Button variant="ghost" size="icon" className="size-6" aria-label="Cancel reply" onClick={cancelReply}><X/></Button>
     </div>}
+    {commandPicking && <div role="listbox" aria-label="Session commands"
+      className="absolute inset-x-3 bottom-full mb-1 max-h-64 overflow-y-auto rounded-2xl border bg-popover p-1 text-popover-foreground shadow-lg">
+      {commands.map((command, i) => <button type="button" role="option" aria-selected={i === commandChosen} aria-disabled={command.status === "unsupported"} key={command.name}
+        title={command.reason} onMouseDown={event => event.preventDefault()} onClick={() => command.status !== "unsupported" && insertCommand(command)}
+        className={cn("flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm", i === commandChosen && "bg-accent text-accent-foreground", command.status === "unsupported" && "opacity-50")}>
+        <span className="flex min-w-0 flex-1 flex-col"><span className="font-mono text-xs">/{command.name}{command.args ? " " + command.args : ""}</span>
+          <span className="truncate text-xs text-foreground/80">{command.summary}</span></span>
+        {command.status === "unverified" && <span className="shrink-0 rounded-full border px-1.5 text-[10px] text-amber-600">unverified</span>}
+        {command.status === "unsupported" && <span className="shrink-0 text-xs text-muted-foreground">unsupported</span>}
+      </button>)}
+    </div>}
     {picking && <div role="listbox" aria-label="Mention an agent"
       className="absolute inset-x-3 bottom-full mb-1 max-h-64 overflow-y-auto rounded-2xl border bg-popover p-1 text-popover-foreground shadow-lg">
       {matches.map((option, i) => <button type="button" role="option" aria-selected={i === chosen} key={option.id}
@@ -463,6 +485,14 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
       </button>)}
     </div>}
     <div onKeyDownCapture={event => {
+      if (commandPicking) {
+        if (event.key === "ArrowDown") setActiveIndex((commandChosen + 1) % commands.length);
+        else if (event.key === "ArrowUp") setActiveIndex((commandChosen + commands.length - 1) % commands.length);
+        else if (event.key === "Tab" && commands[commandChosen].status !== "unsupported") insertCommand(commands[commandChosen]);
+        else return;
+        event.preventDefault(); event.stopPropagation();
+        return;
+      }
       if (!picking) return;
       if (event.key === "Escape") setShowPicker(false);
       else if (event.key === "ArrowDown") setActiveIndex((chosen + 1) % matches.length);
@@ -862,9 +892,16 @@ function Console({ account }) {
         </div>
       </ChatContainerRoot>
       <div role="status" hidden={!notice} className="mx-auto w-full max-w-3xl px-4 text-center text-xs text-muted-foreground">{notice}</div>
-      {!home && !listing && <Composer key={requested} conversation={conversationKey(project, level === "session" ? selected.session : "")} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now}
+      {!home && !listing && <Composer key={requested} conversation={conversationKey(project, level === "session" ? selected.session : "")} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
         placeholder={placeholder} question={question} cancel={() => setQuestion("")} urgentable={!question} replying={replyTo} cancelReply={() => setReplyTo(null)}
         onSend={async (body, urgent) => {
+          if (body.startsWith("/") && !question) {
+            if (!parseCommand(body)) { setNotice("Commands start with /name"); return false; }
+            if (level !== "session" || !selected.session) { setNotice("Open a session to run " + body.split(" ")[0]); return false; }
+            const ran = await action("command", { target: selected.session, command: body }, "Command sent");
+            if (ran) stick.current?.scrollToBottom();
+            return ran;
+          }
           const sent = question ? await action("reply", { question, body }, "Reply sent")
             : await action("send", { target, body, ...(urgent ? { urgent: true } : {}), ...(replyTo?.id ? { replyTo: replyTo.id } : {}) }, "Sent");
           if (sent) { setQuestion(""); setReplyTo(null); stick.current?.scrollToBottom(); }
