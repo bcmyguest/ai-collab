@@ -5,6 +5,7 @@ import { CodeBlockCode } from "@/components/ui/code-block";
 import { MessageContent } from "@/components/ui/message";
 import { cn } from "@/lib/utils";
 import { groupLabel } from "@/lib/chat-turns";
+import { compactionText } from "@/lib/compaction-view";
 import { activeAgents, inputBlocks, readableText, resultLanguage, runState, subagentLabel, summarize } from "@/lib/activity-rows";
 import { toolDiff } from "@/lib/tool-diff";
 import { ChoiceCard, askedQuestions } from "./cards";
@@ -118,7 +119,7 @@ function Body({ item }) {
     default: {
       const Icon = item.type === "start" ? CirclePlay : item.type === "compact" ? Minimize2 : CircleStop;
       return <>
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Icon className="size-3.5"/>{item.input || item.type}</p>
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Icon className="size-3.5"/>{compactionText(item.compaction) || item.input || item.type}</p>
         {item.output && <MessageContent markdown className="bubble max-w-full rounded-2xl rounded-tl-md border border-dashed bg-muted/30 px-3 py-1.5 text-sm leading-relaxed text-foreground/90 [overflow-wrap:anywhere]">{item.output}</MessageContent>}
       </>;
     }

@@ -43,7 +43,6 @@ Every compact row carries `compaction: {trigger?, phase, tokensBefore?, tokensAf
 | Claude `compact_boundary` system message (`pre_tokens`, `post_tokens`), `@anthropic-ai/claude-agent-sdk` sdk.d.ts:4058 | finished, with token counts | runner/adapters/claude.mjs |
 | Claude `PreCompact` (sdk.d.ts:2902) | started, with `tokensBefore` and `filesDropped` | lib/activity.mjs, scripts/ai-collab-hook.mjs |
 | Claude `PostCompact` (sdk.d.ts:2778), wired in hooks/hooks.json | finished | lib/activity.mjs |
-| Claude `SessionStart` `source: "compact"` (sdk.d.ts:7266) | finished | lib/activity.mjs |
 | Codex `contextCompaction` item | started and finished together | runner/adapters/codex.mjs |
 | OpenCode `session.compaction.started`, `.ended`, `.failed` | started, finished, failed | runner/adapters/opencode.mjs |
 
