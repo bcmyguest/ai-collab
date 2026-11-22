@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { IN_TERMINAL, IN_TERMINAL_HINT, approvalOutcome, approvalSurfaceId, questionSurfaceId } from "@/lib/a2ui";
 import { CARD, Surface } from "@/components/a2ui/surface";
+import { ConfirmButton } from "./pattern-graph";
 
 export { approvalOutcome };
 
@@ -116,4 +117,13 @@ export function askedQuestions(tool, input) {
   } catch {
     return null;
   }
+}
+
+export function SuspensionCard({ suspension, disabled, resume }) {
+  return <div className="flex min-w-0 flex-col items-start gap-2 rounded-xl border p-3">
+    <p role="alert" className="text-xs">{suspension.reason}. Waiting for operator confirmation.</p>
+    <ConfirmButton label="Resume handoff" confirmLabel="Resume"
+      question={`Allow ${suspension.from} → ${suspension.to} on "${suspension.on}" to exceed the limit?`}
+      disabled={disabled} onConfirm={resume}/>
+  </div>;
 }

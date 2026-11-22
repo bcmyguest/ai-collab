@@ -35,6 +35,7 @@ import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern
 import { authorTeam, saveAuthoredTeam } from "../../lib/team-author.mjs";
 import { listOwned, readOwned } from "../../lib/owned.mjs";
 import { openTasks } from "../../lib/tasks.mjs";
+import { priorityOf } from "../../lib/task-order.mjs";
 import { taskTags } from "../lib/task-tags.js";
 import { taskBoard } from "./task-board.mjs";
 import { advanceRun, listRuns, startRun } from "../../lib/pattern-runs.mjs";
@@ -637,7 +638,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // Open approvals and unanswered questions per sender address, as chat entries the cards render.
-  function pendingBySender(project, list) {
+  function pendingBySender(project, list, persistent = false) {
     const { ends, replies } = outcomes(project.hub.events(project.topic));
     const online = new Set(list.filter(agent => agent.online).map(agent => agent.id));
     const out = new Map();
@@ -648,11 +649,41 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (approval.state !== "pending" || (approval.expiresAt && approval.expiresAt < Date.now())) continue;
         // A view-only terminal approval is answered in the terminal, so it does not wait on the operator.
         add(item.from, { ...item, project: project.cfg.project, approval, blocking: approval.terminal !== true, expiresAt: approval.expiresAt });
-      } else if (item.question && !replies.has(item.question) && (online.has(item.from) || Date.now() - item.time * 1000 < ONLINE_MS)) {
+      } else if (item.question && !replies.has(item.question) && (persistent || online.has(item.from) || Date.now() - item.time * 1000 < ONLINE_MS)) {
         add(item.from, { ...item, project: project.cfg.project, blocking: IMPORTANT.test(item.body) });
       }
     }
     return out;
+  }
+
+  function projectDecisions(project, runs, list) {
+    const { tasks } = taskBoard(project.tasks, list, runs, project.tasks ? listOwned(project.cfg) : []);
+    const agentsById = new Map(list.map(agent => [agent.id, agent]));
+    const decisions = new Map();
+    function add(key, item, run) {
+      const tags = taskTags(item.body || "").map(match => match[2]);
+      const owned = tasks.filter(task => task.owner === item.from && task.status !== "done");
+      const task = tasks.find(task => tags.includes(task.id) || (run && (task.run === run.id || task.id === run.task)))
+        ?? (owned.length === 1 ? owned[0] : null);
+      decisions.set(key, { ...item, key, project: project.cfg.project, agentName: agentsById.get(item.from)?.name,
+        ...(run ? { run: run.id } : {}),
+        ...(task ? { task: { id: task.id, title: task.title, priority: priorityOf(task) } } : {}) });
+    }
+    for (const items of pendingBySender(project, [], true).values()) {
+      for (const item of items) {
+        if (item.approval?.terminal || (hosted && item.approval?.tool === LIMIT_TOOL)) continue;
+        const run = runs.find(run => Object.values(run.instances ?? {}).flat().includes(item.from)
+          || Object.values(run.sessions ?? {}).includes(item.from));
+        add(item.question ?? item.approval.id, item, run);
+      }
+    }
+    if (!hosted) for (const run of runs) {
+      if (run.status !== "suspended" || !run.suspension) continue;
+      const { suspension } = run;
+      add(suspension.id, { kind: "Suspension", suspension, from: suspension.caller || run.sessions?.[suspension.from] || suspension.from,
+        time: (suspension.at ?? run.startedAt) / 1000 }, run);
+    }
+    return [...decisions.values()];
   }
 
   // Addresses of the project's sessions in list that wait on the operator (sessionState "waiting").
@@ -861,7 +892,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       answer = decision;
     }
     if (approval.tool === LIMIT_TOOL) return answerLimit(project, approval, answer);
-    await publish(project.cfg, project.topic, `reply ${id} ${answer}`, { title: replyTitle(project.cfg, by), onPublished: project.hub.record });
+    await publishDecision(project, id, `reply ${id} ${answer}`, by, value => replyDecision(approval, value));
     return { sent: true, status: approval.questions ? "Answer sent" : decision === "allow" ? "Allow sent" : "Deny sent" };
   }
 
@@ -878,6 +909,18 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return { sent: true, status: `Started ${result.session}`, session: result.session, detail: result.detail };
   }
 
+  async function publishDecision(project, id, reply, by, valid = Boolean) {
+    const pending = project.publishingDecisions ??= new Set();
+    const replies = outcomes(project.hub.events(project.topic)).replies.get(id) ?? [];
+    if (pending.has(id) || replies.some(valid)) reject(409, "This request has closed");
+    pending.add(id);
+    try {
+      await publish(project.cfg, project.topic, reply, { title: replyTitle(project.cfg, by), onPublished: project.hub.record });
+    } finally {
+      pending.delete(id);
+    }
+  }
+
   // An A2UI surface action: a choice's picks become the answers object, a question's text the reply body.
   async function answerSurface(project, answer, by) {
     if (answer.kind === "approval") {
@@ -889,7 +932,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     if (!/^[a-f0-9]{12}$/.test(answer.question) || !text || text.length > 2000) reject(400, "Enter 1–2000 characters");
     const reply = `reply ${answer.question} ${text}`;
     if (Buffer.byteLength(reply) > NTFY_MESSAGE_MAX_BYTES) reject(400, "Reply exceeds the size limit");
-    await publish(project.cfg, project.topic, reply, { title: replyTitle(project.cfg, by), onPublished: project.hub.record });
+    await publishDecision(project, answer.question, reply, by);
     return { sent: true };
   }
 
@@ -957,7 +1000,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }),
       messages: scope === "home" ? [] : messages(project, { harness, session }, list),
       ...(cards ? { sessions: cards } : {}),
-      ...(scope === "home" ? { unavailable: shown.filter(item => item.failed).map(item => item.cfg.project) } : {}),
+      ...(scope === "home" ? {
+        decisions: shown.flatMap(item => item.failed ? [] : projectDecisions(item,
+          item === project ? runs : listRuns(item.cfg), item === project ? list : cards.filter(card => card.project === item.cfg.project))),
+        unavailable: shown.filter(item => item.failed).map(item => item.cfg.project) } : {}),
       startable: startable(project),
       // The new-session default (defaults.json startDefault, else cursor on deepseek); the form prefills it when available.
       startDefault: startDefaultSetting(env),
@@ -1298,6 +1344,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (advanceRunId) {
           const advanced = await advanceRun(cfg, String(advanceRunId), String(advanceEvent ?? ""), { note: String(advanceNote ?? ""), override: true, confirmation: String(advanceConfirmation ?? ""), by: by ?? "operator", env, start })
             .catch((error) => reject(400, error.message));
+          broadcast();
           return json(201, advanced);
         }
         // replace names the pattern the editor opened; a different name in patternSpec renames it.
@@ -1398,7 +1445,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (typeof question !== "string" || !/^[a-f0-9]{12}$/.test(question) || (target && target !== "all")) reject(400, "Invalid question");
         const reply = `reply ${question} ${body.trim()}`;
         if (body.trim().length > 2000 || Buffer.byteLength(reply) > NTFY_MESSAGE_MAX_BYTES) reject(400, "Reply exceeds the size limit");
-        await publish(cfg, topic, reply, { title: replyTitle(cfg, by), onPublished: project.hub.record });
+        await publishDecision(project, question, reply, by);
         return json(201, { sent: true });
       }
       recipient(cfg, target);
