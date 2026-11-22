@@ -60,7 +60,7 @@ node /path/to/ai-collab/scripts/install-opencode.mjs
 |---|---|---|
 | Plugin | `plugins/ai-collab.js` | a one-line shim that re-exports `lib/opencode-plugin.mjs` from the checkout; the first line marks it as ai-collab's, and a file without that mark is never overwritten |
 | MCP server | `opencode.json` `mcp.servers.ai-collab` (or `mcp.ai-collab` when the file lists servers flat) | `{"type":"local","command":["node","<checkout>/scripts/ai-collab-mcp.mjs","opencode"],"cwd":".","enabled":true}`; OpenCode names the tools `ai-collab_<tool>` |
-| Skill | `opencode.json` `skills` | `<checkout>/skills` |
+| Skill | `opencode.json` `skills` (a list, or `paths` in the `{paths, urls}` form) | `<checkout>/skills` |
 
 An unparsable `opencode.json`, or only an `opencode.jsonc`, is left alone and the installer says so. Restart OpenCode (or its background service) afterwards.
 

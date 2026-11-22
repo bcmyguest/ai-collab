@@ -132,3 +132,10 @@ test("opencode install keeps a flat mcp layout, honours XDG_CONFIG_HOME, and ref
   assert.deepEqual(mcpEntry("/src").command, ["node", "/src/scripts/ai-collab-mcp.mjs", "opencode"]);
   for (const h of [home, bad]) rmSync(h, { recursive: true, force: true });
 });
+
+test("opencode install adds the skills path to an object-form skills setting and keeps its other keys", async () => {
+  const { mergeSkills } = await import("../lib/install-opencode.mjs");
+  const config = { skills: { paths: ["/a", "/b"], urls: ["https://x"] } };
+  assert.deepEqual(mergeSkills(config, "/c").skills, { paths: ["/a", "/b", "/c"], urls: ["https://x"] });
+  assert.deepEqual(mergeSkills(mergeSkills(config, "/c"), "/c").skills.paths, ["/a", "/b", "/c"], "added once");
+});
