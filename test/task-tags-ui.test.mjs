@@ -8,6 +8,7 @@ import { parseEnvelope } from "../lib/inbox.mjs";
 import { writeState } from "../lib/state.mjs";
 import { openTasks } from "../lib/tasks.mjs";
 import { createUi } from "../web/server/ui.mjs";
+import { composerDestination } from "../web/lib/message-routing.js";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 
@@ -79,4 +80,26 @@ test("a post tagging owned and unowned tasks sends one copy per destination", as
     [broadcastTopic(cfg.project), undefined, undefined, body],
     [inboxTopic(cfg.project, "alice"), true, LABEL, body],
   ]));
+});
+
+test("composer destinations match project broadcasts, targeted mentions, and session messages", async t => {
+  const { cfg, send, messages } = await fixture(t);
+  const project = cfg.project;
+  const everyone = "Everyone in " + project;
+  const direct = "Direct to alice#" + LABEL.slice(0, 8);
+  const routing = {
+    project, peers: cfg.peers, agents: [{ id: OWNER, peer: "alice", registered: true }],
+    tasks: [], teams: [], patterns: [], startable: [], models: {},
+  };
+  const broadcast = [broadcastTopic(project), undefined, undefined];
+  const session = [inboxTopic(project, "alice"), true, LABEL];
+  for (const [text, target, label, delivery] of [
+    ["Project broadcast", "all", everyone, [broadcast]],
+    [`Targeted mention @${OWNER} please review`, "all", everyone + " · " + direct, [broadcast, session]],
+    ["Direct session message", OWNER, direct, [session]],
+  ]) {
+    assert.equal(composerDestination({ ...routing, text, target }), label);
+    assert.equal((await send(text, target)).status, 201);
+    assert.deepEqual(messages().filter(message => message[3] === text), delivery.map(message => [...message, text]));
+  }
 });

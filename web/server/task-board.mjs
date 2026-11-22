@@ -24,6 +24,7 @@ export function taskBoard(backend, agents = [], runs = [], sessions = []) {
         id: task.id,
         title: task.title,
         ...(task.priority ? { priority: task.priority } : {}),
+        ...(owner && !task.owner ? { inferredOwner: true } : {}),
         status: task.status,
         ...(task.detail ? { detail: task.detail } : {}),
         blockers: task.blockers,

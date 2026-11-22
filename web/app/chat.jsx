@@ -17,6 +17,8 @@ import { fuzzyRank } from "@/lib/fuzzy";
 import { commandFor, matchCommands } from "@/lib/slash-commands";
 import { contextMeter, filesRead } from "@/lib/context-view";
 import { agentDetail } from "@/lib/agent-detail";
+import { composerDestination } from "@/lib/message-routing";
+import { quotedReply, usableReplyId } from "@/lib/reply-quote";
 import { withMentions } from "@/lib/mentions";
 import { chatThread } from "@/lib/chat-turns";
 import { NewAgentComposer } from "./new-session";
@@ -455,7 +457,7 @@ function useModels(project) {
 
 const modelsOf = (models, harness) => Array.isArray(models[harness]) ? models[harness].filter(id => typeof id === "string" && id) : [];
 
-function Composer({ conversation, agents, harnesses, teams = [], startable = [], models = {}, now, disabled, placeholder, onSend, question, cancel, urgentable, replying, cancelReply, harness = "", initialDraft = "" }) {
+function Composer({ conversation, agents, harnesses, teams = [], startable = [], models = {}, now, disabled, placeholder, routing, onSend, question, cancel, urgentable, replying, cancelReply, harness = "", initialDraft = "" }) {
   const [draft, setDraftState] = useState(() => drafts.get(conversation, "") || initialDraft);
   const [urgent, setUrgent] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
@@ -486,6 +488,15 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
   const commandPicking = commands.length > 0 && !picking && commandsOpen;
   const commandChosen = Math.min(activeIndex, commands.length - 1);
   const busy = disabled || posting;
+  const text = draft.trim();
+  const quoted = Boolean(replying?.id && !usableReplyId(replying.id));
+  const command = routing.session && commandFor(text, picked.current) !== null;
+  const destination = question ? "Reply to question " + question
+    : command ? "Command for " + short(routing.target)
+    : composerDestination({ ...routing, agents, teams, startable, models, quoted,
+      text: quoted ? quotedReply(text, replying) : text });
+  const sendName = question || command ? destination
+    : "Send · " + destination;
 
   // Every edit is kept per conversation, so a tab or view switch that remounts the composer restores it.
   function setDraft(next) { setHeld(null); drafts.set(conversation, next); setDraftState(next); }
@@ -593,7 +604,10 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
       event.preventDefault(); event.stopPropagation();
     }}>
       <PromptInput value={draft} onValueChange={change} onSubmit={() => send()} disabled={busy} className="rounded-3xl bg-card shadow-sm">
-        <PromptInputTextarea id="composer" aria-label="Message" placeholder={placeholder} className="text-[15px]"/>
+        <div id="composer-destination" aria-live="polite" className="max-h-[20dvh] overflow-y-auto break-words px-3 pt-1 text-xs font-medium text-muted-foreground">
+          {destination}
+        </div>
+        <PromptInputTextarea id="composer" aria-label="Message" aria-describedby="composer-destination" placeholder={placeholder} className="text-[15px]"/>
         <PromptInputActions className="justify-between px-1 pt-1">
           <PromptInputAction tooltip="Mention an agent">
             <Button type="button" variant="ghost" size="sm" className="rounded-full" aria-expanded={picking} disabled={busy}
@@ -604,8 +618,8 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
               <Button type="button" variant={urgent ? "secondary" : "ghost"} size="sm" className={cn("rounded-full", urgent && "text-amber-500")} aria-pressed={urgent} disabled={busy}
                 onClick={() => setUrgent(!urgent)}><Zap/>Send now</Button>
             </PromptInputAction>}
-            <PromptInputAction tooltip="Send">
-              <Button type="button" size="icon" className="rounded-full" aria-label="Send" disabled={busy || !draft.trim()} onClick={() => send()}><ArrowUp/></Button>
+            <PromptInputAction tooltip={sendName}>
+              <Button type="button" size="icon" className="rounded-full" aria-label={sendName} disabled={busy || !draft.trim()} onClick={() => send()}><ArrowUp/></Button>
             </PromptInputAction>
           </div>
         </PromptInputActions>
@@ -908,8 +922,10 @@ function Console({ account }) {
   const openCard = (node, run = "") => navigate({ project: node.project, level: "session", harness: node.harness || peerOf(node.id), session: node.id, ...(run ? { tab: "subagents", run } : {}) });
   // The session's ⋯ menu opens its raw activity: every tool call, unfolded.
   const openRaw = node => navigate({ project: node.project, level: "session", harness: node.harness || peerOf(node.id), session: node.id, tab: "raw" });
-  const placeholder = composeTask ? `Message about #${composeTask}…` : missing ? "Pick a session first"
-    : level === "session" ? "Message " + short(selected.session) + " directly…" : "Message everyone in " + (project || "the project") + "…";
+  const placeholder = composeTask ? `Message about #${composeTask}…` : "Write a message…";
+  const routing = { project, target, session: level === "session" && Boolean(target), tasks: data.tasks?.tasks || [],
+    peers: data.projects.find(item => item.id === project)?.peers || [],
+    patterns: data.patterns || [], hosted: data.hosted };
   // A session command: resolves true only when the session ran it or the compaction was requested (the composer clears).
   async function runCommand(body) {
     const at = requested;
@@ -1118,7 +1134,7 @@ function Console({ account }) {
         </ul>
       </section>}
       {!home && !listing && !patterns && !tasksView && !composing && <Composer key={requested + ":" + composeTask} conversation={conversationKey(project, composeTask ? "#" + composeTask : level === "session" ? selected.session : "")} initialDraft={composeTask ? `#${composeTask} ` : ""} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
-        placeholder={placeholder} question={question} cancel={() => setQuestion("")} urgentable={!question} replying={replyTo} cancelReply={() => setReplyTo(null)}
+        placeholder={placeholder} routing={routing} question={question} cancel={() => setQuestion("")} urgentable={!question} replying={replyTo} cancelReply={() => setReplyTo(null)}
         onSend={async (body, urgent, command, sendAnyway) => {
           // Project chat never runs commands: a leading / there is ordinary chat.
           if (command && !question && level === "session" && selected.session) return runCommand(body);
