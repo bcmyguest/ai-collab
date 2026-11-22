@@ -7,16 +7,15 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 <!-- tasks:start -->
 | Request | Priority | Status |
 |---|---|---|
-| PM tracked handoffs: builders start as runner-owned sessions linked to tasks (rides on team-runs/OpenShell) | P2 | building |
-| cap/max_visits hit suspends the run for the operator instead of failing it (operator: yes, confirm) | P2 | building |
+| Session view shows which agent is running now | P2 | building |
+| Operator's pending messages in project chat | P2 | building |
 | Code mode B now: compile team.dot to a runner durable workflow; agents keep pattern advance (operator: yes) | P2 | building |
 | Team runs live in the runner and run in OpenShell, not the project folder (operator: yes) | P2 | building |
+| PM tracked handoffs: builders start as runner-owned sessions linked to tasks (rides on team-runs/OpenShell) | P2 | blocked Task linkage implemented and verified; builder launch cutover requires the runner-owned team-runs/OpenShell path. This base has standalone builder units and only Cursor supports runner-owned OpenShell starts. |
 | Space to switch to local: a key in the terminal takes a phone-controlled session back to local control (as HAPI does) | P2 | decided Design: /dev/shm/research/hapi-steal.md §2.1. HAPI is AGPL-3.0: clean-room, copy no code. |
 | Draft guard: hold a phone message while the terminal has unsent text; Send anyway row (HAPI idea, clean-room) | P2 | decided |
 | Queue bar: queued messages listed with Edit/Cancel/Steer, replacing the one-way queued badge (HAPI idea, clean-room) | P2 | decided |
 | Read state and durable history with search; ntfy as transport only (HAPI idea, clean-room) | P2 | decided |
-| Operator's pending messages in project chat | P2 | open |
-| Session view shows which agent is running now | P2 | open |
 | Inspect and edit teams in the UI | P2 | open |
 | Move to AG-UI end to end (official @ag-ui packages) | P2 | open (operator yes 2026-11-22: plugin 0.11.0 everywhere, then AI_COLLAB_WIRE=agui default; coordinator starting) |
 | Owned sessions: runner service, durable workflows, AG-UI event names, four harness adapters | P2 | open runner adapters on: claude, codex (2026-11-22); cursor/opencode need auth |
@@ -27,6 +26,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Modern visual refresh of the whole UI | P2 | open (last; coordinator shows 2–3 design directions first; do not PM-dispatch) |
 | Move off ntfy eventually, so attachments and links work | P2 | open (operator 2026-11-22) |
 | Phone model switch: switch a runner-owned Claude session's model from the phone via SDK Query.setModel (sdk.d.ts:3227) | P2 | open deferred by operator |
+| cap/max_visits hit suspends the run for the operator instead of failing it (operator: yes, confirm) | P2 | done |
 | Deploys break the live site: next build rewrites web/.next under the running server (missing chunks) until the restart; build to a fresh dir and switch on restart | P2 | done Committed 84cdfdc. Local webpack deploy verified old assets remain available and restart selects the new build. Required verification blocked in sandbox: mise Node 24.18.0 npm is absent, isolated node --test reports failures outside the new regression coverage, default Turbopack cannot resolve next/package.json, and smoke-ui cannot load its hard-coded host Playwright path. oncebitten passed. |
 | Codex exec builders in a fresh worktree: ai-collab hooks fail (SessionStart/UserPromptSubmit/PostToolUse 'Failed'), so the session never registers or shows in the UI | P2 | done |
 | PM feedback loop: each run ends with a review; lessons go to openmem (substrate approved) and the mission file | P2 | done |
