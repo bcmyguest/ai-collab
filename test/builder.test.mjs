@@ -17,6 +17,7 @@ import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
 import { listenControl } from "../runner/control.mjs";
 import codexAdapter from "../runner/adapters/codex.mjs";
+import { startTaskWakes } from "../runner/task-wake.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -140,12 +141,74 @@ test("an agent that fails with no work leaves the task blocked and the sandbox d
   assert.deepEqual(JSON.parse(readFileSync(l.env.FAKE_OPENSHELL_STATE, "utf8")).sandboxes, []);
 });
 
-test("a firing oncebitten check blocks a task the agent marked done", async () => {
+test("a firing oncebitten check publishes one blocked PM wake", { timeout: 15_000 }, async (t) => {
   const l = lab({ FAKE_ONCEBITTEN_CHECK: "1" });
+  l.env.FAKE_ONCEBITTEN_TASK_STORE = taskStoreFile("demo", l.env);
+  await withTask(l);
+  const wakes = [];
+  let wake;
+  const woken = new Promise(resolve => { wake = resolve; });
+  const [stop] = startTaskWakes([{ name: "pm", wakeOnTasks: "demo" }], {
+    runSchedule(name, reason) {
+      wakes.push([name, reason, task(l).status]);
+      wake();
+      return { status: "started" };
+    },
+  }, { env: l.env, everyMs: 5 });
+  t.after(stop);
+  assert.equal((await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief)).code, 0);
+  await woken;
+  assert.deepEqual(wakes, [["pm", "task-wake", "blocked"]]);
+  assert.equal(readJsonLines(l.env.FAKE_ONCEBITTEN_LOG).find(row => row.args[0] === "check").status, "building");
+  assert.match(task(l).detail, /oncebitten check --base main fired: no-sleep-in-tests/);
+});
+
+test("a done request with no collected commits is blocked", async () => {
+  const l = lab({ FAKE_BUILDER_MODE: "empty" });
   await withTask(l);
   assert.equal((await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief)).code, 0);
   assert.equal(task(l).status, "blocked");
-  assert.match(task(l).detail, /oncebitten check --base main fired: no-sleep-in-tests/);
+  assert.match(task(l).detail, /0 commit\(s\) and requested done/);
+});
+
+test("an unavailable configured checker blocks a landed branch", async () => {
+  const l = lab();
+  mkdirSync(path.join(l.root, ".oncebitten"));
+  writeFileSync(path.join(l.root, ".oncebitten", "rules.lock"), 'source = ["configured"]\n');
+  l.git("add", "-A");
+  l.git("commit", "-qm", "configure rules");
+  l.env.AI_COLLAB_ONCEBITTEN_BIN = path.join(l.home, "missing-checker");
+  await withTask(l);
+  assert.equal((await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief)).code, 0);
+  assert.equal(task(l).status, "blocked");
+  assert.match(task(l).detail, /oncebitten check --base main could not run:.*ENOENT/);
+  assert.match(wtGit(l, "log", "-1", "--format=%s"), /docs: add a line/);
+});
+
+test("a restarted runner resumes a saved verdict and skips an already published transition", async () => {
+  const l = lab();
+  await withTask(l);
+  await l.cli("task", "set", "smoke-task", "status=building");
+  const paths = builderPaths("smoke-task", l.env);
+  mkdirSync(paths.dir, { recursive: true });
+  const state = {
+    id: "smoke-task", task: "smoke-task", project: "demo", harness: "codex", owned: true,
+    unit: "builder-smoke-task", phase: "collected",
+    settlement: { status: "done", progress: "finished", at: Date.now() },
+  };
+  const resume = () => execFileSync(process.execPath, ["--input-type=module", "-e",
+    'import { finishOwnedBuilder, ownedBuilder } from "./lib/builder.mjs"; await finishOwnedBuilder(ownedBuilder("demo", "smoke-task", process.env), null, 1, process.env, () => {});',
+  ], { env: { ...process.env, ...l.env } });
+  writeFileSync(paths.state, JSON.stringify(state));
+  resume();
+  assert.equal(task(l).status, "done");
+  // Simulate a cut after publication, before the builder state was advanced.
+  writeFileSync(paths.state, JSON.stringify(state));
+  await l.cli("task", "set", "smoke-task", "status=building");
+  resume();
+  assert.equal(task(l).status, "building");
+  assert.equal(task(l).progress.filter(p => p.text === "finished").length, 1);
+  assert.equal(JSON.parse(readFileSync(paths.state, "utf8")).phase, "finished");
 });
 
 test("an existing sandbox of the same name is neither reused nor deleted", async () => {

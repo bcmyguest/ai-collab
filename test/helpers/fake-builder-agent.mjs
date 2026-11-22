@@ -11,13 +11,15 @@ const mode = process.env.FAKE_BUILDER_MODE || "commit";
 const sandbox = dirname(process.env.HOME);
 if (process.env.FAKE_BUILDER_LOG) appendFileSync(process.env.FAKE_BUILDER_LOG, `${JSON.stringify({ args, cwd: process.cwd(), path: process.env.PATH, gitExec: process.env.GIT_EXEC_PATH || "" })}\n`);
 if (mode === "fail") process.exit(3);
-appendFileSync(join(process.cwd(), "notes.md"), "a line from the builder\n");
+if (mode !== "empty") appendFileSync(join(process.cwd(), "notes.md"), "a line from the builder\n");
 if (mode === "commit") {
   execFileSync("git", ["add", "-A"]);
   execFileSync("git", ["commit", "-q", "-m", "docs: add a line"]);
   const hooks = JSON.parse(readFileSync(join(process.env.HOME, ".cursor", "hooks.json"), "utf8")).hooks;
   const command = hooks.postToolUse[0].command.split("/sandbox/").join(`${sandbox}/`);
   execFileSync("sh", ["-c", command], { input: JSON.stringify({ hook_event_name: "postToolUse", cwd: `/sandbox/work/${basename(process.cwd())}` }) });
+}
+if (mode === "commit" || mode === "empty") {
   const task = process.env.FAKE_BUILDER_TASK;
   execFileSync(join(sandbox, "tools", "bin", "ai-collab"), ["task", "progress", task, "half way"]);
   execFileSync(join(sandbox, "tools", "bin", "ai-collab"), ["task", "set", task, "status=done"]);

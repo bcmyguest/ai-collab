@@ -82,18 +82,17 @@ The harness's own sandbox or permission prompts are off (`--sandbox disabled` fo
 
 ## Task status
 
-The task store is a host file, so `ai-collab` inside the sandbox is a shim: `task set` and `task progress` are recorded under `/sandbox/out/ai-collab`, `task show` prints a snapshot taken at start, and everything else exits 2. After the run the host replays the recorded `set` and `progress` calls in order. Then:
+The task store is a host file, so `ai-collab` inside the sandbox is a shim: `task set` and `task progress` are recorded under `/sandbox/out/ai-collab`, `task show` prints a snapshot taken at start, and everything else exits 2. After the run, the host collects the branch, replays captures, checks the landed branch with oncebitten, and applies the recorded task fields and progress. The builder's own status assignments are requests.
 
-| Case | Status set on the host |
+| Case | Final status |
 |---|---|
-| The agent set a status | its status |
-| `oncebitten check --base <base>` fires on the landed branch | `blocked`, with the finding |
-| No status, exit 0, commits landed | `done` |
-| No status otherwise | `blocked`: `builder builder-<id> exited <code> with <n> commit(s) and set no status` |
+| Commits landed, the agent exited successfully, and policy checks passed | `done`, or `blocked` if the agent requested it |
+| The policy check reports a finding or cannot run | `blocked`, with the reason |
+| The agent requested `done` without landed commits or exited unsuccessfully | `blocked`, with the exit code and commit count |
 | The fast-forward failed | `blocked`, with the kept clone's path |
-| The unit failed (staging, sandbox, upload) | `blocked`, with the error |
+| Setup or collection failed | `blocked`, with the error |
 
-A progress line records exit code, commit count and capture count. `done` and `blocked` wake the PM through `wakeOnTasks`.
+The runner saves the verdict before publishing it. The final status and completion progress are written together, so a restarted runner can recognize a verdict it already published. The terminal transition wakes the PM through `wakeOnTasks`.
 
 ## oncebitten
 

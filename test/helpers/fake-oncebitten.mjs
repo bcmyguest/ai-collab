@@ -10,6 +10,10 @@ if (args[0] === "capture") {
   process.exit(0);
 }
 if (args[0] === "check") {
+  if (process.env.FAKE_ONCEBITTEN_TASK_STORE) {
+    const { tasks } = JSON.parse(readFileSync(process.env.FAKE_ONCEBITTEN_TASK_STORE, "utf8"));
+    appendFileSync(process.env.FAKE_ONCEBITTEN_LOG, JSON.stringify({ args, status: tasks[0].status }) + "\n");
+  }
   const code = Number(process.env.FAKE_ONCEBITTEN_CHECK || 0);
   if (code === 1) process.stdout.write("no-sleep-in-tests fired in test/x.test.mjs:3\n");
   process.exit(code);
