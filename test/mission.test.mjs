@@ -180,7 +180,10 @@ test("a tick reads the mission at run time, so an edit reaches the next tick", a
     return JSON.parse(tail)[1];
   };
   assert.match(await run(), /PM reads a mission file each tick/);
-  assert.ok((await run()).endsWith(GOOD));
+  // The mission is appended in full, then the run review closes the prompt (lib/pm-review.mjs).
+  const first = await run();
+  assert.ok(first.includes(GOOD), "the mission goes in verbatim");
+  assert.ok(first.indexOf(GOOD) < first.indexOf("Run review, before you finish"), "the review follows the mission");
 
   writeFileSync(path.join(root, MISSION_FILE), GOOD.replace("PM reads a mission file each tick", "PM reads the newest mission"));
   assert.match(await run(), /PM reads the newest mission/);

@@ -4,6 +4,7 @@ import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { configDir, listProjects } from "../lib/config.mjs";
 import { withMission } from "../lib/mission.mjs";
+import { withReview } from "../lib/pm-review.mjs";
 import { projectOfFolder } from "../lib/schedule-session.mjs";
 import { childEnv } from "../lib/start.mjs";
 import { scopeLaunch } from "../lib/scope.mjs";
@@ -155,7 +156,10 @@ export function runCommand(command, { cwd, env = process.env, timeoutMs, signal,
 export function tickFn(entry, { env = process.env, log = () => {}, graceMs, projects } = {}) {
   return async (scheduledTime, actualTime, wf) => {
     // The mission file is read here, every tick, so a PM edit reaches the next tick without touching schedules.json.
-    const command = withMission(entry.command, { project: projectOfFolder(entry.cwd, projects ?? listProjects(env)), env, log });
+    const project = projectOfFolder(entry.cwd, projects ?? listProjects(env));
+    // The review comes last, after the mission, so it is the closing instruction of every run; a project with no
+    // mission file still gets it, and the review says to write the file first.
+    const command = withReview(withMission(entry.command, { project, env, log }), { project });
     // The command runs in its own scope, so a runner restart does not kill an agent a tick started; it also outlives
     // the tick's own timeout only if the scope cannot be made, where the group kill still applies.
     const result = await wf.step(TICK_STEP, () => runCommand(command, { cwd: entry.cwd, env: childEnv(env), timeoutMs: entry.timeoutMs, signal: wf.signal, graceMs, scope: { env, label: entry.name, description: `AI Collab schedule ${entry.name}` } }), {
