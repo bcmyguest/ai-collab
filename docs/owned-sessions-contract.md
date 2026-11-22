@@ -484,7 +484,20 @@ node --test test/runner.test.mjs test/runner-contract.test.mjs \
 
 - The runner integration test starts an owned Cursor session in OpenShell with the permission mode omitted. It checks that the runner selects `full-access`, the fake CLI receives `acp --force` and the owned marker, the prompt produces text and a stop event, and closing releases the sandbox.
 - The adapter tests cover policy forwarding, sandbox paths, CLI and auth staging with fixture credentials, edit sync, and cleanup after a failed start. The runner and contract tests also check that full access is refused outside OpenShell.
-- These tests use fake OpenShell and Cursor processes with local fixtures. Live acceptance requires a host with OpenShell, an authenticated Cursor CLI, and working Cursor API connectivity. Start an owned Cursor session in Agent mode with OpenShell selected, send a prompt that writes a marker file in the session worktree, then confirm the response completes and the file syncs back on close. In the recorded live test above, `initialize` succeeded and `session/new` failed with `EAI_AGAIN api2.cursor.sh`.
+
+### Live verification through the runner service
+
+Run on a host where `openshell sandbox list -o json` works, the Cursor CLI is installed and signed in under the runner account, and Cursor can reach its API from the OpenShell sandbox. Use the account and PATH that would run `deploy/ai-collab-runner.service`. If needed, set `AI_COLLAB_OPENSHELL_BIN`, `AI_COLLAB_CURSOR_BIN`, `AI_COLLAB_CURSOR_TREE`, or `AI_COLLAB_OPENSHELL_POLICY` as you would for the service.
+
+```sh
+export TMPDIR="$(mktemp -d -p /tmp)"
+AI_COLLAB_LIVE_CURSOR_OPENSHELL=1 node --test \
+  --test-name-pattern='live Cursor OpenShell' test/runner.test.mjs
+```
+
+The opt-in test starts `runner/main.mjs` with an isolated project, database, and control socket. It uses local fixture ntfy for activity capture and the real OpenShell and Cursor CLIs for the turn. It requests an owned Cursor session in OpenShell with the permission mode omitted, checks that the service selects `full-access`, then waits for assistant text and a successful stop. It closes the session through the socket and checks the marker in the host worktree and the removal of the project sandbox.
+
+The OpenShell builder returned `ENOENT` for `openshell --version` at the live test's preflight. Cursor Agent was also absent from its PATH. The test skips by default. The earlier live probe described above reached ACP `initialize` and failed at `session/new` with Cursor logging `EAI_AGAIN api2.cursor.sh`.
 
 ## Files
 
