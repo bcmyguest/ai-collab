@@ -2,7 +2,7 @@
 export const DONE_ID = "done";
 export const DEFAULT_KIND = "pair";
 export const NODE_W = 120;
-export const NODE_H = 48;
+export const NODE_H = 60;
 export const SLOT_GAP = 176;
 export const DEPTH_GAP = 100;
 export const PAD = 16;
@@ -11,18 +11,19 @@ export const LANE_GAP = 26;
 const CHAR_W = 6.6;
 
 /**
- * A listed pattern as a graph: nodes with agent (harness:model), count and skill; edges with on, kind, required and cap.
- * Saved patterns carry no kind or count or skill, so every edge is "pair" and every node counts once.
+ * A listed pattern as a graph: nodes with agent (harness:model), count, skill and fallback; edges with on, kind, required and cap.
+ * A handoff with no kind is pair, the team.dot default; a pattern with no count or skill shows one instance and none.
  */
 export function toGraph(pattern) {
   const nodes = (pattern.roles ?? []).map(role => ({
-    id: role.id, agent: role.model ? `${role.harness}:${role.model}` : role.harness ?? "", count: 1, skill: "",
+    id: role.id, agent: role.model ? `${role.harness}:${role.model}` : role.harness ?? "", count: role.count ?? 1, skill: role.skill ?? "",
+    ...(role.fallback ? { fallback: role.fallback } : {}),
   }));
   const edges = (pattern.handoffs ?? []).map(handoff => ({
-    from: handoff.from, to: handoff.to, on: handoff.on, kind: DEFAULT_KIND, required: handoff.required,
+    from: handoff.from, to: handoff.to, on: handoff.on, kind: handoff.kind ?? DEFAULT_KIND, required: handoff.required,
     ...(handoff.cap !== undefined ? { cap: handoff.cap } : {}),
   }));
-  return { description: pattern.description ?? "", nodes, edges, maxVisits: null };
+  return { description: pattern.description ?? "", nodes, edges, maxVisits: pattern.maxVisits ?? null };
 }
 
 const quote = text => `"${String(text).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
@@ -37,6 +38,7 @@ export function toDot(graph, name) {
   for (const node of graph.nodes) {
     const fields = [`agent=${quote(node.agent)}`, `count=${node.count}`];
     if (node.skill) fields.push(`skill=${quote(node.skill)}`);
+    if (node.fallback) fields.push(`fallback=${quote(node.fallback)}`);
     lines.push(`  ${quote(node.id)} [${fields.join(", ")}];`);
   }
   for (const edge of graph.edges) {

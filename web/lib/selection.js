@@ -20,7 +20,7 @@ export function parseSelection(hash) {
     tab: at === "session" ? sessionTab : tab === "tasks" ? "tasks" : "chat",
     run: at === "session" && tab === "subagents" ? params.get("run") || "" : "",
   };
-  // pattern names the one inspected, raw=1 shows its definition text; run names a pattern run.
-  if (at === "patterns") return { ...base, pattern: params.get("pattern") || "", raw: params.get("raw") === "1", run: params.get("run") || "" };
+  // pattern names the one inspected, raw=1 shows its definition text; edit=1 opens its team editor, edit=new a new team; run names a pattern run.
+  if (at === "patterns") return { ...base, pattern: params.get("pattern") || "", raw: params.get("raw") === "1", ...(params.get("edit") ? { edit: params.get("edit") } : {}), run: params.get("run") || "" };
   return base;
 }

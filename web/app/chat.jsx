@@ -805,6 +805,7 @@ function Console({ account }) {
     if (next.tab === "subagents" && next.run) params.set("run", next.run);
     if (next.level === "patterns") for (const key of ["pattern", "run"]) if (next[key]) params.set(key, next[key]);
     if (next.level === "patterns" && next.raw) params.set("raw", "1");
+    if (next.level === "patterns" && next.edit) params.set("edit", next.edit);
     location.hash = params.toString();
   }
   const project = selected.project || data.project || "";
