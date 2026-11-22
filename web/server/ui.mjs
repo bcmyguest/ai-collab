@@ -21,7 +21,7 @@ import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } 
 import { availableHarnesses, availablePlaces, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
 import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
-import { createTeam, deleteTeam, listTeams, teamTask } from "../../lib/teams.mjs";
+import { closedProjectNames, createTeam, deleteTeam, listTeams, removeProject, setProjectClosed, teamTask } from "../../lib/teams.mjs";
 import { createPattern, deletePattern, listPatterns } from "../../lib/patterns.mjs";
 import { advanceRun, listRuns, startRun } from "../../lib/pattern-runs.mjs";
 import { formatTeamOrchestrator } from "../../lib/format.mjs";
@@ -37,7 +37,7 @@ import { answerMessage, answerText, terminalMessages } from "../lib/operator-mes
 import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a2ui.js";
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern"];
+const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern"];
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
 const PARENT = /^[a-z0-9-]{1,24}#[a-f0-9]{16}$/;
@@ -292,6 +292,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   const clients = new Set();
   const hubs = new Map();
   const known = new Set();
+  // Projects deleted in this process; they stay hidden until the next start.
+  const removed = new Set();
   const projects = new Map();
   let pushTimer = null;
   let lastStartAt = 0;
@@ -776,16 +778,20 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const runsOf = new Map(own.map(card => [card.id, card.subagents]));
     // Child sessions join their parent's subagents on the agent list only; the cards nest them already (sessionTree).
     const kids = childRuns(own);
-    const cards = scope === "home" ? [...projects.values()].flatMap(item => item === project ? sessionCards(item, list, mode)
+    const hidden = new Set([...closedProjectNames(env), ...removed]);
+    const shown = [...projects.values()].filter(item => !hidden.has(item.cfg.project));
+    const cards = scope === "home" ? shown.flatMap(item => item === project ? sessionCards(item, list, mode)
       : item.failed ? [] : sessionCards(item, agents(item, lastMessages(item)), mode))
       : scope === "sessions" ? sessionCards(project, list, mode) : undefined;
     return {
       project: project.cfg.project, operator: project.operator.peer, mode,
       // Waiting counts per project, present only when above 0; a failed project has no sessions to count.
-      projects: [...projects.values()].map(item => {
+      projects: shown.map(item => {
         const count = item === project ? waiting.size : item.failed ? 0 : waitingIds(item, agents(item, lastMessages(item))).size;
         return { id: item.cfg.project, peers: item.cfg.peers, ...(count ? { waiting: count } : {}) };
       }),
+      // Registered projects marked closed, listed so the sidebar can reopen them.
+      closedProjects: closedProjectNames(env).filter(name => !removed.has(name)),
       view: { harness, session, ...(scope ? { scope } : {}) },
       harnesses: harnesses(project, list, last),
       // Unfinished subagent runs ride on each agent for the composer's @session/run picker.
@@ -799,7 +805,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }),
       messages: scope === "home" ? [] : messages(project, { harness, session }, list),
       ...(cards ? { sessions: cards } : {}),
-      ...(scope === "home" ? { unavailable: [...projects.values()].filter(item => item.failed).map(item => item.cfg.project) } : {}),
+      ...(scope === "home" ? { unavailable: shown.filter(item => item.failed).map(item => item.cfg.project) } : {}),
       startable: startable(project),
       startPlaces: startPlaces(project),
       teams: Object.entries(listTeams(project.cfg, env)).map(([id, members]) => ({ id, members })),
@@ -968,6 +974,16 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
         return json(201, { status: "AFK " + mode, detail: "Sent to " + projects.size + (projects.size === 1 ? " project" : " projects") });
+      }
+      // Close hides a project from the sidebar and Home; Delete drops its registry entry only (repo, worktrees, ntfy history stay).
+      if (action === "close" || action === "reopen") {
+        setProjectClosed(env, name, action === "close");
+        return json(200, { status: action === "close" ? "Closed" : "Reopened", detail: name });
+      }
+      if (action === "delete") {
+        removeProject(env, name);
+        removed.add(name);
+        return json(200, { status: "Deleted", detail: name });
       }
       const project = projectFor(name);
       const { cfg, operator, topic } = project;

@@ -30,6 +30,7 @@ import { SurfaceContext } from "@/components/a2ui/surface";
 import { NotifyToggle } from "./notify";
 import { SessionList, SessionMenu, SubagentList } from "./home";
 import { RunningCount, SubagentRuns } from "./subagent-runs";
+import { ClosedProjects, ProjectMenu } from "./project-menu";
 import { activityRows, groupSubagents } from "@/lib/activity-rows";
 import { conversationKey, drafts, views } from "@/lib/view-memory";
 import { toast } from "sonner";
@@ -173,7 +174,7 @@ function SessionName({ agent }) {
   return agent?.name ? <span className="line-clamp-2 min-w-0 break-words text-xs text-foreground/80">{agent.name}</span> : null;
 }
 
-function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamOpen, createPattern, dispose, openRaw, disabled }) {
+function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamOpen, createPattern, dispose, openRaw, disabled, projectAction }) {
   const current = selected.project || data.project;
   // Home's state carries the server's default project's agents; they are not "this project" here.
   const home = selected.level === "home";
@@ -198,8 +199,10 @@ function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamO
           </button>
           <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label={"New session in " + project.id}
             title="New session" onClick={() => newSession(project.id)}><Plus/></Button>
+          <ProjectMenu project={project.id} act={projectAction}/>
         </li>)}
       </ul>
+      {data.closedProjects?.length > 0 && <div className="pt-4"><ClosedProjects names={data.closedProjects} act={projectAction}/></div>}
     </section>
     {!home && <section className="px-2 pb-2">
       <div className="mb-1 flex items-center justify-between gap-2">
@@ -848,8 +851,14 @@ function Console({ account }) {
   async function savePattern(payload) {
     try { return await api("pattern", payload); } catch (err) { return { error: err.message }; }
   }
+  // Close, reopen and delete a project; Delete asks first and leaves the repo, worktrees and ntfy history alone.
+  async function projectAction(path, name) {
+    if (path === "delete" && !window.confirm("Delete " + name + " from the project registry? Its repo, worktrees and ntfy history stay.")) return;
+    const done = await action(path, { project: name }, path === "close" ? "Closed" : path === "reopen" ? "Reopened" : "Deleted");
+    if (done && path !== "reopen" && name === (selected.project || data.project)) navigate({ level: "home" });
+  }
   const sidebar = <Sidebar data={data} selected={selected} now={now} navigate={navigate} newSession={newSession} teamOpen={teamOpen} setTeamOpen={setTeamOpen}
-    createPattern={savePattern} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")} openRaw={openRaw}/>;
+    createPattern={savePattern} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")} openRaw={openRaw} projectAction={projectAction}/>;
   const anyWaiting = data.projects.some(project => project.waiting > 0);
   return <SurfaceContext.Provider value={{ surfaces, submit: payload => action("a2ui", payload, "Sent"), disabled: !ready || working }}><div className="flex h-dvh w-full overflow-hidden">
     <aside className="hidden w-72 shrink-0 border-r bg-sidebar text-sidebar-foreground md:block">{sidebar}</aside>
