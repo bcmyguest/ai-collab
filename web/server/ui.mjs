@@ -52,7 +52,7 @@ import { answerMessage, answerText, terminalMessages } from "../lib/operator-mes
 import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a2ui.js";
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern"];
+const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide"];
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
 const PARENT = /^[a-z0-9-]{1,24}#[a-f0-9]{16}$/;
@@ -1107,7 +1107,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
-      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, startMode, codeMode, team: teamName, members, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps } = await payload(request);
+      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, startMode, codeMode, team: teamName, members, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -1133,6 +1133,16 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const project = projectFor(name);
       const { cfg, operator, topic } = project;
       if (action === "approve") return json(201, await answerApproval(project, id, { decision, answers }, by));
+      // The operator's decision on a task question goes straight into the task store; the next agent run reads it.
+      if (action === "decide") {
+        if (!project.tasks) reject(400, "This project has no task store");
+        const text = typeof decisionText === "string" ? decisionText.trim() : "";
+        if (typeof id !== "string" || !text) reject(400, "Give the task id and an answer");
+        try {
+          await project.tasks.update(id, { answer: { text, by: by ? `operator:${by}` : "operator" } });
+        } catch (err) { reject(400, err.message); }
+        return json(201, { status: "Decided", detail: id });
+      }
       // AG-UI run input from an A2UI surface: its userAction is the answer, mapped onto the approval or question reply path.
       if (action === "a2ui") {
         const answer = surfaceAnswer(forwardedProps?.a2uiAction?.userAction);

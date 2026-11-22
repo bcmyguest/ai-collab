@@ -3,7 +3,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ageOf, boardClock, columnsOf, countsOf, FILTERS, statusLabel } from "@/lib/task-board";
-import { priorityOf } from "../../lib/task-order.mjs";
+import { priorityOf, sortTasks } from "../../lib/task-order.mjs";
 import { cn } from "@/lib/utils";
 import { TaskGraph } from "./task-graph";
 
@@ -43,6 +43,7 @@ const Card = memo(function Card({ task, age, compose }) {
       {task.run && <Badge variant="outline" className="font-mono">run {task.run}</Badge>}
       {task.blockers?.length > 0 && <span>waits on {task.blockers.join(", ")}</span>}
     </div>
+    {task.question?.answer && <p className="break-words text-xs"><span className="text-muted-foreground">{task.question.text} → </span><span className="font-medium">{task.question.answer.text}</span></p>}
     {task.last && <p className="flex min-w-0 gap-2 border-l-2 pl-2 text-xs">
       <span className="min-w-0 flex-1 break-words">{task.last.text}</span>
       <span className="shrink-0 text-muted-foreground">{age} ago</span>
@@ -52,6 +53,40 @@ const Card = memo(function Card({ task, age, compose }) {
     <button type="button" aria-label={`Message about ${task.title}`} onClick={() => compose(task.id)} className={cn(CARD, "transition-colors hover:bg-accent")}>{body}</button>
   </li>;
 });
+
+/** A task question waiting on the operator: tap a choice or type an answer; it is stored on the task, no agent turn runs. */
+function Decision({ task, decide, compose }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const send = async answer => {
+    const value = String(answer).trim();
+    if (!value || busy) return;
+    setBusy(true);
+    const ok = await decide(task.id, value);
+    setBusy(false);
+    if (ok) setText("");
+  };
+  const q = task.question;
+  return <li className="flex min-w-0 flex-col gap-2 rounded-xl border border-amber-500/50 bg-amber-500/5 p-3 text-sm">
+    <div className="flex min-w-0 items-start gap-2">
+      <Badge variant="outline" className={cn("shrink-0 font-mono text-[10px]", PRIORITY_BADGE[priorityOf(task)])}>{priorityOf(task)}</Badge>
+      <button type="button" onClick={() => compose(task.id)} className="min-w-0 flex-1 text-left font-medium leading-snug break-words hover:underline">{task.title}</button>
+      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{task.id}</span>
+    </div>
+    <p className="break-words">{q.text}</p>
+    <p className="text-xs text-muted-foreground">asked by <span className="font-mono">{q.by}</span></p>
+    {q.options?.length > 0 && <div role="group" aria-label="Choices" className="flex flex-wrap gap-2">
+      {q.options.map(option => <Button key={option} type="button" size="sm" variant="outline" disabled={busy}
+        className="h-auto min-h-8 whitespace-normal rounded-full text-left" onClick={() => send(option)}>{option}</Button>)}
+    </div>}
+    <form className="flex gap-2" onSubmit={event => { event.preventDefault(); send(text); }}>
+      <input value={text} onChange={event => setText(event.target.value)} maxLength={500} aria-label={`Answer for ${task.title}`}
+        placeholder={q.options?.length ? "Or type your own answer" : "Your decision"} enterKeyHint="send"
+        className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"/>
+      <Button type="submit" size="sm" className="h-9" disabled={busy || !text.trim()}>Decide</Button>
+    </form>
+  </li>;
+}
 
 /** One status column: its count header and its cards; memoized so filtering or the clock does not rebuild unchanged columns. */
 const Column = memo(function Column({ status, list, now, compose }) {
@@ -65,7 +100,7 @@ const Column = memo(function Column({ status, list, now, compose }) {
 });
 
 /** The status board: one column per status, stacked on a phone and side by side from md up, with a status filter. */
-export function TaskBoard({ board, now, open, compose, taskId, back }) {
+export function TaskBoard({ board, now, open, compose, decide, taskId, back }) {
   const [filter, setFilter] = useState("all");
   const [view, setView] = useState("board");
   const tasks = board?.tasks || [];
@@ -78,14 +113,22 @@ export function TaskBoard({ board, now, open, compose, taskId, back }) {
   useEffect(() => { composeRef.current = compose; });
   const message = useCallback(id => composeRef.current(id), []);
   const task = taskId && tasks.find(item => item.id === taskId);
+  const waiting = useMemo(() => sortTasks(tasks.filter(item => item.question && !item.question.answer)), [tasks]);
   // The list scrolls on its own, so a large board never makes the page body scroll or jump as cards resize.
   return <section aria-label="Task board" className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-3 py-4">
     {board?.error && <p role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">Task store is invalid: {board.error}</p>}
     {taskId ? <>
       <Button type="button" size="sm" variant="outline" className="self-start" onClick={back}>Back to board</Button>
+      {task?.question && !task.question.answer && decide && <ul><Decision task={task} decide={decide} compose={message}/></ul>}
       {task ? <Column status={task.status} list={[task]} now={clock} compose={message}/>
         : board && !board.error && <p role="status">Task #{taskId} was not found.</p>}
     </> : <>
+      {waiting.length > 0 && decide && <section aria-label="Needs your decision" className="flex flex-col gap-2">
+        <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-amber-600 dark:text-amber-400">
+          <span aria-hidden className="inline-block size-2 rounded-full bg-amber-500"/>Needs you · {waiting.length}
+        </h2>
+        <ul className="flex flex-col gap-2 md:grid md:grid-cols-2">{waiting.map(item => <Decision key={item.id} task={item} decide={decide} compose={message}/>)}</ul>
+      </section>}
       <div role="group" aria-label="View" className="flex gap-2">
         {VIEWS.map(([id, name]) => <Button key={id} type="button" size="sm" variant={view === id ? "default" : "outline"}
           aria-pressed={view === id} className="h-8 rounded-full" onClick={() => setView(id)}>{name}</Button>)}
