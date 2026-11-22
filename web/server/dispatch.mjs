@@ -15,7 +15,7 @@ import { broadcastTopic, inboxTopic, receiptsTopic } from "../../lib/config.mjs"
 import { BACKOFF_BASE_MS, BACKOFF_MAX_MS, MAX_ATTEMPTS, PUSHED, REDELIVER_MS, TTL_MS, direct, pushSession, readySession, runCommand } from "../../lib/deliver-push.mjs";
 import { identityLine, formatInbox } from "../../lib/format.mjs";
 import { sessionIdleState } from "../../lib/idle.mjs";
-import { claimInbox, ATTACHMENT_BUDGET_MS, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery } from "../../lib/inbox.mjs";
+import { claimInbox, ATTACHMENT_BUDGET_MS, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery, reservedMessage } from "../../lib/inbox.mjs";
 import { cacheAttachmentsWithin } from "../../lib/attachment-cache.mjs";
 import { pollCached } from "../../lib/ntfy.mjs";
 import { opencodeRequest } from "../../lib/opencode-api.mjs";
@@ -173,7 +173,7 @@ export function createDispatcher({
       if (!candidates.length) continue;
       // Reserve before the push so the waiter's claim cannot take the same messages.
       const owned = new Set(await reserveDelivery(scfg, candidates.map((m) => m.id)));
-      const waiting = candidates.filter((m) => owned.has(m.id));
+      const waiting = candidates.filter((m) => owned.has(m.id)).map(m => reservedMessage(scfg, m)).filter(Boolean);
       if (!waiting.length) continue;
       // A message released after an unconfirmed push is checked over the whole range first: a late confirmation settles it.
       const late = waiting.filter((m) => rechecks.get(slot(session, m.id))?.());

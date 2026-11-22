@@ -320,7 +320,26 @@ function Ticks({ state }) {
     className={cn("inline-flex", state === "read" ? "text-primary" : "text-muted-foreground")}><Icon className="size-3.5"/></span>;
 }
 
-function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, answer, nudge, disabled, detail, taskLinks }) {
+function QueueRow({ message, disabled, change }) {
+  const [draft, setDraft] = useState(null);
+  return <li className="flex flex-wrap items-center gap-2 border-t px-3 py-2 text-sm">
+    {draft === null ? <>
+      <p className="min-w-0 flex-1 truncate" title={message.body}>{message.body}</p>
+      <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => setDraft(message.body)}>Edit</Button>
+      <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => change(message, "cancel")}>Cancel</Button>
+      <Button type="button" variant="ghost" size="sm" disabled={disabled || message.urgent} onClick={() => change(message, "steer")}>{message.urgent ? "Steered" : "Steer"}</Button>
+    </> : <form className="flex w-full flex-wrap items-center gap-2" onSubmit={async event => {
+      event.preventDefault();
+      if (await change(message, "edit", draft)) setDraft(null);
+    }}>
+      <textarea aria-label="Edit queued message" className="w-full rounded border bg-background p-2" autoFocus value={draft} maxLength={4000} onChange={event => setDraft(event.target.value)}/>
+      <Button type="submit" size="sm" disabled={disabled || !draft.trim()}>Save</Button>
+      <Button type="button" variant="ghost" size="sm" onClick={() => setDraft(null)}>Discard edit</Button>
+    </form>}
+  </li>;
+}
+
+function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, answer, disabled, detail, taskLinks }) {
   const sender = message.from || message.sender || "ntfy";
   const outgoing = sender === operator;
   // A signed-in family member's message names them; the viewer's own stays "You".
@@ -351,13 +370,6 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
           className="rounded-full p-0.5 hover:bg-muted hover:text-foreground"><Reply className="size-3.5"/></button>}
         {message.scope === "all" && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">to all</Badge>}        {message.urgent && <span role="img" aria-label="Sent now" title="Sent now: delivered at the agent's next tool call" data-urgent className="text-amber-500"><Zap className="size-3.5"/></span>}
         {outgoing && <Ticks state={message.receipt}/>}
-        {/* Unread by its session: queued for the agent's next poll; Send now delivers it at the next tool call. */}
-        {outgoing && message.to?.includes("#") && message.receipt && message.receipt !== "read" && <span data-queued className="flex items-center gap-1">
-          <Badge variant="outline" className="h-4 px-1.5 text-[10px]">queued</Badge>
-          {!message.urgent && nudge && <button type="button" disabled={disabled} onClick={() => nudge(message.to)}
-            title="Deliver at the agent's next tool call" className="flex items-center gap-0.5 rounded-full px-1 text-amber-600 hover:bg-muted disabled:opacity-50 dark:text-amber-400">
-            <Zap className="size-3"/>Send now</button>}
-        </span>}
         {openable && sender.includes("#") && <GoToAgent onClick={go} className="size-6"/>}
       </div>
       {message.quote && <Quote quote={message.quote} label={short(message.quote.sender)}/>}
@@ -875,7 +887,8 @@ function Console({ account }) {
   const rows = useMemo(() => watching || inline || subagents ? groupSubagents(activityRows(windowRows)) : raw ? activityRows(windowRows) : [], [watching, inline, subagents, raw, windowRows]);
   const goRun = row => navigate({ project, level: "session", harness: peerOf(row.agent), session: row.agent, tab: "subagents", run: row.run });
   // Answers whose card is listed show in the card, so their bubbles stay out of both threads.
-  const visible = useMemo(() => withoutAnswered(data.messages), [data.messages]);
+  const queue = level === "session" && ready ? data.messages.filter(item => item.queued && item.to === target) : [];
+  const visible = useMemo(() => withoutAnswered(level === "session" ? data.messages.filter(item => !item.queued) : data.messages), [data.messages, level]);
   // A run window keeps the chat messages that arrived during the same run, so they sit beside its rows.
   const scoped = useMemo(() => {
     const from = selected.window?.from;
@@ -1003,7 +1016,6 @@ function Console({ account }) {
             : <ChatMessage key={message.id} message={message} operator={data.operator} me={account.user?.login} now={now} open={openAddress} disabled={!ready || working} taskLinks={taskLinks}
               detail={agentDetail(data.agents.find(agent => agent.id === message.from))}
               act={payload => action("approve", payload, "Sent")} answer={(id, body) => action("reply", { question: id, body }, "Reply sent")}
-              nudge={to => action("nudge", { target: to }, "Sending now")}
               reply={id => { setQuestion(id); setNotice(""); document.getElementById("composer")?.focus(); }}
               replyFrom={target => setReplyTo(target)}/>)}
           {ready && watching && live.map(row => <LiveRow key={row.id} row={row} open={openAddress}/>)}
@@ -1019,6 +1031,14 @@ function Console({ account }) {
         </div>
       </ChatContainerRoot>)}
       <div role="status" hidden={!notice} className="mx-auto w-full max-w-3xl px-4 text-center text-xs text-muted-foreground">{notice}</div>
+      {!composing && queue.length > 0 && <section aria-label="Queued messages" className="mx-auto w-full max-w-3xl border-t bg-background">
+        <h2 className="px-3 py-1 text-xs font-medium text-muted-foreground">Queued messages ({queue.length})</h2>
+        <ul className="max-h-48 overflow-y-auto">
+          {queue.map(message => <QueueRow key={project + ":" + message.id} message={message} disabled={working || Boolean(message.by && message.by !== account.user?.login)}
+            change={(item, queueAction, body) => action("queue", { target: item.to, id: item.id, queueAction, body },
+              { edit: "Queue updated", cancel: "Message canceled", steer: "Prioritized for delivery" }[queueAction])}/>)}
+        </ul>
+      </section>}
       {!home && !listing && !patterns && !tasksView && !composing && <Composer key={requested + ":" + composeTask} conversation={conversationKey(project, composeTask ? "#" + composeTask : level === "session" ? selected.session : "")} initialDraft={composeTask ? `#${composeTask} ` : ""} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
         placeholder={placeholder} question={question} cancel={() => setQuestion("")} urgentable={!question} replying={replyTo} cancelReply={() => setReplyTo(null)}
         onSend={async (body, urgent, command) => {

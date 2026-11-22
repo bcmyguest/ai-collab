@@ -8,11 +8,12 @@ import { buzzes, readAlertLevel, writeAlertLevel } from "../../lib/alerts.mjs";
 import { loadConfig, loadProjects, activityTopic, startDefaultSetting, broadcastTopic, configDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.mjs";
 import { ACTIVITY_TYPES } from "../../lib/activity.mjs";
 import { stripControl } from "../../lib/format.mjs";
-import { NTFY_MESSAGE_MAX_BYTES, latestStatuses, markUrgent, parseEnvelope, sendMessage } from "../../lib/inbox.mjs";
+import { NTFY_MESSAGE_MAX_BYTES, latestStatuses, changeQueuedMessage, queuedMessage, markUrgent, parseEnvelope, sendMessage } from "../../lib/inbox.mjs";
 import { IMAGE_FILE, TEXT_FILE, attachmentOf, ensureAttachment, cachedAttachment, readAttachmentFile } from "../../lib/attachment-cache.mjs";
 import { publish } from "../../lib/ntfy.mjs";
 import { parsePhoneReply, parseQuestionText } from "../../lib/questions.mjs";
 import { disposeSession, listSessions, sessionPlace, worktreeGone } from "../../lib/sessions.mjs";
+import { readState, statePath } from "../../lib/state.mjs";
 import { readReceipts } from "../../lib/receipts.mjs";
 import { controlSession } from "../../lib/controls.mjs";
 import { interruptSession } from "../../lib/interrupt.mjs";
@@ -52,7 +53,7 @@ import { answerMessage, answerText, terminalMessages } from "../lib/operator-mes
 import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a2ui.js";
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide"];
+const ACTIONS = ["messages", "send", "reply", "nudge", "queue", "compact", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide"];
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
 const PARENT = /^[a-z0-9-]{1,24}#[a-f0-9]{16}$/;
@@ -746,6 +747,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     });
   }
 
+  function queueEntry(item) {
+    if (item.kind !== "Message" || item.from !== "operator" || !item.thread || typeof item.to !== "string") return false;
+    const [peer, session, ...extra] = item.to.split("#");
+    return isValidName(peer) && typeof session === "string" && SESSION_LABEL.test(session) && !extra.length;
+  }
+
   // Zoom by sender: the whole project, one harness, or one session's direct thread.
   function messages(project, { harness, session }, agentList) {
     const topic = entries(project, project.topic, () => true);
@@ -753,23 +760,37 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const answered = new Set(answers.map(answer => answer.question));
     // An answer shows as an operator message, so the ntfy Reply entry it came from goes.
     const shared = topic.filter(item => !(item.kind === "Reply" && answered.has(item.question)));
+    const states = new Map();
+    const local = new Set(agentList.filter(agent => agent.registered).map(agent => agent.id));
+    const withQueue = items => items.flatMap(item => {
+      if (!queueEntry(item)) return [item];
+      if (!states.has(item.to)) {
+        const [peer, session] = item.to.split("#");
+        states.set(item.to, readState(statePath({ ...project.cfg, peer, session })));
+      }
+      const state = states.get(item.to);
+      const current = queuedMessage(item, state);
+      if (!current) return [];
+      const queued = local.has(item.to) && !state.seen.includes(item.id) && !project.reads.get(item.id)?.has(item.to);
+      return [queued ? { ...current, queued: true } : current];
+    });
     let list;
     if (session) {
       // A system message rides the operator's address, so it belongs in the operator's thread with that session.
       const fromOperator = item => item.from === "operator" || item.system === true;
       const thread = item => item.thread && ((fromOperator(item) && item.to === session) || (item.from === session && item.to === "operator"));
-      const direct = entries(project, inboxOf(project, peerOf(session)), thread);
+      const direct = withQueue(entries(project, inboxOf(project, peerOf(session)), thread));
       list = [...direct, ...terminalPrompts(project, session, direct),
         ...shared.filter(item => item.from === session).map(item => ({ ...item, scope: "all" })),
         ...answers.filter(answer => answer.asker === session).map(answerMessage)];
     } else if (harness) {
       const related = item => peerOf(item.from) === harness || peerOf(item.to) === harness || mentions(item.body, harness);
       list = [...shared.filter(related).map(item => ({ ...item, scope: "all" })),
-        ...entries(project, inboxOf(project, harness), item => item.kind === "Message")];
+        ...withQueue(entries(project, inboxOf(project, harness), item => item.kind === "Message"))];
     } else {
       // Terminal prompts echo UI messages sent to all (topic) or to one session (its peer's inbox).
       const peers = [...new Set(activityList(project).map(item => peerOf(item.agent)))];
-      const sent = [...topic, ...peers.flatMap(peer => entries(project, inboxOf(project, peer), () => true))];
+      const sent = [...topic, ...withQueue(peers.flatMap(peer => entries(project, inboxOf(project, peer), () => true)))];
       list = [...shared, ...answers.map(answerMessage), ...terminalPrompts(project, null, sent)];
     }
     const { ends, replies, senders } = outcomes(project.hub.events(project.topic));
@@ -779,7 +800,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const original = item.replyOf && byId.get(item.replyOf);
       return original ? { ...item, quote: { id: original.id, sender: original.sender || original.from, body: String(original.body || "").slice(0, QUOTE_MAX) } } : item;
     };
-    return list.sort((a, b) => a.time - b.time || a.id.localeCompare(b.id)).slice(-MAX_MESSAGES)
+    const sorted = list.sort((a, b) => a.time - b.time || a.id.localeCompare(b.id));
+    const recent = new Set(sorted.slice(-MAX_MESSAGES));
+    return sorted.filter(item => recent.has(item) || (session && item.queued))
       .map(item => {
         if (item.kind === "Approval") return { ...item, approval: approvalState(item.approval, ends, replies, senders) };
         if (item.kind === "Question" && replies.has(item.question)) {
@@ -1107,7 +1130,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
-      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, startMode, codeMode, team: teamName, members, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText } = await payload(request);
+      const { project: name, target, body, queueAction, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, startMode, codeMode, team: teamName, members, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -1225,6 +1248,30 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         recipient(cfg, target, true);
         markUrgent(operator, target);
         return json(200, { status: "Sending at the agent's next tool call" });
+      }
+      if (action === "queue") {
+        const peer = recipient(cfg, target, true);
+        if (typeof id !== "string" || !/^[a-zA-Z0-9-]{1,64}$/.test(id)) reject(400, "Invalid message ID");
+        if (!listSessions(cfg).some(session => session.id === target)) reject(409, "Queue actions require a locally registered session");
+        const inbox = inboxOf(project, peer);
+        await project.hub.open(inbox);
+        await project.hub.open(project.receipts);
+        const item = entries(project, inbox, item => item.id === id && item.to === target && queueEntry(item))[0];
+        if (!item) reject(404, "Queued message unavailable");
+        if (item.by && item.by !== by) reject(403, "Only the sender can change this message");
+        if (project.reads.get(id)?.has(target)) reject(409, "The agent already read this message");
+        let change;
+        if (queueAction === "edit") {
+          if (typeof body !== "string" || !body.trim() || body.length > 4000) reject(400, "Enter 1–4000 characters");
+          change = { body: body.trim() };
+        } else if (queueAction === "cancel") change = { cancelled: true };
+        else if (queueAction === "steer") change = { urgent: true };
+        else reject(400, "Unknown queue action");
+        const session = target.split("#")[1];
+        if (!await changeQueuedMessage({ ...cfg, peer, session }, id, change)) reject(409, "This message is no longer available to change");
+        if (change.urgent) markUrgent(operator, target);
+        broadcast();
+        return json(200, {});
       }
       if (action === "dispose") {
         disposeSession(cfg, target);

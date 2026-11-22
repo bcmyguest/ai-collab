@@ -57,8 +57,10 @@ export function deliveryWorkflow(deps) {
       const got = await wf.step("reserve", () => deps.reserve(scfg, [id], { owner, allowSeen }));
       if (got.busy) return "failed";
       if (!got.owned.length) return "skipped";
-      const text = await Promise.resolve().then(() => deps.textFor(scfg, message, attemptNo));
-      const pushed = await wf.step("push", () => deps.push(session, { text, urgent: message.urgent === true, ids: [id] }), {
+      const current = deps.reservedMessage ? deps.reservedMessage(scfg, message) : message;
+      if (!current) return "skipped";
+      const text = await Promise.resolve().then(() => deps.textFor(scfg, current, attemptNo));
+      const pushed = await wf.step("push", () => deps.push(session, { text, urgent: current.urgent === true, ids: [id] }), {
         onCut: async () => ({ status: await deps.waitConfirmed(session, [id], snap) ? "delivered" : "cut" }),
       });
       if (pushed.status === "delivered") {
