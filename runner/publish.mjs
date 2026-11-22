@@ -57,7 +57,7 @@ export function ownedApprovalMessage(cfg, harness, { id, tool, summary, question
 }
 
 export function approvalEndMessage(cfg, id, reason) {
-  return encodeEnvelope("approval-end", { from: cfg.peer, session: cfg.session, id, reason, owned: true, ts: new Date().toISOString() });
+  return encodeEnvelope("approval-end", { from: cfg.peer, session: cfg.session, id, reason, owned: true, ts: new Date().toISOString() }, cfg.wire);
 }
 
 /** Publishes the owned approval card on the broadcast topic; throws when it cannot fit or publish. */

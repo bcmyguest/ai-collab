@@ -1,6 +1,6 @@
 import { EventType } from "@ag-ui/core";
 import { parseSSEStream, runHttpRequest } from "@ag-ui/client";
-import { eventToEnvelope, parseEvent } from "../../lib/agui.mjs";
+import { parseEvent, projectEvent } from "../../lib/agui.mjs";
 
 export const ACTIVITY_BATCH = "ai-collab.activity-batch";
 export const STREAM_ERROR = "ai-collab.stream-error";
@@ -25,7 +25,7 @@ export function projectUiEvents() {
     }
     const meta = event.metadata?.aiCollabUi;
     if (!meta) return null;
-    const row = eventToEnvelope(event);
+    const row = projectEvent(event);
     if (row?.kind !== "activity") return null;
     const { id, time, attachment } = meta;
     const { from, session, harness, type, tool, callId, input, output, agent } = row;

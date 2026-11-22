@@ -9,7 +9,6 @@ import { loadConfig } from "../lib/config.mjs";
 import { claimInbox, sendMessage } from "../lib/inbox.mjs";
 import { currentMode, latestMode, operatorConfigs, parseMode, publishMode, storedMode, takeModeNote } from "../lib/mode.mjs";
 import { runCli } from "../lib/cli.mjs";
-import { eventToEnvelope } from "../lib/agui.mjs";
 
 const ALL = "ai-collab-demo--to--all";
 const mode = (m, ts, extra = {}) => JSON.stringify({ v: 1, kind: "mode", from: "operator", mode: m, ts, ...extra });
@@ -94,7 +93,7 @@ test("publishMode and `ai-collab afk` reach every project in projects.json", asy
   assert.deepEqual(cfgs.map((c) => [c.project, c.peer]), [["one", "operator"], ["two", "operator"]]);
 
   assert.deepEqual(await publishMode(cfgs, "on", { now: 42 }), [{ project: "one", ok: true }, { project: "two", ok: true }]);
-  assert.deepEqual(fake.state.publishes.map((p) => [p.topic, eventToEnvelope(p.message)]), [
+  assert.deepEqual(fake.state.publishes.map((p) => [p.topic, JSON.parse(p.message)]), [
     ["ai-collab-one--to--all", { v: 1, kind: "mode", from: "operator", mode: "on", ts: 42 }],
     ["ai-collab-two--to--all", { v: 1, kind: "mode", from: "operator", mode: "on", ts: 42 }],
   ]);

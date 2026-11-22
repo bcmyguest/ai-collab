@@ -10,7 +10,6 @@ import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { readOwned, standsDown } from "../lib/owned.mjs";
 import { listSessions } from "../lib/sessions.mjs";
 import { settleReceipts } from "../lib/receipts.mjs";
-import { eventToEnvelope } from "../lib/agui.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
@@ -55,8 +54,8 @@ async function until(check, what, ms = 4000) {
   }
 }
 
-const envelopes = (fake, topic) => fake.state.publishes.filter((p) => p.topic === topic).map((p) => eventToEnvelope(p.message)).filter(Boolean);
-const rows = (fake) => fake.state.publishes.filter((p) => p.topic === ACTIVITY).map((p) => eventToEnvelope(p.message));
+const envelopes = (fake, topic) => fake.state.publishes.filter((p) => p.topic === topic).map((p) => JSON.parse(p.message)).filter(Boolean);
+const rows = (fake) => fake.state.publishes.filter((p) => p.topic === ACTIVITY).map((p) => JSON.parse(p.message));
 
 test("start opens a session, claims the registry, and publishes prompt, text and stop rows", async () => {
   const fake = await startFakeNtfy();

@@ -9,7 +9,6 @@ import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { sendMessage } from "../lib/inbox.mjs";
 import { formatInbox, identityLine, stopOutput } from "../lib/format.mjs";
-import { eventToEnvelope } from "../lib/agui.mjs";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 const MCP = fileURLToPath(new URL("../scripts/ai-collab-mcp.mjs", import.meta.url));
@@ -105,7 +104,7 @@ test("MCP: version comes from package.json; send_to_all replies to broadcasts an
   assert.equal(ask.inputSchema.properties.important.type, "boolean");
 
   assert.deepEqual(await call("send_to_all", { body: "Done with step 1", session, reply_to: "m00000001" }), { sent: true, mode: "off" });
-  const reply = eventToEnvelope(fake.state.publishes.at(-1).message);
+  const reply = JSON.parse(fake.state.publishes.at(-1).message);
   assert.equal(fake.state.publishes.at(-1).topic, "ai-collab-demo--to--all");
   assert.deepEqual([reply.from, reply.session, reply.to, reply.replyTo, reply.body], ["alice", session, "all", "m00000001", "Done with step 1"]);
 

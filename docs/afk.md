@@ -23,13 +23,13 @@ In mode `on` or `quiet`, permission prompts also go to the phone; see [Approvals
 
 ## How the mode travels
 
-Each project's broadcast topic carries an AG-UI mode event:
+Each project's broadcast topic carries a mode record. The default writer sends:
 
 ```json
-{"type":"CUSTOM","name":"ai-collab.mode","value":{"from":"operator","mode":"on","ts":1795243066000},"timestamp":1795243066000}
+{"v":1,"kind":"mode","from":"operator","mode":"on","ts":1795243066000}
 ```
 
-The highest `value.ts` wins. With no mode event, the mode is `off`. Agents never see it as chat. Each session records the mode when it reads its inbox, and its next hook injects a one-time note with the new rules. SessionStart fetches the last 12 hours of the broadcast topic (the ntfy cache duration) and injects the current mode. A mode set more than 12 hours ago is gone from the cache; new sessions then start in `off`. `lib/mode.mjs` exports `publishMode(cfgs, mode)`, `currentMode(cfg)`, and `operatorConfigs(env)` for the UI server.
+The highest `ts` wins. With no mode event, the mode is `off`. Agents never see it as chat. Each session records the mode when it reads its inbox, and its next hook injects a one-time note with the new rules. SessionStart fetches the last 12 hours of the broadcast topic (the ntfy cache duration) and injects the current mode. A mode set more than 12 hours ago is gone from the cache; new sessions then start in `off`. `lib/mode.mjs` exports `publishMode(cfgs, mode)`, `currentMode(cfg)`, and `operatorConfigs(env)` for the UI server.
 
 The agent asks for the AFK wait: `ask_question` (any question) or the `wait_for_operator` MCP tool records a wait request for the session, and the next Stop waits. The Stop clears the request when it ends or delivers a message or answer, so each wait needs a new request.
 

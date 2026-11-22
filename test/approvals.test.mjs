@@ -9,7 +9,6 @@ import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
-import { eventToEnvelope } from "../lib/agui.mjs";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 const ALL = "ai-collab-demo--to--all";
@@ -20,7 +19,7 @@ const QUESTIONS = [{
 }];
 
 const setMode = (fake, mode) => fake.inject(ALL, JSON.stringify({ v: 1, kind: "mode", from: "operator", mode, ts: Date.now() }));
-const envelopes = (fake, kind) => fake.state.publishes.map(p => { try { return { ...eventToEnvelope(p.message), topic: p.topic, title: p.title }; } catch { return null; } })
+const envelopes = (fake, kind) => fake.state.publishes.map(p => { try { return { ...JSON.parse(p.message), topic: p.topic, title: p.title }; } catch { return null; } })
   .filter(m => m?.kind === kind);
 
 async function published(fake, kind) {
@@ -83,7 +82,7 @@ test("an approval envelope stays within ntfy's limit by shrinking previews", () 
   const req = approvalRequest("claude", "permissionrequest", { tool_name: "AskUserQuestion", tool_input: { questions: big } });
   const message = approvalMessage(cfg, "claude", req, { id: "0123456789ab", expiresAt: 1 });
   assert.ok(Buffer.byteLength(message) <= 4095);
-  assert.equal(eventToEnvelope(message).questions[0].options.length, 4);
+  assert.equal(JSON.parse(message).questions[0].options.length, 4);
 });
 
 test("AFK off: no publish and no decision, so the terminal prompt shows", async (t) => {

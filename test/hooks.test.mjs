@@ -9,7 +9,6 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig } from "../lib/config.mjs";
 import { sendMessage } from "../lib/inbox.mjs";
-import { eventToEnvelope } from "../lib/agui.mjs";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 
@@ -56,7 +55,7 @@ test("claude SessionStart: publishes start status, injects labelled inbox, one s
 
   const statusPub = fake.state.publishes.find((p) => p.topic === "ai-collab-demo--status");
   assert.ok(statusPub, "status published");
-  const status = eventToEnvelope(statusPub.message);
+  const status = JSON.parse(statusPub.message);
   assert.equal(status.event, "start");
   assert.equal(status.harness, "claude");
   const everything = JSON.stringify(fake.state.publishes);
@@ -99,7 +98,7 @@ test("claude Stop publishes a stop status and returns {} (never blocks the agent
   const r = await runHook(["--host", "claude"], { hook_event_name: "Stop", stop_hook_active: false }, aliceEnv);
   assert.equal(r.out.trim(), "{}");
   const pub = fake.state.publishes.find((p) => p.topic === "ai-collab-demo--status");
-  assert.equal(eventToEnvelope(pub.message).event, "stop");
+  assert.equal(JSON.parse(pub.message).event, "stop");
 });
 
 test("cursor sessionStart and postToolUse use additional_context; stop publishes", async (t) => {
@@ -116,7 +115,7 @@ test("cursor sessionStart and postToolUse use additional_context; stop publishes
 
   const st = await runHook(["--host", "cursor"], { hook_event_name: "stop" }, aliceEnv);
   assert.equal(st.out.trim(), "{}");
-  assert.ok(fake.state.publishes.some((x) => eventToEnvelope(x.message)?.event === "stop"));
+  assert.ok(fake.state.publishes.some((x) => JSON.parse(x.message)?.event === "stop"));
 });
 
 test("codex SessionStart and UserPromptSubmit use the codex host label", async (t) => {
@@ -124,7 +123,7 @@ test("codex SessionStart and UserPromptSubmit use the codex host label", async (
   const r = await runHook(["--host", "codex"], { hook_event_name: "SessionStart" }, aliceEnv);
   assert.equal(r.out.trim(), "{}", "empty inbox yields no context");
   const st = fake.state.publishes.find((p) => p.topic === "ai-collab-demo--status");
-  assert.equal(eventToEnvelope(st.message).harness, "codex");
+  assert.equal(JSON.parse(st.message).harness, "codex");
 });
 
 test("disabled (no project/peer): prints {} and makes no requests", async (t) => {

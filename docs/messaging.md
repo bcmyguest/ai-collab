@@ -1,6 +1,6 @@
 # Messaging
 
-Chat, status, questions, approvals, receipts, mode, and alerts use [AG-UI events](ag-ui.md) on ntfy. The phone and ntfy app use the same plaintext reply commands.
+Structured messages use the project's [ntfy wire format](ag-ui.md). Plain questions and replies remain human-readable in ntfy.
 
 ## CLI
 

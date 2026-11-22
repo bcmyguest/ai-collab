@@ -8,7 +8,6 @@ import { loadConfig } from "../lib/config.mjs";
 import { decideApproval, decideQuestion } from "../lib/approvals.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
-import { eventToEnvelope } from "../lib/agui.mjs";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 const HOOKS = JSON.parse(readFileSync(fileURLToPath(new URL("../hooks/hooks.json", import.meta.url)), "utf8"));
@@ -20,7 +19,7 @@ const QUESTIONS = [
 ];
 
 const setMode = (fake, mode) => fake.inject(ALL, JSON.stringify({ v: 1, kind: "mode", from: "operator", mode, ts: Date.now() }));
-const envelopes = (fake, kind) => fake.state.publishes.map((p) => { try { return { ...eventToEnvelope(p.message), topic: p.topic, title: p.title }; } catch { return null; } })
+const envelopes = (fake, kind) => fake.state.publishes.map((p) => { try { return { ...JSON.parse(p.message), topic: p.topic, title: p.title }; } catch { return null; } })
   .filter((m) => m?.kind === kind);
 
 async function published(fake, kind) {

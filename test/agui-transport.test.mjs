@@ -15,7 +15,7 @@ const THREAD = `${IDENTITY.from}#${IDENTITY.session}`;
 test("runner publishes correlated AG-UI lifecycle events while readers retain the same rows", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const cfg = { enabled: true, activity: true, project: "demo", peer: IDENTITY.from,
+  const cfg = { enabled: true, activity: true, wire: "agui", project: "demo", peer: IDENTITY.from,
     session: IDENTITY.session, url: fake.url, timeoutMs: 1000 };
   const run = { threadId: THREAD, runId: "run-1" };
   await publishEvent(cfg, "codex", {

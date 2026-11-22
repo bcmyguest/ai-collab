@@ -9,7 +9,6 @@ import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
-import { eventToEnvelope } from "../lib/agui.mjs";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 const ALL = "ai-collab-demo--to--all";
@@ -22,7 +21,7 @@ const ASK = { tool_name: "AskUserQuestion", tool_input: { questions: QUESTIONS }
 const BASH = { tool_name: "Bash", tool_input: { command: "make deploy" } };
 
 const setMode = (fake, mode) => fake.inject(ALL, JSON.stringify({ v: 1, kind: "mode", from: "operator", mode, ts: Date.now() }));
-const envelopes = (fake, kind) => fake.state.publishes.map(p => { try { return { ...eventToEnvelope(p.message), raw: p.message, title: p.title }; } catch { return null; } })
+const envelopes = (fake, kind) => fake.state.publishes.map(p => { try { return { ...JSON.parse(p.message), raw: p.message, title: p.title }; } catch { return null; } })
   .filter(m => m?.kind === kind);
 
 async function setup(t, extra = {}) {

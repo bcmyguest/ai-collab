@@ -3,7 +3,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, NOTICE, EVENT_TYPES, PERMISSION_TABLE, DEFAULT_PERMISSION, HARNESSES, approvalTimeoutMs, defaultPermission, eventProblem, permissionSettings } from "../runner/contract.mjs";
 import { activityFor, ownedApprovalMessage } from "../runner/publish.mjs";
-import { eventToEnvelope } from "../lib/agui.mjs";
 
 test("every harness has a default permission mode present in its table", () => {
   for (const harness of HARNESSES) assert.ok(PERMISSION_TABLE[harness][DEFAULT_PERMISSION[harness]], harness);
@@ -80,7 +79,7 @@ test("activityFor maps events onto the existing activity row types", () => {
 
 test("an owned approval card is the hook approval envelope plus owned:true", () => {
   const cfg = { peer: "codex", session: "0123456789abcdef" };
-  const card = eventToEnvelope(ownedApprovalMessage(cfg, "codex", { id: "abcdefabcdef", tool: "Bash", summary: "ls" }, { now: 0 }));
+  const card = JSON.parse(ownedApprovalMessage(cfg, "codex", { id: "abcdefabcdef", tool: "Bash", summary: "ls" }, { now: 0 }));
   assert.deepEqual(card, {
     v: 1, kind: "approval", from: "codex", session: "0123456789abcdef", harness: "codex", id: "abcdefabcdef", tool: "Bash", summary: "ls",
     expiresAt: 30 * 60 * 1000, ts: new Date(0).toISOString(), owned: true,

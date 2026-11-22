@@ -11,7 +11,6 @@ import { claimInbox } from "../lib/inbox.mjs";
 import { runCli } from "../lib/cli.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
-import { eventToEnvelope } from "../lib/agui.mjs";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 const MCP = fileURLToPath(new URL("../scripts/ai-collab-mcp.mjs", import.meta.url));
@@ -73,7 +72,7 @@ test("parent exports its address, the child greets it once, and both can message
   assert.match(context(child), new RegExp(`started by the agent ${PARENT}; your address is ${CHILD}`));
   await runHook(["--host", "codex"], { ...start, source: "resume" }, childEnv);
 
-  const status = fake.state.publishes.filter(p => p.topic === "ai-collab-demo--status").map(p => eventToEnvelope(p.message)).find(s => s.harness === "codex");
+  const status = fake.state.publishes.filter(p => p.topic === "ai-collab-demo--status").map(p => JSON.parse(p.message)).find(s => s.harness === "codex");
   assert.deepEqual([status.from, status.session, status.parent], ["codex", sessionLabel(CHILD_ID), PARENT]);
   const parentCfg = loadConfig(env, { host: "claude", session: sessionLabel(PARENT_ID) });
   const greetings = (await claimInbox(parentCfg)).filter(m => m.body.startsWith("started:"));

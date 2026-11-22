@@ -1,6 +1,6 @@
 import { EventType } from "@ag-ui/core";
 import { operatorPrompt, publishMode as publishModeAll } from "../../lib/mode.mjs";
-import { buildEvent, envelopeToEvent, parseEvent } from "../../lib/agui.mjs";
+import { buildEvent, envelopeToEvent, projectEvent, readWireRecord } from "../../lib/agui.mjs";
 import { ACTIVITY_BATCH, STREAM_ERROR } from "../lib/ui-events.js";
 import { mkdirSync, watch } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
@@ -98,8 +98,10 @@ const cleanText = (value, max) => typeof value === "string" && value ? stripCont
 
 // One activity row per valid activity envelope; anything else on the topic is dropped. Cached per event object.
 function activityItem(event) {
-  if (activityCache.has(event)) return activityCache.get(event);
-  const e = parseEnvelope(event.message);
+  if (activityCache.has(event)) return activityCache.get(event).item;
+  const record = readWireRecord(event.message);
+  const original = record && record.v !== 1 ? record : null;
+  const e = original ? projectEvent(original) : record;
   let item = null;
   if (e?.kind === "activity" && isValidName(e.from) && typeof e.session === "string" && SESSION_LABEL.test(e.session) && ACTIVITY_TYPES.includes(e.type)) {
     item = { id: event.id, time: event.time, agent: e.from + "#" + e.session, harness: cleanText(e.harness, 10) || "other", type: e.type };
@@ -113,23 +115,26 @@ function activityItem(event) {
     const run = cleanText(e.agent?.id, ACTIVITY_NAME_MAX);
     if (run) item.subagent = { id: run, type: cleanText(e.agent.type, ACTIVITY_NAME_MAX) || "" };
   }
-  activityCache.set(event, item);
+  activityCache.set(event, { item, original });
   return item;
 }
 
-function activityFrame(row, source) {
+function activityFrame(source) {
+  const cached = activityCache.get(source);
+  if (cached.frame) return cached.frame;
+  const { item: row, original } = cached;
   const { id, time, agent, subagent, attachment, ...fields } = row;
   const [from, session] = agent.split("#");
-  const original = parseEvent(source.message);
   const runId = original?.runId ?? original?.metadata?.aiCollab?.runId;
   const run = typeof runId === "string" && {
-    type: original.type, runId, parentRunId: original.parentRunId, outcome: original.outcome,
+    type: original.type, runId, parentRunId: original.parentRunId, outcome: original.outcome, input: original.input,
   };
   const event = envelopeToEvent({
     v: 1, kind: "activity", from, session, ts: time * 1000, ...fields,
     ...(subagent ? { agent: subagent } : {}),
-  }, { id, run });
-  return { ...event, metadata: { ...event.metadata, aiCollabUi: { id, time, attachment } } };
+  }, { id: original?.type === EventType.TOOL_CALL_RESULT ? original.messageId : id, run });
+  cached.frame = { ...event, metadata: { ...event.metadata, aiCollabUi: { id, time, attachment } } };
+  return cached.frame;
 }
 
 // One chat entry per ntfy event; status and alert envelopes are skipped.
@@ -762,13 +767,15 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const items = reset ? list : list.slice(at + 1);
     if (!reset && !items.length) return;
     client.activitySent = list.at(-1)?.id ?? "";
-    for (const item of items) client.send(activityFrame(activityItem(item), item));
+    for (const item of items) client.send(activityFrame(item));
     client.send(buildEvent(EventType.CUSTOM, { name: ACTIVITY_BATCH, value: { reset } }));
   }
 
   function push(client) {
-    const state = JSON.stringify(buildEvent(EventType.STATE_SNAPSHOT, { snapshot: snapshot(client) }));
+    const current = snapshot(client);
+    const state = JSON.stringify(buildEvent(EventType.STATE_SNAPSHOT, { snapshot: current }));
     if (state !== client.last) {
+      if (!client.last) client.write(`event: state\ndata: ${JSON.stringify(current)}\n\n`);
       client.last = state;
       client.write(`data: ${state}\n\n`);
     }

@@ -4,7 +4,6 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { activityEvents } from "../lib/activity.mjs";
 import { activityTopic, loadConfig, sessionLabel } from "../lib/config.mjs";
-import { eventToEnvelope } from "../lib/agui.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { activityRows, groupSubagents, interleave, runState, runningSubagents, subagentLabel } from "../web/lib/activity-rows.js";
 import { peerEnv } from "./helpers/env.mjs";
@@ -35,7 +34,7 @@ test("subagent hooks publish start, tagged tool calls, and a stop row with the l
     { ...sub, hook_event_name: "SubagentStop", agent_transcript_path: "/tmp/SECRET.jsonl", last_assistant_message: "Found 3 call sites." + "y".repeat(5000) },
     { session_id: "s-parent", cwd: "/tmp", hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "ls" }, tool_use_id: "toolu_2" },
   ]) assert.deepEqual(JSON.parse((await runHook("claude", input, env)).out), {});
-  const rows = fake.state.publishes.filter((p) => p.topic === activityTopic("demo")).map((p) => eventToEnvelope(p.message));
+  const rows = fake.state.publishes.filter((p) => p.topic === activityTopic("demo")).map((p) => JSON.parse(p.message));
   assert.deepEqual(rows.map((e) => [e.type, e.agent, e.session]), [
     ["start", { id: "agent-7", type: "Explore" }, sessionLabel("s-parent")],
     ["tool_call", { id: "agent-7", type: "Explore" }, sessionLabel("s-parent")],
