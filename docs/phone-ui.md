@@ -205,7 +205,7 @@ The card offers up to four replacements, then **Wait for reset**:
 - **Wait for reset** only acknowledges. Nothing else changes.
 - A replacement starts a new session for each session on the card, in the folder that session ran in. A folder that is gone is refused with its path. The handoff prompt quotes the session title and last activity as data, not instructions. The original sessions keep running. Each session's timeline gets a row that links to its replacement.
 - A pick closes the card on every phone (`approval-end`, reason `answered`), so no second pick is offered; a second pick returns 409.
-- An untyped alert (the Claude `StopFailure` hook) and a typed one (the runner's `rate_limit_event`) for the same session make one card. A known reset time ends the silence at that time; an unknown reset keeps the card open for 5 hours.
+- An untyped alert (the Claude `StopFailure` hook) and a typed one (the runner's `rate_limit_event`) make one card. The project keeps one card per harness and window, whatever reset each report knows: a later report of the same window joins that card and keeps the newer known reset. A known reset time closes the card at that time; an unknown reset keeps it open for 5 hours.
 - The alert never starts a harness CLI to list models. It reads the model cache only.
 
 Detection (`lib/limits.mjs`). "Typed" means the pattern appears in a type definition; "UNVERIFIED" means no type or source in this repo names it, and the code comment says so.
@@ -217,9 +217,9 @@ Detection (`lib/limits.mjs`). "Typed" means the pattern appears in a type defini
 | Claude | Failed result text: "usage limit", "plan limit", "rate limit", "quota" | UNVERIFIED |
 | Codex | Turn error with `codexErrorInfo: "usageLimitExceeded"`, forwarded in RUN_ERROR metadata by `runner/adapters/codex.mjs` | UNVERIFIED: the field name is not in the repo's schema snapshot. |
 | Codex | Turn error text | UNVERIFIED |
-| OpenCode | Provider error with HTTP 429 | UNVERIFIED. `runner/adapters/opencode.mjs` forwards only the message, not the status, so the status check never fires. |
+| OpenCode | Provider error with HTTP 429 | UNVERIFIED. `runner/adapters/opencode.mjs` forwards the provider's HTTP status in `RUN_ERROR` metadata (`aiCollab.status`) and `limitFromRunError` passes it to the classifier. The field names it reads are UNVERIFIED. |
 | OpenCode | Provider error text | UNVERIFIED |
-| Cursor | ACP error text | UNVERIFIED |
+| Cursor | ACP error text, error code and data, and the child's stderr tail: "usage limit", "You've reached your usage limit", a 429 with limit wording, or a structured limit code | UNVERIFIED. `runner/adapters/cursor.mjs` keeps `error.code`, `error.data` and a stderr tail on `RUN_ERROR`, and joins them into the message the classifier reads. |
 
 Where detection runs:
 
