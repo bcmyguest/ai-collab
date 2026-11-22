@@ -4,7 +4,7 @@ import { Bell, BellOff, BellRing } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { AlertLevelItems } from "./alert-level";
+import { ALERT_LEVELS, AlertLevelItems } from "./alert-level";
 import { isAlertLevel, readRememberedAlertLevel, rememberAlertLevel, shownAlertLevel, subscriptionUsesKey } from "@/lib/alert-level";
 
 const STATES = {
