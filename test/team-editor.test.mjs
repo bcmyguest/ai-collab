@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -55,6 +55,16 @@ test("a project pattern's editor text is its canonical DOT; a global or built-in
   assert.equal(built.source, "built-in");
   assert.match(teamTextOf(built), /^digraph "fix-and-review" \{/m);
   assert.equal(built.editable, undefined);
+});
+
+test("a team.dot symlink to a file outside the repo is not listed and its text is not read", () => {
+  const { env, cfg, root } = setup();
+  const secret = path.join(path.dirname(root), "secret-key.txt");
+  writeFileSync(secret, "PRIVATE KEY MATERIAL\n");
+  mkdirSync(path.join(root, ".ai-collab", "teams", "linked"), { recursive: true });
+  symlinkSync(secret, path.join(root, ".ai-collab", "teams", "linked", "team.dot"));
+  assert.equal(listPatterns(cfg, env).linked, undefined);
+  assert.equal(teamTextOf({ name: "linked", file: path.join(root, ".ai-collab", "teams", "linked", "team.dot"), source: "project" }), "");
 });
 
 test("the shipped templates list fix-and-review with its DOT text", () => {
