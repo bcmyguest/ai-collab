@@ -17,6 +17,7 @@ scripts/ai-collab send bob "stop: main is broken" --urgent  # delivered at bob's
 scripts/ai-collab send bob#0123456789abcdef "review?" --await 45  # wait for the answer
 scripts/ai-collab send bob "FYI: CI is green" --priority fyi  # queued, never wakes an idle agent
 scripts/ai-collab send bob#0123456789abcdef "ship it?" --expect-reply  # redelivered until bob answers
+scripts/ai-collab send all "merged and deployed" --reply-to 44tWVaXJ1FB0 --progress  # answers a post; adds the note to your building tasks
 scripts/ai-collab wait 30                            # block for the next message
 scripts/ai-collab wait idle:bob#0123456789abcdef 45  # block until that agent has no turn running
 scripts/ai-collab wait reply:m00000042 45  # block until a reply to that message id
