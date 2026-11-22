@@ -389,7 +389,7 @@ export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND, requ
   const pool = { command, requestMs, server: null, starting: null, booting: null };
   return {
     harness: "codex",
-    capabilities: { steer: true, images: false, resume: "transcript", permissionModes: PERMISSION_MODES },
+    capabilities: { steer: true, images: false, resume: "transcript", permissionModes: PERMISSION_MODES, places: ["folder", "worktree", "openshell"] },
     available(probeEnv) {
       return new Promise((resolve) => {
         execFile(command.file, command.version, { env: probeEnv, timeout: 10_000 }, (error, stdout) => {
