@@ -1,14 +1,19 @@
 // Constants and validators of the owned-session contract (docs/owned-sessions-contract.md, runner/types.d.ts).
+import { EventType } from "@ag-ui/core";
+import { EventSchema } from "@ag-ui/core/schemas";
 
 export const HARNESSES = ["claude", "codex", "cursor", "opencode"];
 export const PERMISSION_MODES = ["supervised", "accept-edits", "auto", "full-access"];
 export const PLACES = ["folder", "worktree", "openshell"];
-// Named after AG-UI 1.0 event types (@ag-ui/core EventType) so a later AG-UI stream maps them one to one.
 export const EVENT_TYPES = [
-  "RUN_STARTED", "TEXT_MESSAGE_CHUNK", "TEXT_MESSAGE_END", "TOOL_CALL_START", "TOOL_CALL_RESULT",
-  "INTERRUPT_REQUESTED", "INTERRUPT_RESOLVED", "STEP_STARTED", "STEP_FINISHED", "STATE_DELTA", "CUSTOM",
-  "RUN_FINISHED", "RUN_ERROR",
+  EventType.RUN_STARTED, EventType.TEXT_MESSAGE_CONTENT, EventType.TEXT_MESSAGE_CHUNK, EventType.TOOL_CALL_CHUNK,
+  EventType.TOOL_CALL_RESULT, EventType.STEP_STARTED, EventType.STEP_FINISHED, EventType.STATE_DELTA,
+  EventType.CUSTOM, EventType.RUN_FINISHED, EventType.RUN_ERROR,
 ];
+export const APPROVAL_REQUESTED = "ai-collab.approval-requested";
+export const APPROVAL_RESOLVED = "ai-collab.approval-resolved";
+export const NOTICE = "ai-collab.notice";
+export const ERROR = "ai-collab.error";
 export const RESOLVE_REASONS = ["allowed", "denied", "answered", "cancelled"];
 export const STATE_PATHS = ["/contextTokens", "/contextWindow", "/model", "/permissionMode"];
 
@@ -63,25 +68,48 @@ export function permissionSettings(harness, mode, place = "folder") {
 }
 
 const isText = (value) => typeof value === "string" && value.length > 0;
-const isSub = (e) => (e.subagentRunId === undefined || isText(e.subagentRunId)) && (e.subagentType === undefined || typeof e.subagentType === "string");
 
-/** Null for a well-formed RunnerEvent, else the reason it is rejected. */
+/** Null for a supported AG-UI event with the fields the runner uses. */
 export function eventProblem(e) {
   if (!e || typeof e !== "object" || !EVENT_TYPES.includes(e.type)) return "unknown event type";
-  if (!isSub(e)) return "bad subagent fields";
+  if (!EventSchema.safeParse(e).success) return "invalid AG-UI event";
+  if (e.subagentRunId !== undefined && !isText(e.subagentRunId)) return "bad subagent run ID";
+  const meta = e.metadata?.aiCollab;
   switch (e.type) {
-    case "RUN_STARTED": return isText(e.runId) ? null : "runId required";
-    case "TEXT_MESSAGE_CHUNK": return isText(e.messageId) && typeof e.delta === "string" ? null : "messageId and delta required";
-    case "TEXT_MESSAGE_END": return isText(e.messageId) && typeof e.text === "string" ? null : "messageId and text required";
-    case "TOOL_CALL_START": return isText(e.toolCallId) && isText(e.toolCallName) ? null : "toolCallId and toolCallName required";
-    case "TOOL_CALL_RESULT": return isText(e.toolCallId) && isText(e.toolCallName) && typeof e.ok === "boolean" ? null : "toolCallId, toolCallName and ok required";
-    case "INTERRUPT_REQUESTED": return isText(e.interruptId) && ["tool_approval", "question"].includes(e.reason) && isText(e.toolCallName) && typeof e.summary === "string" ? null : "interruptId, reason, toolCallName and summary required";
-    case "INTERRUPT_RESOLVED": return isText(e.interruptId) && ["resolved", "cancelled"].includes(e.status) && RESOLVE_REASONS.includes(e.reason) ? null : "interruptId, status and reason required";
-    case "STEP_STARTED": case "STEP_FINISHED": return isText(e.stepName) ? null : "stepName required";
-    case "STATE_DELTA": return Array.isArray(e.delta) && e.delta.length && e.delta.every((op) => ["add", "replace", "remove"].includes(op?.op) && STATE_PATHS.includes(op.path)) ? null : "delta must patch known paths";
-    case "CUSTOM": return ["notice", "error"].includes(e.name) && isText(e.value) ? null : "name notice|error and value required";
-    case "RUN_FINISHED": return isText(e.runId) && ["success", "cancelled"].includes(e.outcome) ? null : "runId and outcome required";
-    case "RUN_ERROR": return isText(e.runId) && isText(e.message) ? null : "runId and message required";
-    default: return null;
+    case EventType.RUN_STARTED:
+      return isText(e.threadId) && isText(e.runId) ? null : "threadId and runId required";
+    case EventType.RUN_FINISHED:
+      return isText(e.threadId) && isText(e.runId) && [undefined, "success", "cancelled"].includes(e.outcome?.type)
+        ? null : "invalid run finish";
+    case EventType.RUN_ERROR:
+      return isText(meta?.runId) && isText(e.message) ? null : "runId and message required";
+    case EventType.TEXT_MESSAGE_CONTENT:
+    case EventType.TEXT_MESSAGE_CHUNK:
+      return isText(e.messageId) && typeof e.delta === "string" ? null : "messageId and delta required";
+    case EventType.TOOL_CALL_CHUNK:
+      return isText(e.toolCallId) && isText(e.toolCallName) ? null : "toolCallId and toolCallName required";
+    case EventType.TOOL_CALL_RESULT:
+      return isText(e.toolCallId) && isText(e.messageId) ? null : "toolCallId and messageId required";
+    case EventType.STEP_STARTED:
+    case EventType.STEP_FINISHED:
+      return isText(e.stepName) ? null : "stepName required";
+    case EventType.STATE_DELTA:
+      return e.delta.length && e.delta.every(op => ["add", "replace", "remove"].includes(op.op) && STATE_PATHS.includes(op.path))
+        ? null : "delta must patch known paths";
+    case EventType.CUSTOM:
+      return customProblem(e);
   }
+}
+
+function customProblem({ name, value }) {
+  if (name === NOTICE || name === ERROR) return isText(value) ? null : "event text required";
+  if (name === APPROVAL_REQUESTED) {
+    return isText(value?.interruptId) && ["tool_approval", "question"].includes(value.reason) &&
+      isText(value.toolCallName) && typeof value.summary === "string" ? null : "invalid approval request";
+  }
+  if (name === APPROVAL_RESOLVED) {
+    return isText(value?.interruptId) && ["resolved", "cancelled"].includes(value.status) && RESOLVE_REASONS.includes(value.reason)
+      ? null : "invalid approval resolution";
+  }
+  return "unknown custom event";
 }

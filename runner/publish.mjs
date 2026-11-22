@@ -1,4 +1,5 @@
 // Publishes runner activity as AG-UI and sends status, approvals, receipts and alerts on their existing topics.
+import { contentToText, EventType } from "@ag-ui/core";
 import { NTFY_MESSAGE_MAX_BYTES, broadcastTopic } from "../lib/config.mjs";
 import { publish } from "../lib/ntfy.mjs";
 import { publishStatus } from "../lib/inbox.mjs";
@@ -6,25 +7,40 @@ import { publishActivity } from "../lib/activity.mjs";
 import { approvalMessage, cleanQuestions } from "../lib/approvals.mjs";
 import { sendReceipts } from "../lib/receipts.mjs";
 import { reportContext } from "../lib/usage.mjs";
-import { APPROVAL_TIMEOUT_MIN } from "./contract.mjs";
+import { APPROVAL_TIMEOUT_MIN, ERROR, NOTICE } from "./contract.mjs";
 
 // A card's expiresAt is when the runner denies it (AI_COLLAB_APPROVAL_TIMEOUT_MIN); this is the default wait.
 const DEFAULT_APPROVAL_MS = APPROVAL_TIMEOUT_MIN * 60_000;
 const PUBLISH_TIMEOUT_MS = 3000;
 
-const withAgent = (row, e) => (e.subagentRunId ? { ...row, agent: { id: e.subagentRunId, type: e.subagentType || "" } } : row);
+const withAgent = (row, e) => (e.subagentRunId ? { ...row, agent: { id: e.subagentRunId, type: e.metadata?.aiCollab?.subagentType || "" } } : row);
 
 /** Activity rows (lib/activity.mjs event shape) for one RunnerEvent; [] when the event has no row on ntfy. */
 export function activityFor(e) {
+  const meta = e.metadata?.aiCollab;
   switch (e.type) {
-    case "RUN_STARTED": return e.prompt ? [{ type: "prompt", input: e.prompt }] : [];
-    case "TEXT_MESSAGE_END": return e.text ? [withAgent({ type: "text", output: e.text, callId: e.messageId }, e)] : [];
-    case "TOOL_CALL_START": return [withAgent({ type: "tool_call", tool: e.toolCallName, input: e.args, callId: e.toolCallId }, e)];
-    case "TOOL_CALL_RESULT": return [withAgent({ type: e.ok ? "tool_result" : "error", tool: e.toolCallName, output: e.content ?? "", callId: e.toolCallId }, e)];
-    case "STEP_STARTED": return e.stepName === "compact" ? [{ type: "compact", input: ["compacting", e.note].filter(Boolean).join(" · ") }] : [];
-    case "CUSTOM": return e.name === "error" ? [{ type: "error", output: e.value }] : [{ type: "text", tool: "Notification", output: e.value }];
-    case "RUN_FINISHED": return [{ type: "stop", input: ["turn ended", e.outcome === "cancelled" ? "interrupted" : "", e.reason].filter(Boolean).join(" · ") }];
-    case "RUN_ERROR": return [{ type: "error", output: e.message }, { type: "stop", input: "turn ended · failed" }];
+    case EventType.RUN_STARTED: {
+      const prompt = contentToText(e.input?.messages.findLast(message => message.role === "user")?.content);
+      return prompt ? [{ type: "prompt", input: prompt }] : [];
+    }
+    case EventType.TEXT_MESSAGE_CHUNK:
+      return e.delta ? [withAgent({ type: "text", output: e.delta, callId: e.messageId }, e)] : [];
+    case EventType.TOOL_CALL_CHUNK:
+      return [withAgent({ type: "tool_call", tool: e.toolCallName, input: e.delta, callId: e.toolCallId }, e)];
+    case EventType.TOOL_CALL_RESULT:
+      return [withAgent({
+        type: meta?.failed ? "error" : "tool_result", tool: meta?.toolCallName,
+        output: contentToText(e.content), callId: e.toolCallId,
+      }, e)];
+    case EventType.STEP_STARTED:
+      return e.stepName === "compact" ? [{ type: "compact", input: ["compacting", meta?.note].filter(Boolean).join(" · ") }] : [];
+    case EventType.CUSTOM:
+      if (e.name === ERROR) return [{ type: "error", output: e.value }];
+      return e.name === NOTICE ? [{ type: "text", tool: "Notification", output: e.value }] : [];
+    case EventType.RUN_FINISHED:
+      return [{ type: "stop", input: ["turn ended", e.outcome?.type === "cancelled" ? "interrupted" : "", meta?.reason].filter(Boolean).join(" · ") }];
+    case EventType.RUN_ERROR:
+      return [{ type: "error", output: e.message }, { type: "stop", input: "turn ended · failed" }];
     default: return [];
   }
 }
@@ -63,9 +79,9 @@ export async function publishEvent(cfg, harness, e) {
   try {
     const rows = activityFor(e);
     if (rows.length) await publishActivity(cfg, harness, rows, { timeoutMs: PUBLISH_TIMEOUT_MS, run: e });
-    if (e.type === "RUN_STARTED") await publishStatus(cfg, { event: "start", harness });
-    if (e.type === "RUN_FINISHED" || e.type === "RUN_ERROR") await publishStatus(cfg, { event: "stop", harness });
-    const tokens = e.type === "STATE_DELTA" ? e.delta.find((op) => op.path === "/contextTokens")?.value : undefined;
+    if (e.type === EventType.RUN_STARTED) await publishStatus(cfg, { event: "start", harness });
+    if (e.type === EventType.RUN_FINISHED || e.type === EventType.RUN_ERROR) await publishStatus(cfg, { event: "stop", harness });
+    const tokens = e.type === EventType.STATE_DELTA ? e.delta.find((op) => op.path === "/contextTokens")?.value : undefined;
     if (Number.isSafeInteger(tokens)) await reportContext(cfg, tokens);
   } catch { /* best effort, like hooks */ }
 }

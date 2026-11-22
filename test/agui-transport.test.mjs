@@ -17,9 +17,17 @@ test("runner publishes correlated AG-UI lifecycle events while readers retain th
   t.after(() => fake.close());
   const cfg = { enabled: true, activity: true, project: "demo", peer: IDENTITY.from,
     session: IDENTITY.session, url: fake.url, timeoutMs: 1000 };
-  await publishEvent(cfg, "codex", { type: "RUN_STARTED", runId: "run-1", prompt: "go" });
-  await publishEvent(cfg, "codex", { type: "RUN_FINISHED", runId: "run-1", outcome: "cancelled", reason: "requested" });
-  await publishEvent(cfg, "codex", { type: "RUN_ERROR", runId: "run-2", message: "failed" });
+  const run = { threadId: THREAD, runId: "run-1" };
+  await publishEvent(cfg, "codex", {
+    ...run, type: EventType.RUN_STARTED,
+    input: { ...run, tools: [], context: [], messages: [{ id: "prompt-1", role: "user", content: "go" }] },
+  });
+  await publishEvent(cfg, "codex", {
+    ...run, type: EventType.RUN_FINISHED, outcome: { type: "cancelled" }, metadata: { aiCollab: { reason: "requested" } },
+  });
+  await publishEvent(cfg, "codex", {
+    type: EventType.RUN_ERROR, message: "failed", metadata: { aiCollab: { runId: "run-2" } },
+  });
   const messages = fake.state.publishes.filter(entry => entry.topic === activityTopic("demo")).map(entry => entry.message);
   const [started, finished, failed, stopped] = messages.map(parseEvent);
   assert.deepEqual([started.type, finished.type, failed.type, stopped.type],

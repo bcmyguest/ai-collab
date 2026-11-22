@@ -1,6 +1,8 @@
 // Scripted in-process adapter for tests: "approve: <cmd>" asks for approval, "hang" runs until interrupted, else it echoes.
 import { randomUUID } from "node:crypto";
-import { PERMISSION_MODES } from "../contract.mjs";
+import { EventType } from "@ag-ui/core";
+import { sessionLabel } from "../../lib/config.mjs";
+import { APPROVAL_REQUESTED, PERMISSION_MODES } from "../contract.mjs";
 
 /** A fake Adapter; calls records every adapter call for assertions. */
 export function createFakeAdapter({ harness = "codex", capabilities = {}, openError = null } = {}) {
@@ -8,28 +10,44 @@ export function createFakeAdapter({ harness = "codex", capabilities = {}, openEr
   let runs = 0;
 
   function makeHandle(nativeId, ctx) {
+    const threadId = `${harness}#${sessionLabel(nativeId)}`;
     let running = null;
     const steered = [];
 
     async function run(runId, input, settled) {
-      ctx.emit({ type: "RUN_STARTED", runId, prompt: input.text });
+      ctx.emit({
+        type: EventType.RUN_STARTED, threadId, runId,
+        input: { threadId, runId, tools: [], context: [], messages: [{ id: `${runId}:input`, role: "user", content: input.text }] },
+      });
       await new Promise((resolve) => setImmediate(resolve));
       const approve = /approve: (.+)/.exec(input.text);
       let outcome = "success";
       if (approve) {
         const toolCallId = `c-${runId}`;
-        ctx.emit({ type: "TOOL_CALL_START", toolCallId, toolCallName: "Bash", args: { command: approve[1] } });
+        ctx.emit({ type: EventType.TOOL_CALL_CHUNK, toolCallId, toolCallName: "Bash", delta: JSON.stringify({ command: approve[1] }, null, 2) });
         running.interruptId = `i-${runId}`;
-        ctx.emit({ type: "INTERRUPT_REQUESTED", interruptId: running.interruptId, reason: "tool_approval", toolCallId, toolCallName: "Bash", summary: approve[1] });
+        ctx.emit({
+          type: EventType.CUSTOM, name: APPROVAL_REQUESTED,
+          value: { interruptId: running.interruptId, reason: "tool_approval", toolCallId, toolCallName: "Bash", summary: approve[1] },
+        });
         const answer = await settled;
         if (answer.interrupted) outcome = "cancelled";
-        else ctx.emit({ type: "TOOL_CALL_RESULT", toolCallId, toolCallName: "Bash", ok: answer.behavior === "allow", content: answer.behavior === "allow" ? `ran ${approve[1]}` : "denied by the operator" });
+        else {
+          const failed = answer.behavior !== "allow";
+          ctx.emit({
+            type: EventType.TOOL_CALL_RESULT, toolCallId, messageId: `${toolCallId}:result`, role: "tool",
+            content: failed ? "denied by the operator" : `ran ${approve[1]}`,
+            metadata: { aiCollab: { toolCallName: "Bash", failed } },
+          });
+        }
       } else if (/\bhang\b/.test(input.text)) {
         if ((await settled).interrupted) outcome = "cancelled";
       }
-      if (outcome === "success") ctx.emit({ type: "TEXT_MESSAGE_END", messageId: `m-${runId}`, text: `echo: ${input.text.slice(0, 200)}` });
+      if (outcome === "success") ctx.emit({
+        type: EventType.TEXT_MESSAGE_CHUNK, messageId: `m-${runId}`, role: "assistant", delta: `echo: ${input.text.slice(0, 200)}`,
+      });
       running = null;
-      ctx.emit({ type: "RUN_FINISHED", runId, outcome });
+      ctx.emit({ type: EventType.RUN_FINISHED, threadId, runId, outcome: { type: outcome } });
     }
 
     return {

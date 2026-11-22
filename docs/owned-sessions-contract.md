@@ -15,7 +15,7 @@ The types live in `runner/types.d.ts`, the constants and validators in `runner/c
 | Claude | Agent SDK `query()` with an `AsyncIterable` prompt; the adapter picks the session UUID and passes it as `options.sessionId` (sdk.d.ts L2273) | research |
 | OpenCode | The registered OpenCode service (`~/.local/state/opencode/service.json`), HTTP plus SSE; permission replies are always `once` | research, review |
 | Cursor | `cursor-agent acp`, in a git worktree outside OpenShell for now; `--force` inside an OpenShell sandbox later | operator |
-| Events | ntfy envelopes now; normalized event names follow AG-UI so a later AG-UI or SSE stream maps one to one | operator |
+| Events | AG-UI adapter events and activity wire format | operator |
 | Hook stand-down | Owned record keyed by session label; only the process the runner spawned stands down, and agents started inside it register as its children | operator |
 | Cut runs | Never resent. Every cut run, on every adapter, is marked interrupted | operator |
 | T3 Code | MIT; may be ported with its notice kept (one-line header naming T3 Code, the file, and the commit) | operator |
@@ -89,7 +89,7 @@ The first prompt is the first input; the loop starts with it, not with `recv`.
 | Situation at restart | Result |
 |---|---|
 | Waiting in `recv:input` (idle) | Workflow replays to `recv`; no harness call until the next input, which resumes the native session lazily |
-| Cut inside `run.send` | Marked interrupted with `RUN_FINISHED {outcome:"cancelled", reason}`; the operator resends by hand |
+| Cut inside `run.send` | Marked interrupted with `RUN_FINISHED {outcome:{type:"cancelled"}}` with the reason in metadata; the operator resends by hand |
 | Cut inside `run.wait` | Marked interrupted (`turn ended · interrupted · runner restarted`); `record.cut = {runId, at, reason}`; open approval cards end with reason `cancelled` |
 | `resume: "none"` | Next input fails with 409; the operator closes the session |
 | Adapter module missing at boot | The workflow fails (status ERROR); its owned record stays as it was |
@@ -152,7 +152,7 @@ Each adapter is `runner/adapters/<harness>.mjs` with a default export `(options:
 | `resume(record, ctx, env)` | Reattach to `record.nativeId` for the next input; a cut run is not resumed | `options.resume` | `thread/resume` | reconnect SSE, list pending permissions | `session/load` |
 | `handle.send(input)` | Starts a run; resolves `{runId}` once the harness accepted it | yield an `SDKUserMessage` | `turn/start` | `POST .../prompt` | `session/prompt` |
 | `handle.steer(input)` | Adds input to the running run | `streamInput` | `turn/steer` | `delivery:"steer"` | — |
-| `handle.interrupt()` | Ends the run; the adapter then emits `RUN_FINISHED {outcome:"cancelled"}` | `query.interrupt()` | `turn/interrupt` | `POST .../interrupt` | `session/cancel` |
+| `handle.interrupt()` | Ends the run; the adapter then emits `RUN_FINISHED {outcome:{type:"cancelled"}}` | `query.interrupt()` | `turn/interrupt` | `POST .../interrupt` | `session/cancel` |
 | `handle.setPermissionMode(mode)` | Applies a mode from the permission table to the open session; called only by the runner on the operator's control-socket request | `query.setPermissionMode()` | next `turn/start` settings | the runner's auto-reply set | unverified |
 | `handle.respond(interruptId, decision)` | `{behavior:"allow"\|"deny", answers?}` | `canUseTool` resolves | approval response | `.../permission/:id/reply` `once` or `reject` | `request_permission` result |
 | `listModels(env)` | `[{id, label?, default?}]` | `initializationResult()` | `model/list` | `model.list` | unverified |
@@ -167,36 +167,29 @@ Rules for every adapter:
 - Spawn children with `options.env`, `shell: false`, and argv from a fixed template; the prompt is never an argv element that a CLI could read as a flag (`checkPrompt` already rejects a leading `-`).
 - Export `AI_COLLAB_PARENT=<harness>#<label>` (`label` = `sessionLabel(nativeId)`) into the shell environment the agent runs commands in, as `lib/family.mjs` does for hook-driven sessions, so an agent it starts registers as the owned session's child.
 - Map `options.permission` (from the permission table) onto the harness; never widen it.
-- Emit completed items. `TEXT_MESSAGE_CHUNK` is allowed but the ntfy path drops it; it is for the later SSE stream.
+- Emit completed text and tool calls as `TEXT_MESSAGE_CHUNK` and `TOOL_CALL_CHUNK`. The ntfy publisher skips incremental `TEXT_MESSAGE_CONTENT` fragments.
 - Reject `open` with an `Error` whose message the operator can act on. Never print secrets into it.
 - No real CLI runs in tests: drive the adapter against a fake transport (a stub JSON-RPC peer, a stub HTTP server) plus `test/helpers/fake-ntfy.mjs`.
 
-## Normalized events
+## Adapter events
 
-Names follow AG-UI 1.0 (`@ag-ui/core` 1.0.5 `EventType`, MIT). The runner adds `threadId` (the session address) and the AG-UI envelope when an AG-UI stream replaces ntfy.
+Adapters emit the supported subset of AG-UI events from `@ag-ui/core`. The runner checks the official schemas and validates its application fields. See the [event model](ag-ui.md).
 
-| Runner event | Fields | AG-UI event(s) | ntfy today |
-|---|---|---|---|
-| `RUN_STARTED` | `runId, prompt?` | `RUN_STARTED {threadId, runId}` | activity `prompt` (input = prompt); status `start` |
-| `TEXT_MESSAGE_CHUNK` | `messageId, delta, subagent*` | `TEXT_MESSAGE_CONTENT` (after one `TEXT_MESSAGE_START`) | none (4 KB cap, no streaming) |
-| `TEXT_MESSAGE_END` | `messageId, text, subagent*` | `TEXT_MESSAGE_START` + `TEXT_MESSAGE_CONTENT` + `TEXT_MESSAGE_END`, or `TEXT_MESSAGE_CHUNK` | activity `text` (output, callId = messageId) |
-| `TOOL_CALL_START` | `toolCallId, toolCallName, args?, subagent*` | `TOOL_CALL_START` + `TOOL_CALL_ARGS` + `TOOL_CALL_END` | activity `tool_call` (tool, input, callId) |
-| `TOOL_CALL_RESULT` | `toolCallId, toolCallName, content?, ok` | `TOOL_CALL_RESULT` | activity `tool_result`, or `error` when `ok` is false; a long result also travels as a .txt attachment |
-| `INTERRUPT_REQUESTED` | `interruptId, reason (tool_approval, question), toolCallId?, toolCallName, summary, args?, questions?` | `RUN_FINISHED {outcome:{type:"interrupt", interrupts:[{id, reason, toolCallId}]}}` | `approval` envelope with `owned:true` on the broadcast topic |
-| `INTERRUPT_RESOLVED` | `interruptId, status (resolved, cancelled), reason (allowed, denied, answered, cancelled)` | the next run's `RunAgentInput.resume: [{interruptId, status, payload}]` | `approval-end` with `owned:true` |
-| `STEP_STARTED` / `STEP_FINISHED` | `stepName, note?` | same | `stepName:"compact"` → activity `compact` |
-| `STATE_DELTA` | `delta` (JSON Patch on `/contextTokens`, `/contextWindow`, `/model`, `/permissionMode`) | `STATE_DELTA` | `/contextTokens` feeds `lib/usage.mjs` `reportContext` (the 200 k alert) |
-| `CUSTOM` | `name (notice, error), value` | `CUSTOM {name, value}` | activity `text` with tool `Notification`, or activity `error` |
-| `RUN_FINISHED` | `runId, outcome (success, cancelled), reason?` | `RUN_FINISHED {outcome:{type:"success"}}` or `{type:"cancelled"}` | activity `stop` ("turn ended", "turn ended · interrupted · <reason>"); status `stop` |
-| `RUN_ERROR` | `runId, message` | `RUN_ERROR` | activity `error`, then `stop` "turn ended · failed"; status `stop` |
+| AG-UI event | Runner handling |
+|---|---|
+| `RUN_STARTED` | `threadId` is the session address, `runId` identifies the turn, and the user message in `input.messages` supplies the prompt. |
+| `TEXT_MESSAGE_CONTENT` / `TEXT_MESSAGE_CHUNK` | An incremental fragment or a completed message. The publisher emits the completed message as activity. |
+| `TOOL_CALL_CHUNK` / `TOOL_CALL_RESULT` | A completed call or result. The result carries its own `messageId`. An oversized result travels with a text attachment. |
+| `STEP_STARTED` / `STEP_FINISHED` | The `compact` step creates an activity row. |
+| `STATE_DELTA` | JSON Patch on `/contextTokens`, `/contextWindow`, `/model`, or `/permissionMode`. The token count drives the context alert. |
+| `CUSTOM` | `ai-collab.approval-requested` and `ai-collab.approval-resolved` carry approval payloads in `value`. The turn stays open while waiting. `ai-collab.notice` and `ai-collab.error` carry text. |
+| `RUN_FINISHED` / `RUN_ERROR` | A completed, cancelled, or failed turn. The runner closes outstanding approvals and publishes stop status. |
 
-`subagent*` is `subagentRunId?` and `subagentType?` (AG-UI `subagentRunId`), which become the activity row's `agent: {id, type}` as hook rows carry today. A session's end has no AG-UI event; the runner publishes activity `stop` "session ended · <reason>" and status `stop`.
-
-AG-UI ends a run at an interrupt and resumes it as a new run; the harnesses keep the turn open while they wait. The future mapping therefore emits the interrupt outcome only on an AG-UI stream that the UI answers with `resume`, and keeps one runner `runId` across both AG-UI runs.
+Standard subagent attribution uses `subagentRunId`. The optional `metadata.aiCollab` fields supply the subagent display type (`subagentType`), tool result labels and failures (`toolCallName`, `failed`), a compaction `note`, and a cancellation `reason`. `RUN_ERROR` requires `metadata.aiCollab.runId` for turn correlation.
 
 ### Envelope details
 
-All envelopes are `v: 1` and publish through the existing helpers: `publishActivity` (`lib/activity.mjs`, one 1.5 s deadline per batch, clipping to 4,095 bytes), `publishStatus` (`lib/inbox.mjs`), `sendReceipts` (`lib/receipts.mjs`) and `publish` (`lib/ntfy.mjs`) for approvals. The sender of every envelope is `from: <harness>, session: <label>`, the same as a hook in that session, so `web/server/ui.mjs` (`activityItem`, `approvalEntry`, `outcomes`, `agents`) renders owned rows, cards and presence without change. Publishes for one session are serialized, so rows keep their order.
+Activity events and control envelopes publish through: `publishActivity` (`lib/activity.mjs`, one 1.5 s deadline per batch, clipping to 4,095 bytes), `publishStatus` (`lib/inbox.mjs`), `sendReceipts` (`lib/receipts.mjs`) and `publish` (`lib/ntfy.mjs`) for approvals. The sender of every envelope is `from: <harness>, session: <label>`, the same as a hook in that session, so `web/server/ui.mjs` (`activityItem`, `approvalEntry`, `outcomes`, `agents`) renders owned rows, cards and presence without change. Publishes for one session are serialized, so rows keep their order.
 
 - **Approval card:** `lib/approvals.mjs` `approvalMessage` shape plus `owned: true`: `{v, kind:"approval", from, session, harness, id (12 hex), tool, summary, questions?, expiresAt, ts, owned}`. The runner, not the adapter, makes the 12-hex `id` and maps it to the adapter's `interruptId`. `expiresAt` is `ts` + `AI_COLLAB_APPROVAL_TIMEOUT_MIN` minutes (default 30, at most 720, ntfy's cache window). The runner denies an unanswered card at that time and ends it with `denied`. The UI's existing Allow / Deny publishes `reply <id> allow|deny` (or the answers as JSON) on the broadcast topic; the runner streams that topic and calls `handle.respond`. Ends: `allowed`, `denied` (operator or timeout), `answered`, `cancelled` (run ended, session closed, or runner restarted).
 - **Read receipts:** published when `handle.send` or `handle.steer` resolves, for the ntfy ids the input carried.

@@ -1,6 +1,7 @@
+import { EventType } from "@ag-ui/core";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EVENT_TYPES, PERMISSION_TABLE, DEFAULT_PERMISSION, HARNESSES, approvalTimeoutMs, defaultPermission, eventProblem, permissionSettings } from "../runner/contract.mjs";
+import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, NOTICE, EVENT_TYPES, PERMISSION_TABLE, DEFAULT_PERMISSION, HARNESSES, approvalTimeoutMs, defaultPermission, eventProblem, permissionSettings } from "../runner/contract.mjs";
 import { activityFor, ownedApprovalMessage } from "../runner/publish.mjs";
 
 test("every harness has a default permission mode present in its table", () => {
@@ -13,38 +14,67 @@ test("every harness has a default permission mode present in its table", () => {
   assert.match(permissionSettings("opencode", "auto").error, /no permission mode/);
 });
 
-test("eventProblem accepts each AG-UI-named event and rejects malformed ones", () => {
+const THREAD = "codex#0123456789abcdef";
+const RUN = { threadId: THREAD, runId: "r1" };
+
+function runStarted(prompt) {
+  return {
+    ...RUN, type: EventType.RUN_STARTED,
+    input: { ...RUN, tools: [], context: [], messages: [{ role: "user", id: "m1", content: prompt }] },
+  };
+}
+
+test("eventProblem accepts each supported AG-UI event and rejects malformed ones", () => {
   const good = [
-    { type: "RUN_STARTED", runId: "r1", prompt: "hi" },
-    { type: "TEXT_MESSAGE_CHUNK", messageId: "m", delta: "he" },
-    { type: "TEXT_MESSAGE_END", messageId: "m", text: "hello", subagentRunId: "a1", subagentType: "explore" },
-    { type: "TOOL_CALL_START", toolCallId: "c", toolCallName: "Bash", args: { command: "ls" } },
-    { type: "TOOL_CALL_RESULT", toolCallId: "c", toolCallName: "Bash", ok: true, content: "x" },
-    { type: "INTERRUPT_REQUESTED", interruptId: "i", reason: "tool_approval", toolCallName: "Bash", summary: "ls" },
-    { type: "INTERRUPT_RESOLVED", interruptId: "i", status: "resolved", reason: "allowed" },
-    { type: "STEP_STARTED", stepName: "compact" },
-    { type: "STEP_FINISHED", stepName: "compact" },
-    { type: "STATE_DELTA", delta: [{ op: "replace", path: "/contextTokens", value: 5 }] },
-    { type: "CUSTOM", name: "notice", value: "hi" },
-    { type: "RUN_FINISHED", runId: "r1", outcome: "success" },
-    { type: "RUN_ERROR", runId: "r1", message: "boom" },
+    runStarted("hi"),
+    { type: EventType.TEXT_MESSAGE_CONTENT, messageId: "m", delta: "he" },
+    { type: EventType.TEXT_MESSAGE_CHUNK, messageId: "m", delta: "hello", role: "assistant", subagentRunId: "a1" },
+    { type: EventType.TOOL_CALL_CHUNK, toolCallId: "c", toolCallName: "Bash", delta: '{"command":"ls"}' },
+    { type: EventType.TOOL_CALL_RESULT, toolCallId: "c", messageId: "r", content: "x" },
+    { type: EventType.STEP_STARTED, stepName: "compact" },
+    { type: EventType.STEP_FINISHED, stepName: "compact" },
+    { type: EventType.STATE_DELTA, delta: [{ op: "replace", path: "/contextTokens", value: 5 }] },
+    { type: EventType.CUSTOM, name: NOTICE, value: "hi" },
+    { ...RUN, type: EventType.RUN_FINISHED, outcome: { type: "success" } },
+    { type: EventType.RUN_ERROR, message: "boom", metadata: { aiCollab: { runId: RUN.runId } } },
   ];
   assert.deepEqual(good.map((e) => e.type), EVENT_TYPES);
   for (const e of good) assert.equal(eventProblem(e), null, e.type);
+  assert.equal(eventProblem({
+    type: EventType.CUSTOM, name: APPROVAL_REQUESTED,
+    value: { interruptId: "i", reason: "tool_approval", toolCallName: "Bash", summary: "ls" },
+  }), null);
+  assert.equal(eventProblem({
+    type: EventType.CUSTOM, name: APPROVAL_RESOLVED,
+    value: { interruptId: "i", status: "resolved", reason: "allowed" },
+  }), null);
   assert.ok(eventProblem({ type: "turn.started" }));
-  assert.ok(eventProblem({ type: "RUN_FINISHED", runId: "r1", outcome: "interrupted" }));
-  assert.ok(eventProblem({ type: "STATE_DELTA", delta: [{ op: "replace", path: "/secret", value: 1 }] }));
-  assert.ok(eventProblem({ type: "TEXT_MESSAGE_END", messageId: "m", text: "x", subagentRunId: "" }));
+  assert.ok(eventProblem({ ...RUN, type: EventType.RUN_FINISHED, outcome: { type: "interrupted" } }));
+  assert.ok(eventProblem({ type: EventType.STATE_DELTA, delta: [{ op: "replace", path: "/secret", value: 1 }] }));
+  assert.ok(eventProblem({ type: EventType.TEXT_MESSAGE_CHUNK, messageId: "m", delta: "x", subagentRunId: "" }));
 });
 
 test("activityFor maps events onto the existing activity row types", () => {
-  assert.deepEqual(activityFor({ type: "RUN_STARTED", runId: "r", prompt: "go" }), [{ type: "prompt", input: "go" }]);
-  assert.deepEqual(activityFor({ type: "TEXT_MESSAGE_CHUNK", messageId: "m", delta: "x" }), []);
-  assert.deepEqual(activityFor({ type: "TEXT_MESSAGE_END", messageId: "m", text: "hi", subagentRunId: "a", subagentType: "t" }), [{ type: "text", output: "hi", callId: "m", agent: { id: "a", type: "t" } }]);
-  assert.equal(activityFor({ type: "TOOL_CALL_RESULT", toolCallId: "c", toolCallName: "Bash", ok: false, content: "no" })[0].type, "error");
-  assert.deepEqual(activityFor({ type: "RUN_FINISHED", runId: "r", outcome: "cancelled", reason: "runner restarted" }), [{ type: "stop", input: "turn ended · interrupted · runner restarted" }]);
-  assert.deepEqual(activityFor({ type: "RUN_ERROR", runId: "r", message: "boom" }).map((r) => r.type), ["error", "stop"]);
-  assert.deepEqual(activityFor({ type: "STEP_STARTED", stepName: "compact", note: "auto" }), [{ type: "compact", input: "compacting · auto" }]);
+  assert.deepEqual(activityFor(runStarted("go")), [{ type: "prompt", input: "go" }]);
+  assert.deepEqual(activityFor({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: "m", delta: "x" }), []);
+  assert.deepEqual(activityFor({
+    type: EventType.TEXT_MESSAGE_CHUNK, messageId: "m", delta: "hi", subagentRunId: "a",
+    metadata: { aiCollab: { subagentType: "t" } },
+  }), [{ type: "text", output: "hi", callId: "m", agent: { id: "a", type: "t" } }]);
+  assert.equal(activityFor({
+    type: EventType.TOOL_CALL_RESULT, toolCallId: "c", messageId: "m", content: "no",
+    metadata: { aiCollab: { toolCallName: "Bash", failed: true } },
+  })[0].type, "error");
+  assert.deepEqual(activityFor({
+    ...RUN, type: EventType.RUN_FINISHED, outcome: { type: "cancelled" },
+    metadata: { aiCollab: { reason: "runner restarted" } },
+  }), [{ type: "stop", input: "turn ended · interrupted · runner restarted" }]);
+  assert.deepEqual(activityFor({
+    type: EventType.RUN_ERROR, message: "boom", metadata: { aiCollab: { runId: RUN.runId } },
+  }).map((r) => r.type), ["error", "stop"]);
+  assert.deepEqual(activityFor({
+    type: EventType.STEP_STARTED, stepName: "compact", metadata: { aiCollab: { note: "auto" } },
+  }), [{ type: "compact", input: "compacting · auto" }]);
 });
 
 test("an owned approval card is the hook approval envelope plus owned:true", () => {
