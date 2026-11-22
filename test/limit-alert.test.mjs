@@ -132,8 +132,10 @@ test("one limit reported by the hook and the runner yields one card, whichever a
   const typed = FIVE_HOUR;
   const first = await setup(t);
   await alertLimit({ ...first.cfg, session: SESSION }, { harness: "claude", limit: untyped, ...deps });
-  assert.equal((await alertLimit({ ...first.cfg, session: SESSION }, { harness: "claude", limit: typed, ...deps })).status, "duplicate");
-  assert.equal(cards(first.fake).length, 1);
+  // The typed report upgrades the untyped card and republishes it, so the window and reset are visible on the phone.
+  assert.equal((await alertLimit({ ...first.cfg, session: SESSION }, { harness: "claude", limit: typed, ...deps })).status, "sent");
+  assert.equal(cards(first.fake).length, 2);
+  assert.match(cards(first.fake)[1].summary, /5-hour · resets 18:00/);
   const second = await setup(t);
   await alertLimit({ ...second.cfg, session: SESSION }, { harness: "claude", limit: typed, ...deps });
   assert.equal((await alertLimit({ ...second.cfg, session: SESSION }, { harness: "claude", limit: untyped, ...deps })).status, "duplicate");
