@@ -83,3 +83,10 @@ test("compactionFields keeps filesDropped as a count", () => {
   assert.deepEqual(compactionFields({ phase: "started", filesDropped: 4 }), { phase: "started", filesDropped: 4 });
   assert.deepEqual(compactionFields({ phase: "started", filesDropped: -2 }), { phase: "started" });
 });
+
+test("a compact row's compaction fields reach the published envelope", async () => {
+  const { buildActivity } = await import("../lib/activity.mjs");
+  const cfg = { peer: "claude", session: "abc123", wire: "legacy" };
+  const { message } = buildActivity(cfg, "claude", { type: "compact", input: "compacted · auto", compaction: { trigger: "auto", phase: "finished", tokensBefore: 182000, tokensAfter: 31000, junk: 1 } }, "2026-11-22T10:00:00.000Z");
+  assert.deepEqual(JSON.parse(message).compaction, { trigger: "auto", phase: "finished", tokensBefore: 182000, tokensAfter: 31000 });
+});
