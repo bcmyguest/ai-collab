@@ -922,6 +922,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }
       // A message starting with / is a command for the session, not chat; support is listed in web/lib/slash-commands.js.
       if (action === "command") {
+        if (typeof command !== "string" || command.length > 4000) reject(400, "Enter 1–4000 characters");
         const parsed = parseCommand(command);
         if (!parsed) reject(400, "Commands start with /name");
         recipient(cfg, target, true);
