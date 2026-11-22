@@ -9,6 +9,8 @@ const sessionPath = (address) => {
 
 /** Thin wrappers that name each control route. */
 export const runnerClient = (options = {}) => ({
+  startPattern: (input) => runnerRequest("POST", "/v1/pattern-runs", input, options),
+  advancePattern: (input) => runnerRequest("POST", "/v1/pattern-runs/advance", input, options),
   health: () => runnerRequest("GET", "/v1/health", undefined, options),
   harnesses: () => runnerRequest("GET", "/v1/harnesses", undefined, options),
   models: (harness) => runnerRequest("GET", `/v1/harnesses/${encodeURIComponent(harness)}/models`, undefined, options),

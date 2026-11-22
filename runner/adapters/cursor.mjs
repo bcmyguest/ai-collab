@@ -1,6 +1,6 @@
 // Cursor adapter: one `<cursor cli> acp` child per owned session over stdio JSON-RPC, optionally inside an OpenShell sandbox.
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -171,9 +171,16 @@ function connect(argv, { env, cwd, log, onRequest, onNotify }) {
  * host's `$XDG_CONFIG_HOME/cursor/auth.json` (or `~/.config/cursor/auth.json`), written to a 0600 temp file and
  * uploaded, never passed in argv or --env, so it never reaches a log. Missing auth is not fatal: the CLI asks to log in.
  */
-export async function prepareSandbox({ openshell, env, sandbox, cwd, home = homedir(), cursorTree, launcher = SANDBOX_LAUNCHER, staged = new Set(), log = () => {} }) {
+export async function prepareSandbox({ openshell, env, sandbox, cwd, home = homedir(), cursorTree, launcher = SANDBOX_LAUNCHER, staged = new Set(), reuseWorktree = false, log = () => {} }) {
   const remoteWork = `${SANDBOX_ROOT}/work`;
-  await uploadTree({ openshell, env, sandbox, local: cwd, remote: remoteWork });
+  const workdir = `${remoteWork}/${basename(cwd)}`;
+  const marker = `${SANDBOX_ROOT}/.team-worktree-ready`;
+  const exec = (command) => runTool(openshell, sandboxExecArgv({ openshell, sandbox, command }).slice(1), { env });
+  const ready = reuseWorktree && (await exec(["test", "-f", marker])).code === 0;
+  if (!ready) {
+    await uploadTree({ openshell, env, sandbox, local: cwd, remote: remoteWork });
+    if (reuseWorktree && (await exec(["touch", marker])).code !== 0) throw new Error("Could not mark team worktree ready");
+  }
   const execEnv = { HOME: SANDBOX_HOME, XDG_CONFIG_HOME: `${SANDBOX_HOME}/.config` };
   if (cursorTree) {
     // The host install tree is about 500 MB, so it is uploaded once per sandbox and reused after that; the
@@ -202,7 +209,7 @@ export async function prepareSandbox({ openshell, env, sandbox, cwd, home = home
   } else {
     log("cursor: no host auth.json found; the sandbox CLI will ask to log in");
   }
-  return { workdir: `${remoteWork}/${basename(cwd)}`, env: execEnv };
+  return { workdir, env: execEnv };
 }
 
 // Copies the auth file in through a 0600 temp file (a single-file upload keeps the mode), then deletes the temp file.
@@ -261,12 +268,15 @@ export default function cursorAdapter(config = {}) {
     try {
       if (spec.place === "openshell") {
         // One sandbox per project, reused: created by the first session and deleted when the last one closes.
-        sandbox = await ensureSandboxIn({ openshell: openshellBin, env, name: sandboxName(spec.project), policy: policyPath });
+        const name = spec.patternRun
+          ? "team-" + createHash("sha256").update(spec.project + "/" + spec.patternRun).digest("hex").slice(0, 14)
+          : sandboxName(spec.project);
+        sandbox = await ensureSandboxIn({ openshell: openshellBin, env, name, policy: policyPath });
         claim(sandbox, spec.cwd);
         session.sandbox = sandbox;
         const prepared = await prepareSandbox({
           openshell: openshellBin, env, sandbox, cwd: spec.cwd, home: spec.home, cursorTree,
-          staged: stagedTrees, log: (l) => ctx.log(l),
+          staged: stagedTrees, reuseWorktree: Boolean(spec.patternRun), log: (l) => ctx.log(l),
         });
         argv = execArgv({ openshell: openshellBin, sandbox, args: cursorArgs, workdir: prepared.workdir, env: prepared.env });
         // The CLI runs in the sandbox, so it must be told the sandbox path, not the host's.
@@ -503,7 +513,7 @@ export default function cursorAdapter(config = {}) {
       if (settings.error) throw new Error(settings.error);
       const attached = await attach({
         project: record.project, cwd: record.cwd, place: record.place, permission: settings.settings,
-        model: record.model, env, requireLoad: true,
+        model: record.model, patternRun: record.patternRun, env, requireLoad: true,
       }, ctx);
       try {
         attached.session.sessionId = record.nativeId;

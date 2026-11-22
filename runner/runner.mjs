@@ -1,7 +1,7 @@
 // Runner core: one durable "session" workflow per owned session; control calls and ntfy input become durable messages.
 import { randomBytes, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
-import { readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { EventType } from "@ag-ui/core";
@@ -81,6 +81,17 @@ const merge = (batch) => ({ text: batch.map((i) => i.text).join("\n\n"), message
 // The code-mode setting a record and adapter options carry; omitted when unknown (records from before the setting).
 const codeModeField = (codeMode) => (typeof codeMode === "boolean" ? { codeMode } : {});
 
+function patternHandoff(reply) {
+  const line = reply?.trimEnd().split("\n").at(-1);
+  const prefix = "PATTERN_ADVANCE ";
+  if (!line?.startsWith(prefix)) return undefined;
+  try {
+    const { event, note } = JSON.parse(line.slice(prefix.length));
+    if (typeof event === "string" && (note === undefined || typeof note === "string")) return { event, note };
+  } catch { /* No valid handoff in this reply. */ }
+  return undefined;
+}
+
 /** Public view of a session for the control API. */
 function view(s) {
   const r = s.record;
@@ -136,8 +147,15 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       case EventType.RUN_STARTED:
         r.status = "running";
         r.run = { id: e.runId, startedAt: now() };
+        s.patternReply = undefined;
         delete r.cut;
         save(s);
+        break;
+      case EventType.TEXT_MESSAGE_CHUNK:
+        if (r.patternRun && e.role === "assistant") {
+          const previous = s.patternReply?.id === e.messageId ? s.patternReply.text : "";
+          s.patternReply = { id: e.messageId, text: (previous + (e.delta ?? "")).slice(-4096) };
+        }
         break;
       case EventType.RUN_FINISHED:
       case EventType.RUN_ERROR:
@@ -146,7 +164,11 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         for (const card of [...r.approvals]) closeApproval(s, card.id, "cancelled");
         save(s);
         if (e.type === EventType.RUN_ERROR) s.finished.set(e.metadata.aiCollab.runId, { outcome: "error", message: e.message });
-        else s.finished.set(e.runId, { outcome: e.outcome?.type ?? "success" });
+        else {
+          const outcome = e.outcome?.type ?? "success";
+          const handoff = outcome === "success" ? patternHandoff(s.patternReply?.text) : undefined;
+          s.finished.set(e.runId, { outcome, ...(handoff ? { handoff } : {}) });
+        }
         s.wake();
         break;
     }
@@ -257,16 +279,17 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   }
 
   // The folder a session runs in: the project root, a fresh worktree, or (OpenShell) a worktree the sandbox syncs.
-  async function placeCwd(project, harness, place) {
+  async function placeCwd(project, harness, place, patternRun) {
     let root;
     try { root = projectRoot(project, env); } catch (error) { fail(400, error.message); }
     if (place === "folder") return root;
     const adapter = adapterOf(harness);
     if (!(adapter.capabilities.places ?? ["folder", "worktree"]).includes(place)) fail(400, `${harness} owned sessions cannot use place ${place} yet`);
-    const tree = worktreeNames(harness, now());
+    const tree = patternRun ? { name: "team-" + patternRun, branch: "team/" + patternRun } : worktreeNames(harness, now());
     const gitFile = findExecutable("git", childEnv(env).PATH);
     if (!gitFile) fail(500, "git is not installed");
     const cwd = join(root, ".claude", "worktrees", tree.name);
+    if (patternRun && existsSync(join(cwd, ".git"))) return cwd;
     const code = await git(gitFile, ["-C", root, "worktree", "add", "-b", tree.branch, cwd], { cwd: root, env: childEnv(env) });
     if (code !== 0) fail(500, `git worktree add exited ${code}`);
     return cwd;
@@ -274,20 +297,20 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
 
   // The durable session workflow: place → open → claim, then one run.send/run.wait pair per input until closed.
   async function sessionWorkflow(wf, input) {
-    const { project, harness, place, permissionMode, model, codeMode, taskId } = input;
+    const { project, harness, place, permissionMode, model, codeMode, taskId, patternRun } = input;
     const adapter = adapterOf(harness);
     const holder = { s: null, live: null };
-    const cwd = await wf.step("place", () => placeCwd(project, harness, place));
+    const cwd = await wf.step("place", () => placeCwd(project, harness, place, patternRun));
     const opened = await wf.step("open", async () => {
       // An adapter that starts its child before returning (Claude) calls beforeStart with the native id: the owned record exists first.
       const beforeStart = (nativeId) => {
         const childLabel = sessionLabel(nativeId);
         writeOwned(sessionCfg(project, harness, childLabel), {
           v: 1, label: childLabel, address: `${harness}#${childLabel}`, workflowId: wf.id, harness, nativeId, project, cwd, place, permissionMode,
-          ...(model ? { model } : {}), ...codeModeField(codeMode), ...(taskId ? { taskId } : {}), status: "starting", run: null, approvals: [], createdAt: now(),
+          ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode), ...(taskId ? { taskId } : {}), status: "starting", run: null, approvals: [], createdAt: now(),
         });
       };
-      const options = { project, cwd, place, permissionMode, permission: permissionSettings(harness, permissionMode, place).settings, env: ownedEnv(), beforeStart, ...(model ? { model } : {}), ...codeModeField(codeMode) };
+      const options = { project, cwd, place, permissionMode, permission: permissionSettings(harness, permissionMode, place).settings, env: ownedEnv(), beforeStart, ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode) };
       holder.live = await adapter.open(options, contextFor(holder, harness, wf.signal));
       return { nativeId: holder.live.nativeId };
     }, { onCut: () => ({ failed: "the runner stopped while the session opened" }) });
@@ -297,7 +320,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     await wf.step("claim", async () => {
       const record = {
         v: 1, label, address: `${harness}#${label}`, workflowId: wf.id, harness, nativeId: opened.nativeId, project, cwd, place, permissionMode,
-        ...(model ? { model } : {}), ...codeModeField(codeMode), ...(taskId ? { taskId } : {}), status: "idle", run: null, approvals: [], createdAt: now(),
+        ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode), ...(taskId ? { taskId } : {}), status: "idle", run: null, approvals: [], createdAt: now(),
       };
       writeOwned(cfg, record);
       return null;
@@ -332,7 +355,17 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         }
       }, { onCut: () => cutRun(s, null, "runner restarted before the harness accepted the input") });
       if (!sent.runId) continue;
-      await wf.step("run.wait", () => waitRun(s, sent.runId), { onCut: () => cutRun(s, sent.runId, "runner restarted") });
+      const finished = await wf.step("run.wait", () => waitRun(s, sent.runId), { onCut: () => cutRun(s, sent.runId, "runner restarted") });
+      if (patternRun && finished?.handoff) {
+        await wf.step("pattern.advance", async () => {
+          try {
+            await advancePattern({ project, id: patternRun, caller: s.record.address, ...finished.handoff });
+          } catch (error) {
+            await enqueuePublish(s, () => publishEvent(cfg, harness, { type: EventType.CUSTOM, name: ERROR, value: "handoff rejected: " + error.message }));
+          }
+          return null;
+        }, { onCut: () => null });
+      }
     }
     return wf.step("close", () => endSession(s, "closed by the operator"));
   }
@@ -629,7 +662,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   durable.register("session", sessionWorkflow);
 
   /** Starts an owned session; resolves {status:"started", session, nativeId, workflowId, detail}. */
-  async function start({ project, harness, prompt, model, place = "folder", permissionMode, codeMode, taskId } = {}) {
+  async function start({ project, harness, prompt, model, place = "folder", permissionMode, codeMode, taskId } = {}, patternRun) {
     if (!configs.has(project)) fail(400, "Unknown project");
     const adapter = adapterOf(harness);
     if (!PLACES.includes(place)) fail(400, "Unknown start place");
@@ -645,13 +678,13 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       if (typeof taskId !== "string" || !taskId) fail(400, "Invalid task id");
       if (!openTasks(project, env).list().some(task => task.id === taskId)) fail(400, "Unknown task in this project");
     }
-    if (now() - lastStartAt < startGapMs) fail(429, "Wait 10 seconds between starts");
-    lastStartAt = now();
+    if (!patternRun && now() - lastStartAt < startGapMs) fail(429, "Wait 10 seconds between starts");
+    if (!patternRun) lastStartAt = now();
     const workflowId = `session-${randomUUID()}`;
     const claimed = new Promise((resolve) => claims.set(workflowId, resolve));
     const timer = new AbortController();
     try {
-      const run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), codeMode: resolveCodeMode(codeMode, env) });
+      const run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), codeMode: resolveCodeMode(codeMode, env) });
       const ended = run.then((out) => fail(502, `${harness} session ended at once: ${out?.ended || "no reason"}`));
       ended.catch(() => {});
       const s = await Promise.race([
@@ -679,11 +712,11 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
 
   async function patternWorkflow(wf, { project, initial, request }) {
     const cfg = patternConfig(project);
-    const launch = async (_cfg, options) => {
+    const launch = async (_cfg, { patternRun, ...options }) => {
       for (;;) {
         wf.signal.throwIfAborted();
         try {
-          return await start({ ...options, project });
+          return await start({ ...options, project }, patternRun);
         } catch (error) {
           if (error.status !== 429) throw error;
           await wf.pause(Math.max(1, startGapMs - (now() - lastStartAt)));
@@ -698,7 +731,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       onCut: () => cutPatternRun(cfg, initial, "start"),
     });
     patternReplies.get(request)?.({ reply });
-    while (reply.status === "running") {
+    while (reply.status === "running" || reply.status === "suspended") {
       const { request, event, options } = await wf.recv("advance");
       const outcome = await wf.step("pattern.advance", async () => {
         try {
@@ -741,28 +774,35 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     try {
       const pattern = getPattern(cfg, name, env);
       if (!pattern.file && pattern.source !== "built-in") throw new Error("A team.dot pattern is required");
-      initial = { ...(await preparePatternRun(cfg, pattern, task, env, { now })), runner: true };
+      initial = { ...(await preparePatternRun(cfg, pattern, task, env, { now, openshell: true })), runner: true };
+      for (const { harness } of initial.definition.roles) {
+        if (!adapterOf(harness).capabilities.places?.includes("openshell")) throw new Error(harness + " does not support OpenShell team roles");
+      }
     } catch (error) {
       fail(400, error.message);
     }
+    if (now() - lastStartAt < startGapMs) fail(429, "Wait 10 seconds between starts");
+    lastStartAt = now();
     const id = patternWorkflowId(project, initial.id);
     const request = randomUUID();
     return waitForPattern(id, request, () => durable.startWorkflow("pattern", id, { project, initial, request }));
   }
 
-  async function advancePattern({ project, id, event, note, caller, override, by } = {}) {
+  async function advancePattern({ project, id, event, note, caller, override, confirmation, by } = {}) {
     const cfg = patternConfig(project);
     if (typeof id !== "string" || !RUN_ID.test(id)) fail(400, "Invalid pattern run id");
     const workflow = patternWorkflowId(project, id);
     const status = durable.status(workflow);
     if (!status) fail(404, "Unknown runner pattern");
     if (status.status !== "PENDING") fail(409, `run ${id} is ${runStatus(cfg, id).status}`);
-    if (typeof event !== "string" || !event.trim() || event.trim().length > DOT_EVENT_MAX) fail(400, "Invalid pattern event");
+    if (!(override === true && typeof confirmation === "string" && RUN_ID.test(confirmation))
+        && (typeof event !== "string" || !event.trim() || event.trim().length > DOT_EVENT_MAX)) fail(400, "Invalid pattern event");
     const request = randomUUID();
     const options = {
       note: typeof note === "string" ? note.trim().slice(0, NOTE_MAX) : "",
       caller: typeof caller === "string" ? caller : "",
       override: override === true,
+      confirmation: typeof confirmation === "string" ? confirmation : "",
       by: typeof by === "string" ? by.slice(0, 80) : "operator",
     };
     return waitForPattern(workflow, request, () => durable.send(workflow, "advance", { request, event, options }));
