@@ -21,7 +21,7 @@ const finished = [
 
 test("a finished turn becomes one completion row named by the first line of its final message", () => {
   assert.deepEqual(completionRows(turnsOf(finished)), [
-    { id: "done:s1", type: "completion", agent: A, time: 107, text: "Done: fixed." },
+    { id: "done:s1", type: "completion", agent: A, time: 107, text: "Done: fixed.", turns: 1 },
   ]);
 });
 
