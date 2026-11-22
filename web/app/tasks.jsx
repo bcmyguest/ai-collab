@@ -25,7 +25,7 @@ const LAZY = "[content-visibility:auto] [contain-intrinsic-size:auto_7rem]";
  * One task card. Memoized on the age string it prints (not the raw clock), so an unchanged task does not re-render and
  * re-layout while the list scrolls; the coarse clock in the board means that string rarely changes either.
  */
-const Card = memo(function Card({ task, age, compose }) {
+const Card = memo(function Card({ task, age, compose, open }) {
   const body = <>
     <div className="flex min-w-0 items-start gap-2">
       <Badge variant="outline" aria-label={`priority ${priorityOf(task)}`} className={cn("shrink-0 font-mono text-[10px]", PRIORITY_BADGE[priorityOf(task)])}>{priorityOf(task)}</Badge>
@@ -51,6 +51,7 @@ const Card = memo(function Card({ task, age, compose }) {
   </>;
   return <li className={LAZY}>
     <button type="button" aria-label={`Message about ${task.title}`} onClick={() => compose(task.id)} className={cn(CARD, "transition-colors hover:bg-accent")}>{body}</button>
+    {task.owner && <Button type="button" size="sm" variant="ghost" onClick={() => open(task.owner)}>Open owner session</Button>}
   </li>;
 });
 
@@ -89,12 +90,12 @@ function Decision({ task, decide, compose }) {
 }
 
 /** One status column: its count header and its cards; memoized so filtering or the clock does not rebuild unchanged columns. */
-const Column = memo(function Column({ status, list, now, compose }) {
+const Column = memo(function Column({ status, list, now, compose, open }) {
   return <section aria-label={status} className="flex min-w-0 flex-col gap-2">
     <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
       <span aria-hidden className={cn("inline-block size-2 rounded-full", DOT[status])}/>{statusLabel(status)} · {list.length}
     </h2>
-    {list.length ? <ul className="flex flex-col gap-2">{list.map(task => <Card key={task.id} task={task} age={task.last ? ageOf(task.last.at, now) : ""} compose={compose}/>)}</ul>
+    {list.length ? <ul className="flex flex-col gap-2">{list.map(task => <Card key={task.id} task={task} age={task.last ? ageOf(task.last.at, now) : ""} compose={compose} open={open}/>)}</ul>
       : <p className="text-xs text-muted-foreground">No {statusLabel(status)} tasks.</p>}
   </section>;
 });
@@ -110,7 +111,9 @@ export function TaskBoard({ board, now, open, compose, decide, taskId, back }) {
   const clock = useMemo(() => boardClock(tasks, now), [tasks, now]);
   // A stable callback: the parent re-renders every second, and a fresh arrow each time would re-render every card.
   const composeRef = useRef(compose);
-  useEffect(() => { composeRef.current = compose; });
+  const openRef = useRef(open);
+  useEffect(() => { composeRef.current = compose; openRef.current = open; });
+  const openOwner = useCallback(address => openRef.current(address), []);
   const message = useCallback(id => composeRef.current(id), []);
   const task = taskId && tasks.find(item => item.id === taskId);
   const waiting = useMemo(() => sortTasks(tasks.filter(item => item.question && !item.question.answer)), [tasks]);
@@ -120,7 +123,7 @@ export function TaskBoard({ board, now, open, compose, decide, taskId, back }) {
     {taskId ? <>
       <Button type="button" size="sm" variant="outline" className="self-start" onClick={back}>Back to board</Button>
       {task?.question && !task.question.answer && decide && <ul><Decision task={task} decide={decide} compose={message}/></ul>}
-      {task ? <Column status={task.status} list={[task]} now={clock} compose={message}/>
+      {task ? <Column status={task.status} list={[task]} now={clock} compose={message} open={openOwner}/>
         : board && !board.error && <p role="status">Task #{taskId} was not found.</p>}
     </> : <>
       {waiting.length > 0 && decide && <section aria-label="Needs your decision" className="flex flex-col gap-2">
@@ -141,7 +144,7 @@ export function TaskBoard({ board, now, open, compose, decide, taskId, back }) {
           </Button>)}
         </div>
         <div className="flex flex-col gap-4 md:grid md:grid-cols-5 md:items-start">
-          {columns.map(([status, list]) => <Column key={status} status={status} list={list} now={clock} compose={message}/>)}
+          {columns.map(([status, list]) => <Column key={status} status={status} list={list} now={clock} compose={message} open={openOwner}/>)}
         </div>
       </>}
     </>}

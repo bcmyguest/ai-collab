@@ -337,7 +337,8 @@ function makeHandle(session) {
       }
       server.sessions.delete(session.nativeId);
       session.server = null;
-      await server.request("thread/unsubscribe", { threadId: session.nativeId }).catch(() => {});
+      if (session.place === "openshell") server.child.kill();
+      else await server.request("thread/unsubscribe", { threadId: session.nativeId }).catch(() => {});
     },
   };
 }
@@ -369,6 +370,20 @@ function newSession({ pool, ctx, env, cwd, place, mode, model, settings, codeMod
   return { pool, ctx, env, cwd, place, mode, model, settings, codeMode, nativeId: "", address: "", server: null, prompt: "", turnId: null, approvals: new Map(), usage: null, compactWait: null };
 }
 
+async function openThread(pool, options, ctx) {
+  const server = await currentServer(pool, options.env);
+  const session = newSession({ pool, ctx, env: options.env, cwd: options.cwd, place: options.place, mode: options.permissionMode, model: options.model, settings: options.permission, codeMode: options.codeMode });
+  const { thread } = await server.request("thread/start", {
+    cwd: options.cwd, ephemeral: false, ...threadPolicy(options.permission), ...(options.model ? { model: options.model } : {}),
+    ...threadConfig(options.codeMode),
+  });
+  session.nativeId = thread.id;
+  session.address = `codex#${sessionLabel(thread.id)}`;
+  session.server = server;
+  server.sessions.set(thread.id, session);
+  return makeHandle(session);
+}
+
 /** Default export of runner/adapters/codex.mjs. `command` overrides the child argv; requestMs the RPC timeout (tests). */
 export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND, requestMs = REQUEST_MS } = {}) {
   const pool = { command, requestMs, server: null, starting: null, booting: null };
@@ -383,19 +398,17 @@ export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND, requ
       });
     },
     async open(options, ctx) {
-      const server = await currentServer(pool, options.env);
-      const session = newSession({ pool, ctx, env: options.env, cwd: options.cwd, place: options.place, mode: options.permissionMode, model: options.model, settings: options.permission, codeMode: options.codeMode });
-      const { thread } = await server.request("thread/start", {
-        cwd: options.cwd, ephemeral: false, ...threadPolicy(options.permission), ...(options.model ? { model: options.model } : {}),
-        ...threadConfig(options.codeMode),
-      });
-      session.nativeId = thread.id;
-      session.address = `codex#${sessionLabel(thread.id)}`;
-      session.server = server;
-      server.sessions.set(thread.id, session);
-      return makeHandle(session);
+      const [file, ...args] = options.sandboxArgv || [];
+      const sessionPool = file ? { command: { file, args }, requestMs } : pool;
+      try {
+        return await openThread(sessionPool, options, ctx);
+      } catch (error) {
+        if (file) sessionPool.server?.child.kill();
+        throw error;
+      }
     },
     async resume(record, ctx, resumeEnv) {
+      if (record.place === "openshell") throw new Error("Codex OpenShell threads cannot resume");
       const { settings, error } = permissionSettings("codex", record.permissionMode, record.place);
       if (error) throw new Error(error);
       const session = newSession({ pool, ctx, env: resumeEnv, cwd: record.cwd, place: record.place, mode: record.permissionMode, model: record.model, settings, codeMode: record.codeMode });
