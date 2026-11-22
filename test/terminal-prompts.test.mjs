@@ -4,6 +4,7 @@ import { publishActivity } from "../lib/activity.mjs";
 import { loadConfig } from "../lib/config.mjs";
 import { sendMessage } from "../lib/inbox.mjs";
 import { WAKE_PROMPT } from "../lib/mode.mjs";
+import { sendReceipts, settleReceipts } from "../lib/receipts.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
@@ -25,7 +26,9 @@ test("session chat shows typed terminal prompts as operator messages, skipping m
     { type: "prompt", input: "echoed from UI" },
     { type: "text", output: "agent reply in activity" },
   ]);
-  await sendMessage(cfg, target, "echoed from UI", { operatorThread: true });
+  const sent = await sendMessage(cfg, target, "echoed from UI", { operatorThread: true });
+  const inactive = "carol#0000000000000002";
+  const queued = await sendMessage(cfg, inactive, "waiting without activity", { operatorThread: true });
 
   const ui = createUi({ cfg });
   const ctrl = new AbortController();
@@ -47,6 +50,18 @@ test("session chat shows typed terminal prompts as operator messages, skipping m
   const times = session.messages.map(m => m.time);
   assert.deepEqual(times, [...times].sort((a, b) => a - b), "messages stay in time order");
 
-  const chat = await next(open(""), "state");
+  const project = open("");
+  const chat = await next(project, "state");
   assert.deepEqual(chat.messages.filter(m => m.terminal).map(m => [m.from, m.to, m.body]), [["operator", target, "typed in terminal"]], "the all-messages view shows terminal prompts with their session");
+  assert.deepEqual(chat.messages.filter(m => m.id === sent.id || m.id === queued.id).map(m => [m.id, m.receipt]).sort(),
+    [[sent.id, "sent"], [queued.id, "sent"]].sort());
+
+  sendReceipts(bob, [sent.id]);
+  await settleReceipts();
+  let updated = await next(project, "state");
+  while (updated.messages.some(m => m.id === sent.id)) updated = await next(project, "state");
+  assert.equal(updated.messages.some(m => m.body === "echoed from UI"), false);
+  assert.equal(updated.messages.find(m => m.id === queued.id)?.receipt, "sent");
+  const read = await next(open(`session=${encodeURIComponent(target)}`), "state");
+  assert.equal(read.messages.find(m => m.id === sent.id)?.receipt, "read");
 });

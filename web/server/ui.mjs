@@ -767,10 +767,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       list = [...shared.filter(related).map(item => ({ ...item, scope: "all" })),
         ...entries(project, inboxOf(project, harness), item => item.kind === "Message")];
     } else {
-      // Terminal prompts echo UI messages sent to all (topic) or to one session (its peer's inbox).
-      const peers = [...new Set(activityList(project).map(item => peerOf(item.agent)))];
-      const sent = [...topic, ...peers.flatMap(peer => entries(project, inboxOf(project, peer), () => true))];
-      list = [...shared, ...answers.map(answerMessage), ...terminalPrompts(project, null, sent)];
+      const peers = new Set([...project.inboxes.keys(), ...activityList(project).map(item => peerOf(item.agent))]);
+      const inbox = [...peers].flatMap(peer => entries(project, inboxOf(project, peer), () => true));
+      const pending = inbox.filter(item => item.kind === "Message" && item.from === "operator" && item.to?.includes("#")
+        && !item.startOnly && !project.reads.get(item.id)?.has(item.to));
+      // Read messages still suppress terminal echoes after they leave the project chat.
+      list = [...shared, ...pending, ...answers.map(answerMessage), ...terminalPrompts(project, null, [...topic, ...inbox])];
     }
     const { ends, replies, senders } = outcomes(project.hub.events(project.topic));
     // A reply carries its replied message's sender and opening text, even when that message is off the page.
