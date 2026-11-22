@@ -8,6 +8,7 @@ import { STATE_LABELS, sessionTree } from "@/lib/session-state";
 import { runState, subagentLabel } from "@/lib/activity-rows";
 import { SUBAGENT_LABELS, subagentState } from "@/lib/subagent-state";
 import { pendingLabel } from "@/lib/pending-summary";
+import { contextMeter } from "@/lib/context-view";
 import { ActivityRow, GoToAgent } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
 import { Avatar, ago } from "./chat";
@@ -53,6 +54,7 @@ export function SessionMenu({ node, disabled, dispose, raw, label = "Actions for
 function SessionCard({ node, now, open, openAddress, act, answer, dispose, raw, disabled, showProject, compact }) {
   const running = node.subagents.filter(run => runState(run, now) === "running");
   const label = running.length ? running.length + " subagent" + (running.length === 1 ? "" : "s") : "";
+  const meter = contextMeter(node.context || {});
   return <li data-session={node.id} className="flex min-w-0 flex-col gap-2">
     <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border bg-card px-3 py-2.5 text-sm shadow-xs">
       <div className="flex min-w-0 items-start gap-1">
@@ -69,6 +71,8 @@ function SessionCard({ node, now, open, openAddress, act, answer, dispose, raw, 
             {node.where && <span title="Where it runs">· {node.where}</span>}
             {showProject && <span>· {node.project}</span>}
             <span>· active {ago(Math.max(node.seenAt || 0, node.lastActivityAt || 0), now)}</span>
+            {meter.text && <span data-context={meter.level} title="Context used"
+              className={cn(meter.level === "full" && "text-destructive", meter.level === "warn" && "text-amber-600")}>· context {meter.text}</span>}
             {label && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]" title="Running subagents">{label}</Badge>}
           </span>
         </span>

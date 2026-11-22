@@ -14,6 +14,9 @@ import { disposeSession, listSessions, sessionPlace } from "../../lib/sessions.m
 import { readReceipts } from "../../lib/receipts.mjs";
 import { controlSession } from "../../lib/controls.mjs";
 import { interruptSession } from "../../lib/interrupt.mjs";
+import { slashCommand } from "../../lib/slash.mjs";
+import { readContext } from "../../lib/usage.mjs";
+import { parseCommand } from "../lib/slash-commands.js";
 import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } from "../../lib/approvals.mjs";
 import { availableHarnesses, availablePlaces, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
 import { cleanName } from "../../lib/names.mjs";
@@ -31,7 +34,7 @@ import { answerMessage, answerText, terminalMessages } from "../lib/operator-mes
 import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a2ui.js";
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "approve", "a2ui", "start", "models", "dispose", "team", "interrupt"];
+const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command"];
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
 const PARENT = /^[a-z0-9-]{1,24}#[a-f0-9]{16}$/;
@@ -249,6 +252,12 @@ async function payload(request) {
     if (value && typeof value === "object" && !Array.isArray(value)) return value;
   } catch {}
   reject(400, "Expected a JSON object");
+}
+
+// A Home card's context meter: the harness's last token count and window, only when a token count is recorded.
+function cardContext(cfg, agent) {
+  const { tokens, window } = readContext({ stateDir: cfg.stateDir, project: cfg.project, peer: agent.peer, session: agent.session });
+  return tokens === null ? {} : { context: { tokens, window } };
 }
 
 function recipient(cfg, target, exact = false) {
@@ -583,6 +592,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         ...agent, project: cfg.project, harness: peerOf(agent.id), lastActivityAt: lastAt, ...(open ? { openCallAt: lastAt } : {}),
         afkHold: mode !== "off" && row?.type === "stop" && /^turn ended/.test(row.input || "") && statusAt < row.time * 1000,
         ...(lastAction.has(agent.id) ? { lastAction: lastAction.get(agent.id) } : {}), subagents, pending: pending.get(agent.id) || [],
+        ...cardContext(cfg, agent),
       };
     });
   }
@@ -766,7 +776,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       agents: list.map(agent => {
         const subagents = [...(runsOf.get(agent.id) || []), ...(kids.get(agent.id) || [])];
         const base = subagents.length ? { ...agent, subagents } : agent;
-        return waiting.has(agent.id) ? { ...base, waiting: true } : base;
+        // Context telemetry and instruction files from the session's state file (lib/usage.mjs).
+        const context = readContext({ stateDir: project.cfg.stateDir, project: project.cfg.project, peer: agent.peer, session: agent.session });
+        const withContext = context.tokens !== null || context.files.length ? { ...base, context } : base;
+        return waiting.has(agent.id) ? { ...withContext, waiting: true } : withContext;
       }),
       messages: scope === "home" ? [] : messages(project, { harness, session }, list),
       ...(cards ? { sessions: cards } : {}),
@@ -932,7 +945,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
-      const { project: name, target, body, question, mode, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, team: teamName, members, delete: deleteTeamName, replyTo, forwardedProps } = await payload(request);
+      const { project: name, target, body, question, mode, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, team: teamName, members, delete: deleteTeamName, replyTo, command, forwardedProps } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -986,6 +999,15 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       if (action === "interrupt") {
         recipient(cfg, target, true);
         return json(200, await interrupt(listSessions(cfg).find(item => item.id === target)));
+      }
+      // A message starting with / is a command for the session, not chat; support is listed in web/lib/slash-commands.js.
+      if (action === "command") {
+        if (typeof command !== "string" || command.length > 4000) reject(400, "Enter 1–4000 characters");
+        const parsed = parseCommand(command);
+        if (!parsed) reject(400, "Commands start with /name");
+        recipient(cfg, target, true);
+        const session = listSessions(cfg).find(item => item.id === target);
+        return json(200, await slashCommand(session, parsed, { compact: peer => control("compact", peer, { cfg }) }));
       }
       if (action === "compact" || action === "wake") {
         recipient(cfg, target, true);

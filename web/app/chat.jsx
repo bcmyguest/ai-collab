@@ -15,6 +15,8 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { fuzzyRank } from "@/lib/fuzzy";
+import { commandFor, matchCommands } from "@/lib/slash-commands";
+import { contextMeter, filesRead } from "@/lib/context-view";
 import { agentDetail } from "@/lib/agent-detail";
 import { withMentions } from "@/lib/mentions";
 import { chatThread } from "@/lib/chat-turns";
@@ -393,12 +395,15 @@ function NewSession({ project, harnesses = [], startable = [], places = ["folder
   </section>;
 }
 
-function Composer({ conversation, agents, harnesses, teams = [], startable = [], models = {}, now, disabled, placeholder, onSend, question, cancel, urgentable, replying, cancelReply }) {
+function Composer({ conversation, agents, harnesses, teams = [], startable = [], models = {}, now, disabled, placeholder, onSend, question, cancel, urgentable, replying, cancelReply, harness = "" }) {
   const [draft, setDraftState] = useState(() => drafts.get(conversation, ""));
   const [urgent, setUrgent] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [commandsOpen, setCommandsOpen] = useState(false);
   const [posting, setPosting] = useState(false);
+  // Command names the picker inserted in this draft; only these and known commands make the message a command.
+  const picked = useRef(new Set());
   const pending = useRef(false);
   const mention = mentionAt(draft);
   const options = [...agents.map(agent => ({ id: agent.id, name: agent.name, lastMessageAt: agent.lastMessageAt, activeAt: agent.activeAt, online: agent.online })),
@@ -413,6 +418,11 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
     option => [option.id, option.name, option.label, HARNESS_NAMES[option.harness === true ? option.id : option.harness], option.model, ...(option.team ? option.members || [] : [])]);
   const picking = showPicker && matches.length > 0;
   const chosen = Math.min(activeIndex, matches.length - 1);
+  // "/comp" while typing a command for the selected session: its names with support from web/lib/slash-commands.js.
+  const typedCommand = harness && /^\/[a-z0-9-]*$/i.test(draft) ? draft.slice(1) : null;
+  const commands = typedCommand === null ? [] : matchCommands(harness, typedCommand);
+  const commandPicking = commands.length > 0 && !picking && commandsOpen;
+  const commandChosen = Math.min(activeIndex, commands.length - 1);
   const busy = disabled || posting;
 
   // Every edit is kept per conversation, so a tab or view switch that remounts the composer restores it.
@@ -429,18 +439,30 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
     const found = /(?:^|\s)@([\w#:./-]*)(?: ([\w.:/-]+))?$/.exec(text);
     return found && (found[2] === undefined || startable.includes(found[1])) ? [found[0].replace(/^\s/, ""), found[1], found[2]] : null;
   }
-  function change(next) { setDraft(next); setShowPicker(mentionAt(next) !== null); setActiveIndex(0); }
+  function change(next) { setDraft(next); setShowPicker(mentionAt(next) !== null); setCommandsOpen(true); setActiveIndex(0); }
   function insert(option) {
     const prefix = mention ? draft.slice(0, -mention[0].length) : draft + (draft && !/\s$/.test(draft) ? " " : "");
     setDraft(prefix + "@" + option.id + " ");
     setShowPicker(false);
     focus();
   }
+  function insertCommand(command) {
+    picked.current.add(command.name);
+    setDraft("/" + command.name + (command.args ? " " : ""));
+    setActiveIndex(0);
+    focus();
+  }
   async function send() {
     if (pending.current || busy || !draft.trim()) return;
     pending.current = true;
     setPosting(true);
-    try { if (await onSend(draft.trim(), urgentable && urgent)) { setDraft(""); setShowPicker(false); setUrgent(false); } }
+    const text = draft.trim();
+    try {
+      // onSend returns true only when the message was sent (or a command ran or was requested); otherwise the draft stays.
+      if (await onSend(text, urgentable && urgent, commandFor(text, picked.current) !== null)) {
+        setDraft(""); setShowPicker(false); setUrgent(false); picked.current.clear();
+      }
+    }
     finally { pending.current = false; setPosting(false); focus(); }
   }
   return <div className="relative mx-auto w-full max-w-3xl px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
@@ -451,6 +473,18 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
     {replying && !question && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border bg-muted px-3 py-1.5 text-sm">
       <span className="min-w-0 truncate">Replying to {short(replying.sender)}</span>
       <Button variant="ghost" size="icon" className="size-6" aria-label="Cancel reply" onClick={cancelReply}><X/></Button>
+    </div>}
+    {commandPicking && <div role="listbox" aria-label="Session commands"
+      className="absolute inset-x-3 bottom-full mb-1 max-h-64 overflow-y-auto rounded-2xl border bg-popover p-1 text-popover-foreground shadow-lg">
+      {commands.map((command, i) => <button type="button" role="option" aria-selected={i === commandChosen} aria-disabled={command.status === "unsupported"} key={command.name}
+        title={command.reason} onMouseDown={event => event.preventDefault()} onClick={() => command.status !== "unsupported" && insertCommand(command)}
+        className={cn("flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm", i === commandChosen && "bg-accent text-accent-foreground", command.status === "unsupported" && "opacity-50")}>
+        <span className="flex min-w-0 flex-1 flex-col"><span className="font-mono text-xs">/{command.name}{command.args ? " " + command.args : ""}</span>
+          <span className="truncate text-xs text-foreground/80">{command.summary}</span></span>
+        {command.status === "partial" && <span className="shrink-0 rounded-full border px-1.5 text-[10px] text-amber-600">partial</span>}
+        {command.status === "unverified" && <span className="shrink-0 rounded-full border px-1.5 text-[10px] text-amber-600">unverified</span>}
+        {command.status === "unsupported" && <span className="shrink-0 text-xs text-muted-foreground">unsupported</span>}
+      </button>)}
     </div>}
     {picking && <div role="listbox" aria-label="Mention an agent"
       className="absolute inset-x-3 bottom-full mb-1 max-h-64 overflow-y-auto rounded-2xl border bg-popover p-1 text-popover-foreground shadow-lg">
@@ -465,6 +499,15 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
       </button>)}
     </div>}
     <div onKeyDownCapture={event => {
+      if (commandPicking) {
+        if (event.key === "Escape") setCommandsOpen(false);
+        else if (event.key === "ArrowDown") setActiveIndex((commandChosen + 1) % commands.length);
+        else if (event.key === "ArrowUp") setActiveIndex((commandChosen + commands.length - 1) % commands.length);
+        else if (event.key === "Tab" && commands[commandChosen].status !== "unsupported") insertCommand(commands[commandChosen]);
+        else return;
+        event.preventDefault(); event.stopPropagation();
+        return;
+      }
       if (!picking) return;
       if (event.key === "Escape") setShowPicker(false);
       else if (event.key === "ArrowDown") setActiveIndex((chosen + 1) % matches.length);
@@ -494,6 +537,32 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
       </PromptInput>
     </div>
   </div>;
+}
+
+// The session's context: tokens used (with the window and a warning when the harness reported one) and its files.
+function ContextChip({ context, rows }) {
+  const meter = contextMeter(context);
+  const loaded = context.files || [];
+  const read = filesRead(rows);
+  const tone = meter.level === "full" ? "border-destructive text-destructive" : meter.level === "warn" ? "border-amber-500 text-amber-600" : "text-muted-foreground";
+  const warning = meter.level === "full" ? " · full" : meter.level === "warn" ? " · near full" : "";
+  return <details className="relative">
+    <summary title="Context used, and the files in it" className={cn("flex cursor-pointer list-none items-center gap-1 rounded-full border px-2.5 py-1 text-xs", tone)}>
+      Context{meter.text && " " + meter.text}{warning}</summary>
+    <div className="absolute right-0 z-30 mt-1 max-h-72 w-[min(90vw,360px)] overflow-y-auto rounded-2xl border bg-popover p-3 text-xs text-popover-foreground shadow-lg">
+      <p className="font-medium">Files in context</p>
+      {loaded.length ? <ul>{loaded.map(entry => <li key={entry.path} className="truncate font-mono" title={entry.path}>{entry.path}
+        <span className="text-muted-foreground"> · {entry.memory} · {entry.load.replace(/_/g, " ")}</span></li>)}</ul>
+        : <p className="text-muted-foreground">None recorded. Claude reports them through its InstructionsLoaded hook.</p>}
+      {/* Shown only once activity rows have loaded; before that, no reads are known, so the section stays out. */}
+      {rows.length > 0 && <>
+        <p className="mt-2 font-medium">Files read</p>
+        {read.length ? <ul>{read.map(entry => <li key={entry.path} className="truncate font-mono" title={entry.path}>{entry.path}
+          <span className="text-muted-foreground"> · {entry.count}×</span></li>)}</ul>
+          : <p className="text-muted-foreground">No file reads in the loaded activity.</p>}
+      </>}
+    </div>
+  </details>;
 }
 
 // A session's finished turn(s) in the project chat: the first line of the final reply; tap opens the session.
@@ -746,6 +815,17 @@ function Console({ account }) {
   const openRaw = node => navigate({ project: node.project, level: "session", harness: node.harness || peerOf(node.id), session: node.id, tab: "raw" });
   const placeholder = missing ? "Pick a session first" : level === "session" ? "Message " + short(selected.session) + " directly…"
     : "Message everyone in " + (project || "the project") + "…";
+  // A session command: resolves true only when the session ran it or the compaction was requested (the composer clears).
+  async function runCommand(body) {
+    const at = requested;
+    setWorking(true);
+    try {
+      const result = await api("command", { project, target: selected.session, command: body });
+      if (at === route.current) setNotice([result.status, result.detail].filter(Boolean).join(" · "));
+      return result.status === "succeeded" || result.status === "requested";
+    } catch (err) { if (at === route.current) setNotice(err.message); return false; }
+    finally { setWorking(false); }
+  }
   async function action(path, payload, fallback) {
     const at = requested;
     setWorking(true);
@@ -826,6 +906,7 @@ function Console({ account }) {
           {" · "}<button type="button" className="underline-offset-2 hover:underline" onClick={signOut}>sign out</button></p>}
         {!home && <ZoomControls data={data} selected={selected} now={now} navigate={navigate}
           compact={level === "session" && agent?.session && <span className="ml-auto flex items-center gap-2">
+            <ContextChip context={agent.context || {}} rows={rows.filter(row => row.agent === agent.id)}/>
             {agent.online && ["codex", "opencode"].includes(agent.peer) && <Button variant="outline" size="sm" className="h-9 rounded-full" aria-label="Interrupt" disabled={!ready || working}
               onClick={() => action("interrupt", { target: selected.session }, "Interrupt requested")}><Square/>Interrupt</Button>}
             <SessionMenu node={{ ...agent, project }} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}
@@ -885,9 +966,11 @@ function Console({ account }) {
         </div>
       </ChatContainerRoot>
       <div role="status" hidden={!notice} className="mx-auto w-full max-w-3xl px-4 text-center text-xs text-muted-foreground">{notice}</div>
-      {!home && !listing && <Composer key={requested} conversation={conversationKey(project, level === "session" ? selected.session : "")} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now}
+      {!home && !listing && <Composer key={requested} conversation={conversationKey(project, level === "session" ? selected.session : "")} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
         placeholder={placeholder} question={question} cancel={() => setQuestion("")} urgentable={!question} replying={replyTo} cancelReply={() => setReplyTo(null)}
-        onSend={async (body, urgent) => {
+        onSend={async (body, urgent, command) => {
+          // Project chat never runs commands: a leading / there is ordinary chat.
+          if (command && !question && level === "session" && selected.session) return runCommand(body);
           const sent = question ? await action("reply", { question, body }, "Reply sent")
             : await action("send", { target, body, ...(urgent ? { urgent: true } : {}), ...(replyTo?.id ? { replyTo: replyTo.id } : {}) }, "Sent");
           if (sent) { setQuestion(""); setReplyTo(null); stick.current?.scrollToBottom(); }

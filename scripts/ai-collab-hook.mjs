@@ -7,6 +7,7 @@
  * project's activity topic unless AI_COLLAB_ACTIVITY=off; that publish runs alongside delivery under a 1.5 s cap.
  * --rewake marks the Claude asyncRewake registration (lib/waiter.mjs): it prints no JSON; it exits 2 with the messages on stderr.
  * --activity marks a registration that only publishes activity and returns the neutral output.
+ * InstructionsLoaded (Claude) records the instruction file it loaded in the session's context state (lib/usage.mjs).
  * A prompt the operator typed records operatorPromptAt for this session; AFK mode changes only when the operator sets it.
  * --host opencode takes Claude-shaped input from the OpenCode plugin (lib/opencode-plugin.mjs) and answers in Claude's shapes.
  * PermissionRequest (Claude, Codex, OpenCode) and Cursor beforeShellExecution / beforeMCPExecution ask the operator's phone in AFK
@@ -27,7 +28,7 @@ import { recordSession } from "../lib/sessions.mjs";
 import { sessionName } from "../lib/names.mjs";
 import { harnessProcess, isRunning } from "../lib/process.mjs";
 import { WAITER_MAX_S, runWaiter, takeWaiterSlot } from "../lib/waiter.mjs";
-import { contextTokens, reportContext } from "../lib/usage.mjs";
+import { contextUsage, recordInstructions, reportContext } from "../lib/usage.mjs";
 import { activityEvents, publishActivity } from "../lib/activity.mjs";
 import { sendReceipts, settleReceipts } from "../lib/receipts.mjs";
 import { closeTerminalCards, decideApproval, decideQuestion } from "../lib/approvals.mjs";
@@ -94,7 +95,8 @@ async function deliver(cfg, host, event, msg, key) {
   // A subagent shares its parent's session id; its messages stay queued for the root session.
   if (typeof msg.agent_id === "string" && msg.agent_id) return neutral(host, key);
   if (["PostToolUse", "Stop", "PreCompact"].includes(event)) {
-    await reportContext(cfg, contextTokens(host, msg)).catch(() => {});
+    const usage = contextUsage(host, msg);
+    await reportContext(cfg, usage.tokens, { window: usage.window }).catch(() => {});
   }
   if (event === "PreCompact") return {};
   if (event === "Stop") {
@@ -193,6 +195,8 @@ async function main() {
     for (const name of ["SIGTERM", "SIGINT", "SIGHUP"]) process.once(name, () => ctrl.abort());
     return emit(subagent ? {} : await decideQuestion(cfg, { host, input: msg, signal: ctrl.signal }));
   }
+  // Claude's InstructionsLoaded: an instruction file entered the context; recorded for the session's context view.
+  if (key === "instructionsloaded" && !subagent) await recordInstructions(cfg, msg).catch(() => {});
   if (event || events.length) {
     try {
       if (!subagent) await recordSession(cfg, {
