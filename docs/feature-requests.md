@@ -95,4 +95,5 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Compact button really compacts the session (today it only asks the agent by message) | open |
 | Task board as its own left-sidebar entry (like Compactions), not a link beside SESSIONS | open |
 | Task board glitches while scrolling large lists | open |
+| #task tags: tapping a task opens a message tagged #<id>; it goes direct to the task's owner agent, else to the project chat | open |
 <!-- tasks:end -->
