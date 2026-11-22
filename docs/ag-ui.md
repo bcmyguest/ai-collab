@@ -35,3 +35,13 @@ Structured ntfy publishers default to the legacy `{v:1, kind, ...}` format. Read
 3. Readers continue to accept cached legacy messages. To roll back, remove the opt-in or set `AI_COLLAB_WIRE=legacy`. Every publish uses one wire format.
 
 On connect, the UI sends one legacy `event: state` frame so older tabs can detect the new build and offer a reload. Current phone clients receive AG-UI `data:` frames. `STATE_SNAPSHOT` refreshes view state. Activity frames carry the ntfy ID, time, and any attachment in `metadata.aiCollabUi`. A `CUSTOM` event named `ai-collab.activity-batch` commits the preceding activity frames as a history reset or an append. The browser projects activity into the timeline, turns, and project feed.
+
+## A2UI surfaces
+
+Approval, AskUserQuestion choice, and question cards render as [A2UI](https://a2ui.org) surfaces. The server sends one `ACTIVITY_SNAPSHOT` per card with `activityType: "a2ui-surface"`, `messageId` `approval-<id>` or `question-<id>`, and `content.a2ui_operations`. Frames go before the state frame, and a surface is re-sent only when its operations change. `web/lib/a2ui.js` builds the operations and maps answers back.
+
+- Protocol: v0.9.1. `@a2ui/react` 0.15.0 (Apache-2.0) exposes only the `v0_9` and `v0_8` entry points. `@a2ui/web_core` 0.15.0 has a `v1_0` processor, but the React renderer does not bind to it. Switch to v1.0 once `@a2ui/react` does.
+- Catalog: the basic catalog plus `OptionPicker` (`urn:ai-collab:a2ui:catalog:1`), which adds per-option descriptions, previews, multi-select, and read-only display. `web/lib/a2ui-catalog.js` holds its schema.
+- Answers: the browser posts `{project, forwardedProps: {a2uiAction: {userAction}}}` to `/api/a2ui`. A decision or choice goes through the approval path that `approve` uses, and a question reply through the `reply` path. Submit stays disabled until every question has a pick or Other text.
+- Fallback: when the stream sends no surface, or a surface fails to render, the card falls back to the legacy component in `web/app/cards.jsx`. Read-only AskUserQuestion rows in the activity timeline stay on the legacy component.
+- `zod-v3` (npm alias for zod 3) holds the catalog schema. Root `zod` stays at 4 because `@anthropic-ai/claude-agent-sdk` peers on it.
