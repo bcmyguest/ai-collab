@@ -8,7 +8,7 @@ Give the operator one place to run, watch and steer a coding agents from a phone
 - [x] PM mission file read each scheduled tick
 - [x] Task board, priorities, and builder units
 - [x] OpenShell sandbox for every new builder (ai-collab builder start)
-- [ ] Code-mode A tool client in sandbox
+- [x] Code-mode A tool client in sandbox
 - [ ] Honest job meters for building status
 
 ## Rules
@@ -19,3 +19,4 @@ Give the operator one place to run, watch and steer a coding agents from a phone
 - Talk to the operator with send_to_all and ask_question; never route through Claude coordinator.
 - Track tasks with task_update + ai-collab task render; do not hand-edit docs/feature-requests.md.
 - Before marking done: oncebitten check --base main (when rules exist).
+- After every web/UI deploy: `node scripts/smoke-ui.mjs` (headless page load); if it fails, revert and redeploy. Builder briefs for web/ changes must say so.
