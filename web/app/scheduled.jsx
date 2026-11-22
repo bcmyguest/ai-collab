@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { CalendarClock, SquareArrowOutUpRight } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { jobDetail, runLabel, runLink } from "@/lib/scheduled";
+import { jobAgent, jobDetail, runLabel, runLink } from "@/lib/scheduled";
 
 const POLL_MS = 60_000;
 
@@ -45,7 +45,7 @@ function RunList({ runs, project, open }) {
   </ul>;
 }
 
-/** The runner's schedules in the sidebar; tap a job for its read-only detail sheet. A run opens its session timeline. */
+/** The runner's schedules in the sidebar; each is a job, not an agent. A run opens its session timeline. */
 export function ScheduledJobs({ project = "", openRun }) {
   const [list, setList] = useState(null);
   const [open, setOpen] = useState("");
@@ -67,18 +67,19 @@ export function ScheduledJobs({ project = "", openRun }) {
   // A run link is the console's own hash: close the sheets and hand it to the console, which parses it like any hash.
   const openAt = hash => { setOpen(""); openRun?.(hash); };
   return <section aria-label="Scheduled jobs" className="px-2 pb-2">
-    <h2 className="flex items-center gap-1.5 pb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground"><CalendarClock className="size-3.5"/>Scheduled</h2>
+    <h2 className="flex items-center gap-1.5 pb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground"><CalendarClock className="size-3.5"/>Scheduled jobs</h2>
     {!list ? <p className="px-1 text-sm text-muted-foreground">Loading schedules…</p>
       : list.status !== "up" ? <p className="px-1 text-sm text-muted-foreground">runner offline</p>
       : <>
         {list.schedules?.length === 0 && <p className="px-1 text-sm text-muted-foreground">No schedules in schedules.json.</p>}
         <ul className="flex flex-col gap-1">
           {(list.schedules || []).map(item => <li key={item.name}>
-            <button type="button" aria-haspopup="dialog" onClick={() => show(item.name)}
+            <button type="button" aria-haspopup="dialog" aria-label={"Schedule " + item.name} onClick={() => show(item.name)}
               className={cn("flex w-full min-w-0 flex-col gap-0.5 rounded-xl px-2 py-1.5 text-left text-sm transition-colors hover:bg-sidebar-accent", open === item.name && "bg-sidebar-accent")}>
               <span className="truncate font-medium">{item.name} <span className="font-normal text-muted-foreground">· every {item.everyMs / 60_000} min</span></span>
               {item.command && <span className="truncate font-mono text-[11px] text-muted-foreground">{item.command.join(" ")}</span>}
               <span className="text-[11px] text-muted-foreground">last {item.last ? item.last.status + " " + when(item.last.scheduledTime) : "never"} · next {when(item.nextRun)}</span>
+              {jobAgent(item) && <span className="truncate text-[11px] text-muted-foreground">resumes <span className="font-mono">{jobAgent(item)}</span></span>}
             </button>
           </li>)}
         </ul>

@@ -43,6 +43,7 @@ import { createDispatcher } from "./dispatch.mjs";
 import { runnerClient, runnerUp } from "../../runner/client.mjs";
 import { runnerSocket } from "../../runner/control.mjs";
 import { readScheduleRuns, readSchedules } from "./schedules.mjs";
+import { quotedReply, usableReplyId } from "../lib/reply-quote.js";
 import { answerMessage, answerText, terminalMessages } from "../lib/operator-messages.js";
 import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a2ui.js";
 
@@ -319,6 +320,19 @@ async function runnerCompact(address, runner, env) {
   return r.status === 200 ? r.body : { status: "failed", detail: r.body.error || "The runner refused the compaction" };
 }
 
+// A reply whose id the server cannot accept goes out as plain text quoting the original's first and last words.
+function replyQuote(replyTo, body, quote) {
+  if (usableReplyId(replyTo)) return { replyTo };
+  return { quoted: true, body: quotedReply(body, originalOf(quote)) };
+}
+
+// The reply composer's copy of the original, {sender, body}; the server sends it as text, never as a link.
+function originalOf(quote) {
+  const source = quote && typeof quote === "object" && !Array.isArray(quote) ? quote : null;
+  if (!source) return {};
+  return { sender: typeof source.sender === "string" ? source.sender : "", body: typeof source.body === "string" ? source.body : "" };
+}
+
 export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start = startSession, models = listModels, push: notifier = null, auth = null, runner = runnerClient }) {
   if (!configs.length) throw new Error("No ai-collab project is configured");
   for (const item of configs) if (!item.enabled) throw new Error(item.reason);
@@ -573,13 +587,16 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     // Hooks refresh seenAt on every event; minute resolution keeps snapshot pushes to one per agent per minute.
     let root = "";
     try { root = projectRoot(cfg.project, env); } catch { /* no registered root */ }
-    for (const { id, peer, session, online, seenAt, parent, cwd, name, sandbox, model } of listSessions(cfg)) {
+    for (const { id, peer, session, online, seenAt, parent, cwd, name, identityName, activity, sandbox, model } of listSessions(cfg)) {
       const where = sessionPlace({ cwd, sandbox }, root);
       const started = typeof parent === "string" && PARENT.test(parent) ? parent : found.get(id)?.parent;
       found.set(id, {
         id, peer, session, online, seenAt, activeAt: Math.floor((seenAt || 0) / 60_000) * 60_000, registered: true, ...(started ? { parent: started } : {}),
         ...(typeof cwd === "string" && isAbsolute(cwd) ? { folder: cleanText(basename(cwd), ACTIVITY_NAME_MAX) } : {}),
         ...(cleanName(name) ? { name: cleanName(name) } : {}),
+        // The name set_identity chose, which the sidebar lists as an agent (PM first), with its activity line.
+        ...(cleanName(identityName) ? { identityName: cleanName(identityName) } : {}),
+        ...(cleanName(identityName) && typeof activity === "string" && activity.trim() ? { activity: cleanText(activity, ACTIVITY_NAME_MAX) } : {}),
         ...(where ? { where: cleanText(where, ACTIVITY_NAME_MAX) } : {}),
         ...(typeof model === "string" && model ? { model: cleanText(model, ACTIVITY_NAME_MAX) } : {}),
       });
@@ -1064,7 +1081,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
-      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, startMode, team: teamName, members, delete: deleteTeamName, replyTo, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps } = await payload(request);
+      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, startMode, team: teamName, members, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -1208,19 +1225,22 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }
       recipient(cfg, target);
       const direct = action === "send" && target.includes("#");
+      const sender = direct || action === "send" ? operator : cfg;
+      // A reply id the envelope cannot carry is not an error: the post quotes the original instead.
+      const reply = replyTo === undefined || replyTo === null || replyTo === "" ? null : replyQuote(replyTo, body, quote);
+      const text = reply?.quoted ? reply.body : body.trim();
       try {
         if (urgent !== undefined && typeof urgent !== "boolean") reject(400, "urgent must be true or false");
-        if (replyTo !== undefined && (typeof replyTo !== "string" || !/^[a-zA-Z0-9-]{1,64}$/.test(replyTo))) reject(400, "Invalid reply ID");
-        const sender = direct || action === "send" ? operator : cfg;
-        await sendMessage(sender, target, body.trim(), { operatorThread: direct, urgent: urgent === true, ...(replyTo !== undefined ? { replyTo } : {}), ...(by && sender.peer === "operator" ? { by } : {}) });
+        await sendMessage(sender, target, text, { operatorThread: direct, urgent: urgent === true, ...(reply?.replyTo ? { replyTo: reply.replyTo } : {}), ...(by && sender.peer === "operator" ? { by } : {}) });
       } catch (err) {
         if (err.message.includes("-byte limit")) reject(400, `Message exceeds ${NTFY_MESSAGE_MAX_BYTES} encoded bytes`);
         throw err;
       }
-      const routed = action === "send" ? await routeMentions(project, body.trim(), target, by) : "";
+      const routed = action === "send" ? await routeMentions(project, text, target, by) : "";
       const detail = routed ? { status: "Sent", detail: routed } : {};
-      if (direct) return json(201, { sent: true, ...detail, wake: wakeAgent(project, target, listSessions(cfg).find(item => item.id === target)) });
-      return json(201, { sent: true, ...detail });
+      const quoted = reply?.quoted ? { quoted: true } : {};
+      if (direct) return json(201, { sent: true, ...detail, ...quoted, wake: wakeAgent(project, target, listSessions(cfg).find(item => item.id === target)) });
+      return json(201, { sent: true, ...detail, ...quoted });
     } catch (err) {
       const { status, message } = failure(err);
       return json(status, { error: message });

@@ -5,6 +5,12 @@ export function everyLabel(everyMs) {
   return "every " + everyMs / 60_000 + " min";
 }
 
+/** The agent address a job's command resumes (`cursor#<16 hex>`), or "" when it resumes none. */
+export function jobAgent(job) {
+  const resumed = job?.session;
+  return resumed?.harness && resumed?.session ? resumed.harness + "#" + resumed.session : "";
+}
+
 /** [label, value] rows for the job's detail sheet; a field the runner did not send gets no row. */
 export function jobDetail(job) {
   const rows = [["Schedule", everyLabel(job.everyMs)]];
@@ -12,6 +18,8 @@ export function jobDetail(job) {
   if (Array.isArray(job.command) && job.command.length) rows.push(["Command", job.command.join(" ")]);
   if (job.cwd) rows.push(["Folder", job.cwd]);
   if (job.last?.status) rows.push(["Last run", job.last.status]);
+  // The job is the schedule, not the agent: the agent it resumes is a separate entry in the sidebar.
+  if (jobAgent(job)) rows.push(["Resumes", jobAgent(job)]);
   return rows;
 }
 
