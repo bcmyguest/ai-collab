@@ -59,8 +59,8 @@ test("task CLI list filters by status and show prints one task", async () => {
   await cli("add", "Alpha");
   await cli("add", "Beta");
   await cli("set", "beta", "status=done");
-  assert.equal((await cli("list")).out, "alpha\topen\t-\t-\tAlpha\nbeta\tdone\t-\t-\tBeta\n");
-  assert.equal((await cli("list", "done")).out, "beta\tdone\t-\t-\tBeta\n");
+  assert.equal((await cli("list")).out, "alpha\topen\tP2\t-\t-\tAlpha\nbeta\tdone\tP2\t-\t-\tBeta\n");
+  assert.equal((await cli("list", "done")).out, "beta\tdone\tP2\t-\t-\tBeta\n");
   const shown = await cli("show", "beta");
   assert.equal(JSON.parse(shown.out).status, "done");
   assert.equal((await cli("show", "missing")).code, 1);
@@ -97,7 +97,8 @@ test("task CLI renders feature-requests.md, imports once, and imports a store fi
   assert.equal((await cli("import", table)).code, 1);
   assert.equal((await cli("render")).code, 0);
   const rendered = readFileSync(path.join(root, "docs", "feature-requests.md"), "utf8");
-  assert.ok(rendered.includes("\n| Ship it | done (merged) |\n| Plan it | decided |\n"));
+  assert.ok(rendered.includes("| Ship it | P2 | done (merged) |"));
+  assert.ok(rendered.includes("| Plan it | P2 | decided |"));
 
   // A .json store file (the old .ai-collab/tasks.json shape) imports too, into a new project store.
   const json = path.join(root, "..", "tasks.json");
