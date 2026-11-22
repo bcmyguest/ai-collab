@@ -411,8 +411,8 @@ Argv: `<cursor cli> acp`, plus `--force` for full-access, plus `--model <m>` whe
 | `steer`, `contextUsage`, `listCommands` | not built; `listCommands` returns `[]` | |
 | `listModels` | partial: `--list-models` output format UNVERIFIED | same test (fake output) |
 | `available` | supported | `agent --version` prints `2026.11.22-e9042b2` |
-| Runs inside a real OpenShell sandbox: staged CLI, auth, worktree upload, edits back, sandbox deleted on close | supported, but **no prompt completed** (see below) | `test/cursor-sandbox.test.mjs` (fake); live run 2026-11-22 reached `acp` and failed at `initialize` with "Internal error" |
-| Real ACP schema, `protocolVersion: 1`, method names | UNVERIFIED: from the ACP spec; `agent acp` was started but its `initialize` reply was an error | |
+| Runs inside a real OpenShell sandbox: staged CLI, auth, worktree upload, edits back, sandbox deleted on close | supported, but **no prompt completed** (see below) | `test/cursor-sandbox.test.mjs` (fake); live 2026-11-22: `initialize` succeeded (`isAuthenticated: true` in the CLI log), `session/new` failed |
+| Real ACP schema, `protocolVersion: 1`, method names | **initialize verified live**: `protocolVersion: 1`, `loadSession`, `authMethods: [cursor_login]`, `sessionCapabilities.list` | live `agent acp` in a sandbox, 2026-11-22 |
 | `--force` applied by ACP mode | UNVERIFIED: the flag parses after `acp` (see below), not whether ACP honours it | |
 | `AI_COLLAB_PARENT` in the agent's shell | not built: the native session id is known only after `session/new`, after the child starts | |
 | Hooks stand down for the cursor child | not verified: `AI_COLLAB_OWNED=cursor` is set on the child, in a sandbox through `--env` |
@@ -448,7 +448,8 @@ Measured facts that shaped the code:
 
 Still unsolved:
 
-- **A real prompt has never completed inside a sandbox.** The staged `agent` starts and speaks ACP, but the `initialize` request came back as `Internal error` in the live run. Auth staging and file sync are proven; the conversation is not. This is the next thing to debug (the CLI's own log is in `/tmp/cursor-agent-logs-1000/` inside the sandbox, or in the sandbox during the run).
+- **A real prompt has never completed inside a sandbox.** The staged `agent` starts, speaks ACP, reports `isAuthenticated: true`, and `initialize` succeeds with `protocolVersion: 1`. `session/new` then answers `{"code":-32603,"message":"Internal error","data":{"message":"Failed to initialize session services"}}` with `cwd: "/sandbox/work/repo"`, and its own log shows why the same request cannot reach home: `privacy.refresh.error ConnectError: [unavailable] getaddrinfo EAI_AGAIN api2.cursor.sh`, then `analytics.flush.error ... fetch failed`. The CLI sandboxes *itself* (`sandbox.configureSuccess {.../cursorsandbox}`) and applies a Landlock network rule that denies its own egress about a second in; the sandbox's policy engine logs the connection as allowed, so the denial is inside the CLI process. Auth, staging and file sync are proven; the conversation is not.
+- **The fix to try next.** A Cursor CLI version whose nested sandbox detects that it is already sandboxed, a supported knob that turns the nested network policy off (the CLI's own `networkAccess` profile did not), or a policy change that exempts the `cursorsandbox` helper.
 - **ntfy access from inside.** A policy can allow `host.openshell.internal:8794` for the node binary (measured in `docs/research/owned-sessions.md`), but nothing in the sandbox runs `ai-collab`, so hooks do not run there. The adapter accepts `AI_COLLAB_OPENSHELL_POLICY` and passes `--policy`; no policy file is shipped.
 - **Idle cleanup.** A sandbox lives until its last session closes. A runner crash leaves it; there is no orphan sweep.
 - **The other harnesses.** Claude, Codex and OpenCode still cannot use `place: "openshell"`; `capabilities.places` names what each adapter allows, and only Cursor lists it.
