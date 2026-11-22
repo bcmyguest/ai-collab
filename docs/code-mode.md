@@ -67,12 +67,12 @@ Remove the sandbox with `openshell sandbox delete ai-collab-code`; the next run 
 
 ### Registration
 
-| Harness | Where | Server name |
-|---|---|---|
-| Claude Code | `.mcp.json` (plugin) | `plugin:ai-collab:ai-collab-code` |
-| Codex | `.codex-plugin/plugin.json`, with `tool_timeout_sec: 150` (Codex's default tool timeout is shorter than the longest program) | `ai-collab-code` |
-| Cursor | `.cursor-plugin/plugin.json` (`node scripts/install-cursor.mjs --copy`) | `ai-collab-code` |
-| OpenCode | `opencode.json` `mcp.servers` (`node scripts/install-opencode.mjs`) | `ai-collab-code` |
+| Harness | Where | Server name | Checked 2026-11-22 |
+|---|---|---|---|
+| Claude Code | `.mcp.json` (plugin) | `plugin:ai-collab:ai-collab-code` | `claude -p --mcp-config` with the server: the model called `run_code` once and got `{"ok":true,"result":{"tasks":108,"agents":1}}` from the real sandbox |
+| Codex | `.codex-plugin/plugin.json`, with `tool_timeout_sec: 150` (Codex's default tool timeout is shorter than the longest program) | `ai-collab-code` | `codex mcp get` parses the entry and its `tool_timeout_sec`; tool listing UNVERIFIED (Codex has no tool-list command) |
+| Cursor | `.cursor-plugin/plugin.json` (`node scripts/install-cursor.mjs --copy`) | `ai-collab-code` | `cursor-agent mcp list-tools ai-collab-code` lists `run_code (code, session, timeout_ms)` |
+| OpenCode | `opencode.json` `mcp.servers` (`node scripts/install-opencode.mjs`) | `ai-collab-code` | UNVERIFIED: `opencode mcp list` (2.2.5) printed "No MCP servers configured" even for servers already in the global config |
 
 `run_code` is registered next to native code mode, not instead of it. Inside a native code-mode program, Claude
 and Codex expose MCP tools as nested tools, so `run_code` is one of them; neither replaces the other. Native code
