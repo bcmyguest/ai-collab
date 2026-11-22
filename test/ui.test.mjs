@@ -11,6 +11,7 @@ import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
+import { eventToEnvelope } from "../lib/agui.mjs";
 
 const base = "http://127.0.0.1:8795";
 
@@ -181,7 +182,7 @@ test("AFK mode publishes to every project, streams the latest mode, and stays ou
   assert.equal(fake.state.publishes.length, 0);
 
   assert.equal((await post({ mode: "quiet" }, allowedOrigin)).status, 201);
-  const sent = fake.state.publishes.map(p => [p.topic, JSON.parse(p.message)]);
+  const sent = fake.state.publishes.map(p => [p.topic, eventToEnvelope(p.message)]);
   assert.deepEqual(sent.map(([topic]) => topic).sort(), [broadcastTopic("demo"), broadcastTopic("second")]);
   for (const [, envelope] of sent) {
     assert.deepEqual({ ...envelope, ts: 0 }, { v: 1, kind: "mode", from: "operator", mode: "quiet", ts: 0 });

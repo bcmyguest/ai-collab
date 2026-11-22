@@ -55,7 +55,7 @@ async function until(check, what, ms = 4000) {
   }
 }
 
-const envelopes = (fake, topic) => fake.state.publishes.filter((p) => p.topic === topic).map((p) => JSON.parse(p.message));
+const envelopes = (fake, topic) => fake.state.publishes.filter((p) => p.topic === topic).map((p) => eventToEnvelope(p.message)).filter(Boolean);
 const rows = (fake) => fake.state.publishes.filter((p) => p.topic === ACTIVITY).map((p) => eventToEnvelope(p.message));
 
 test("start opens a session, claims the registry, and publishes prompt, text and stop rows", async () => {

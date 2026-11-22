@@ -10,6 +10,7 @@ import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
+import { eventToEnvelope } from "../lib/agui.mjs";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 const base = "http://127.0.0.1:8795";
@@ -24,7 +25,7 @@ function runHook(input, env) {
   });
 }
 
-const receipts = (fake) => fake.state.publishes.filter((p) => p.topic === receiptsTopic("demo")).map((p) => JSON.parse(p.message));
+const receipts = (fake) => fake.state.publishes.filter((p) => p.topic === receiptsTopic("demo")).map((p) => eventToEnvelope(p.message));
 
 test("receipt envelopes batch ids under ntfy's byte cap", () => {
   const cfg = { peer: "alice", session: "0123456789abcdef" };
@@ -32,9 +33,9 @@ test("receipt envelopes batch ids under ntfy's byte cap", () => {
   const messages = receiptMessages(cfg, ids, "2026-01-01T00:00:00.000Z");
   assert.ok(messages.length > 1);
   for (const m of messages) assert.ok(Buffer.byteLength(m) <= NTFY_MESSAGE_MAX_BYTES);
-  const parsed = messages.map((m) => JSON.parse(m));
+  const parsed = messages.map((m) => eventToEnvelope(m));
   assert.deepEqual(parsed.flatMap((m) => m.ids), ids);
-  assert.deepEqual(Object.keys(parsed[0]), ["v", "kind", "from", "session", "ids", "state", "ts"]);
+  assert.deepEqual(Object.keys(parsed[0]).sort(), ["v", "kind", "from", "session", "ids", "state", "ts"].sort());
   const reads = readReceipts(messages.map((message) => ({ message })));
   assert.deepEqual([...reads.get(ids[0])], ["alice#0123456789abcdef"]);
 });

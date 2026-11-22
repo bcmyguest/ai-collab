@@ -109,7 +109,7 @@ The mention picker lists configured teams. Post `@light-team <task>` in the proj
 
 **Send now** adds `urgent: true` to the send request, and a message whose envelope has `urgent: true` shows ⚡. See [Urgent messages](messaging.md#urgent-messages-send-now).
 
-The **AFK** switch in the header sets the operator mode to `on`, `off`, or `quiet`. Each change publishes `{v:1, kind:"mode", from:"operator", mode, ts}` to the broadcast topic of every project. The latest mode envelope in history is the current mode (none means `off`); the chat never shows mode envelopes. See [AFK mode](afk.md).
+The **AFK** switch in the header sets the operator mode to `on`, `off`, or `quiet`. Each change publishes an `ai-collab.mode` event to the broadcast topic of every project. The latest mode envelope in history is the current mode (none means `off`); the chat never shows mode envelopes. See [AFK mode](afk.md).
 
 ## Start a session from the phone
 
@@ -179,7 +179,7 @@ Concurrent requests for one session share a single run. A wake and a compact nev
 | `AI_COLLAB_WAKE_RUNNER` | `host` | `host` runs the harness directly. `openshell` runs it with `openshell sandbox exec`. |
 | `AI_COLLAB_OPENSHELL_SANDBOX` | — | Sandbox name, required when the runner is `openshell`. |
 
-Context alerts post one `alert` envelope to the broadcast topic each time a session's current context rises above 200,000 tokens. A sample of 200,000 or fewer re-arms the alert, and a failed publish retries on the next sample. Agents skip these envelopes. The sources are the harnesses' own counters, read locally:
+Context alerts post one `ai-collab.alert` event to the broadcast topic each time a session's current context rises above 200,000 tokens. A sample of 200,000 or fewer re-arms the alert, and a failed publish retries on the next sample. Agents skip these envelopes. The sources are the harnesses' own counters, read locally:
 
 | Harness | Source |
 |---|---|

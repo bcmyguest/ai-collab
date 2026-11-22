@@ -9,7 +9,7 @@ import { ACTIVITY_TYPES } from "../../lib/activity.mjs";
 import { stripControl } from "../../lib/format.mjs";
 import { NTFY_MESSAGE_MAX_BYTES, latestStatuses, markUrgent, parseEnvelope, sendMessage } from "../../lib/inbox.mjs";
 import { publish } from "../../lib/ntfy.mjs";
-import { parsePhoneReply } from "../../lib/questions.mjs";
+import { parsePhoneReply, parseQuestionText } from "../../lib/questions.mjs";
 import { disposeSession, listSessions, sessionPlace } from "../../lib/sessions.mjs";
 import { readReceipts } from "../../lib/receipts.mjs";
 import { controlSession } from "../../lib/controls.mjs";
@@ -41,7 +41,6 @@ const MAX_REQUEST_BYTES = 32768;
 const ONLINE_MS = 30 * 60_000;
 const KEEPALIVE_MS = 25_000;
 const PUSH_DELAY_MS = 25;
-const questionPattern = /^Question from ([^\n]+)\n\n([\s\S]+)\n\nReply in this topic: reply ([a-f0-9]{12}) YOUR ANSWER$/;
 const MAX_MESSAGES = 100;
 const IMPORTANT = /^IMPORTANT, the agent waits for this answer: /;
 // The hub keeps the newest 500 events per topic; 3 MB of cached history covers 500 full 4 KB activity envelopes.
@@ -143,6 +142,10 @@ function entry(event) {
 function baseEntry(event) {
   const { message, id, time } = event;
   const envelope = parseEnvelope(message);
+  if (!envelope || envelope.kind === "question") {
+    const question = parseQuestionText(envelope || message);
+    if (question) return { id, time, kind: "Question", sender: question.sender, from: question.sender, body: question.body, question: question.id };
+  }
   if (envelope) {
     if (envelope.kind === "approval" || envelope.kind === "approval-view") return approvalEntry(event, envelope);
     if (envelope.kind !== "msg" || typeof envelope.body !== "string") return null;
@@ -151,8 +154,6 @@ function baseEntry(event) {
     const by = envelope.from === "operator" && isGithubLogin(envelope.by) ? { by: envelope.by } : {};
     return { id, time, kind: "Message", sender, from: sender, to, body: envelope.body, thread: envelope.operatorThread === true, ...(envelope.urgent === true ? { urgent: true } : {}), ...by };
   }
-  const question = questionPattern.exec(message);
-  if (question) return { id, time, kind: "Question", sender: question[1], from: question[1], body: question[2], question: question[3] };
   const reply = parsePhoneReply(message);
   const by = replyBy(event);
   if (reply) return { id, time, kind: "Reply", sender: "ntfy", from: "ntfy", body: reply.answer, question: reply.id, ...(by ? { by } : {}) };

@@ -7,6 +7,7 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { claimInbox, sendMessage } from "../lib/inbox.mjs";
 import { loadConfig } from "../lib/config.mjs";
+import { eventToEnvelope } from "../lib/agui.mjs";
 
 test("MCP asks and resumes waiting for a matching phone reply on the broadcast topic", { timeout: 10000 }, async (t) => {
   const fake = await startFakeNtfy();
@@ -84,7 +85,7 @@ test("MCP reply_to_operator answers an exact-session direct chat in the same thr
   const reply = fake.state.publishes.at(-1);
   assert.equal(reply.topic, sent.topic);
   assert.deepEqual(
-    (({ from, session: s, to, operatorThread, replyTo, body }) => ({ from, s, to, operatorThread, replyTo, body }))(JSON.parse(reply.message)),
+    (({ from, session: s, to, operatorThread, replyTo, body }) => ({ from, s, to, operatorThread, replyTo, body }))(eventToEnvelope(reply.message)),
     { from: "alice", s: session, to: "operator", operatorThread: true, replyTo: messageId, body: "All green" },
   );
 });

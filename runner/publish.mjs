@@ -1,6 +1,7 @@
 // Publishes runner activity as AG-UI and sends status, approvals, receipts and alerts on their existing topics.
 import { contentToText, EventType } from "@ag-ui/core";
-import { NTFY_MESSAGE_MAX_BYTES, broadcastTopic } from "../lib/config.mjs";
+import { broadcastTopic } from "../lib/config.mjs";
+import { encodeEnvelope } from "../lib/agui.mjs";
 import { publish } from "../lib/ntfy.mjs";
 import { publishStatus } from "../lib/inbox.mjs";
 import { publishActivity } from "../lib/activity.mjs";
@@ -52,14 +53,11 @@ export const sessionEndedRow = (reason) => ({ type: "stop", input: ["session end
 export function ownedApprovalMessage(cfg, harness, { id, tool, summary, questions }, { now = Date.now(), ttlMs = DEFAULT_APPROVAL_MS } = {}) {
   const clean = questions === undefined ? undefined : cleanQuestions(questions);
   const req = { tool: String(tool).slice(0, 128), summary: String(summary).slice(0, 300), ...(clean ? { questions: clean } : {}) };
-  const message = approvalMessage(cfg, harness, req, { id, expiresAt: now + ttlMs, ts: new Date(now).toISOString() });
-  if (!message) return null;
-  const owned = JSON.stringify({ ...JSON.parse(message), owned: true });
-  return Buffer.byteLength(owned) <= NTFY_MESSAGE_MAX_BYTES ? owned : null;
+  return approvalMessage(cfg, harness, req, { id, expiresAt: now + ttlMs, ts: new Date(now).toISOString(), owned: true });
 }
 
 export function approvalEndMessage(cfg, id, reason) {
-  return JSON.stringify({ v: 1, kind: "approval-end", from: cfg.peer, session: cfg.session, id, reason, owned: true, ts: new Date().toISOString() });
+  return encodeEnvelope("approval-end", { from: cfg.peer, session: cfg.session, id, reason, owned: true, ts: new Date().toISOString() });
 }
 
 /** Publishes the owned approval card on the broadcast topic; throws when it cannot fit or publish. */

@@ -1,5 +1,7 @@
 # Messaging
 
+Chat, status, questions, approvals, receipts, mode, and alerts use [AG-UI events](ag-ui.md) on ntfy. The phone and ntfy app use the same plaintext reply commands.
+
 ## CLI
 
 ```sh

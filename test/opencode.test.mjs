@@ -251,7 +251,7 @@ test("opencode runHook against the real hook: SessionStart publishes status and 
   const out = await runHook({ hook_event_name: "SessionStart", session_id: ROOT, cwd, source: "startup" }, { env, node: process.execPath, timeoutMs: 15_000 });
   assert.match(out.hookSpecificOutput.additionalContext, /body="ping from bob"/);
   assert.match(out.hookSpecificOutput.additionalContext, /Your sender identity is opencode#/);
-  const status = JSON.parse(fake.state.publishes.find((p) => p.topic === "ai-collab-demo--status").message);
+  const status = eventToEnvelope(fake.state.publishes.find((p) => p.topic === "ai-collab-demo--status").message);
   assert.deepEqual([status.event, status.harness], ["start", "opencode"]);
 });
 

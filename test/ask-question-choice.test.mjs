@@ -8,11 +8,12 @@ import { loadConfig } from "../lib/config.mjs";
 import { askQuestion } from "../lib/questions.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { eventToEnvelope } from "../lib/agui.mjs";
 
 const ALL = "ai-collab-demo--to--all";
 const SESSION = "aabbccddeeff0011";
 
-const envelopes = (fake, kind) => fake.state.publishes.map((p) => { try { return { ...JSON.parse(p.message), topic: p.topic, title: p.title }; } catch { return null; } })
+const envelopes = (fake, kind) => fake.state.publishes.map((p) => { try { return { ...eventToEnvelope(p.message), topic: p.topic, title: p.title }; } catch { return null; } })
   .filter((m) => m?.kind === kind);
 
 async function published(fake, kind) {

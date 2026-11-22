@@ -14,6 +14,7 @@ import { appendFileSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { queuedByOperator, watchQueue } from "../lib/transcript.mjs";
+import { eventToEnvelope } from "../lib/agui.mjs";
 
 const enqueue = (content) => JSON.stringify({ type: "queue-operation", operation: "enqueue", timestamp: new Date().toISOString(), sessionId: "s", content }) + "\n";
 
@@ -99,7 +100,7 @@ function runHook(args, input, env) {
   });
 }
 
-const modes = (fake) => fake.state.publishes.filter((p) => p.topic === ALL).map((p) => JSON.parse(p.message)).filter((m) => m.kind === "mode").map((m) => m.mode);
+const modes = (fake) => fake.state.publishes.filter((p) => p.topic === ALL).map((p) => eventToEnvelope(p.message)).filter((m) => m?.kind === "mode").map((m) => m.mode);
 
 function setMode(fake, mode) {
   fake.inject(ALL, JSON.stringify({ v: 1, kind: "mode", from: "operator", mode, ts: Date.now() }));
