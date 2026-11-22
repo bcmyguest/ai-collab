@@ -1,6 +1,6 @@
 "use client";
 import { Badge } from "@/components/ui/badge";
-import { axisPercent, clearText, compactionText, headroom, mapAxis, modelText, pairCompactions, tokenCount } from "@/lib/compaction-view";
+import { axisPercent, clearText, compactionText, headroom, mapAxis, modelText, tokenCount } from "@/lib/compaction-view";
 import { Avatar, ago } from "./chat";
 
 const MARK = { auto: "bg-amber-500", manual: "bg-primary", failed: "bg-destructive", clear: "bg-sky-500", model: "bg-emerald-500" };
@@ -23,7 +23,7 @@ function contextLine({ context }) {
 export function CompactionMap({ agents, now }) {
   const rows = agents.map(agent => ({
     agent,
-    entries: pairCompactions((agent.history || []).map(entry => ({ type: "compact", compaction: entry }))).map(row => row.compaction),
+    entries: agent.history || [],
   }));
   const axis = mapAxis(rows.map(row => row.entries), now);
   return <section aria-label="Compaction map" className="flex w-full flex-col gap-3">
@@ -38,7 +38,7 @@ export function CompactionMap({ agents, now }) {
       </header>
       <p className="text-xs text-muted-foreground">{contextLine(agent)}</p>
       <div role="list" aria-label={`Compactions of ${short(agent.id)}`} className="relative h-6 rounded-full bg-muted">
-        {entries.map(entry => <span key={entry.at} role="listitem" className="contents">
+        {entries.map(entry => <span key={entry.id} role="listitem" className="contents">
           <span role="img" aria-label={`${ago(entry.at, now)}: ${textOf(entry)}`} title={textOf(entry)}
             style={{ left: `${axisPercent(entry.at, axis.start, axis.end)}%` }}
             className={`absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-card ${markOf(entry)}`}/>
@@ -47,7 +47,7 @@ export function CompactionMap({ agents, now }) {
       <div className="flex justify-between text-[10px] text-muted-foreground"><span>{ago(axis.start, now)}</span><span>now</span></div>
       {entries.length === 0 && <p className="text-xs text-muted-foreground">No compactions, clears or model switches in the activity kept in memory.</p>}
       {entries.length > 0 && <ul className="flex flex-col gap-1 text-xs">
-        {entries.slice(-RECENT).reverse().map(entry => <li key={entry.at} className="flex min-w-0 flex-wrap gap-x-2">
+        {entries.slice(-RECENT).reverse().map(entry => <li key={entry.id} className="flex min-w-0 flex-wrap gap-x-2">
           <span className="shrink-0 text-muted-foreground">{ago(entry.at, now)}</span>
           <span className="min-w-0 break-words">{textOf(entry)}</span>
         </li>)}

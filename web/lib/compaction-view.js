@@ -1,3 +1,6 @@
+import { pairCompactions } from "../../lib/session-events.mjs";
+export { pairCompactions };
+
 // Compaction rows as timeline text: "Compacted · auto · 182k → 31k · 4 files dropped".
 const WORDS = { started: "Compacting", finished: "Compacted", failed: "Compaction failed" };
 
@@ -16,24 +19,7 @@ export function compactionText(compaction) {
   return [WORDS[compaction.phase], trigger, sizes, files].filter(Boolean).join(" · ");
 }
 
-const isCompact = row => row?.type === "compact" && row.compaction;
-
 /** Each finished compaction takes its tokensBefore and filesDropped from the started row before it. */
-export function pairCompactions(rows) {
-  let open = null;
-  return rows.map(row => {
-    if (!isCompact(row)) return row;
-    const { compaction } = row;
-    if (compaction.phase === "started") { open = compaction; return row; }
-    if (!open || compaction.phase !== "finished") { open = null; return row; }
-    const merged = { ...compaction };
-    if (merged.tokensBefore === undefined && open.tokensBefore !== undefined) merged.tokensBefore = open.tokensBefore;
-    if (merged.filesDropped === undefined && open.filesDropped !== undefined) merged.filesDropped = open.filesDropped;
-    open = null;
-    return { ...row, compaction: merged };
-  });
-}
-
 /** Tokens left under the window, or null unless the harness reported both counts; the auto-compact point is never guessed. */
 export function headroom({ tokens, window } = {}) {
   if (!Number.isSafeInteger(tokens) || !Number.isSafeInteger(window) || window <= 0) return null;

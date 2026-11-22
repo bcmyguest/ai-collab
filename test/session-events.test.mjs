@@ -42,21 +42,32 @@ test("a runner model step publishes a model row", () => {
 
 test("the session history keeps compactions, clears and model switches in time order per agent", () => {
   const items = [
-    { agent: "claude#a", time: 10, type: "compact", compaction: { phase: "finished", tokensBefore: 182000, tokensAfter: 31000 } },
-    { agent: "claude#a", time: 20, type: "clear", clear: { tokensBefore: 140000, tokensAfter: 0 } },
-    { agent: "codex#b", time: 30, type: "model", modelSwitch: { from: "x", to: "y" } },
-    { agent: "claude#a", time: 40, type: "text", output: "ignored" },
+    { id: "n1", agent: "claude#a", time: 10, type: "compact", compaction: { phase: "finished", tokensBefore: 182000, tokensAfter: 31000 } },
+    { id: "n2", agent: "claude#a", time: 20, type: "clear", clear: { tokensBefore: 140000, tokensAfter: 0 } },
+    { id: "n3", agent: "codex#b", time: 30, type: "model", modelSwitch: { from: "x", to: "y" } },
+    { id: "n4", agent: "claude#a", time: 40, type: "text", output: "ignored" },
   ];
   const history = sessionHistory(items, 5);
   assert.deepEqual(history.get("claude#a"), [
-    { at: 10000, kind: "compaction", phase: "finished", tokensBefore: 182000, tokensAfter: 31000 },
-    { at: 20000, kind: "clear", tokensBefore: 140000, tokensAfter: 0 },
+    { id: "n1", at: 10000, kind: "compaction", phase: "finished", tokensBefore: 182000, tokensAfter: 31000 },
+    { id: "n2", at: 20000, kind: "clear", tokensBefore: 140000, tokensAfter: 0 },
   ]);
-  assert.deepEqual(history.get("codex#b"), [{ at: 30000, kind: "model", from: "x", to: "y" }]);
+  assert.deepEqual(history.get("codex#b"), [{ id: "n3", at: 30000, kind: "model", from: "x", to: "y" }]);
 });
 
 test("timeline text for clears and model switches", () => {
   assert.equal(clearText({ tokensBefore: 140000, tokensAfter: 0 }), "Cleared · 140k → 0");
   assert.equal(clearText({ tokensAfter: 0 }), "Cleared");
   assert.equal(modelText({ from: "claude-haiku-5-5", to: "claude-opus-5-5" }), "Model claude-haiku-5-5 → claude-opus-5-5");
+});
+
+test("a started and finished compaction take one history slot", () => {
+  const items = [
+    { id: "s", agent: "claude#a", time: 10, type: "compact", compaction: { phase: "started", tokensBefore: 90000, filesDropped: 2 } },
+    { id: "f", agent: "claude#a", time: 11, type: "compact", compaction: { phase: "finished", tokensAfter: 20000 } },
+  ];
+  assert.deepEqual(sessionHistory(items, 1).get("claude#a"), [
+    { id: "f", at: 11000, kind: "compaction", phase: "finished", tokensBefore: 90000, tokensAfter: 20000, filesDropped: 2 },
+  ]);
+  assert.equal(sessionHistory(items, 5).get("claude#a").length, 1);
 });

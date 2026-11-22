@@ -24,10 +24,13 @@ test("a finished row takes the before count and dropped files from the started r
     { type: "compact", input: "compacting · auto", compaction: { trigger: "auto", phase: "started", tokensBefore: 182000, filesDropped: 4 } },
     { type: "compact", input: "compacted · auto", compaction: { trigger: "auto", phase: "finished" } },
   ];
-  const [, , done] = pairCompactions(rows);
+  const paired = pairCompactions(rows);
+  assert.equal(paired.length, 2, "the started row is consumed by its finished row");
+  const done = paired[1];
   assert.deepEqual(done.compaction, { trigger: "auto", phase: "finished", tokensBefore: 182000, filesDropped: 4 });
   assert.equal(compactionText(done.compaction), "Compacted · auto · 182k · 4 files dropped");
   assert.equal(rows[2].compaction.tokensBefore, undefined, "the input rows are not changed");
+  assert.equal(rows[1].compaction.phase, "started");
 });
 
 test("a finished row with its own counts keeps them, and rows without compaction pass through", () => {
@@ -35,7 +38,7 @@ test("a finished row with its own counts keeps them, and rows without compaction
     { type: "compact", input: "compacting", compaction: { phase: "started", tokensBefore: 100 } },
     { type: "compact", input: "compacted", compaction: { phase: "finished", tokensBefore: 120, tokensAfter: 30 } },
   ];
-  const [, done] = pairCompactions(rows);
+  const [done] = pairCompactions(rows);
   assert.deepEqual(done.compaction, { phase: "finished", tokensBefore: 120, tokensAfter: 30 });
   const plain = { type: "text", output: "x" };
   assert.equal(pairCompactions([plain])[0], plain);
@@ -51,4 +54,23 @@ test("headroom only from a reported window, never guessed", async () => {
   const now = 10 * 3600_000;
   assert.deepEqual(mapAxis([[{ at: now - 2 * 3600_000 }]], now), { start: now - 2 * 3600_000, end: now });
   assert.deepEqual(mapAxis([], now), { start: now - 3600_000, end: now });
+});
+
+test("a clear or model row between a started and finished compaction keeps the pair", () => {
+  const rows = [
+    { type: "compact", id: "a", agent: "c#1", compaction: { phase: "started", tokensBefore: 100 } },
+    { type: "clear", id: "b", agent: "c#1", clear: { tokensAfter: 0 } },
+    { type: "compact", id: "c", agent: "c#1", compaction: { phase: "finished", tokensAfter: 30 } },
+  ];
+  const paired = pairCompactions(rows);
+  assert.deepEqual(paired.map(row => row.id), ["b", "c"]);
+  assert.deepEqual(paired[1].compaction, { phase: "finished", tokensAfter: 30, tokensBefore: 100 });
+});
+
+test("pairing stays within one subagent run", () => {
+  const rows = [
+    { type: "compact", id: "a", agent: "c#1", compaction: { phase: "started" } },
+    { type: "compact", id: "b", agent: "c#1", subagent: { id: "run-1" }, compaction: { phase: "finished" } },
+  ];
+  assert.deepEqual(pairCompactions(rows).map(row => row.id), ["a", "b"]);
 });
