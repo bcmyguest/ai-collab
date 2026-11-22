@@ -81,7 +81,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Operator @mention of the PM wakes its schedule at once (runner has no run-now) | done An @session tag in any chat wakes that idle session (ui.mjs routeMentions) |
 | Code-mode workflows: inference decides, code executes — map to DOT teams, runner/DBOS, OpenShell sandbox | decided Research /dev/shm/research/code-mode.md; operator agreed 2026-11-22; split into tasks A, team-runs, B, cap-suspend |
 | CI prek gate fails on main: end-of-file newlines in lib/compaction.mjs, lib/teams.mjs, test/teams.test.mjs, test/teams-mentions.test.mjs | done |
-| Chat to design teams: a Team Author agent that writes and edits team.dot from a plain-language conversation instead of the DOT editor | open |
+| Chat to design teams: a Team Author agent that writes and edits team.dot from a plain-language conversation instead of the DOT editor | building |
 | CLI send puts unknown flags (--reply-to, --progress) into the message body; add --reply-to and reject unknown flags | done |
 | Code mode A: ai-collab tool-API client for programs in the OpenShell sandbox; sandbox policy replaces per-call approval (operator: yes) | open |
 | Team runs live in the runner and run in OpenShell, not the project folder (operator: yes) | open |
@@ -92,17 +92,17 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | PM mission file: a file the PM owns and edits (mission, goals, rules), versioned in git, read each tick | open |
 | PM feedback loop: each run ends with a review; lessons go to openmem (substrate approved) and the mission file | open |
 | PM tracked handoffs: builders start as runner-owned sessions linked to tasks (rides on team-runs/OpenShell) | open |
-| Compact button really compacts the session (today it only asks the agent by message) | done |
-| Task board as its own left-sidebar entry, not a link beside SESSIONS | done |
-| Task board glitches while scrolling large lists | done |
-| #task tags: tapping a task opens a message tagged #<id>; it goes direct to the task's owner agent, else to the project chat | open |
-| Left panel lists named agents (PM and other set_identity names); tapping one opens a direct chat, no address needed | open |
-| Scheduled jobs and agents shown apart: the PM agent is not its schedule entry (operator: agent != scheduled job) | open |
+| Compact button really compacts the session (today it only asks the agent by message) | building |
+| Task board as its own left-sidebar entry, not a link beside SESSIONS | building |
+| Task board glitches while scrolling large lists | building |
+| #task tags: tapping a task opens a message tagged #<id>; it goes direct to the task's owner agent, else to the project chat | building |
+| Left panel lists named agents (PM and other set_identity names); tapping one opens a direct chat, no address needed | building |
+| Scheduled jobs and agents shown apart: the PM agent is not its schedule entry (operator: agent != scheduled job) | building |
 | Schedule run kills builders the PM started: runner SIGKILLs the whole process group on exit (runner/schedules.mjs:129) | done |
-| Builders the PM starts live in the runner's cgroup, so a runner restart (deploy) kills them; launch each as its own systemd-run --user unit | open |
-| Sessions started from the UI live in the ai-collab-ui cgroup; a UI restart kills them (killed the Codex research session) | open |
+| Builders the PM starts live in the runner's cgroup, so a runner restart (deploy) kills them; launch each as its own systemd-run --user unit | building |
+| Sessions started from the UI live in the ai-collab-ui cgroup; a UI restart kills them (killed the Codex research session) | building |
 | Space to switch to local: a key in the terminal takes a phone-controlled session back to local control (as HAPI does) | open Design: /dev/shm/research/hapi-steal.md §2.1. HAPI is AGPL-3.0: clean-room, copy no code. |
-| Reply to any message: when the server can't accept a reply id, send it as text quoting the first/last bit of the original instead of failing 'Invalid reply' | open |
+| Reply to any message: when the server can't accept a reply id, send it as text quoting the first/last bit of the original instead of failing 'Invalid reply' | building |
 | Draft guard: hold a phone message while the terminal has unsent text; Send anyway row (HAPI idea, clean-room) | open |
 | Queue bar: queued messages listed with Edit/Cancel/Steer, replacing the one-way queued badge (HAPI idea, clean-room) | open |
 | Job meters: sessions report real jobs (ai-collab job run); a running job counts as working, so 'building' claims are honest (HAPI idea, clean-room) | open |
