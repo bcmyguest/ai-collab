@@ -10,6 +10,7 @@ import { SESSION_COOKIE, STATE_COOKIE, createAuth, signSession, verifySession } 
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { firstUpdate } from "./helpers/ui-stream.mjs";
 
 const ORIGIN = "https://ai-collab-ui.example.test";
 const SECRET = Buffer.alloc(32, 7);
@@ -165,10 +166,7 @@ test("with sign-in on, /api routes answer 401 until signed in, and UI sends carr
 
   const stream = ui.events(new Request(`${ORIGIN}/api/events`, { signal: ctrl.signal, headers: { cookie: cookieFor("octocat") } }));
   assert.equal(stream.status, 200);
-  const reader = stream.body.pipeThrough(new TextDecoderStream()).getReader();
-  let text = "";
-  while (!/^event: state$/m.test(text)) text += (await reader.read()).value;
-  const state = JSON.parse(/^event: state\ndata: (.*)$/m.exec(text)[1]);
+  const state = await firstUpdate(stream, "state");
   const sent = state.messages.find(m => m.body === "from hubot");
   assert.equal(sent.from, "operator");
   assert.equal(sent.by, "hubot");

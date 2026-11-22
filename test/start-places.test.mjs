@@ -8,6 +8,7 @@ import { loadProjects, sessionLabel } from "../lib/config.mjs";
 import { startCommand, worktreeNames } from "../lib/start.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { firstUpdate } from "./helpers/ui-stream.mjs";
 
 const base = "http://127.0.0.1:8795";
 const ID = "44444444-2222-4333-8444-555555555555";
@@ -45,11 +46,12 @@ async function setup(t, { sandbox = "dev-box", git = true, gitExit = 0 } = {}) {
   }), "start");
   const state = async () => {
     const ctrl = new AbortController();
-    const reader = ui.events(new Request(`${base}/api/events`, { signal: ctrl.signal })).body.pipeThrough(new TextDecoderStream()).getReader();
-    let text = "";
-    while (!/event: state\ndata: (.*)\n\n/.test(text)) text += (await reader.read()).value;
-    ctrl.abort();
-    return JSON.parse(/event: state\ndata: (.*)\n\n/.exec(text)[1]);
+    const response = ui.events(new Request(`${base}/api/events`, { signal: ctrl.signal }));
+    try {
+      return await firstUpdate(response, "state");
+    } finally {
+      ctrl.abort();
+    }
   };
   return { post, root, record, state };
 }

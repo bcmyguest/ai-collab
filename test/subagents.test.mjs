@@ -9,6 +9,7 @@ import { createUi } from "../web/server/ui.mjs";
 import { activityRows, groupSubagents, interleave, runState, runningSubagents, subagentLabel } from "../web/lib/activity-rows.js";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { firstUpdate } from "./helpers/ui-stream.mjs";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 const base = "http://127.0.0.1:8795";
@@ -59,10 +60,8 @@ test("UI rows carry the subagent run; grouping folds each run into one row outsi
   const ui = createUi({ cfg: loadConfig(peerEnv(fake, { peer: "operator", AI_COLLAB_PEERS: "claude" })) });
   const ctrl = new AbortController();
   t.after(() => { ctrl.abort(); ui.close(); });
-  const reader = ui.events(new Request(`${base}/api/events?view=activity`, { signal: ctrl.signal })).body.pipeThrough(new TextDecoderStream()).getReader();
-  let text = "";
-  while (!/event: activity\ndata: (.*)\n\n/.test(text)) text += (await reader.read()).value;
-  const { items } = JSON.parse(/event: activity\ndata: (.*)\n\n/.exec(text)[1]);
+  const response = ui.events(new Request(`${base}/api/events?view=activity`, { signal: ctrl.signal }));
+  const { items } = await firstUpdate(response, "activity");
   assert.deepEqual(items.map((i) => i.subagent), [{ id: "agent-7", type: "Explore" }, { id: "agent-7", type: "Explore" }]);
 
   const a = "claude#0000000000000001";
@@ -104,10 +103,8 @@ test("a run seen only through PostToolUse counts its steps and ends on the paren
   const ui = createUi({ cfg: loadConfig(peerEnv(fake, { peer: "operator", AI_COLLAB_PEERS: "claude" })) });
   const ctrl = new AbortController();
   t.after(() => { ctrl.abort(); ui.close(); });
-  const reader = ui.events(new Request(`${base}/api/events?view=activity`, { signal: ctrl.signal })).body.pipeThrough(new TextDecoderStream()).getReader();
-  let text = "";
-  while (!/event: activity\ndata: (.*)\n\n/.test(text)) text += (await reader.read()).value;
-  const { items } = JSON.parse(/event: activity\ndata: (.*)\n\n/.exec(text)[1]);
+  const response = ui.events(new Request(`${base}/api/events?view=activity`, { signal: ctrl.signal }));
+  const { items } = await firstUpdate(response, "activity");
   const address = `claude#${sessionLabel("s-parent")}`;
   let [, run] = groupSubagents(activityRows(items));
   assert.deepEqual([run.type, run.kind, run.steps, run.done, run.description, run.last.tool], ["subagent", "Explore", 3, false, "Build message read receipts", "Edit"]);

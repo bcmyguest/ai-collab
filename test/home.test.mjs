@@ -12,6 +12,7 @@ import { createUi } from "../web/server/ui.mjs";
 import { fallbackName, sessionState, sessionTree, visibleWake } from "../web/lib/session-state.js";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { sse } from "./helpers/ui-stream.mjs";
 
 const base = "http://127.0.0.1:8795";
 const NOW = 1_800_000_000_000;
@@ -22,22 +23,12 @@ const self = () => {
 
 // State events from a UI stream until one passes the check.
 async function stateWhere(ui, query, check, signal) {
-  const reader = ui.events(new Request(`${base}/api/events?${query}`, { signal })).body.pipeThrough(new TextDecoderStream()).getReader();
-  let buffer = "";
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) throw new Error("stream ended");
-    buffer += value;
-    let end;
-    while ((end = buffer.indexOf("\n\n")) >= 0) {
-      const block = buffer.slice(0, end);
-      buffer = buffer.slice(end + 2);
-      if (/^event: problem/m.test(block)) throw new Error(block);
-      if (!/^event: state/m.test(block)) continue;
-      const data = JSON.parse(/^data: (.*)$/m.exec(block)[1]);
-      if (check(data)) { reader.cancel().catch(() => {}); return data; }
-    }
+  const response = ui.events(new Request(`${base}/api/events?${query}`, { signal }));
+  for await (const { event, data } of sse(response)) {
+    if (event === "problem") throw new Error(data.error);
+    if (event === "state" && check(data)) return data;
   }
+  throw new Error("stream ended");
 }
 
 test("session state: waiting, AFK hold, working by open call or recent activity, idle, offline", () => {

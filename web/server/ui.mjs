@@ -1,4 +1,7 @@
+import { EventType } from "@ag-ui/core";
 import { operatorPrompt, publishMode as publishModeAll } from "../../lib/mode.mjs";
+import { buildEvent, envelopeToEvent, parseEvent } from "../../lib/agui.mjs";
+import { ACTIVITY_BATCH, STREAM_ERROR } from "../lib/ui-events.js";
 import { mkdirSync, watch } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
 import { loadConfig, loadProjects, activityTopic, broadcastTopic, configDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.mjs";
@@ -113,6 +116,21 @@ function activityItem(event) {
   }
   activityCache.set(event, item);
   return item;
+}
+
+function activityFrame(row, source) {
+  const { id, time, agent, subagent, attachment, ...fields } = row;
+  const [from, session] = agent.split("#");
+  const original = parseEvent(source.message);
+  const runId = original?.runId ?? original?.metadata?.aiCollab?.runId;
+  const run = typeof runId === "string" && {
+    type: original.type, runId, parentRunId: original.parentRunId, outcome: original.outcome,
+  };
+  const event = envelopeToEvent({
+    v: 1, kind: "activity", from, session, ts: time * 1000, ...fields,
+    ...(subagent ? { agent: subagent } : {}),
+  }, { id, run });
+  return { ...event, metadata: { ...event.metadata, aiCollabUi: { id, time, attachment } } };
 }
 
 // One chat entry per ntfy event; status and alert envelopes are skipped.
@@ -723,28 +741,35 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
 
   // One session's activity, or every allowed agent's for the project overview, oldest first.
   function activityList(project, session) {
+    return scopedActivity(project, session).map(activityItem);
+  }
+
+  function scopedActivity(project, session) {
     const { cfg } = project;
-    return project.hub.events(project.activity).map(activityItem).filter(item => item &&
-      (!cfg.peers.length || cfg.peers.includes(peerOf(item.agent))) && (!session || item.agent === session));
+    return project.hub.events(project.activity).filter(event => {
+      const item = activityItem(event);
+      return item && (!cfg.peers.length || cfg.peers.includes(peerOf(item.agent))) && (!session || item.agent === session);
+    });
   }
 
   // Activity travels as deltas: a reset with the full list, then only rows newer than the last one sent.
   function pushActivity(client) {
     if (!client.activity) return;
-    const list = activityList(client.project, client.session);
+    const list = scopedActivity(client.project, client.session);
     const at = client.activitySent === undefined ? -1 : list.findIndex(item => item.id === client.activitySent);
     const reset = at < 0 && !(client.activitySent === "" && list.length === 0);
     const items = reset ? list : list.slice(at + 1);
     if (!reset && !items.length) return;
     client.activitySent = list.at(-1)?.id ?? "";
-    client.write(`event: activity\ndata: ${JSON.stringify({ reset, items })}\n\n`);
+    for (const item of items) client.send(activityFrame(activityItem(item), item));
+    client.send(buildEvent(EventType.CUSTOM, { name: ACTIVITY_BATCH, value: { reset } }));
   }
 
   function push(client) {
-    const state = JSON.stringify(snapshot(client));
+    const state = JSON.stringify(buildEvent(EventType.STATE_SNAPSHOT, { snapshot: snapshot(client) }));
     if (state !== client.last) {
       client.last = state;
-      client.write(`event: state\ndata: ${state}\n\n`);
+      client.write(`data: ${state}\n\n`);
     }
     pushActivity(client);
   }
@@ -773,7 +798,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       client.ready = true;
       push(client);
     } catch (err) {
-      client.write(`event: problem\ndata: ${JSON.stringify({ error: failure(err).message })}\n\n`);
+      client.send(buildEvent(EventType.CUSTOM, { name: STREAM_ERROR, value: { error: failure(err).message } }));
     }
   }
 
@@ -822,6 +847,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       start(controller) {
         client = {
           ...selected, ready: false, last: "",
+          send(event) { this.write(`data: ${JSON.stringify(event)}\n\n`); },
           write(text) {
             try { controller.enqueue(encoder.encode(text)); } catch { close(); }
           },

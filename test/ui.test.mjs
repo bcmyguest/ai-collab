@@ -1,3 +1,4 @@
+import { EventType } from "@ag-ui/core";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -9,26 +10,9 @@ import { waitForAnswer } from "../lib/questions.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { sse } from "./helpers/ui-stream.mjs";
 
 const base = "http://127.0.0.1:8795";
-
-// Reads server-sent events from a streaming Response body.
-async function* sse(response) {
-  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-  let buffer = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) return;
-    buffer += value;
-    let end;
-    while ((end = buffer.indexOf("\n\n")) >= 0) {
-      const block = buffer.slice(0, end);
-      buffer = buffer.slice(end + 2);
-      const event = /^event: (.+)$/m.exec(block)?.[1];
-      if (event) yield { event, data: JSON.parse(/^data: (.*)$/m.exec(block)[1]) };
-    }
-  }
-}
 
 test("UI streams state, sends directly, rejects cross-origin posts, and answers questions", async (t) => {
   const fake = await startFakeNtfy();
@@ -55,7 +39,7 @@ test("UI streams state, sends directly, rejects cross-origin posts, and answers 
   assert.match(response.headers.get("content-type"), /^text\/event-stream/);
   const stream = sse(response);
   const first = (await stream.next()).value;
-  assert.equal(first.event, "state");
+  assert.equal(first.type, EventType.STATE_SNAPSHOT);
   assert.ok(first.data.agents.some(agent => agent.id === `bob#${bob.session}`));
   assert.deepEqual(first.data.projects, [{ id: "demo", peers: ["alice", "bob", "carol"] }]);
   assert.deepEqual(first.data.harnesses.map(h => h.id), ["alice", "bob", "carol"]);
