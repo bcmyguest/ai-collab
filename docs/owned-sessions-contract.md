@@ -472,6 +472,20 @@ Still unsolved:
 - **Idle cleanup.** A sandbox lives until its last session closes. A runner crash leaves it; there is no orphan sweep.
 - **The other harnesses.** Claude, Codex and OpenCode still cannot use `place: "openshell"`; `capabilities.places` names what each adapter allows, and only Cursor lists it.
 
+### Offline verification for Cursor Agent mode
+
+The standard CI test job runs these checks through `npm test`. For a focused run in an OpenShell builder, give Node a writable temporary directory under `/tmp`:
+
+```sh
+export TMPDIR="$(mktemp -d -p /tmp)"
+node --test test/runner.test.mjs test/runner-contract.test.mjs \
+  test/runner-adapter-cursor.test.mjs test/cursor-sandbox.test.mjs
+```
+
+- The runner integration test starts an owned Cursor session in OpenShell with the permission mode omitted. It checks that the runner selects `full-access`, the fake CLI receives `acp --force` and the owned marker, the prompt produces text and a stop event, and closing releases the sandbox.
+- The adapter tests cover policy forwarding, sandbox paths, CLI and auth staging with fixture credentials, edit sync, and cleanup after a failed start. The runner and contract tests also check that full access is refused outside OpenShell.
+- These tests use fake OpenShell and Cursor processes with local fixtures. Live acceptance requires a host with OpenShell, an authenticated Cursor CLI, and working Cursor API connectivity. Start an owned Cursor session in Agent mode with OpenShell selected, send a prompt that writes a marker file in the session worktree, then confirm the response completes and the file syncs back on close. In the recorded live test above, `initialize` succeeded and `session/new` failed with `EAI_AGAIN api2.cursor.sh`.
+
 ## Files
 
 | Path | Role |

@@ -1,8 +1,8 @@
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,6 +15,7 @@ import { settleReceipts } from "../lib/receipts.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
+import cursorAdapter from "../runner/adapters/cursor.mjs";
 import { wrapOpen } from "./helpers/fake-adapter-hooks.mjs";
 import { listenControl } from "../runner/control.mjs";
 import { runnerClient } from "../runner/client.mjs";
@@ -411,6 +412,39 @@ test("the control socket serves health, start, list, session reads and errors", 
     await assert.rejects(listenControl(runner, socket), /another runner/);
   } finally {
     await control.close();
+    await runner.stop();
+    await fake.close();
+  }
+});
+
+test("starting a Cursor session in OpenShell defaults to full-access and completes an ACP turn", async () => {
+  const fake = await startFakeNtfy();
+  const ctx = setup(fake);
+  const helper = (name) => path.join(ROOT, "test", "helpers", name);
+  Object.assign(ctx.env, {
+    AI_COLLAB_CURSOR_BIN: helper("fake-cursor-agent.mjs"),
+    AI_COLLAB_OPENSHELL_BIN: helper("fake-openshell.mjs"),
+    FAKE_SANDBOX_CURSOR_BIN: helper("fake-cursor-agent.mjs"),
+    FAKE_OPENSHELL_STATE: path.join(ctx.home, "openshell.json"),
+    FAKE_CURSOR_LOG: path.join(ctx.home, "cursor.log"),
+  });
+  const runner = makeRunner(ctx, cursorAdapter({ env: ctx.env }));
+  try {
+    execFileSync("git", ["init", "--quiet", "--template=", ctx.root], { env: ctx.env });
+    execFileSync("git", ["-C", ctx.root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+      "commit", "--quiet", "--allow-empty", "-m", "Initial commit"], { env: ctx.env });
+    await runner.boot();
+    const started = await runner.start({ project: "demo", harness: "cursor", place: "openshell", prompt: "offline smoke" });
+    assert.equal(runner.get(started.session).permissionMode, "full-access");
+    await until(() => rows(fake).some((row) => row.type === "stop"), "Cursor stop row");
+    assert.ok(rows(fake).some((row) => row.output === "echo: offline smoke"));
+    const launch = readFileSync(ctx.env.FAKE_CURSOR_LOG, "utf8").trim().split("\n").map(JSON.parse)
+      .find((entry) => entry.kind === "argv");
+    assert.deepEqual(launch?.args, ["acp", "--force"]);
+    assert.equal(launch.owned, "cursor");
+    assert.deepEqual(await runner.close(started.session), { status: "ended" });
+    assert.deepEqual(JSON.parse(readFileSync(ctx.env.FAKE_OPENSHELL_STATE, "utf8")).sandboxes, []);
+  } finally {
     await runner.stop();
     await fake.close();
   }
