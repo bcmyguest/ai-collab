@@ -39,6 +39,7 @@ const Card = memo(function Card({ task, age, compose }) {
         <span className="truncate">{task.owner}</span>
         <span className="sr-only">{task.ownerOnline ? "online" : "offline"}</span>
       </span> : <span>No owner</span>}
+      {task.ownerRunningJobs > 0 && <span>{task.ownerRunningJobs} running {task.ownerRunningJobs === 1 ? "job" : "jobs"}</span>}
       {task.run && <Badge variant="outline" className="font-mono">run {task.run}</Badge>}
       {task.blockers?.length > 0 && <span>waits on {task.blockers.join(", ")}</span>}
     </div>

@@ -17,10 +17,11 @@ export function waitingOn(pending, now) {
 /**
  * State of one session card from server facts:
  * waiting (an open approval, choice or important question), afk (its Stop hook holds the turn in AFK mode),
- * working (an open tool call under 15 min old, a running subagent, or activity in the last 60 s), idle (online), else offline.
+ * working (a running job, an open tool call under 15 min old, a running subagent, or activity in the last 60 s), idle (online), else offline.
  */
 export function sessionState(s, now) {
   if (waitingOn(s.pending, now)) return "waiting";
+  if (s.runningJobs > 0) return "working";
   if (s.online && s.afkHold) return "afk";
   if (s.openCallAt && now - s.openCallAt < WORKING_MS) return "working";
   if (s.lastActivityAt && now - s.lastActivityAt < RECENT_MS) return "working";

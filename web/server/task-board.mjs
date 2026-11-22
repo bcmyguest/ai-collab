@@ -9,7 +9,7 @@ export function taskBoard(backend, agents = [], runs = []) {
   } catch (err) {
     return { tasks: [], error: err.message };
   }
-  const online = new Map(agents.map(agent => [agent.id, agent.online === true]));
+  const owners = new Map(agents.map(agent => [agent.id, agent]));
   const runOf = new Map(runs.map(run => [run.id, run.sessions?.[run.active] || ""]));
   return {
     tasks: list.map(task => ({
@@ -19,7 +19,9 @@ export function taskBoard(backend, agents = [], runs = []) {
       status: task.status,
       ...(task.detail ? { detail: task.detail } : {}),
       blockers: task.blockers,
-      ...(task.owner ? { owner: task.owner, ownerOnline: online.get(task.owner) === true } : {}),
+      ...(task.owner ? { owner: task.owner, ownerOnline: owners.get(task.owner)?.online === true } : {}),
+      ...(task.status === "building" && task.owner && owners.get(task.owner)?.runningJobs > 0
+        ? { ownerRunningJobs: owners.get(task.owner).runningJobs } : {}),
       ...(task.run ? { run: task.run } : {}),
       // The graph opens the run's active session when the task has no owner.
       ...(runOf.get(task.run) ? { runSession: runOf.get(task.run) } : {}),

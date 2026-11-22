@@ -591,14 +591,14 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     // Hooks refresh seenAt on every event; minute resolution keeps snapshot pushes to one per agent per minute.
     let root = "";
     try { root = projectRoot(cfg.project, env); } catch { /* no registered root */ }
-    for (const { id, peer, session, online, seenAt, parent, cwd, name, identityName, activity, sandbox, model } of listSessions(cfg)) {
+    for (const { id, peer, session, online, seenAt, parent, cwd, name, identityName, activity, sandbox, model, runningJobs } of listSessions(cfg)) {
       const where = sessionPlace({ cwd, sandbox }, root);
       const started = typeof parent === "string" && PARENT.test(parent) ? parent : found.get(id)?.parent;
       found.set(id, {
-        id, peer, session, online, seenAt, activeAt: Math.floor((seenAt || 0) / 60_000) * 60_000, registered: true, ...(started ? { parent: started } : {}),
+        id, peer, session, online, seenAt, ...(runningJobs ? { runningJobs } : {}), activeAt: Math.floor((seenAt || 0) / 60_000) * 60_000, registered: true, ...(started ? { parent: started } : {}),
         ...(typeof cwd === "string" && isAbsolute(cwd) ? { folder: cleanText(basename(cwd), ACTIVITY_NAME_MAX) } : {}),
         // An offline session whose worktree was deleted has nothing to resume, so its card is dropped.
-        ...(worktreeGone({ cwd, online, sandbox }, root) ? { gone: true } : {}),
+        ...(worktreeGone({ cwd, online: online || Boolean(runningJobs), sandbox }, root) ? { gone: true } : {}),
         ...(cleanName(name) ? { name: cleanName(name) } : {}),
         // The name set_identity chose, which the sidebar lists as an agent (PM first), with its activity line.
         ...(cleanName(identityName) ? { identityName: cleanName(identityName) } : {}),
@@ -994,6 +994,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   // Surfaces go before the state frame: a client that stops reading at the state frame must not get frames after it.
   function push(client) {
     const current = snapshot(client);
+    client.hasRunningJobs = current.agents.some(agent => agent.runningJobs) || current.sessions?.some(agent => agent.runningJobs);
     pushSurfaces(client, current);
     const state = JSON.stringify(buildEvent(EventType.STATE_SNAPSHOT, { snapshot: current }));
     if (state !== client.last) {
@@ -1083,7 +1084,11 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           },
         };
         clients.add(client);
-        keepalive = setInterval(() => client.write(": keepalive\n\n"), KEEPALIVE_MS);
+        keepalive = setInterval(() => {
+          client.write(": keepalive\n\n");
+          // If the wrapper was killed, the job may exit without a registry write.
+          if (client.ready && client.hasRunningJobs && clients.has(client)) push(client);
+        }, KEEPALIVE_MS);
         keepalive.unref?.();
         request.signal?.addEventListener("abort", close, { once: true });
         void load(client);
