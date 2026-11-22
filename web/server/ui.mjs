@@ -24,6 +24,7 @@ import { createAuth } from "./auth.mjs";
 import { createHub } from "./hub.mjs";
 import { createPush, notice } from "./push.mjs";
 import { createDispatcher } from "./dispatch.mjs";
+import { answerMessage, answerText, terminalMessages } from "../lib/operator-messages.js";
 
 const INSTANCE = Symbol.for("ai-collab.ui");
 const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "approve", "start", "models", "dispose", "team", "interrupt"];
@@ -39,8 +40,6 @@ const KEEPALIVE_MS = 25_000;
 const PUSH_DELAY_MS = 25;
 const questionPattern = /^Question from ([^\n]+)\n\n([\s\S]+)\n\nReply in this topic: reply ([a-f0-9]{12}) YOUR ANSWER$/;
 const MAX_MESSAGES = 100;
-// A typed prompt within this many seconds of a UI message with the same text is that message echoed back.
-const ECHO_WINDOW_S = 300;
 const IMPORTANT = /^IMPORTANT, the agent waits for this answer: /;
 // The hub keeps the newest 500 events per topic; 3 MB of cached history covers 500 full 4 KB activity envelopes.
 const ACTIVITY_TAIL_BYTES = 3 * 1024 * 1024;
@@ -595,41 +594,62 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return project.hub.events(name).map(entry).filter(item => item && keep(item));
   }
 
+  // Operator answers to questions and approvals on the project topic, each linked to the ask it answers (replyTo).
+  function answersOf(project, topic) {
+    const asks = new Map();
+    for (const item of topic) {
+      if (item.kind === "Question") asks.set(item.question, { asker: item.from });
+      if (item.kind === "Approval") asks.set(item.approval.id, { asker: item.from, approval: item.approval });
+    }
+    return project.hub.events(project.topic).flatMap(event => {
+      const reply = parsePhoneReply(event.message);
+      const ask = reply && asks.get(reply.id);
+      if (!ask) return [];
+      const decision = ask.approval ? replyDecision(ask.approval, reply.answer) : null;
+      return [{ id: event.id, time: event.time, asker: ask.asker, question: reply.id, body: answerText(decision, reply.answer), by: replyBy(event) }];
+    });
+  }
+
   // Zoom by sender: the whole project, one harness, or one session's direct thread.
   function messages(project, { harness, session }, agentList) {
+    const topic = entries(project, project.topic, () => true);
+    const answers = answersOf(project, topic);
+    const answered = new Set(answers.map(answer => answer.question));
+    // An answer shows as an operator message, so the ntfy Reply entry it came from goes.
+    const shared = topic.filter(item => !(item.kind === "Reply" && answered.has(item.question)));
     let list;
     if (session) {
       const thread = item => item.thread && ((item.from === "operator" && item.to === session) || (item.from === session && item.to === "operator"));
       const direct = entries(project, inboxOf(project, peerOf(session)), thread);
       list = [...direct, ...terminalPrompts(project, session, direct),
-        ...entries(project, project.topic, item => item.from === session).map(item => ({ ...item, scope: "all" }))];
+        ...shared.filter(item => item.from === session).map(item => ({ ...item, scope: "all" })),
+        ...answers.filter(answer => answer.asker === session).map(answerMessage)];
     } else if (harness) {
       const related = item => peerOf(item.from) === harness || peerOf(item.to) === harness || mentions(item.body, harness);
-      list = [...entries(project, project.topic, related).map(item => ({ ...item, scope: "all" })),
+      list = [...shared.filter(related).map(item => ({ ...item, scope: "all" })),
         ...entries(project, inboxOf(project, harness), item => item.kind === "Message")];
     } else {
-      list = entries(project, project.topic, () => true);
+      // Terminal prompts echo UI messages sent to all (topic) or to one session (its peer's inbox).
+      const peers = [...new Set(activityList(project).map(item => peerOf(item.agent)))];
+      const sent = [...topic, ...peers.flatMap(peer => entries(project, inboxOf(project, peer), () => true))];
+      list = [...shared, ...answers.map(answerMessage), ...terminalPrompts(project, null, sent)];
     }
     const { ends, replies, senders } = outcomes(project.hub.events(project.topic));
-    const approvals = new Set(list.filter(item => item.kind === "Approval").map(item => item.approval.id));
-    return list.filter(item => !(item.kind === "Reply" && approvals.has(item.question)))
-      .sort((a, b) => a.time - b.time || a.id.localeCompare(b.id)).slice(-MAX_MESSAGES)
+    return list.sort((a, b) => a.time - b.time || a.id.localeCompare(b.id)).slice(-MAX_MESSAGES)
       .map(item => {
         if (item.kind === "Approval") return { ...item, approval: approvalState(item.approval, ends, replies, senders) };
         if (item.kind === "Question" && replies.has(item.question)) {
           const by = senders.get(item.question)[0];
           return { ...item, answer: replies.get(item.question)[0], ...(by ? { answeredBy: by } : {}) };
         }
-        return item.from === "operator" && item.kind === "Message" && item.to && !item.terminal ? { ...item, receipt: receiptOf(project, item, agentList) } : item;
+        return item.from === "operator" && item.kind === "Message" && item.to && !item.terminal && !item.replyTo ? { ...item, receipt: receiptOf(project, item, agentList) } : item;
       });
   }
 
-  // Prompts the operator typed into one session's terminal, as operator messages; machine text and echoes of UI messages are skipped.
-  function terminalPrompts(project, session, direct) {
-    const sent = direct.filter(item => item.from === "operator");
-    return activityList(project, session)
-      .filter(item => item.type === "prompt" && operatorPrompt(item.input) && !sent.some(message => message.body.trim() === item.input.trim() && Math.abs(message.time - item.time) <= ECHO_WINDOW_S))
-      .map(item => ({ id: item.id, time: item.time, kind: "Message", sender: "operator", from: "operator", to: session, body: item.input, terminal: true }));
+  // Prompts typed into one session's terminal (or every session's when session is null), as operator messages; machine text and echoes are skipped.
+  function terminalPrompts(project, session, sent) {
+    const prompts = activityList(project, session).filter(item => item.type === "prompt" && operatorPrompt(item.input));
+    return terminalMessages(prompts, sent);
   }
 
   // pending, sent (answered, the hook has not read it yet), or the end reason; with the decision or answers that applied.
