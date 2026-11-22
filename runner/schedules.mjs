@@ -4,6 +4,7 @@ import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { configDir } from "../lib/config.mjs";
 import { childEnv } from "../lib/start.mjs";
+import { scopeLaunch } from "../lib/scope.mjs";
 
 export const DEFAULT_TIMEOUT_SEC = 900;
 export const TAIL_CHARS = 2000;
@@ -82,13 +83,18 @@ export function loadSchedules(env = process.env) {
 /**
  * Runs argv in its own process group (no shell, stdin closed). A timeout or abort sends SIGTERM to the group, then
  * SIGKILL after graceMs. Resolves {ok, exitCode, signal, timedOut, durationMs, tail}; rejects when signal aborts.
+ * With `scope`, the command runs in its own transient systemd scope, so a runner restart does not kill an agent it
+ * started; the scope execs the command, so the process group and the timeout handling are the same either way.
  */
-export function runCommand(command, { cwd, env = process.env, timeoutMs, signal, graceMs = KILL_GRACE_MS }) {
-  const [file, ...args] = command;
+export function runCommand(command, { cwd, env = process.env, timeoutMs, signal, graceMs = KILL_GRACE_MS, scope = null }) {
+  const [given, ...givenArgs] = command;
+  // A scope outlives this process, so the timeout is also handed to systemd: it cuts the command if the caller dies.
+  const launch = scope ? scopeLaunch(command, { ...scope, kind: "schedule", runtimeMaxSec: timeoutMs === undefined ? 0 : timeoutMs / 1000 }) : null;
+  const [file, runArgs] = launch ? [launch.file, launch.args] : [given, givenArgs];
   const started = Date.now();
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(signal.reason);
-    const child = spawn(file, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"], detached: true, windowsHide: true });
+    const child = spawn(file, runArgs, { cwd, env, stdio: ["ignore", "pipe", "pipe"], detached: true, windowsHide: true });
     let tail = "";
     let timedOut = false;
     let aborted = false;
@@ -146,7 +152,9 @@ export function runCommand(command, { cwd, env = process.env, timeoutMs, signal,
 /** The workflow body for one entry: one checkpointed command step, not re-run after a cut. */
 export function tickFn(entry, { env = process.env, log = () => {}, graceMs } = {}) {
   return async (scheduledTime, actualTime, wf) => {
-    const result = await wf.step(TICK_STEP, () => runCommand(entry.command, { cwd: entry.cwd, env: childEnv(env), timeoutMs: entry.timeoutMs, signal: wf.signal, graceMs }), {
+    // The command runs in its own scope, so a runner restart does not kill an agent a tick started; it also outlives
+    // the tick's own timeout only if the scope cannot be made, where the group kill still applies.
+    const result = await wf.step(TICK_STEP, () => runCommand(entry.command, { cwd: entry.cwd, env: childEnv(env), timeoutMs: entry.timeoutMs, signal: wf.signal, graceMs, scope: { env, label: entry.name, description: `AI Collab schedule ${entry.name}` } }), {
       onCut: () => ({ ok: false, exitCode: null, signal: null, timedOut: false, durationMs: 0, tail: "", cut: "runner restarted during the run; not re-run" }),
     });
     const how = result.timedOut ? " (timed out)" : result.signal ? ` (${result.signal})` : "";
