@@ -18,10 +18,11 @@ test("recordInstructions stores the loaded file, memory type and load reason", a
 });
 
 test("a later load of the same path replaces its entry", async () => {
-  await recordInstructions(cfg, { file_path: "/w/CLAUDE.md", memory_type: "Project", load_reason: "compact" });
+  // A session_start reload keeps the nested entry; a compact load would drop it (test/context-compact.test.mjs).
+  await recordInstructions(cfg, { file_path: "/w/CLAUDE.md", memory_type: "Project", load_reason: "session_start" });
   const { files } = readContext(cfg);
   assert.equal(files.length, 2);
-  assert.equal(files.find(f => f.path === "/w/CLAUDE.md").load, "compact");
+  assert.equal(files.find(f => f.path === "/w/CLAUDE.md").load, "session_start");
 });
 
 test("recordInstructions rejects a relative path, an unknown memory type or load reason", async () => {
