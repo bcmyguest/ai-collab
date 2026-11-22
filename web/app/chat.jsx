@@ -532,15 +532,15 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
     setActiveIndex(0);
     focus();
   }
-  async function send(sendAnyway = false) {
+  async function send(sendAnyway = false, sendNow = urgent) {
     if (pending.current || busy || !draft.trim()) return;
     pending.current = true;
     setPosting(true);
     const text = draft.trim();
     try {
       // onSend returns true only when the message was sent (or a command ran or was requested); otherwise the draft stays.
-      const result = await onSend(text, urgentable && urgent, commandFor(text, picked.current) !== null, sendAnyway);
-      if (result === "draftHeld") setHeld({ text, replying, question });
+      const result = await onSend(text, urgentable && sendNow, commandFor(text, picked.current) !== null, sendAnyway);
+      if (result === "draftHeld") setHeld({ text, replying, question, sendNow });
       if (result === true) {
         setDraft(""); setShowPicker(false); setUrgent(false); picked.current.clear();
       }
@@ -550,7 +550,7 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
   return <div className="relative mx-auto w-full max-w-3xl px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
     {held?.text === draft.trim() && held.replying === replying && held.question === question && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-sm">
       <span role="status">The terminal has an unsent draft.</span>
-      <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => send(true)}>Send anyway</Button>
+      <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => send(true, held.sendNow)}>Send anyway</Button>
     </div>}
     {question && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-sm">
       <span className="min-w-0 truncate">Replying to question {question}</span>
@@ -614,9 +614,9 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
               onClick={() => { setShowPicker(!showPicker); setActiveIndex(0); focus(); }}><AtSign/>Mention</Button>
           </PromptInputAction>
           <div className="flex items-center gap-1">
-            {urgentable && <PromptInputAction tooltip="Deliver at the agent's next tool call instead of its next turn">
-              <Button type="button" variant={urgent ? "secondary" : "ghost"} size="sm" className={cn("rounded-full", urgent && "text-amber-500")} aria-pressed={urgent} disabled={busy}
-                onClick={() => setUrgent(!urgent)}><Zap/>Send now</Button>
+            {urgentable && !command && <PromptInputAction tooltip="Deliver at the agent's next tool call instead of its next turn">
+              <Button type="button" variant={urgent ? "secondary" : "ghost"} size="sm" className={cn("rounded-full", urgent && "text-amber-500")} aria-pressed={routing.session ? undefined : urgent} disabled={busy || (routing.session && !text)}
+                onClick={() => routing.session ? send(false, true) : setUrgent(!urgent)}><Zap/>Send now</Button>
             </PromptInputAction>}
             <PromptInputAction tooltip={sendName}>
               <Button type="button" size="icon" className="rounded-full" aria-label={sendName} disabled={busy || !draft.trim()} onClick={() => send()}><ArrowUp/></Button>
