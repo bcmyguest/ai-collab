@@ -913,7 +913,8 @@ function Console({ account }) {
             <Dot online={agent.online}/><span className="hidden sm:inline">{agent.online ? "online" : "offline"}</span></span>}
           {level === "session" && agent && <RunningCount runs={agent.subagents} now={now}/>}
           <AfkToggle mode={data.mode || "off"} disabled={!ready || working} set={mode => action("afk", { mode }, "AFK " + mode)}/>
-          <NotifyToggle level={data.alerts || "all"} levelDisabled={!ready || working} setLevel={level => action("alerts", { level }, "Alerts set")}/>
+          {/* No "all" fallback here: before the first state frame the bell shows this browser's last choice instead. */}
+          <NotifyToggle level={data.alerts} levelDisabled={!ready || working} setLevel={level => action("alerts", { level }, "Alerts set")}/>
           <ThemeToggle/>
         </div>
         {account.user && <p className="-mt-1 truncate text-right text-[11px] text-muted-foreground" data-account={account.user.login}>

@@ -1,10 +1,11 @@
 import { DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { ALERT_LEVELS } from "@/lib/alert-level";
 
-// Which notifications buzz the phone; every message still reaches the chat.
-export const ALERT_LEVELS = [["all", "All"], ["questions-and-direct", "Questions and direct replies"], ["questions", "Questions only"], ["none", "None"]];
+// Which notifications buzz the phone; every message still reaches the chat. The levels and their ids live in web/lib.
+export { ALERT_LEVELS };
 
 /** The phone alert level as radio items inside the Notifications menu (server-side, honoured by hooks and the UI). */
-export function AlertLevelItems({ level = "all", set }) {
+export function AlertLevelItems({ level, set }) {
   return <>
     <DropdownMenuSeparator/>
     <DropdownMenuLabel>Phone alerts</DropdownMenuLabel>
