@@ -156,7 +156,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       return;
     }
     // A harness limit (an adapter event or a run error): one limit card per session and window.
-    const limit = e.type === EventType.CUSTOM && e.name === LIMIT ? e.value : e.type === EventType.RUN_ERROR ? limitFromRunError(r.harness, e.message) : null;
+    const limit = e.type === EventType.CUSTOM && e.name === LIMIT ? e.value : e.type === EventType.RUN_ERROR ? limitFromRunError(r.harness, e.message, e.metadata?.aiCollab) : null;
     if (limit) enqueuePublish(s, () => alertLimit(s.cfg, { harness: r.harness, limit }).catch((error) => log(`limit alert failed: ${error.message}`)));
     enqueuePublish(s, () => publishEvent(s.cfg, r.harness, e));
   }

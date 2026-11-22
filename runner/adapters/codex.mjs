@@ -142,7 +142,8 @@ function turnCompleted(session, turn) {
   if (turn.status !== "completed" && turn.status !== "interrupted" && turn.status !== "failed") return;
   session.turnId = null;
   if (turn.status === "failed") {
-    session.ctx.emit({ type: EventType.RUN_ERROR, message: turn.error?.message || "turn failed", metadata: { aiCollab: { runId: turn.id } } });
+    // codexErrorInfo is UNVERIFIED: the field name is not in the repo's schema snapshot; lib/limits.mjs reads it for plan limits.
+    session.ctx.emit({ type: EventType.RUN_ERROR, message: turn.error?.message || "turn failed", metadata: { aiCollab: { runId: turn.id, codexErrorInfo: turn.error?.codexErrorInfo } } });
     return;
   }
   const type = turn.status === "interrupted" ? "cancelled" : "success";
