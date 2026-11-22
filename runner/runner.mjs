@@ -5,6 +5,9 @@ import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { EventType } from "@ag-ui/core";
+import { DOT_EVENT_MAX } from "../lib/dot.mjs";
+import { getPattern } from "../lib/patterns.mjs";
+import { applyPatternAdvance, cutPatternRun, launchPatternRun, NOTE_MAX, preparePatternRun, RUN_ID, runStatus } from "../lib/pattern-runs.mjs";
 import { statePath } from "../lib/state.mjs";
 import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, receiptsTopic, sessionLabel } from "../lib/config.mjs";
 import { RESERVE_MS, ATTACHMENT_BUDGET_MS, claimInbox, markDelivered, parseEnvelope, releaseOwned, reserveOwned } from "../lib/inbox.mjs";
@@ -660,6 +663,105 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     }
   }
 
+  const patternReplies = new Map();
+  const patternWorkflowId = (project, id) => `pattern:${project}:${id}`;
+  const patternConfig = (project) => {
+    const cfg = configs.get(project);
+    if (!cfg) fail(400, "Unknown project");
+    return { ...cfg, peer: "operator", session: "" };
+  };
+
+  async function patternWorkflow(wf, { project, initial, request }) {
+    const cfg = patternConfig(project);
+    const launch = async (_cfg, options) => {
+      for (;;) {
+        wf.signal.throwIfAborted();
+        try {
+          return await start({ ...options, project });
+        } catch (error) {
+          if (error.status !== 429) throw error;
+          await wf.pause(Math.max(1, startGapMs - (now() - lastStartAt)));
+        }
+      }
+    };
+    let reply = await wf.step("pattern.entry", async () => {
+      const started = await launchPatternRun(cfg, initial, env, launch);
+      wf.signal.throwIfAborted();
+      return started;
+    }, {
+      onCut: () => cutPatternRun(cfg, initial, "start"),
+    });
+    patternReplies.get(request)?.({ reply });
+    while (reply.status === "running") {
+      const { request, event, options } = await wf.recv("advance");
+      const outcome = await wf.step("pattern.advance", async () => {
+        try {
+          const advanced = await applyPatternAdvance(cfg, initial.id, event, {
+            ...options, env, now, start: launch, notify: (address, text) => send(address, { text }),
+          });
+          wf.signal.throwIfAborted();
+          return { reply: advanced };
+        } catch (error) {
+          wf.signal.throwIfAborted();
+          return { error: error.message };
+        }
+      }, { onCut: () => ({ reply: cutPatternRun(cfg, initial, "advance") }) });
+      patternReplies.get(request)?.(outcome);
+      if (outcome.reply) reply = outcome.reply;
+    }
+    return reply;
+  }
+
+  durable.register("pattern", patternWorkflow);
+
+  async function waitForPattern(id, request, submit) {
+    const response = new Promise((resolve) => patternReplies.set(request, resolve));
+    try {
+      submit();
+      const outcome = await Promise.race([
+        response,
+        durable.result(id).then((reply) => ({ error: reply ? `run ${reply.id} is ${reply.status}` : "Pattern runner stopped" })),
+      ]);
+      if (outcome.error) fail(409, outcome.error);
+      return outcome.reply;
+    } finally {
+      patternReplies.delete(request);
+    }
+  }
+
+  async function startPattern({ project, name, task } = {}) {
+    const cfg = patternConfig(project);
+    let initial;
+    try {
+      const pattern = getPattern(cfg, name, env);
+      if (!pattern.file && pattern.source !== "built-in") throw new Error("A team.dot pattern is required");
+      initial = { ...(await preparePatternRun(cfg, pattern, task, env, { now })), runner: true };
+    } catch (error) {
+      fail(400, error.message);
+    }
+    const id = patternWorkflowId(project, initial.id);
+    const request = randomUUID();
+    return waitForPattern(id, request, () => durable.startWorkflow("pattern", id, { project, initial, request }));
+  }
+
+  async function advancePattern({ project, id, event, note, caller, override, by } = {}) {
+    const cfg = patternConfig(project);
+    if (typeof id !== "string" || !RUN_ID.test(id)) fail(400, "Invalid pattern run id");
+    const workflow = patternWorkflowId(project, id);
+    const status = durable.status(workflow);
+    if (!status) fail(404, "Unknown runner pattern");
+    if (status.status !== "PENDING") fail(409, `run ${id} is ${runStatus(cfg, id).status}`);
+    if (typeof event !== "string" || !event.trim() || event.trim().length > DOT_EVENT_MAX) fail(400, "Invalid pattern event");
+    const request = randomUUID();
+    const options = {
+      note: typeof note === "string" ? note.trim().slice(0, NOTE_MAX) : "",
+      caller: typeof caller === "string" ? caller : "",
+      override: override === true,
+      by: typeof by === "string" ? by.slice(0, 80) : "operator",
+    };
+    return waitForPattern(workflow, request, () => durable.send(workflow, "advance", { request, event, options }));
+  }
+
   /** Queues input as a durable message, or steers the running run when asked and supported. */
   async function send(address, { text, steer = false, messageIds = [], dedupe = null } = {}) {
     const s = find(address);
@@ -903,7 +1005,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   };
 
   return {
-    start, send, interrupt, compact, respond, setMode, close, boot, stop, harnesses, deliveries, pump: pumpDeliveries,
+    start, startPattern, advancePattern, send, interrupt, compact, respond, setMode, close, boot, stop, harnesses, deliveries, pump: pumpDeliveries,
     list: () => [...sessions.values()].map(view),
     // Each schedule with the command and folder its schedules.json entry names, and the session it resumes.
     schedules: () => ({ schedules: durable.schedules().map((s) => ({ ...s, ...entryOf(s.name) })), configError: scheduleErrors }),

@@ -2,18 +2,14 @@
 import http from "node:http";
 import net from "node:net";
 import { chmodSync, mkdirSync, rmSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { SESSION_LABEL, stateDir } from "../lib/config.mjs";
+import { dirname } from "node:path";
+import { SESSION_LABEL } from "../lib/config.mjs";
 import { HARNESSES } from "./contract.mjs";
 
 export const MAX_REQUEST_BYTES = 64 * 1024;
 const VERSION = 1;
 
-/** The control socket path: AI_COLLAB_RUNNER_SOCKET, else $XDG_RUNTIME_DIR/ai-collab/runner.sock, else the state dir. */
-export function runnerSocket(env = process.env) {
-  if (env.AI_COLLAB_RUNNER_SOCKET) return env.AI_COLLAB_RUNNER_SOCKET;
-  return env.XDG_RUNTIME_DIR ? join(env.XDG_RUNTIME_DIR, "ai-collab", "runner.sock") : join(stateDir(env), "runner.sock");
-}
+export { runnerSocket } from "../lib/runner-request.mjs";
 
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
 
@@ -48,6 +44,10 @@ export async function route(runner, method, url, input) {
   if (parts[0] !== "v1") fail(404, "Not found");
   const [, area, a, b, action, id] = parts;
   if (area === "health" && method === "GET") return [200, { ok: true, version: VERSION, harnesses: (await runner.harnesses()).map((h) => h.harness) }];
+  if (area === "pattern-runs" && method === "POST" && !b) {
+    if (!a) return [201, await runner.startPattern(input)];
+    if (a === "advance") return [200, await runner.advancePattern(input)];
+  }
   if (area === "schedules") {
     if (!a && method === "GET") return [200, runner.schedules()];
     if (a && b === "runs" && !action) {

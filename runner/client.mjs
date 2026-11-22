@@ -1,27 +1,6 @@
 // Client for the runner control socket, for the UI server and the CLI.
-import http from "node:http";
-import { runnerSocket } from "./control.mjs";
-
-export const CLIENT_TIMEOUT_MS = 70_000;
-
-/** One JSON request over the unix socket; resolves {status, body}; rejects when the runner is not listening. */
-export function runnerRequest(method, path, body, { socket = runnerSocket(), timeoutMs = CLIENT_TIMEOUT_MS } = {}) {
-  return new Promise((resolve, reject) => {
-    const data = body === undefined ? undefined : JSON.stringify(body);
-    const req = http.request({ socketPath: socket, method, path, timeout: timeoutMs, headers: data ? { "content-type": "application/json", "content-length": Buffer.byteLength(data) } : {} }, (res) => {
-      const chunks = [];
-      res.on("data", (c) => chunks.push(c));
-      res.on("end", () => {
-        let value = null;
-        try { value = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { /* not JSON */ }
-        resolve({ status: res.statusCode, body: value });
-      });
-    });
-    req.on("timeout", () => req.destroy(new Error("runner request timed out")));
-    req.on("error", reject);
-    req.end(data);
-  });
-}
+import { runnerRequest } from "../lib/runner-request.mjs";
+export { CLIENT_TIMEOUT_MS, runnerRequest } from "../lib/runner-request.mjs";
 
 const sessionPath = (address) => {
   const [harness, label] = String(address).split("#");
