@@ -9,6 +9,8 @@ const ENDED = {
   cancelled: "Closed: answered in the terminal or the agent stopped", terminal: "Answered in the terminal",
 };
 export const IN_TERMINAL = "Answer in the terminal";
+// Why a view-only card has no buttons, and how to get them next time.
+export const IN_TERMINAL_HINT = "AFK is off, so the terminal holds this prompt. Turn AFK on to answer approvals here.";
 const HEX12 = /^[a-f0-9]{12}$/;
 
 /** Outcome line for an approval: its end reason, "sent", or expiry; "" while it waits for an answer. */
@@ -70,6 +72,7 @@ function permissionOps(approval, open, outcome, terminal) {
   } else {
     components.push(text("status", open ? IN_TERMINAL : withBy(outcome, approval.by)));
     children.push("status");
+    if (open) { components.push({ id: "hint", component: "Text", variant: "caption", text: IN_TERMINAL_HINT }); children.push("hint"); }
   }
   components[0].children = children;
   return surfaceOps(approvalSurfaceId(approval.id), components, {});

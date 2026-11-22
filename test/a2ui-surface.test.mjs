@@ -133,3 +133,10 @@ test("the processor rejects an option without a label", () => {
   components(broken).find(c => c.id === "q0-pick").options[0] = { value: "staging" };
   assert.notDeepEqual(validate(broken), []);
 });
+
+test("an open view-only permission card says AFK is off and how to answer here", async () => {
+  const { approvalOperations, IN_TERMINAL_HINT } = await import("../web/lib/a2ui.js");
+  const ops = approvalOperations({ id: "aaaaaaaaaaaa", tool: "Bash", summary: "ls", terminal: true, deadline: Date.now() + 60000 }, Date.now());
+  const components = ops.find(op => op.updateComponents).updateComponents.components;
+  assert.equal(components.find(c => c.id === "hint")?.text, IN_TERMINAL_HINT);
+});
