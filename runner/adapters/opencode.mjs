@@ -54,8 +54,9 @@ export default function openCodeAdapter({ env = process.env } = {}) {
 /** An adapter over the OpenCode service that env locates; retryMs paces event-stream reconnects. */
 export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } = {}) {
   const sessions = new Map(); // OpenCode session id -> {sessionID, ctx, threadId, autoReply, run, tools}
-  const pending = new Map(); // open approval request id -> {sessionID, action}
+  const pending = new Map(); // open approval request id -> {sessionID (asking session), owner (owned session id), action}
   const inflight = new Set(); // approval ids being auto-replied
+  const answering = new Set(); // approval ids whose reply POST is in flight
   let stream = null; // {ac}: the one /api/event subscription every session shares
 
   const service = () => serviceEndpoint(env);
@@ -66,8 +67,11 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
     return r.body;
   }
 
+  // The session that asked: a subagent child of an owned session asks under its own id.
+  const askerOf = (s, req) => (typeof req.sessionID === "string" && req.sessionID ? req.sessionID : s.sessionID);
+
   function surface(s, req) {
-    pending.set(req.id, { sessionID: s.sessionID, action: String(req.action || ASK_FALLBACK) });
+    pending.set(req.id, { sessionID: askerOf(s, req), owner: s.sessionID, action: String(req.action || ASK_FALLBACK) });
     s.ctx.emit({
       type: EventType.CUSTOM, name: APPROVAL_REQUESTED,
       value: { interruptId: req.id, reason: "tool_approval", toolCallName: String(req.action || ASK_FALLBACK), summary: summaryOf(req) },
@@ -76,30 +80,40 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
 
   // An ask the mode auto-answers gets `once`; a failed auto-reply falls back to an approval card.
   function ask(s, req) {
-    if (!req?.id || pending.has(req.id) || inflight.has(req.id)) return;
+    if (!req?.id || pending.has(req.id) || inflight.has(req.id) || answering.has(req.id)) return;
     if (!autoReplies(s.autoReply, req.action)) return surface(s, req);
     inflight.add(req.id);
-    call("POST", `/api/session/${enc(s.sessionID)}/permission/${enc(req.id)}/reply`, { decision: "once" })
+    call("POST", `/api/session/${enc(askerOf(s, req))}/permission/${enc(req.id)}/reply`, { decision: "once" })
       .catch(() => surface(s, req))
       .finally(() => inflight.delete(req.id));
   }
 
   // Answers an open approval; the entry leaves `pending` first so the reply event does not resolve it twice.
-  async function answer(sessionID, id, body) {
+  // `answering` keeps a resync from raising a second card while the reply is in flight.
+  async function answer(id, body) {
     const entry = pending.get(id);
     pending.delete(id);
+    answering.add(id);
     try {
-      await call("POST", `/api/session/${enc(sessionID)}/permission/${enc(id)}/reply`, body);
+      await call("POST", `/api/session/${enc(entry.sessionID)}/permission/${enc(id)}/reply`, body);
     } catch (error) {
       pending.set(id, entry);
       throw error;
+    } finally {
+      answering.delete(id);
     }
   }
 
-  function runStarted(s) {
+  // The execution id of a session.execution.* event; "" when the event carries none.
+  const executionOf = (data) => String(data.executionID ?? "");
+  // Once our execution has started, only its completion ends the run. Before that, a completion ends it (existing test).
+  const ours = (s, data) => Boolean(s.run) && (!s.run.started || s.run.execution === executionOf(data));
+
+  function runStarted(s, data) {
     const run = s.run;
     if (!run || run.started) return;
     run.started = true;
+    run.execution = executionOf(data);
     s.ctx.emit({
       type: EventType.RUN_STARTED, threadId: s.threadId, runId: run.runId,
       input: { threadId: s.threadId, runId: run.runId, tools: [], context: [], messages: [{ id: `${run.runId}:input`, role: "user", content: run.text }] },
@@ -127,7 +141,7 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
     const entry = pending.get(data.requestID);
     if (!entry) return;
     pending.delete(data.requestID);
-    sessions.get(entry.sessionID)?.ctx.emit({
+    sessions.get(entry.owner)?.ctx.emit({
       type: EventType.CUSTOM, name: APPROVAL_RESOLVED,
       value: { interruptId: data.requestID, status: "resolved", reason: data.reply === "reject" ? "denied" : "allowed" },
     });
@@ -136,17 +150,19 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
   function dispatch(event) {
     const data = event?.data ?? {};
     if (event?.type === "permission.replied") return replied(data);
-    const s = sessions.get(data.sessionID);
-    if (!s) return;
+    // An ask from a subagent child (parentID names the owned session) is handled for the owned session.
+    const asked = event?.type === "permission.asked";
+    const s = sessions.get(data.sessionID) ?? (asked ? sessions.get(data.parentID) : undefined);
+    if (!s || (!asked && s.sessionID !== data.sessionID)) return;
     switch (event.type) {
       case "permission.asked": return ask(s, data);
-      case "session.execution.started": return runStarted(s);
+      case "session.execution.started": return runStarted(s, data);
       case "session.execution.succeeded":
-        return endRun(s, (runId) => ({ type: EventType.RUN_FINISHED, threadId: s.threadId, runId, outcome: { type: "success" } }));
+        return ours(s, data) && endRun(s, (runId) => ({ type: EventType.RUN_FINISHED, threadId: s.threadId, runId, outcome: { type: "success" } }));
       case "session.execution.interrupted":
-        return endRun(s, (runId) => ({ type: EventType.RUN_FINISHED, threadId: s.threadId, runId, outcome: { type: "cancelled" } }));
+        return ours(s, data) && endRun(s, (runId) => ({ type: EventType.RUN_FINISHED, threadId: s.threadId, runId, outcome: { type: "cancelled" } }));
       case "session.execution.failed":
-        return endRun(s, (runId) => ({ type: EventType.RUN_ERROR, message: errorText(data), metadata: { aiCollab: { runId } } }));
+        return ours(s, data) && endRun(s, (runId) => ({ type: EventType.RUN_ERROR, message: errorText(data), metadata: { aiCollab: { runId } } }));
       case "session.text.ended":
         if (s.run) s.ctx.emit({ type: EventType.TEXT_MESSAGE_CHUNK, messageId: data.assistantMessageID, role: "assistant", delta: String(data.text ?? "") });
         return;
@@ -162,11 +178,23 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
     }
   }
 
-  // Asks that arrived while the stream was down: list each session's pending permissions.
+  // Events missed while the stream was down: an idle session ends its open run; asks the server no longer lists close.
   async function resync() {
     for (const s of [...sessions.values()]) {
+      if (s.run) {
+        const status = await opencodeRequest("GET", `/api/session/${enc(s.sessionID)}`, { env });
+        if (status.ok && status.body?.data?.status === "idle") {
+          endRun(s, (runId) => ({ type: EventType.RUN_ERROR, message: "the OpenCode run ended while the event stream was down", metadata: { aiCollab: { runId } } }));
+        }
+      }
       const r = await opencodeRequest("GET", `/api/session/${enc(s.sessionID)}/permission`, { env });
       if (!r.ok || !Array.isArray(r.body?.data)) continue;
+      const listed = new Set(r.body.data.map((req) => req?.id));
+      for (const [id, entry] of [...pending]) {
+        if (entry.owner !== s.sessionID || entry.sessionID !== s.sessionID || listed.has(id) || answering.has(id)) continue;
+        pending.delete(id);
+        s.ctx.emit({ type: EventType.CUSTOM, name: APPROVAL_RESOLVED, value: { interruptId: id, status: "cancelled", reason: "cancelled" } });
+      }
       for (const req of r.body.data) ask(s, req);
     }
   }
@@ -239,23 +267,23 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
       },
       async respond(interruptId, decision) {
         const entry = pending.get(interruptId);
-        if (!entry || entry.sessionID !== s.sessionID) throw new Error("no open OpenCode approval with that id");
+        if (!entry || entry.owner !== s.sessionID) throw new Error("no open OpenCode approval with that id");
         if (decision.answers) throw new Error("OpenCode approvals take allow or deny, not answers");
         const body = decision.behavior === "allow" ? { decision: "once" } : { decision: "reject", message: decision.message };
-        await answer(s.sessionID, interruptId, body);
+        await answer(interruptId, body);
       },
       async setPermissionMode(mode) {
         if (!PERMISSION_TABLE.opencode[mode]) throw new Error(`OpenCode has no permission mode ${mode}`);
         s.autoReply = autoReplyFor(mode);
         for (const [id, entry] of [...pending]) {
-          if (entry.sessionID === s.sessionID && autoReplies(s.autoReply, entry.action)) {
-            await answer(s.sessionID, id, { decision: "once" }).catch(() => {});
+          if (entry.owner === s.sessionID && autoReplies(s.autoReply, entry.action)) {
+            await answer(id, { decision: "once" }).catch(() => {});
           }
         }
       },
       async close() {
         if (sessions.get(s.sessionID) === s) sessions.delete(s.sessionID);
-        for (const [id, entry] of [...pending]) if (entry.sessionID === s.sessionID) pending.delete(id);
+        for (const [id, entry] of [...pending]) if (entry.owner === s.sessionID) pending.delete(id);
         s.run = null;
         if (!sessions.size && stream) {
           stream.ac.abort();
