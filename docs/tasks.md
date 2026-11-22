@@ -20,7 +20,7 @@ The project task list is a store outside git: `$XDG_DATA_HOME/ai-collab/tasks/<p
 
 ## Backends
 
-Lib: `lib/tasks.mjs`. Every backend offers `list`, `get`, `add`, `update`, `addProgress` and `replaceAll`. Only `file` exists. A project picks its backend with `"tasks"` in its `projects.json` entry; the default is `file`. A GitHub Issues or Linear backend would implement the same methods.
+Lib: `lib/tasks.mjs`. Every backend offers `list`, `get`, `add`, `update`, `addProgress`, `remove` and `replaceAll`. Only `file` exists. A project picks its backend with `"tasks"` in its `projects.json` entry; the default is `file`. A GitHub Issues or Linear backend would implement the same methods.
 
 ## CLI
 
@@ -32,9 +32,13 @@ ai-collab task set <id> status=<status>      (also title=, detail=, run=)
 ai-collab task block <id> <blocker-id>
 ai-collab task progress <id> "<text>"
 ai-collab task own <id> <address>
+ai-collab task remove <id>                   deletes a task no other task is blocked on
 ai-collab task render                        rewrites docs/feature-requests.md
 ai-collab task import <file>                 a feature-requests.md table or a store .json; runs once
+ai-collab task help                          every task command; any command also takes --help
 ```
+
+A bare `ai-collab task --help`, or `--help` after any subcommand, prints usage instead of becoming a title argument.
 
 `task import` refuses when the store exists. The migration from the in-repo `.ai-collab/tasks.json` and the docs table is one import into an empty store; the snapshot is then `task render`.
 

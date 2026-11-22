@@ -125,6 +125,19 @@ test("the mission CLI rejects a bad index, a bad subcommand and a missing file",
   assert.equal((await cli("bogus")).code, 1);
 });
 
+test("the mission CLI prints its commands for --help and help, and for a command's --help", async () => {
+  const { cli } = project();
+  for (const argv of [["--help"], ["-h"], ["help"]]) {
+    const result = await cli(...argv);
+    assert.equal(result.code, 0);
+    assert.match(result.out, /^usage: ai-collab mission <command>/);
+    assert.match(result.out, /usage: mission add-goal/);
+  }
+  const one = await cli("add-goal", "--help");
+  assert.deepEqual([one.code, one.err], [0, ""]);
+  assert.equal(one.out, 'ai-collab: usage: mission add-goal "<text>"\n');
+});
+
 test("withMission appends the file to a harness prompt and leaves a plain script alone", () => {
   const { root, env } = project();
   writeFileSync(path.join(root, MISSION_FILE), GOOD);
