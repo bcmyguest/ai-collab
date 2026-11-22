@@ -11,6 +11,7 @@ The server serves every project in `~/.config/ai-collab/projects.json`, each res
 | `AI_COLLAB_UI_WORKSPACE` | current directory | Fallback project directory, used only when `projects.json` lists no usable project |
 | `AI_COLLAB_UI_PORT` | `8795` | Loopback port for `npm run ui` |
 | `AI_COLLAB_UI_ORIGIN` | — | HTTPS origin allowed to post, e.g. `https://ai-collab-ui.<tailnet>.ts.net` (no trailing slash) |
+| `AI_COLLAB_SCOPE` | — | `on` or `off` for the systemd scope around a started session or a scheduled command (see [Start a session from the phone](#start-a-session-from-the-phone)); unset decides from the host |
 
 The UI has no login unless you add [GitHub sign-in](github-sign-in.md). Access control is the loopback bind plus Tailscale. Every `POST /api/*` must come from the UI's own origin (`AI_COLLAB_UI_ORIGIN`, or `http://127.0.0.1:<port>` locally), which blocks cross-site request forgery. Pages carry a per-request script nonce in their Content Security Policy.
 
@@ -149,6 +150,8 @@ The start request body is `{project, harness, prompt, model?, startMode?, place?
 Any other value is rejected with 400 before anything is spawned.
 
 The prompt is one argv element, 1-4000 characters, and may not start with `-`. No flag skips permissions or trust (`--force`, `--trust`, `--dangerously-bypass-hook-trust` are never passed). Output goes to `$AI_COLLAB_STATE_DIR/<project>/starts/<time>-<harness>.log`. The child gets no `AI_COLLAB_*` settings, so its hooks find the project from `projects.json` by its cwd, like any session; it gets `AI_COLLAB_WAKE=1`, so its first prompt is not mistaken for the operator at a terminal. The server waits up to 15 seconds for the id the CLI prints (Claude: a UUID in its output; Codex: `thread.started` `thread_id`; Cursor: `session_id`; OpenCode: `sessionID` on its JSON events) and returns the session's public address `harness#label`; the raw id stays in the log. The UI links the session once its `SessionStart` status arrives. For Codex, the result warns when `config.toml` has no trust entry for the plugin's hooks; trust them in `/hooks`.
+
+The UI unit's default `KillMode=control-group` kills every process in its cgroup on a restart, so a session started from the phone would die with the UI. To prevent that, `lib/scope.mjs` wraps the harness argv in a transient systemd user scope (`systemd-run --user --scope --collect --unit ai-collab-session-<harness>-<UTC stamp>-<random> -- <argv>`) whenever `systemd-run` is installed, a user manager answers on the session bus, and the process itself was started by systemd (`INVOCATION_ID`). A scope is a sibling cgroup, not a child, so restarting or stopping the UI's unit leaves the session running. The scope execs the harness, so its output still goes to the log file, its exit code still reaches the server, and the 15-second id wait is unchanged. One throwaway scoped command is run once per process as a probe, so a `systemd-run` that cannot reach its manager falls back too. `AI_COLLAB_SCOPE=off` turns the wrapper off; `AI_COLLAB_SCOPE=on` asks for it where `INVOCATION_ID` is missing. Without a scope the harness is spawned detached exactly as before.
 
 **Where to start.** A second picker offers only the places the server can use:
 
