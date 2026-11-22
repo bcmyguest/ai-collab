@@ -20,7 +20,7 @@ import { contextMeter, filesRead } from "@/lib/context-view";
 import { agentDetail } from "@/lib/agent-detail";
 import { withMentions } from "@/lib/mentions";
 import { chatThread } from "@/lib/chat-turns";
-import { PatternBuilder, PatternRuns } from "./pattern-builder";
+import { PatternsPage } from "./patterns-page";
 import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
 import { TABS, parseSelection } from "@/lib/selection";
 import { subscribeUiEvents } from "@/lib/ui-events";
@@ -172,7 +172,7 @@ function SessionName({ agent }) {
   return agent?.name ? <span className="line-clamp-2 min-w-0 break-words text-xs text-foreground/80">{agent.name}</span> : null;
 }
 
-function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamOpen, createPattern, dispose, openRaw, disabled }) {
+function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, disabled }) {
   const current = selected.project || data.project;
   // Home's state carries the server's default project's agents; they are not "this project" here.
   const home = selected.level === "home";
@@ -201,19 +201,11 @@ function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamO
       </ul>
     </section>
     {!home && <section className="px-2 pb-2">
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Patterns and teams</h2>
-        <Button type="button" variant="ghost" size="sm" className="h-7 rounded-full px-2 text-xs" disabled={disabled} onClick={() => setTeamOpen(!teamOpen)}>{teamOpen ? "Close" : "Create"}</Button>
-      </div>
-      {teamOpen ? <PatternBuilder project={current} startable={data.startable || []} disabled={disabled} create={createPattern} close={() => setTeamOpen(false)}/>
-        : <div className="flex flex-col gap-2">
-          {data.patterns?.some(pattern => !pattern.legacy) && <ul className="flex flex-col gap-1 text-xs text-muted-foreground">{data.patterns.filter(pattern => !pattern.legacy).map(pattern =>
-            <li key={pattern.name} className="truncate font-mono" title={pattern.roles.map(role => role.id).join(" → ")}>@{pattern.name} · {pattern.roles.length} roles · {pattern.source}</li>)}</ul>}
-          {data.teams?.length ? <ul className="flex flex-col gap-1 text-xs text-muted-foreground">{(data.teams || []).map(team =>
-            <li key={team.id} className="truncate font-mono" title={(team.members || []).join(", ")}>@{team.id} · {(team.members || []).length} members</li>)}</ul>
-            : !data.patterns?.some(pattern => !pattern.legacy) && <p className="text-xs text-muted-foreground">No teams or patterns yet.</p>}
-          <PatternRuns runs={data.runs}/>
-        </div>}
+      <button type="button" onClick={() => navigate({ project: current, level: "patterns" })} aria-current={selected.level === "patterns" ? "page" : undefined}
+        className={cn("flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left text-sm transition-colors hover:bg-sidebar-accent", selected.level === "patterns" && "bg-sidebar-accent font-medium")}>
+        <span className="min-w-0 flex-1 truncate">Patterns and teams</span>
+        <span className="shrink-0 text-xs text-muted-foreground">{(data.patterns || []).length}</span>
+      </button>
     </section>}
     <section>
       <div className="flex items-center justify-between px-2 pb-2">
@@ -609,7 +601,6 @@ function Console({ account }) {
   const [question, setQuestion] = useState("");
   const [replyTo, setReplyTo] = useState(null);
   const [creating, setCreating] = useState("");
-  const [teamOpen, setTeamOpen] = useState(false);
   const [working, setWorking] = useState(false);
   const [revision, setRevision] = useState(0);
   const [now, setNow] = useState(Date.now);
@@ -778,6 +769,8 @@ function Console({ account }) {
     for (const key of ["project", "level", "harness", "session"]) if (next[key]) params.set(key, next[key]);
     if ((TABS[next.level || "project"] || []).includes(next.tab)) params.set("tab", next.tab);
     if (next.tab === "subagents" && next.run) params.set("run", next.run);
+    if (next.level === "patterns") for (const key of ["pattern", "run"]) if (next[key]) params.set(key, next[key]);
+    if (next.level === "patterns" && next.raw) params.set("raw", "1");
     location.hash = params.toString();
   }
   const project = selected.project || data.project || "";
@@ -786,7 +779,8 @@ function Console({ account }) {
   const agent = level === "session" ? data.agents.find(item => item.id === selected.session) : undefined;
   const target = level === "session" ? selected.session : "all";
   const missing = level === "session" && !target;
-  const title = home ? "Home" : level === "session" ? short(selected.session) || "Sessions" : project;
+  const patterns = level === "patterns";
+  const title = home ? "Home" : patterns ? "Patterns" : level === "session" ? short(selected.session) || "Sessions" : project;
   // A home or Sessions card opens its session, or one of its subagent runs.
   const openCard = (node, run = "") => navigate({ project: node.project, level: "session", harness: node.harness || peerOf(node.id), session: node.id, ...(run ? { tab: "subagents", run } : {}) });
   // The session's ⋯ menu opens its raw activity: every tool call, unfolded.
@@ -840,11 +834,11 @@ function Console({ account }) {
   async function startSession(payload) {
     try { return await api("start", { project, ...payload }); } catch (err) { return { status: "failed", detail: err.message }; }
   }
-  async function savePattern(payload) {
+  // Pattern saves, copies, deletes and operator advances all post to the pattern action; a failure comes back as { error }.
+  async function patternCall(payload) {
     try { return await api("pattern", payload); } catch (err) { return { error: err.message }; }
   }
-  const sidebar = <Sidebar data={data} selected={selected} now={now} navigate={navigate} newSession={newSession} teamOpen={teamOpen} setTeamOpen={setTeamOpen}
-    createPattern={savePattern} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")} openRaw={openRaw}/>;
+  const sidebar = <Sidebar data={data} selected={selected} now={now} navigate={navigate} newSession={newSession} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")} openRaw={openRaw}/>;
   const anyWaiting = data.projects.some(project => project.waiting > 0);
   return <SurfaceContext.Provider value={{ surfaces, submit: payload => action("a2ui", payload, "Sent"), disabled: !ready || working }}><div className="flex h-dvh w-full overflow-hidden">
     <aside className="hidden w-72 shrink-0 border-r bg-sidebar text-sidebar-foreground md:block">{sidebar}</aside>
@@ -863,10 +857,10 @@ function Console({ account }) {
           </Button>
           {/* Back one level: a session returns to its project chat, a project to Home. */}
           {!home && <Button variant="ghost" size="icon" aria-label={level === "session" ? "Back to " + project : "Home"} title={level === "session" ? "Back to the " + project + " chat" : "Home: every project's sessions"}
-            onClick={() => navigate(level === "session" ? { project, level: "project" } : { level: "home" })}><ArrowLeft/></Button>}
+            onClick={() => navigate(level === "session" || patterns ? { project, level: "project" } : { level: "home" })}><ArrowLeft/></Button>}
           {level === "session" && selected.session && <Avatar address={selected.session} className="size-8 shrink-0"/>}
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xs text-muted-foreground">{home ? "All projects" : level === "project" ? "Project" : raw ? "Raw activity · " + project : project + " · session"}</p>
+            <p className="truncate text-xs text-muted-foreground">{home ? "All projects" : patterns ? "Project · " + project : level === "project" ? "Project" : raw ? "Raw activity · " + project : project + " · session"}</p>
             <h1 className="truncate text-base font-semibold leading-tight" title={level === "session" ? selected.session : undefined}>{title}</h1>
             {level === "session" && agent?.name && <p className="line-clamp-2 break-words text-xs text-muted-foreground" title={agent.name}>{agent.name}</p>}
             {level === "session" && agent?.parent && <button type="button" onClick={() => openAddress(agent.parent)} title={"Started by " + agent.parent}
@@ -882,7 +876,7 @@ function Console({ account }) {
         {account.user && <p className="-mt-1 truncate text-right text-[11px] text-muted-foreground" data-account={account.user.login}>
           signed in as <span className="font-medium text-foreground" title={account.user.name || undefined}>{account.user.login}</span>
           {" · "}<button type="button" className="underline-offset-2 hover:underline" onClick={signOut}>sign out</button></p>}
-        {!home && <ZoomControls data={data} selected={selected} now={now} navigate={navigate}
+        {!home && !patterns && <ZoomControls data={data} selected={selected} now={now} navigate={navigate}
           compact={level === "session" && agent?.session && <span className="ml-auto flex items-center gap-2">
             <ContextChip context={agent.context || {}} rows={rows.filter(row => row.agent === agent.id)}/>
             {agent.online && ["codex", "opencode"].includes(agent.peer) && <Button variant="outline" size="sm" className="h-9 rounded-full" aria-label="Interrupt" disabled={!ready || working}
@@ -904,7 +898,11 @@ function Console({ account }) {
           <Button size="sm" variant="outline" onClick={retry}><RotateCw/>Retry</Button>
         </div>}
       </div>
-      <ChatContainerRoot contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
+      {patterns && <div className="min-h-0 flex-1 overflow-y-auto">
+        {ready ? <PatternsPage data={data} project={project} selected={selected} navigate={navigate} call={patternCall} disabled={working}/>
+          : <p className="py-16 text-center text-sm text-muted-foreground">Loading patterns…</p>}
+      </div>}
+      {!patterns && <ChatContainerRoot contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
         <ChatContainerContent key={requested} className="mx-auto w-full max-w-3xl gap-5 px-3 py-4">
           {!ready && (home || listing || subagents) && !loadError && <p className="py-16 text-center text-sm text-muted-foreground">Loading sessions…</p>}
           {ready && (home || listing) && <>
@@ -942,9 +940,9 @@ function Console({ account }) {
         <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
           <ScrollButton className="pointer-events-auto shadow-md" aria-label="Scroll to newest"/>
         </div>
-      </ChatContainerRoot>
+      </ChatContainerRoot>}
       <div role="status" hidden={!notice} className="mx-auto w-full max-w-3xl px-4 text-center text-xs text-muted-foreground">{notice}</div>
-      {!home && !listing && <Composer key={requested} conversation={conversationKey(project, level === "session" ? selected.session : "")} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
+      {!home && !listing && !patterns && <Composer key={requested} conversation={conversationKey(project, level === "session" ? selected.session : "")} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
         placeholder={placeholder} question={question} cancel={() => setQuestion("")} urgentable={!question} replying={replyTo} cancelReply={() => setReplyTo(null)}
         onSend={async (body, urgent, command) => {
           // Project chat never runs commands: a leading / there is ordinary chat.

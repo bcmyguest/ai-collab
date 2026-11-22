@@ -22,7 +22,7 @@ import { availableHarnesses, availablePlaces, projectRoot, checkPrompt, startSes
 import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
 import { createTeam, deleteTeam, listTeams, teamTask } from "../../lib/teams.mjs";
-import { createPattern, deletePattern, listPatterns } from "../../lib/patterns.mjs";
+import { copyPattern, listPatterns, removableNames, removePattern, savePattern } from "../../lib/patterns.mjs";
 import { advanceRun, listRuns, startRun } from "../../lib/pattern-runs.mjs";
 import { formatTeamOrchestrator } from "../../lib/format.mjs";
 import { activityRows, groupSubagents, summarize } from "../lib/activity-rows.js";
@@ -803,9 +803,17 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       startable: startable(project),
       startPlaces: startPlaces(project),
       teams: Object.entries(listTeams(project.cfg, env)).map(([id, members]) => ({ id, members })),
-      patterns: Object.values(listPatterns(project.cfg, env)).map(({ name, source, legacy, roles, handoffs }) => ({ name, source, legacy: legacy === true, roles, handoffs })),
+      patterns: patternRows(project.cfg, env),
       runs: listRuns(project.cfg).slice(0, 20),
     };
+  }
+
+  // Listed patterns for the Patterns page; removable marks the project's own patterns and teams (global teams stay in teams.json).
+  function patternRows(cfg, env) {
+    const removable = removableNames(cfg, env);
+    return Object.values(listPatterns(cfg, env)).map(({ name, source, legacy, invalid, description, roles, handoffs }) => ({
+      name, source, legacy: legacy === true, removable: removable.has(name), ...(invalid ? { invalid } : {}), ...(description ? { description } : {}), roles, handoffs,
+    }));
   }
 
   // One session's activity, or every allowed agent's for the project overview, oldest first.
@@ -963,7 +971,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
-      const { project: name, target, body, question, mode, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, team: teamName, members, delete: deleteTeamName, replyTo, command, pattern: patternSpec, deletePattern: deletePatternName, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, forwardedProps } = await payload(request);
+      const { project: name, target, body, question, mode, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, team: teamName, members, delete: deleteTeamName, replyTo, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, forwardedProps } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -988,7 +996,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         return json(201, await createTeam(cfg, String(teamName), members.map(String), env, modelList));
       }
       if (action === "pattern") {
-        if (deletePatternName) return json(201, deletePattern(cfg, String(deletePatternName), env));
+        if (deletePatternName) return json(201, removePattern(cfg, String(deletePatternName), env));
+        if (copyPatternName) return json(201, await copyPattern(cfg, String(copyPatternName), env, await models(cfg.stateDir, env, { peers: cfg.peers })).catch((error) => reject(400, error.message)));
         if (startPattern) {
           const started = await startRun(cfg, String(startPattern), String(patternTask ?? ""), env, { start, models: await models(cfg.stateDir, env, { peers: cfg.peers }) })
             .catch((error) => reject(400, error.message));
@@ -1000,7 +1009,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
             .catch((error) => reject(400, error.message));
           return json(201, advanced);
         }
-        return json(201, await createPattern(cfg, patternSpec, env, await models(cfg.stateDir, env, { peers: cfg.peers })));
+        // replace names the pattern the editor opened; a different name in patternSpec renames it.
+        const replace = replacePatternName === undefined || replacePatternName === null ? "" : String(replacePatternName);
+        return json(201, await savePattern(cfg, patternSpec, { replace }, env, await models(cfg.stateDir, env, { peers: cfg.peers })));
       }
       if (action === "start") {
         if (!startable(project).includes(harness)) reject(400, "That harness is not available for this project");
