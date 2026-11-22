@@ -7,19 +7,21 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 <!-- tasks:start -->
 | Request | Priority | Status |
 |---|---|---|
-| Space to switch to local: a key in the terminal takes a phone-controlled session back to local control (as HAPI does) | P2 | building Design: /dev/shm/research/hapi-steal.md §2.1. HAPI is AGPL-3.0: clean-room, copy no code. |
-| Read state and durable history with search; ntfy as transport only (HAPI idea, clean-room) | P2 | building |
-| Team runs live in the runner and run in OpenShell, not the project folder (operator: yes) | P2 | blocked Committed 66347ec. Runner-owned DOT team runs use shared OpenShell workspaces for supported adapters. Cursor is the only supported adapter, so the built-in Claude team cannot start and live OpenShell was unavailable. Focused tests, isolated UI build, and oncebitten passed. Required npm test and browser smoke are blocked by missing npm and Chromium/host Playwright paths. |
-| PM tracked handoffs: builders start as runner-owned sessions linked to tasks (rides on team-runs/OpenShell) | P2 | blocked Task linkage implemented and verified; builder launch cutover requires the runner-owned team-runs/OpenShell path. This base has standalone builder units and only Cursor supports runner-owned OpenShell starts. |
-| Owned sessions: runner service, durable workflows, AG-UI event names, four harness adapters | P2 | open runner adapters on: claude, codex (2026-11-22); cursor/opencode need auth |
-| Move to AG-UI end to end (official @ag-ui packages) | P2 | open (operator yes 2026-11-22: plugin 0.11.0 everywhere, then AI_COLLAB_WIRE=agui default; coordinator starting) |
-| Cursor in run-everything mode inside OpenShell | P2 | [Offline CI coverage](owned-sessions-contract.md#offline-verification-for-cursor-agent-mode) exercises the runner and fake ACP end to end. Live verification remains open after a Cursor API DNS failure. |
-| Code-mode workflows: inference decides, code executes — map to DOT teams, runner/DBOS, OpenShell sandbox | P2 | decided Research /dev/shm/research/code-mode.md; operator agreed 2026-11-22; split into tasks A, team-runs, B, cap-suspend |
-| Hosted multi-user: users reach only their own agents; agents from other users are identified as such | P2 | open shelved by operator 2026-11-22; draft + Opus review on branch worktree-agent-ae3bb980a5eec65ea, unmerged |
-| A UI message to one session stays out of the project chat | P2 | decided |
+| Baseline UI suite: three terminal-prompt tests fail on main | P1 | blocked Fix committed as bffe82a. Expanded regression reproduces session echoes on main and passes with the fix. All 47 focused UI tests and oncebitten pass. Required isolated npm test is blocked by missing npm and denied registry access. The equivalent full node --test run hits unrelated baseline failures and stalls. |
+| Cursor OpenShell run-everything: live turn under runner-owned session | P2 | building |
+| PM tracked handoffs: builders start as runner-owned sessions linked to tasks (rides on team-runs/OpenShell) | P2 | blocked Implementation committed as 41a0afb. Full isolated test gate blocked by sandbox runtime failures reproduced on main, including the missing Playwright path and process-group termination failures. |
 | Modern visual refresh of the whole UI | P2 | open (last; coordinator shows 2–3 design directions first; do not PM-dispatch) |
-| Move off ntfy eventually, so attachments and links work | P2 | open (operator 2026-11-22) |
-| Phone model switch: switch a runner-owned Claude session's model from the phone via SDK Query.setModel (sdk.d.ts:3227) | P2 | open deferred by operator |
+| Cursor in run-everything mode inside OpenShell | P2 | done Offline verification documented and automated in ca93a89. Live verification remains open. |
+| Move off ntfy eventually, so attachments and links work | P2 | done builder builder-move-off-ntfy-eventually-so-attachments exited 1 with 1 commit(s) and set no status |
+| Hosted multi-user: users reach only their own agents; agents from other users are identified as such | P2 | done builder builder-hosted-multi-user-users-reach-only-their exited 74 with 1 commit(s) and set no status |
+| Owned sessions: runner service, durable workflows, AG-UI event names, four harness adapters | P2 | done All four adapters are implemented and 109 focused tests passed. Cursor and OpenCode still need authenticated live turns under the runner service account; this sandbox has neither a signed-in Cursor CLI nor a registered OpenCode service. The broader suite reported failures on unchanged main. |
+| Phone model switch: switch a runner-owned Claude session's model from the phone via SDK Query.setModel (sdk.d.ts:3227) | P2 | done Implemented and committed as 7c1c903. All 45 focused tests and oncebitten passed. Required isolated npm test is blocked because npm is absent; the direct node test run reports builder, plugin-import, and process-group failures reproduced on main. After merge, run build-ui and smoke-ui on the host. |
+| Team runs live in the runner and run in OpenShell, not the project folder (operator: yes) | P2 | done OpenShell DOT runs committed on main base as 85ab0eb. Oncebitten and 130 related tests pass. npm is missing in the sandbox and registry access is denied. The package test script run directly with Node reproduces the same full-suite failures on unmodified main, so the green suite requirement is blocked. |
+| Code-mode workflows: inference decides, code executes — map to DOT teams, runner/DBOS, OpenShell sandbox | P2 | done Commit 38ee1e6 is rebased on main and focused tests pass. The builder lacks /dev/shm/research/code-mode.md, npm, and the OpenShell CLI. Isolated node --test reproduced the same 15 failures and hanging runner suites on main. Full-suite gate and live OpenShell policy verification remain pending. |
+| Move to AG-UI end to end (official @ag-ui packages) | P2 | done AG-UI default committed as c983918; rollout tests and oncebitten passed. Full suite failed in OpenShell; process-group signals return EPERM, and builder, plugin, and runner failures reproduce on main. |
+| Read state and durable history with search; ntfy as transport only (HAPI idea, clean-room) | P2 | done Committed 0d2fbf5 on main-based builder branch. oncebitten and focused UI/history tests passed. npm is absent and registry access is denied. The equivalent Node suite has failures reproduced on main and did not finish. |
+| Space to switch to local: a key in the terminal takes a phone-controlled session back to local control (as HAPI does) | P2 | done Design: /dev/shm/research/hapi-steal.md §2.1. HAPI is AGPL-3.0: clean-room, copy no code. |
+| A UI message to one session stays out of the project chat | P2 | done |
 | Queue bar: queued messages listed with Edit/Cancel/Steer, replacing the one-way queued badge (HAPI idea, clean-room) | P2 | done builder builder-queue-bar-queued-messages-listed-with-ed exited 1 with 0 commit(s) and set no status |
 | Inspect and edit teams in the UI | P2 | done builder builder-inspect-and-edit-teams-in-the-ui exited 1 with 0 commit(s) and set no status |
 | Draft guard: hold a phone message while the terminal has unsent text; Send anyway row (HAPI idea, clean-room) | P2 | done |
@@ -77,42 +79,43 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Tap a scheduled job for read-only detail (schedule, next run, command/prompt, recent runs) | P2 | done merged 706b619, deployed 2026-11-22 |
 | Structured task list (tasks.json) with status board, dependency graph and live links to agents | P2 | done merged 706b619, deployed 2026-11-22 |
 | Compaction in all agents: compact every harness, before/after tokens per compaction, a cross-agent compaction map, one compaction event model | P2 | done merged 706b619, deployed 2026-11-22 |
-| Session ⋯ menu in the sidebar and hamburger | P2 | done |
-| @mention a subagent of the current run | P2 | done |
-| `:model` part of an @mention highlighted | P2 | done |
-| Reply button on chat messages | P2 | done |
-| Online/offline marker in the Subagents view | P2 | done |
 | A child session counts as its parent's subagent | P2 | done |
-| Teams: dynamic, stored in projects.json plus a global config; orchestrator starts and keeps members alive | P2 | done (first version) |
-| Teams as roles and interaction patterns (Hermes / coding-factory / wteam style), not just roster create — e.g. "Fix and review" with handoffs | P2 | done; operator 2026-11-21; Codex sol design; decided: each handoff is required or guidance, set per pattern |
-| OpenCode taggable; one OpenCode instance with Qwen 3.8 Flash Next | P2 | done (peer added) |
-| Codex install without the plugin-hash timeout (GitHub marketplace) | P2 | done |
-| Agents can read the project's public channel | P2 | done (`ai-collab history`, MCP `channel_history`) |
-| Model and worktree beside the agent id in chat | P2 | done |
-| Cursor starts without the trust prompt | P2 | done (`--trust`) |
-| Agent text in the activity feed | P2 | done (Claude sessions need `/reload-plugins` to load the hook) |
-| Bash rows show the command and its output | P2 | done |
-| Terminal-typed prompts appear in session chat | P2 | done |
-| Session chat folds each turn into "Working on … · N steps" plus the final message | P2 | done |
-| Pulsar feature parity: wake idle sessions, priorities, redelivery, wait idle, tags, interrupt | P2 | done |
-| MCP `interrupt` tool | P2 | done |
-| Messages appear in the Claude terminal immediately (socket delivery, like Pulsar) | P2 | done (merged main 2026-11-21: `claude-socket.mjs`, dispatcher confirm + wait) |
-| Wake closed sessions on a message (durable, DBOS-like) | P2 | done in the runner (adapters merged main 2026-11-22; live wake verification open) |
-| Copy T3 Code's code viewer (`@pierre/diffs`) for mobile and web | P2 | done (file edits render as diffs) |
-| Operator prompts and phone replies (ask_question answers) visible in session and project chat | P2 | done (merged main 2026-11-21; coordinator confirmed) |
-| Context management and slash commands from the phone: Compact, Clear/new, Model switch, any typed /cmd; context meter plus loaded files | P2 | done (compact partial for Claude/Codex; model and passthrough OpenCode only, unverified) |
-| Reviews by Cursor `deepseek-v41-flash-1017` | P2 | done adopted for reviews |
 | Agent questions asked in the terminal (Claude AskUserQuestion, etc.) also appear in the UI in the same multiple-choice format and can be answered there | P2 | done (merged main 2026-11-21) |
-| Merge chat and activity: one session timeline; project chat for cross-session messages, completions, questions and live status; raw activity in the session menu | P2 | done (merged main 2026-11-21) |
-| Render questions, approvals and choice cards with A2UI over AG-UI | P2 | done (A2UI v0.9.1 until @a2ui/react binds v1.0) |
-| Message delivery as durable workflows in the runner (reserve, push, confirm, mark/release; durable backoff) instead of UI-server state | P2 | done (runner owns delivery; UI dispatcher stands down while it runs) |
-| Cursor-style tool groups between assistant messages in the session timeline | P2 | done |
-| Running-subagent count; hide long-idle subagents; fix 2 shown of 4 running | P2 | done (UI merge 21a47722, deployed 2026-11-22) |
+| Agent text in the activity feed | P2 | done (Claude sessions need `/reload-plugins` to load the hook) |
+| Agents can read the project's public channel | P2 | done (`ai-collab history`, MCP `channel_history`) |
+| Bash rows show the command and its output | P2 | done |
 | Close or delete a project | P2 | done (UI merge 21a47722, deployed 2026-11-22) |
-| Sidebar projects show running/inactive counts, not harness types | P2 | done (UI merge 21a47722, deployed 2026-11-22) |
-| Scheduled jobs in the left panel | P2 | done (UI merge 21a47722; detail view still building) |
-| Reply shows a quote of the replied message; reply-to visible in composer (quote bar: sender + first line) | P2 | done (UI merge 21a47722, deployed 2026-11-22) |
-| Tap a notification opens the right view | P2 | done (UI merge 21a47722, deployed 2026-11-22) |
+| Codex install without the plugin-hash timeout (GitHub marketplace) | P2 | done |
+| Context management and slash commands from the phone: Compact, Clear/new, Model switch, any typed /cmd; context meter plus loaded files | P2 | done (compact partial for Claude/Codex; model and passthrough OpenCode only, unverified) |
+| Copy T3 Code's code viewer (`@pierre/diffs`) for mobile and web | P2 | done (file edits render as diffs) |
+| Cursor starts without the trust prompt | P2 | done (`--trust`) |
+| Cursor-style tool groups between assistant messages in the session timeline | P2 | done |
+| MCP `interrupt` tool | P2 | done |
+| @mention a subagent of the current run | P2 | done |
+| Merge chat and activity: one session timeline; project chat for cross-session messages, completions, questions and live status; raw activity in the session menu | P2 | done (merged main 2026-11-21) |
+| Message delivery as durable workflows in the runner (reserve, push, confirm, mark/release; durable backoff) instead of UI-server state | P2 | done (runner owns delivery; UI dispatcher stands down while it runs) |
+| Messages appear in the Claude terminal immediately (socket delivery, like Pulsar) | P2 | done (merged main 2026-11-21: `claude-socket.mjs`, dispatcher confirm + wait) |
+| Model and worktree beside the agent id in chat | P2 | done |
+| `:model` part of an @mention highlighted | P2 | done |
 | Notification filter: all / questions and replies / questions only / none | P2 | done (UI merge 21a47722; sidebar alert level, deployed 2026-11-22) |
+| Online/offline marker in the Subagents view | P2 | done |
+| OpenCode taggable; one OpenCode instance with Qwen 3.8 Flash Next | P2 | done (peer added) |
+| Operator prompts and phone replies (ask_question answers) visible in session and project chat | P2 | done (merged main 2026-11-21; coordinator confirmed) |
+| Pulsar feature parity: wake idle sessions, priorities, redelivery, wait idle, tags, interrupt | P2 | done |
 | Record feature requests | P2 | done this file |
+| Render questions, approvals and choice cards with A2UI over AG-UI | P2 | done (A2UI v0.9.1 until @a2ui/react binds v1.0) |
+| Reply button on chat messages | P2 | done |
+| Reply shows a quote of the replied message; reply-to visible in composer (quote bar: sender + first line) | P2 | done (UI merge 21a47722, deployed 2026-11-22) |
+| Reviews by Cursor `deepseek-v41-flash-1017` | P2 | done adopted for reviews |
+| Running-subagent count; hide long-idle subagents; fix 2 shown of 4 running | P2 | done (UI merge 21a47722, deployed 2026-11-22) |
+| Scheduled jobs in the left panel | P2 | done (UI merge 21a47722; detail view still building) |
+| Session chat folds each turn into "Working on … · N steps" plus the final message | P2 | done |
+| Session ⋯ menu in the sidebar and hamburger | P2 | done |
+| Sidebar projects show running/inactive counts, not harness types | P2 | done (UI merge 21a47722, deployed 2026-11-22) |
+| Tap a notification opens the right view | P2 | done (UI merge 21a47722, deployed 2026-11-22) |
+| Teams as roles and interaction patterns (Hermes / coding-factory / wteam style), not just roster create — e.g. "Fix and review" with handoffs | P2 | done; operator 2026-11-21; Codex sol design; decided: each handoff is required or guidance, set per pattern |
+| Teams: dynamic, stored in projects.json plus a global config; orchestrator starts and keeps members alive | P2 | done (first version) |
+| Terminal-typed prompts appear in session chat | P2 | done |
+| Wake closed sessions on a message (durable, DBOS-like) | P2 | done in the runner (adapters merged main 2026-11-22; live wake verification open) |
+| Commit task-rendered docs/feature-requests.md when board changes (PM or hook) | P3 | done |
 <!-- tasks:end -->
