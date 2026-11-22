@@ -30,12 +30,12 @@ function compactRow(type, meta) {
 }
 
 /** Activity rows (lib/activity.mjs event shape) for one RunnerEvent; [] when the event has no row on ntfy. */
-export function activityFor(e) {
+export function activityFor(e, { system } = {}) {
   const meta = e.metadata?.aiCollab;
   switch (e.type) {
     case EventType.RUN_STARTED: {
       const prompt = contentToText(e.input?.messages.findLast(message => message.role === "user")?.content);
-      return prompt ? [{ type: "prompt", input: prompt }] : [];
+      return prompt ? [{ type: "prompt", input: prompt, ...(system === true ? { system: true } : {}) }] : [];
     }
     case EventType.TEXT_MESSAGE_CHUNK:
       return e.delta ? [withAgent({ type: "text", output: e.delta, callId: e.messageId }, e)] : [];
@@ -91,9 +91,9 @@ export async function publishApprovalEnd(cfg, id, reason) {
 }
 
 /** Activity, status and alert publishes for one event; interrupts go through publishApproval. Never throws. */
-export async function publishEvent(cfg, harness, e) {
+export async function publishEvent(cfg, harness, e, options) {
   try {
-    const rows = activityFor(e);
+    const rows = activityFor(e, options);
     if (rows.length) await publishActivity(cfg, harness, rows, { timeoutMs: PUBLISH_TIMEOUT_MS, run: e });
     if (e.type === EventType.RUN_STARTED) await publishStatus(cfg, { event: "start", harness });
     if (e.type === EventType.RUN_FINISHED || e.type === EventType.RUN_ERROR) await publishStatus(cfg, { event: "stop", harness });

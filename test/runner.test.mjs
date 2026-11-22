@@ -87,6 +87,7 @@ test("start opens a session, claims the registry, and publishes prompt, text and
     const mine = rows(fake).filter((r) => r.session === label);
     assert.deepEqual(mine.map((r) => r.type), ["text", "prompt", "text", "stop"]);
     assert.equal(mine[0].tool, "Notification");
+    assert.equal(mine[1].system, true);
     assert.equal(mine[2].output, "echo: hello there");
     assert.ok(mine.every((r) => r.from === "codex" && r.harness === "codex"));
     const record = readOwned(ctx.cfg, label);

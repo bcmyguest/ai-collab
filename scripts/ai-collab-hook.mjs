@@ -23,6 +23,7 @@ import { claimInbox, publishStatus } from "../lib/inbox.mjs";
 import { childHint, exportParent, greetParent, parentLine } from "../lib/family.mjs";
 import { formatInbox, hookOutput, identityLine, stopOutput } from "../lib/format.mjs";
 import { currentMode, operatorPrompt, takeModeNote } from "../lib/mode.mjs";
+import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.mjs";
 import { decideStop } from "../lib/stop.mjs";
 import { recordSession } from "../lib/sessions.mjs";
 import { sessionName } from "../lib/names.mjs";
@@ -197,6 +198,9 @@ async function main() {
 
   // Started first and awaited last, so delivery never waits on it.
   const events = key === "precompact" || key === "sessionend" ? stampContext(cfg, activityEvents(host, key, msg)) : activityEvents(host, key, msg);
+  if (env[SYSTEM_PROMPT_ENV] === "1") {
+    for (const event of events) if (event.type === "prompt") event.system = true;
+  }
   const activity = publishActivity(cfg, host, events).catch(() => 0);
   // A finished compaction has dropped the on-demand files, so the next one must not count them again.
   const dropped = key === "postcompact" ? dropOnDemandFiles(cfg).catch(() => false) : Promise.resolve(false);

@@ -16,7 +16,7 @@ test("session chat shows typed terminal prompts as operator messages, skipping m
   t.after(() => fake.close());
   const env = peerEnv(fake, { peer: "operator" });
   const cfg = loadConfig(env);
-  const bob = { ...loadConfig(peerEnv(fake, { peer: "bob" })), session: "0000000000000001" };
+  const bob = { ...loadConfig(peerEnv(fake, { peer: "bob", AI_COLLAB_WIRE: "agui" })), session: "0000000000000001" };
   const target = `bob#${bob.session}`;
 
   await sendMessage(cfg, target, "echoed from UI", { operatorThread: true });
@@ -24,13 +24,14 @@ test("session chat shows typed terminal prompts as operator messages, skipping m
   await sendMessage(cfg, "all", "echoed from broadcast");
   assert.equal(await publishActivity(bob, "claude", [
     { type: "prompt", input: "typed in terminal" },
+    { type: "prompt", input: "Builder brief", system: true },
     { type: "prompt", input: "[ai-collab] machine text" },
     { type: "prompt", input: WAKE_PROMPT },
     { type: "prompt", input: "echoed from UI" },
     { type: "prompt", input: "echoed from peer inbox" },
     { type: "prompt", input: "echoed from broadcast" },
     { type: "text", output: "agent reply in activity" },
-  ]), 7);
+  ]), 8);
 
   const ui = createUi({ cfg, env });
   const ctrl = new AbortController();
@@ -51,6 +52,9 @@ test("session chat shows typed terminal prompts as operator messages, skipping m
   assert.deepEqual(chat.messages.filter(m => m.body === "echoed from broadcast").map(m => m.terminal), [undefined], "the broadcast shows once");
 
   const session = await next(open(`session=${encodeURIComponent(target)}`), "state");
+  for (const state of [chat, session]) {
+    assert.deepEqual(state.messages.filter(m => m.body === "Builder brief").map(m => [m.from, m.system, m.terminal]), [["system", true, undefined]]);
+  }
   const terminal = session.messages.filter(m => m.terminal);
   assert.deepEqual(terminal.map(m => [m.from, m.to, m.body, m.kind]), [["operator", target, "typed in terminal", "Message"]]);
   assert.equal(terminal[0].receipt, undefined, "terminal prompts have no delivery ticks");

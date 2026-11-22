@@ -21,7 +21,7 @@ const SETTING = { harness: "cursor", model: "deepseek-v41-flash-1017-high" };
 // Fake harness: records argv, then prints the id line its CLI prints first.
 const FAKE = (harness) => `#!/usr/bin/env node
 const fs = require("node:fs");
-fs.writeFileSync(process.env.FAKE_RECORD + "/${harness}.json", JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd() }));
+fs.writeFileSync(process.env.FAKE_RECORD + "/${harness}.json", JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), systemPrompt: process.env.AI_COLLAB_SYSTEM_PROMPT }));
 const out = { claude: "Started background session ${ID}", codex: JSON.stringify({ type: "thread.started", thread_id: "${ID}" }),
   cursor: JSON.stringify({ type: "system", subtype: "init", session_id: "${ID}" }) };
 console.log(out["${harness}"]);
@@ -101,6 +101,7 @@ test("an unnamed mode starts the harness's normal editing mode, and the model pi
   const normal = await (await post({ project: "demo", harness: "cursor", prompt: "fix it", model: "composer-2.5" })).json();
   assert.equal(normal.status, "started");
   const run = await recorded(record, "cursor");
+  assert.equal(run.systemPrompt, undefined, "the phone prompt is operator-authored");
   assert.deepEqual(run.argv, ["-p", "--trust", "--output-format", "stream-json", "--workspace", run.cwd, "--model", "composer-2.5", "fix it"]);
   // An empty startMode is the same as none, so an older client keeps working.
   const second = await setup(t);

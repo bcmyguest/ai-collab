@@ -197,7 +197,9 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     }
     // A harness limit (an adapter event or a run error): one limit card per session and window.
     if (limit) enqueuePublish(s, () => alertLimit(s.cfg, { harness: r.harness, limit }).catch((error) => log(`limit alert failed: ${error.message}`)));
-    enqueuePublish(s, () => publishEvent(s.cfg, r.harness, e));
+    const system = e.type === EventType.RUN_STARTED && s.systemPrompt === true;
+    if (e.type === EventType.RUN_STARTED) delete s.systemPrompt;
+    enqueuePublish(s, () => publishEvent(s.cfg, r.harness, e, { system }));
   }
 
   function closeApproval(s, id, reason) {
@@ -386,7 +388,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     await recordSession(cfg, { id: opened.nativeId, cwd, harness, event: "owned", proc }).catch(() => {});
     if (!wf.replaying) await enqueuePublish(s, () => publishEvent(cfg, harness, { type: EventType.CUSTOM, name: NOTICE, value: `owned session started (${permissionMode})` }));
     claims.get(wf.id)?.(s);
-    let next = { text: input.prompt, messageIds: [] };
+    let next = { text: input.prompt, messageIds: [], system: input.system ?? Boolean(builder || patternRun) };
     for (;;) {
       if (!next) {
         const batch = await wf.recv("input", { all: true });
@@ -401,10 +403,13 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
           while (s.switchingModel) await s.switchingModel.catch(() => {});
           s.record.status = "running";
           save(s);
-          const { runId } = await handle.send(turn);
+          const { system, ...message } = turn;
+          s.systemPrompt = system;
+          const { runId } = await handle.send(message);
           publishReceipts(s.cfg, turn.messageIds);
           return { runId };
         } catch (error) {
+          delete s.systemPrompt;
           if (s.signal.aborted) throw error;
           s.record.status = "idle";
           save(s);
@@ -736,7 +741,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   durable.register("session", sessionWorkflow);
 
   /** Starts an owned session; resolves {status:"started", session, nativeId, workflowId, detail}. */
-  async function start({ project, harness, prompt, model, place = "folder", permissionMode, codeMode, taskId, builder: builderId } = {}, patternRun, continuation) {
+  async function start({ project, harness, prompt, model, place = "folder", permissionMode, codeMode, taskId, builder: builderId, system = true } = {}, patternRun, continuation) {
     if (!configs.has(project)) fail(400, "Unknown project");
     const adapter = adapterOf(harness);
     if (!PLACES.includes(place)) fail(400, "Unknown start place");
@@ -767,7 +772,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     const timer = new AbortController();
     const timeout = builder ? BUILDER_START_TIMEOUT_MS : START_TIMEOUT_MS;
     try {
-      const run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, ...(continuation ? { continuation } : {}), ...(builder ? { builder } : {}), ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), codeMode: resolveCodeMode(codeMode, env) });
+      const run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, system: Boolean(builder || patternRun) || system !== false, ...(continuation ? { continuation } : {}), ...(builder ? { builder } : {}), ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), codeMode: resolveCodeMode(codeMode, env) });
       const ended = run.then((out) => fail(502, `${harness} session ended at once: ${out?.ended || "no reason"}`));
       ended.catch(() => {});
       const s = await Promise.race([

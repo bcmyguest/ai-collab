@@ -131,6 +131,7 @@ function activityItem(event) {
       const value = cleanText(e[key], max);
       if (value) item[key] = value;
     }
+    if (e.type === "prompt" && e.system === true) item.system = true;
     const compaction = e.compaction ? compactionFields(e.compaction) : null;
     if (compaction) item.compaction = compaction;
     if (e.clear) item.clear = clearFields(e.clear);
@@ -181,11 +182,11 @@ function baseEntry(event) {
   if (envelope) {
     if (envelope.kind === "approval" || envelope.kind === "approval-view") return approvalEntry(event, envelope);
     if (envelope.kind !== "msg" || typeof envelope.body !== "string") return null;
-    // ai-collab's own messages ride the operator's address for its reply route; the chat shows ai-collab as the sender.
-    const system = envelope.from === "operator" && envelope.system === true;
+    // System messages can use the operator address for reply routing.
+    const system = envelope.system === true;
     const sender = system ? "system" : envelope.session ? `${envelope.from}#${envelope.session}` : envelope.from;
     const to = envelope.toSession ? `${envelope.to}#${envelope.toSession}` : envelope.to;
-    const by = envelope.from === "operator" && isGithubLogin(envelope.by) ? { by: envelope.by } : {};
+    const by = !system && envelope.from === "operator" && isGithubLogin(envelope.by) ? { by: envelope.by } : {};
     // A reply to a message names it as replyOf; replyTo stays the answer link to a question.
     return { id, time, kind: "Message", sender, from: sender, to, body: envelope.body, thread: envelope.operatorThread === true, ...(system ? { system: true } : {}), ...(envelope.urgent === true ? { urgent: true } : {}), ...(envelope.startOnly === true ? { startOnly: true } : {}), ...(typeof envelope.replyTo === "string" && envelope.replyTo ? { replyOf: envelope.replyTo } : {}), ...by };
   }
@@ -453,7 +454,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const mentionedIn = target === "all" ? "all" : target;
       if (target === "all") {
         if (!startable(project).includes("claude")) notes.push(`@${name} claude not available here`);
-        else notes.push(`@${name}${await startFor(cfg, orch, { harness: "claude" })}`);
+        else notes.push(`@${name}${await startFor(cfg, orch, { harness: "claude", system: true })}`);
         continue;
       }
       if (target.includes("#")) {
@@ -830,9 +831,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       });
   }
 
-  // Prompts typed into one session's terminal (or every session's when session is null), as operator messages; machine text and echoes are skipped.
+  // Show system prompts and typed prompts in chat, with typed echoes removed.
   function terminalPrompts(activity, sent) {
-    const prompts = activity.filter(item => item.type === "prompt" && operatorPrompt(item.input));
+    const prompts = activity.filter(item => item.type === "prompt" && item.input && (item.system || operatorPrompt(item.input)));
     return terminalMessages(prompts, sent);
   }
 

@@ -372,7 +372,7 @@ async function ownedBuilderTest(t, prompt) {
     .filter(row => row.topic === "ai-collab-demo--activity")
     .map(row => parseWireEnvelope(row.message))
     .filter(row => row?.session === label);
-  assert.ok(activity.some(row => row.type === "prompt" && row.input?.startsWith("hang")));
+  assert.ok(activity.some(row => row.type === "prompt" && row.system === true && row.input?.startsWith("hang")));
   assert.ok(activity.some(row => row.type === "stop"));
   assert.equal(task(l).status, "blocked");
   assert.equal(task(l).owner, address);
