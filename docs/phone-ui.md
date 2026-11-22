@@ -253,6 +253,22 @@ State lives under `$AI_COLLAB_STATE_DIR/push/` (default `~/.local/state/ai-colla
 
 Privacy: the server encrypts each payload end to end for the subscribed browser (RFC 8291, `aes128gcm`) and sends it through the browser vendor's free push service, Google FCM for Chrome and Mozilla autopush for Firefox. The vendor sees the ciphertext, its size, the delivery time, and the endpoint, not the contents. A payload holds the harness, session address, project, and a summary clipped to 200 characters (tool and command, or the question text), never file contents.
 
+## Sidebar, projects, and notifications
+
+A session row shows **N running** when it has running subagents, and the session header shows the same count. Subagent runs nest under their session in the sidebar; a run idle for more than 30 minutes (`IDLE_HIDE_MS` in `web/lib/subagent-state.js`) sits behind **Show N idle**. A subagent that resumes after its stop counts as running again on its next row.
+
+The session view's **Working now** line names each agent running now: the session with an open tool call (`harness#label (session)`) and each running subagent (`<kind> subagent in <address>`). The activity data carries no model name, so the line shows no `:model`. Timeline groups and texts show the address of the agent that produced them.
+
+Each project has a **⋯** menu. **Close** hides the project from the sidebar and Home; **Closed projects** lists them with **Reopen**. A closed project is a `"closed": true` flag on its `projects.json` entry. **Delete** asks first and removes the entry only; repo files, worktrees and ntfy history stay. The UI hides a deleted project until it restarts. Projects found by auto-join have no entry, so they cannot be closed or deleted here.
+
+**Scheduled** lists the runner's schedules read-only: name, interval, command, last run, next run; tap a job for its recent runs. With no runner socket it shows **runner offline**.
+
+A reply shows the replied message as a quote above its body (sender and the first 80 characters); tap it to scroll to the original. The composer shows the same quote with a × to cancel. A plain @mention shows no quote.
+
+Notifications carry a link: ntfy's `click` field, built from `AI_COLLAB_UI_URL` (`lib/deep-link.mjs`). Without that variable no link is sent. An agent's reply opens its session thread; questions, approvals and broadcasts open the project chat.
+
+**Phone alerts** (the bell in the header) chooses which notifications buzz: **All**, **Questions and direct replies**, **Questions only**, or **None**. The level is stored in `alerts.json` in the config directory, so hooks, the runner and the UI read the same setting. It applies only on the host where it was set: the file is local and is not published over ntfy, so a level set on one machine does not change alerts from sessions on another. A message the level silences still arrives; its ntfy priority is 1 (listed, no sound) and its Web Push is not sent. Questions cover `ask_question`, terminal question mirrors and approvals; direct replies are agent replies to the operator.
+
 ## Look and feel
 
 The UI uses [shadcn/ui](https://ui.shadcn.com/docs) components with Tailwind CSS v4 and the [prompt-kit](https://www.prompt-kit.com/docs) chat components (`chat-container`, `message`, `prompt-input`, `scroll-button`), copied into `web/components/ui/` by the shadcn CLI. `web/app/shadcn.css` vendors the shadcn style's Tailwind variants. Code is highlighted with [shiki](https://shiki.style/guide/regex-engines#javascript-regexp-engine) through prompt-kit's `CodeBlockCode`: fenced blocks in chat Markdown, tool inputs (a shell command as bash, other input as JSON), and tool results whose language is clear (a diff, shell output, a read file by extension, JSON). Shiki loads on first use with its JavaScript regex engine, which needs no `'wasm-unsafe-eval'` in the CSP, and fetches each of its 12 languages (js, ts, jsx, tsx, json, bash, python, diff, markdown, yaml, css, html) on demand. Light and dark colours follow the theme. Only expanded blocks are highlighted, and blocks over 20 KB stay plain text. The theme defaults to dark; the header toggle switches to light or the system setting.

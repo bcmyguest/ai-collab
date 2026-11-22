@@ -76,7 +76,7 @@ function view(s) {
 }
 
 /** Creates the runner over project configs, a Map harness → Adapter and a durable log (runner/durable.mjs). */
-export function createRunner({ projects, adapters, durable, env = process.env, git = runGit, now = Date.now, startGapMs = START_GAP_MS, approvalMs = approvalTimeoutMs(env), watch = true, log = () => {}, scheduleErrors = [], pumpMs = PUMP_MS, delivery = {} }) {
+export function createRunner({ projects, adapters, durable, env = process.env, git = runGit, now = Date.now, startGapMs = START_GAP_MS, approvalMs = approvalTimeoutMs(env), watch = true, log = () => {}, scheduleErrors = [], scheduleEntries = [], pumpMs = PUMP_MS, delivery = {} }) {
   const configs = new Map(projects.map((cfg) => [cfg.project, cfg]));
   const manualAt = new Map();
   const sessions = new Map();
@@ -838,10 +838,17 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     return Promise.all([...adapters.values()].map(async (a) => ({ harness: a.harness, capabilities: a.capabilities, ...(await a.available(env).catch((e) => ({ ok: false, detail: e.message }))) })));
   }
 
+  const entryOf = (name) => {
+    const entry = scheduleEntries.find((item) => item.name === name);
+    return entry ? { command: entry.command, cwd: entry.cwd } : {};
+  };
+
   return {
     start, send, interrupt, respond, setMode, close, boot, stop, harnesses, deliveries, pump: pumpDeliveries,
     list: () => [...sessions.values()].map(view),
-    schedules: () => ({ schedules: durable.schedules(), configError: scheduleErrors }),
+    // Each schedule with the command and folder its schedules.json entry names.
+    schedules: () => ({ schedules: durable.schedules().map((s) => ({ ...s, ...entryOf(s.name) })), configError: scheduleErrors }),
+    scheduleRuns: (name) => durable.scheduleRuns(name),
     runSchedule,
     get: (address) => view(find(address)),
     models: (harness) => adapterOf(harness).listModels(env),

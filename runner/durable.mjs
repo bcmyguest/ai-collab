@@ -278,6 +278,13 @@ export function openDurable(file, { now = Date.now } = {}) {
         };
       });
     },
+    /** The latest tick rows of one schedule, newest first: status, scheduled time, output and error. */
+    scheduleRuns(name, limit = 20) {
+      if (!schedules.has(name)) throw Object.assign(new Error(`no schedule named ${name}`), { status: 404 });
+      return q.wfListNamed.all(tickName(name), limit).map((row) => ({
+        id: row.id, status: row.status, scheduledTime: new Date(parse(row.input).scheduledTime).toISOString(), updatedAt: row.updated_at, output: parse(row.output), error: row.error,
+      }));
+    },
     /** Starts a new workflow; the id must be unused. Resolves with its output. */
     startWorkflow(name, id, input) {
       q.wfInsert.run(id, name, json(input), now(), now());

@@ -4,6 +4,7 @@ import { buildEvent, envelopeToEvent, projectEvent, readWireRecord } from "../..
 import { ACTIVITY_BATCH, STREAM_ERROR } from "../lib/ui-events.js";
 import { mkdirSync, watch } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
+import { buzzes, readAlertLevel, writeAlertLevel } from "../../lib/alerts.mjs";
 import { loadConfig, loadProjects, activityTopic, broadcastTopic, configDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.mjs";
 import { ACTIVITY_TYPES } from "../../lib/activity.mjs";
 import { stripControl } from "../../lib/format.mjs";
@@ -21,23 +22,24 @@ import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } 
 import { availableHarnesses, availablePlaces, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
 import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
-import { createTeam, deleteTeam, listTeams, teamTask } from "../../lib/teams.mjs";
+import { closedProjectNames, createTeam, deleteTeam, listTeams, readProjectsFile, removeProject, setProjectClosed, teamTask } from "../../lib/teams.mjs";
 import { copyPattern, listPatterns, removableNames, removePattern, savePattern } from "../../lib/patterns.mjs";
 import { advanceRun, listRuns, startRun } from "../../lib/pattern-runs.mjs";
 import { formatTeamOrchestrator } from "../../lib/format.mjs";
 import { activityRows, groupSubagents, summarize } from "../lib/activity-rows.js";
 import { childRuns } from "../lib/child-subagents.js";
-import { fallbackName, visibleWake, waitingOn } from "../lib/session-state.js";
+import { fallbackName, sessionCounts, visibleWake, waitingOn } from "../lib/session-state.js";
 import { createAuth } from "./auth.mjs";
 import { createHub } from "./hub.mjs";
 import { createPush, notice } from "./push.mjs";
 import { createDispatcher } from "./dispatch.mjs";
 import { runnerUp } from "../../runner/client.mjs";
+import { readScheduleRuns, readSchedules } from "./schedules.mjs";
 import { answerMessage, answerText, terminalMessages } from "../lib/operator-messages.js";
 import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a2ui.js";
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern"];
+const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern"];
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
 const PARENT = /^[a-z0-9-]{1,24}#[a-f0-9]{16}$/;
@@ -49,6 +51,9 @@ const ONLINE_MS = 30 * 60_000;
 const KEEPALIVE_MS = 25_000;
 const PUSH_DELAY_MS = 25;
 const MAX_MESSAGES = 100;
+const SCHEDULE_NAME = /^[a-z0-9-]{1,40}$/;
+// Characters of the replied message sent with a reply; the browser shows the first 80.
+const QUOTE_MAX = 200;
 const IMPORTANT = /^IMPORTANT, the agent waits for this answer: /;
 // The hub keeps the newest 500 events per topic; 3 MB of cached history covers 500 full 4 KB activity envelopes.
 const ACTIVITY_TAIL_BYTES = 3 * 1024 * 1024;
@@ -164,7 +169,8 @@ function baseEntry(event) {
     const sender = envelope.session ? `${envelope.from}#${envelope.session}` : envelope.from;
     const to = envelope.toSession ? `${envelope.to}#${envelope.toSession}` : envelope.to;
     const by = envelope.from === "operator" && isGithubLogin(envelope.by) ? { by: envelope.by } : {};
-    return { id, time, kind: "Message", sender, from: sender, to, body: envelope.body, thread: envelope.operatorThread === true, ...(envelope.urgent === true ? { urgent: true } : {}), ...by };
+    // A reply to a message names it as replyOf; replyTo stays the answer link to a question.
+    return { id, time, kind: "Message", sender, from: sender, to, body: envelope.body, thread: envelope.operatorThread === true, ...(envelope.urgent === true ? { urgent: true } : {}), ...(typeof envelope.replyTo === "string" && envelope.replyTo ? { replyOf: envelope.replyTo } : {}), ...by };
   }
   const reply = parsePhoneReply(message);
   const by = replyBy(event);
@@ -292,6 +298,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   const clients = new Set();
   const hubs = new Map();
   const known = new Set();
+  // Projects deleted in this process; they stay hidden until the next start.
+  const removed = new Set();
+  // Closed or deleted projects: hidden from the UI and silent in notifications.
+  const hiddenProjects = () => new Set([...closedProjectNames(env), ...removed]);
   const projects = new Map();
   let pushTimer = null;
   let lastStartAt = 0;
@@ -354,8 +364,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   // New approvals, choice cards, questions, and direct messages to the operator become one push each.
   function notifyActions(project, topic, added) {
     const name = project.cfg.project;
+    if (hiddenProjects().has(name)) return;
     const fresh = added.filter(event => Date.now() - event.time * 1000 < NOTIFY_RECENT_MS);
-    const send = (id, fields) => notifier.notify(name + ":" + id, notice({ project: name, id, ...fields })).catch(() => {});
+    // The phone alert level decides which pushes go out; the message itself stays in the chat.
+    const send = (id, fields) => {
+      if (!buzzes(readAlertLevel(env), fields.kind === "message" ? "direct" : "question")) return;
+      notifier.notify(name + ":" + id, notice({ project: name, id, ...fields })).catch(() => {});
+    };
     if (topic === project.topic) {
       const { ends, replies } = outcomes(project.hub.events(topic));
       for (const event of fresh) {
@@ -686,6 +701,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       list = [...shared, ...answers.map(answerMessage), ...terminalPrompts(project, null, sent)];
     }
     const { ends, replies, senders } = outcomes(project.hub.events(project.topic));
+    // A reply carries its replied message's sender and opening text, even when that message is off the page.
+    const byId = new Map(list.map(item => [item.id, item]));
+    const quoted = item => {
+      const original = item.replyOf && byId.get(item.replyOf);
+      return original ? { ...item, quote: { id: original.id, sender: original.sender || original.from, body: String(original.body || "").slice(0, QUOTE_MAX) } } : item;
+    };
     return list.sort((a, b) => a.time - b.time || a.id.localeCompare(b.id)).slice(-MAX_MESSAGES)
       .map(item => {
         if (item.kind === "Approval") return { ...item, approval: approvalState(item.approval, ends, replies, senders) };
@@ -693,7 +714,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           const by = senders.get(item.question)[0];
           return { ...item, answer: replies.get(item.question)[0], ...(by ? { answeredBy: by } : {}) };
         }
-        return item.from === "operator" && item.kind === "Message" && item.to && !item.terminal && !item.replyTo ? { ...item, receipt: receiptOf(project, item, agentList) } : item;
+        const stated = item.from === "operator" && item.kind === "Message" && item.to && !item.terminal && !item.replyTo ? { ...item, receipt: receiptOf(project, item, agentList) } : item;
+        return quoted(stated);
       });
   }
 
@@ -776,16 +798,24 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const runsOf = new Map(own.map(card => [card.id, card.subagents]));
     // Child sessions join their parent's subagents on the agent list only; the cards nest them already (sessionTree).
     const kids = childRuns(own);
-    const cards = scope === "home" ? [...projects.values()].flatMap(item => item === project ? sessionCards(item, list, mode)
+    const hidden = hiddenProjects();
+    const shown = [...projects.values()].filter(item => !hidden.has(item.cfg.project));
+    const cards = scope === "home" ? shown.flatMap(item => item === project ? sessionCards(item, list, mode)
       : item.failed ? [] : sessionCards(item, agents(item, lastMessages(item)), mode))
       : scope === "sessions" ? sessionCards(project, list, mode) : undefined;
     return {
-      project: project.cfg.project, operator: project.operator.peer, mode,
+      project: project.cfg.project, operator: project.operator.peer, mode, alerts: readAlertLevel(env),
+      // Sessions per project as running and inactive, read by the sidebar rows; kept apart from projects.
+      projectCounts: Object.fromEntries(shown.map(item => [item.cfg.project, sessionCounts(item === project ? list : item.failed ? [] : agents(item, lastMessages(item)))])),
       // Waiting counts per project, present only when above 0; a failed project has no sessions to count.
-      projects: [...projects.values()].map(item => {
+      projects: shown.map(item => {
         const count = item === project ? waiting.size : item.failed ? 0 : waitingIds(item, agents(item, lastMessages(item))).size;
         return { id: item.cfg.project, peers: item.cfg.peers, ...(count ? { waiting: count } : {}) };
       }),
+      // Registered projects marked closed, listed so the sidebar can reopen them.
+      closedProjects: closedProjectNames(env).filter(name => !removed.has(name)),
+      // Projects auto-joined from a session's repo have no projects.json entry, so Close and Delete do not apply.
+      autoProjects: shown.map(item => item.cfg.project).filter(name => !readProjectsFile(env).some(entry => entry?.project === name)),
       view: { harness, session, ...(scope ? { scope } : {}) },
       harnesses: harnesses(project, list, last),
       // Unfinished subagent runs ride on each agent for the composer's @session/run picker.
@@ -799,7 +829,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }),
       messages: scope === "home" ? [] : messages(project, { harness, session }, list),
       ...(cards ? { sessions: cards } : {}),
-      ...(scope === "home" ? { unavailable: [...projects.values()].filter(item => item.failed).map(item => item.cfg.project) } : {}),
+      ...(scope === "home" ? { unavailable: shown.filter(item => item.failed).map(item => item.cfg.project) } : {}),
       startable: startable(project),
       startPlaces: startPlaces(project),
       teams: Object.entries(listTeams(project.cfg, env)).map(([id, members]) => ({ id, members })),
@@ -971,11 +1001,25 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
-      const { project: name, target, body, question, mode, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, team: teamName, members, delete: deleteTeamName, replyTo, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, forwardedProps } = await payload(request);
+      const { project: name, target, body, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, team: teamName, members, delete: deleteTeamName, replyTo, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, forwardedProps } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
         return json(201, { status: "AFK " + mode, detail: "Sent to " + projects.size + (projects.size === 1 ? " project" : " projects") });
+      }
+      // Close hides a project from the sidebar and Home; Delete drops its registry entry only (repo, worktrees, ntfy history stay).
+      if (action === "close" || action === "reopen") {
+        setProjectClosed(env, name, action === "close");
+        return json(200, { status: action === "close" ? "Closed" : "Reopened", detail: name });
+      }
+      if (action === "alerts") {
+        writeAlertLevel(env, alertLevel);
+        return json(200, { status: "Alerts " + alertLevel, detail: alertLevel });
+      }
+      if (action === "delete") {
+        removeProject(env, name);
+        removed.add(name);
+        return json(200, { status: "Deleted", detail: name });
       }
       const project = projectFor(name);
       const { cfg, operator, topic } = project;
@@ -1147,9 +1191,23 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return new Response("Not found", { status: 404 });
   }
 
+  // Read-only runner schedules; ?runs=<name> returns that schedule's latest runs. Sign-in applies as to the event stream.
+  async function schedules(request) {
+    try {
+      caller(request);
+      const name = new URL(request.url).searchParams.get("runs");
+      if (name === null) return json(200, await readSchedules());
+      if (!SCHEDULE_NAME.test(name)) reject(400, "Invalid schedule name");
+      return json(200, await readScheduleRuns(name));
+    } catch (err) {
+      return json(err.status || 400, { error: err.message });
+    }
+  }
+
   return {
     auth: authApi,
     events,
+    schedules,
     file,
     handle,
     push: pushApi,

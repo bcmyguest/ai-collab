@@ -27,6 +27,12 @@ export function sessionState(s, now) {
 }
 
 /** The wake to show for a session, or null once it reported after the wake began or the wake is no longer running. */
+/** A project's sessions as running (online) and inactive (offline) counts for its sidebar row. */
+export function sessionCounts(agents) {
+  const running = agents.filter(agent => agent.online).length;
+  return { running, inactive: agents.length - running };
+}
+
 export function visibleWake(wake, agent) {
   if (!wake?.status) return null;
   const reported = Math.max(agent?.seenAt || 0, agent?.statusAt || 0);

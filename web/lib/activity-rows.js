@@ -93,18 +93,18 @@ export function groupSubagents(rows) {
   const runs = new Map();
   const out = [];
   const launches = new Map();
-  const finished = new Set();
+  const finished = new Map();
   for (const row of rows) {
     if (row.subagent?.id) continue;
     // The parent's Agent tool result names the run (agentId) and its description; a foreground run's result means it ended.
     const launch = AGENT_TOOL.test(row.tool || "") ? agentLaunch(row.type === "tool_call" ? row.result?.output : row.type === "tool_result" ? row.output : "") : null;
     if (launch) {
       launches.set(row.agent + "|" + launch.id, launch);
-      if (launch.done) finished.add(row.agent + "|" + launch.id);
+      if (launch.done) finished.set(row.agent + "|" + launch.id, row.result?.time ?? row.time);
     }
     // Claude tells the parent with a <task-notification> prompt when a background run ends.
     const notice = row.type === "prompt" || row.type === "text" ? TASK_DONE.exec(row.input || row.output || "") : null;
-    if (notice) finished.add(row.agent + "|" + notice[1]);
+    if (notice) finished.set(row.agent + "|" + notice[1], row.time);
   }
   for (const row of rows) {
     if (!row.subagent?.id) { out.push(row); continue; }
@@ -119,13 +119,17 @@ export function groupSubagents(rows) {
     run.kind ||= row.subagent.type;
   }
   for (const [key, run] of runs) {
-    run.done = run.rows.some(row => row.type === "stop") || finished.has(key);
+    run.lastTime = Math.max(...run.rows.map(row => row.time || 0));
+    // A resumed run (follow-up message, no new start) reopens: done only when a stop ends the rows or a finish marker is newest.
+    // Hooks arrive out of order, so the newest end marker (stop or finish) decides, not the last array row.
+    const stopAt = Math.max(-Infinity, ...run.rows.filter(row => row.type === "stop").map(row => row.time || 0));
+    const endAt = Math.max(stopAt, finished.get(key) ?? -Infinity);
+    run.done = endAt !== -Infinity && endAt >= run.lastTime;
     // A step is one tool use: its call row, or its result alone when the call row never arrived.
     run.steps = run.rows.filter(row => row.type === "tool_call" || ((row.type === "tool_result" || row.type === "error") && row.tool)).length;
     run.description = launches.get(key)?.description || "";
     const last = run.rows.findLast(row => row.tool);
     run.last = last ? { tool: last.tool, summary: summarize(last.input), time: last.time } : null;
-    run.lastTime = Math.max(...run.rows.map(row => row.time || 0));
     const end = run.rows.at(-1);
     run.open = end?.type === "tool_call" && !end.result;
   }
@@ -212,4 +216,11 @@ export function readableText(raw) {
   if (text.includes("<pasted_content")) return { label: "", text: text.replace(PASTED, (_, inner) => "```text\n" + inner.replace(/```/g, "ˋˋˋ") + "\n```") };
   const wrapped = WRAPPED.exec(text);
   return wrapped ? { label: "", text: wrapped[2].trim() } : { label: "", text: String(raw || "") };
+}
+
+/** Agents working now: sessions with an open tool call and running subagent runs, as {key, agent, kind}. */
+export function activeAgents(rows, now) {
+  const sessions = working(rows.filter(row => row.type !== "subagent"), now).map(agent => ({ key: agent, agent, kind: "" }));
+  const runs = rows.filter(row => row.type === "subagent" && runState(row, now) === "running").map(run => ({ key: run.id, agent: run.agent, kind: run.kind || "agent" }));
+  return [...sessions, ...runs];
 }

@@ -28,7 +28,13 @@ import { ActivityRow, GoToAgent, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
 import { SurfaceContext } from "@/components/a2ui/surface";
 import { NotifyToggle } from "./notify";
+import { AlertLevel } from "./alert-level";
 import { SessionList, SessionMenu, SubagentList } from "./home";
+import { RunningCount, SubagentRuns } from "./subagent-runs";
+import { ClosedProjects, ProjectMenu } from "./project-menu";
+import { Quote } from "./quote";
+import { ScheduledJobs } from "./scheduled";
+import { quoteText } from "@/lib/quote";
 import { activityRows, groupSubagents } from "@/lib/activity-rows";
 import { conversationKey, drafts, views } from "@/lib/view-memory";
 import { toast } from "sonner";
@@ -169,10 +175,10 @@ function ThemeToggle() {
 
 // The session's human name after its address, when the harness or its first prompt gives one.
 function SessionName({ agent }) {
-  return agent?.name ? <span className="line-clamp-2 min-w-0 break-words text-xs text-foreground/80">{agent.name}</span> : null;
+  return agent?.name ? <span className="block min-w-0 truncate text-xs text-foreground/80" title={agent.name}>{agent.name}</span> : null;
 }
 
-function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, disabled }) {
+function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, disabled, projectAction }) {
   const current = selected.project || data.project;
   // Home's state carries the server's default project's agents; they are not "this project" here.
   const home = selected.level === "home";
@@ -187,19 +193,22 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
         {data.projects.map(project => <li key={project.id} className="flex items-center gap-1">
           <button type="button" aria-current={project.id === current ? "page" : undefined}
             onClick={() => navigate({ project: project.id, level: "project" })}
-            className={cn("flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left text-sm transition-colors hover:bg-sidebar-accent",
+            className={cn("flex min-w-0 flex-1 items-center gap-3 rounded-xl px-2 py-2 text-left text-sm transition-colors hover:bg-sidebar-accent",
               project.id === current && "bg-sidebar-accent font-medium")}>
             <FolderGit2 className="size-4 shrink-0 text-muted-foreground"/>
             <span className="min-w-0 flex-1 truncate">{project.id}</span>
             {project.waiting > 0 && <span className="shrink-0 rounded-full border border-amber-500/60 bg-amber-500/15 px-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-300"
               aria-label={project.waiting + " waiting on you"} title="Sessions waiting on you">{project.waiting}</span>}
-            <span aria-hidden className="text-xs text-muted-foreground" title="Peers">{project.peers.length || ""}</span>
+            <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground" title={data.projectCounts?.[project.id] ? data.projectCounts[project.id].running + " running · " + data.projectCounts[project.id].inactive + " inactive" : undefined}>{data.projectCounts?.[project.id] ? data.projectCounts[project.id].running + " ▶ · " + data.projectCounts[project.id].inactive + " off" : ""}</span>
           </button>
           <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label={"New session in " + project.id}
             title="New session" onClick={() => newSession(project.id)}><Plus/></Button>
+          {!data.autoProjects?.includes(project.id) && <ProjectMenu project={project.id} act={projectAction}/>}
         </li>)}
       </ul>
+      {data.closedProjects?.length > 0 && <div className="pt-4"><ClosedProjects names={data.closedProjects} act={projectAction}/></div>}
     </section>
+    <ScheduledJobs/>
     {!home && <section className="px-2 pb-2">
       <button type="button" onClick={() => navigate({ project: current, level: "patterns" })} aria-current={selected.level === "patterns" ? "page" : undefined}
         className={cn("flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left text-sm transition-colors hover:bg-sidebar-accent", selected.level === "patterns" && "bg-sidebar-accent font-medium")}>
@@ -218,7 +227,8 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
       {home ? <p className="px-2 text-sm text-muted-foreground">Pick a project to list its sessions here.</p>
         : data.agents.length === 0 && <p className="px-2 text-sm text-muted-foreground">No sessions seen yet.</p>}
       <ul className="flex flex-col gap-1">
-        {!home && data.agents.map(agent => <li key={agent.id} className="flex min-w-0 items-center gap-1">
+        {!home && data.agents.map(agent => <li key={agent.id} className="flex min-w-0 flex-col gap-1">
+          <div className="flex min-w-0 items-center gap-1">
           <button type="button" aria-label={agent.waiting ? agent.id + ", waiting on you" : agent.id} title={agent.parent ? agent.id + " · started by " + agent.parent : agent.id} aria-current={selected.level === "session" && selected.session === agent.id ? "page" : undefined}
             onClick={() => navigate({ project: current, level: "session", harness: agent.peer, session: agent.id, ...(selected.level === "session" && selected.session ? { tab: selected.tab } : {}) })}
             className={cn("flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-sm transition-colors hover:bg-sidebar-accent",
@@ -226,10 +236,13 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
             <Avatar address={agent.id} className="size-6 text-[9px]"/>
             <span className="flex min-w-0 flex-1 flex-col"><span className="truncate font-mono text-xs">{short(agent.id)}</span><SessionName agent={agent}/></span>
             {agent.waiting && <span role="img" aria-label="Waiting on you" title="Waiting on you" className="inline-block size-2.5 shrink-0 rounded-full bg-amber-500 ring-2 ring-amber-500/25"/>}
+            <RunningCount runs={agent.subagents} now={now}/>
             <Dot online={agent.online}/>
             <span className="shrink-0 text-right text-[11px] leading-tight text-muted-foreground">{ago(agent.lastMessageAt, now)}{agent.activeAt ? <><br/>active {ago(agent.activeAt, now)}</> : null}</span>
           </button>
           {dispose && <SessionMenu node={{ ...agent, project: current }} disabled={disabled} dispose={dispose} raw={openRaw} label={"Session actions for " + agent.id}/>}
+          </div>
+          <SubagentRuns runs={agent.subagents} now={now} open={run => navigate({ project: current, level: "session", harness: agent.peer, session: agent.id, tab: "subagents", run: run.run })}/>
         </li>)}
       </ul>
     </section>
@@ -274,7 +287,7 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
   const prefill = openable ? "@" + sender + " " : "";
   // The asking agent's avatar and name, the header row of an A2UI card.
   const cardHead = <><Avatar address={sender} by={other} className="size-6 text-[10px]"/><span className="truncate">{short(sender)}</span></>;
-  return <Message className={cn("max-w-full", outgoing && "flex-row-reverse")}
+  return <Message data-message-id={message.id} className={cn("max-w-full", outgoing && "flex-row-reverse")}
     onClick={event => { const tag = event.target.closest?.("[data-mention]"); if (tag) open(tag.textContent.replace(/^@/, "").split(/[:/]/)[0]); }}>
     {openable ? <button type="button" aria-label={"Open avatar " + sender} tabIndex={-1} className="shrink-0 self-start rounded-full" onClick={go}><Avatar address={sender}/></button> : <Avatar address={sender} by={other}/>}
     <div className={cn("flex min-w-0 max-w-[82%] flex-col gap-1", outgoing ? "items-end" : "items-start")}>
@@ -287,7 +300,7 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
         {message.terminal && <Badge variant="outline" data-terminal title="Typed in the agent's terminal" className="h-4 px-1.5 text-[10px]">terminal</Badge>}
         {message.replyTo && <Badge variant="outline" data-answer title={"Answers question " + message.replyTo} className="h-4 px-1.5 text-[10px]">answer</Badge>}
         {at > 0 && <time dateTime={new Date(at).toISOString()} title={clock.format(at)}>{ago(at, now)}</time>}
-        {replyFrom && message.kind !== "Approval" && <button type="button" aria-label={"Reply to " + sender} title="Reply" onClick={() => replyFrom({ id: message.id, sender, prefill })}
+        {replyFrom && message.kind !== "Approval" && <button type="button" aria-label={"Reply to " + sender} title="Reply" onClick={() => replyFrom({ id: message.id, sender, prefill, body: message.body })}
           className="rounded-full p-0.5 hover:bg-muted hover:text-foreground"><Reply className="size-3.5"/></button>}
         {message.scope === "all" && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">to all</Badge>}
         {message.urgent && <span role="img" aria-label="Sent now" title="Sent now: delivered at the agent's next tool call" data-urgent className="text-amber-500"><Zap className="size-3.5"/></span>}
@@ -301,6 +314,7 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
         </span>}
         {openable && sender.includes("#") && <GoToAgent onClick={go} className="size-6"/>}
       </div>
+      {message.quote && <Quote quote={message.quote} label={short(message.quote.sender)}/>}
       {message.kind === "Approval" ? <ApprovalCard approval={message.approval} now={now} disabled={disabled} act={act} head={cardHead}/>
         : message.kind === "Question" && message.question ? <QuestionCard question={message.question} body={withMentions(message.body)} answer={message.answer} by={message.answeredBy} disabled={disabled} onAnswer={body => answer(message.question, body)} head={cardHead}/>
         : <MessageContent markdown className={cn("bubble max-w-full rounded-2xl px-3.5 py-2 text-[15px] leading-relaxed shadow-xs [overflow-wrap:anywhere]",
@@ -441,7 +455,7 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
       <Button variant="ghost" size="sm" onClick={cancel}>Cancel</Button>
     </div>}
     {replying && !question && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border bg-muted px-3 py-1.5 text-sm">
-      <span className="min-w-0 truncate">Replying to {short(replying.sender)}</span>
+      <span className="min-w-0 truncate">Replying to {short(replying.sender)}{replying.body && <span className="text-muted-foreground"> · {quoteText(replying.body)}</span>}</span>
       <Button variant="ghost" size="icon" className="size-6" aria-label="Cancel reply" onClick={cancelReply}><X/></Button>
     </div>}
     {commandPicking && <div role="listbox" aria-label="Session commands"
@@ -838,7 +852,13 @@ function Console({ account }) {
   async function patternCall(payload) {
     try { return await api("pattern", payload); } catch (err) { return { error: err.message }; }
   }
-  const sidebar = <Sidebar data={data} selected={selected} now={now} navigate={navigate} newSession={newSession} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")} openRaw={openRaw}/>;
+  // Close, reopen and delete a project; Delete asks first and leaves the repo, worktrees and ntfy history alone.
+  async function projectAction(path, name) {
+    if (path === "delete" && !window.confirm("Delete " + name + " from the project registry? Its repo, worktrees and ntfy history stay. Live sessions in its repo will re-home under the folder name.")) return;
+    const done = await action(path, { project: name }, path === "close" ? "Closed" : path === "reopen" ? "Reopened" : "Deleted");
+    if (done && path !== "reopen" && name === (selected.project || data.project)) navigate({ level: "home" });
+  }
+  const sidebar = <Sidebar data={data} selected={selected} now={now} navigate={navigate} newSession={newSession} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")} openRaw={openRaw} projectAction={projectAction}/>;
   const anyWaiting = data.projects.some(project => project.waiting > 0);
   return <SurfaceContext.Provider value={{ surfaces, submit: payload => action("a2ui", payload, "Sent"), disabled: !ready || working }}><div className="flex h-dvh w-full overflow-hidden">
     <aside className="hidden w-72 shrink-0 border-r bg-sidebar text-sidebar-foreground md:block">{sidebar}</aside>
@@ -869,7 +889,9 @@ function Console({ account }) {
           </div>
           {level === "session" && agent && <span className="flex items-center gap-1.5 text-xs text-muted-foreground" title={agent.online ? "online" : "offline"}>
             <Dot online={agent.online}/><span className="hidden sm:inline">{agent.online ? "online" : "offline"}</span></span>}
+          {level === "session" && agent && <RunningCount runs={agent.subagents} now={now}/>}
           <AfkToggle mode={data.mode || "off"} disabled={!ready || working} set={mode => action("afk", { mode }, "AFK " + mode)}/>
+          <AlertLevel level={data.alerts || "all"} disabled={!ready || working} set={level => action("alerts", { level }, "Alerts set")}/>
           <NotifyToggle/>
           <ThemeToggle/>
         </div>
