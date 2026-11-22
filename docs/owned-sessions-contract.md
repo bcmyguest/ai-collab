@@ -4,6 +4,12 @@ The contract the four harness adapters (Claude, Codex, Cursor, OpenCode) code ag
 
 The types live in `runner/types.d.ts`, the constants and validators in `runner/contract.mjs`, and the reference adapter in `runner/adapters/fake.mjs`. Where this page and the code disagree, the code wins; fix the page.
 
+## Deployment status
+
+The November 22, 2026 rollout enabled Claude and Codex. Cursor and OpenCode still need an authenticated live turn under the runner service account. Cursor needs a signed-in CLI in the service environment. OpenCode needs a registered loopback service with working provider credentials.
+
+`GET /v1/harnesses` reports adapter availability. Verify authentication by starting an owned session for each harness and checking for streamed text and `RUN_FINISHED` before enabling it in the deployed `AI_COLLAB_RUNNER_HARNESSES` list.
+
 ## Settled decisions
 
 | Topic | Decision | Source |
