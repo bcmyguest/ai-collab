@@ -62,12 +62,12 @@ export function isDead(node, now) {
 }
 
 /** Cards ordered by state, then newest activity; children whose parent is listed nest under it and lift its group. */
-export function sessionTree(sessions, now) {
+export function sessionTree(sessions, now, { separateOffline = false } = {}) {
   const byId = new Map(sessions.map(s => [s.id, { ...s, state: sessionState(s, now), children: [] }]));
   const roots = [];
   for (const node of byId.values()) {
     const parent = node.parent && node.parent !== node.id ? byId.get(node.parent) : null;
-    if (parent && !isAncestor(byId, node.id, parent.id)) parent.children.push(node);
+    if (parent && (!separateOffline || (node.state === "offline") === (parent.state === "offline")) && !isAncestor(byId, node.id, parent.id)) parent.children.push(node);
     else roots.push(node);
   }
   const rank = node => Math.min(STATES.indexOf(node.state), ...node.children.map(rank));
