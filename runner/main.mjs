@@ -55,7 +55,7 @@ export async function main(env = process.env) {
     const { entries, errors } = loadSchedules(env);
     for (const error of errors) log(`schedule skipped: ${error}`);
     const schedules = registerSchedules(durable, entries, { env, log });
-    runner = createRunner({ projects, adapters, durable, env, log, scheduleErrors: errors });
+    runner = createRunner({ projects, adapters, durable, env, log, scheduleErrors: errors, scheduleEntries: entries });
     const recovered = await runner.boot();
     // Serve the socket before any tick can start, so a failed bind starts nothing.
     control = await listenControl(runner, runnerSocket(env));

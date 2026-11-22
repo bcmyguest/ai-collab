@@ -50,6 +50,10 @@ export async function route(runner, method, url, input) {
   if (area === "health" && method === "GET") return [200, { ok: true, version: VERSION, harnesses: (await runner.harnesses()).map((h) => h.harness) }];
   if (area === "schedules") {
     if (!a && method === "GET") return [200, runner.schedules()];
+    if (a && b === "runs" && !action) {
+      if (method !== "GET") fail(405, "Method not allowed");
+      return [200, runner.scheduleRuns(a)];
+    }
     if (a && b === "run" && !action) {
       if (method !== "POST") fail(405, "Method not allowed");
       return [202, runner.runSchedule(a, callerOf(url))];

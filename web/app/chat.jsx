@@ -32,6 +32,7 @@ import { SessionList, SessionMenu, SubagentList } from "./home";
 import { RunningCount, SubagentRuns } from "./subagent-runs";
 import { ClosedProjects, ProjectMenu } from "./project-menu";
 import { Quote } from "./quote";
+import { ScheduledJobs } from "./scheduled";
 import { quoteText } from "@/lib/quote";
 import { activityRows, groupSubagents } from "@/lib/activity-rows";
 import { conversationKey, drafts, views } from "@/lib/view-memory";
@@ -206,6 +207,7 @@ function Sidebar({ data, selected, now, navigate, newSession, teamOpen, setTeamO
       </ul>
       {data.closedProjects?.length > 0 && <div className="pt-4"><ClosedProjects names={data.closedProjects} act={projectAction}/></div>}
     </section>
+    <ScheduledJobs/>
     {!home && <section className="px-2 pb-2">
       <div className="mb-1 flex items-center justify-between gap-2">
         <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Patterns and teams</h2>

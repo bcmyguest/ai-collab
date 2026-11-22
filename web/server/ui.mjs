@@ -33,6 +33,7 @@ import { createHub } from "./hub.mjs";
 import { createPush, notice } from "./push.mjs";
 import { createDispatcher } from "./dispatch.mjs";
 import { runnerUp } from "../../runner/client.mjs";
+import { readScheduleRuns, readSchedules } from "./schedules.mjs";
 import { answerMessage, answerText, terminalMessages } from "../lib/operator-messages.js";
 import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a2ui.js";
 
@@ -49,6 +50,7 @@ const ONLINE_MS = 30 * 60_000;
 const KEEPALIVE_MS = 25_000;
 const PUSH_DELAY_MS = 25;
 const MAX_MESSAGES = 100;
+const SCHEDULE_NAME = /^[a-z0-9-]{1,40}$/;
 // Characters of the replied message sent with a reply; the browser shows the first 80.
 const QUOTE_MAX = 200;
 const IMPORTANT = /^IMPORTANT, the agent waits for this answer: /;
@@ -1162,9 +1164,23 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return new Response("Not found", { status: 404 });
   }
 
+  // Read-only runner schedules; ?runs=<name> returns that schedule's latest runs. Sign-in applies as to the event stream.
+  async function schedules(request) {
+    try {
+      caller(request);
+      const name = new URL(request.url).searchParams.get("runs");
+      if (name === null) return json(200, await readSchedules());
+      if (!SCHEDULE_NAME.test(name)) reject(400, "Invalid schedule name");
+      return json(200, await readScheduleRuns(name));
+    } catch (err) {
+      return json(err.status || 400, { error: err.message });
+    }
+  }
+
   return {
     auth: authApi,
     events,
+    schedules,
     file,
     handle,
     push: pushApi,
