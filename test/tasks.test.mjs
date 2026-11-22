@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   PROGRESS_MAX, TABLE_END, TABLE_START, addTask, clipProgress, createFileBackend, importFeatureRequests,
-  readStore, renderFeatureRequests, slugify, taskStoreFile, validateTasks, writeStore,
+  readStore, renderFeatureRequests, importReport, slugify, taskStoreFile, validateTasks, writeStore,
 } from "../lib/tasks.mjs";
 
 const NOW = Date.parse("2026-11-22T00:00:00Z");
@@ -211,4 +211,35 @@ test("import without markers takes the one table and refuses two", () => {
   const two = "| Request | Status |\n|---|---|\n| A | open |\n\ntext\n\n| Request | Status |\n|---|---|\n| B | open |\n";
   assert.throws(() => importFeatureRequests(two, NOW), /2 tables/);
   assert.throws(() => importFeatureRequests(`${TABLE_START}\n| Request | Status |\n`, NOW), /unbalanced/);
+});
+
+test("import reads status words in any case and dashes set off by spaces", () => {
+  const rows = [
+    "| Upper | OPEN |",
+    "| Dash em | Done — shipped |",
+    "| Dash hyphen | Building - in review |",
+    "| Glued | decided—later |",
+    "| Open ended | open-ended |",
+    "| Plain | blocked |",
+  ].join("\n");
+  const { doc, defaulted } = importReport(`| Request | Status |\n|---|---|\n${rows}\n`, NOW);
+  const by = Object.fromEntries(doc.tasks.map((t) => [t.title, [t.status, t.detail]]));
+  assert.deepEqual(by.Upper, ["open", undefined]);
+  assert.deepEqual(by["Dash em"], ["done", "shipped"]);
+  assert.deepEqual(by["Dash hyphen"], ["building", "in review"]);
+  assert.deepEqual(by.Glued, ["decided", "later"]);
+  // "open-ended" has no separator, so it is no status word and defaults to done with the whole cell.
+  assert.deepEqual(by["Open ended"], ["done", "open-ended"]);
+  assert.deepEqual(by.Plain, ["blocked", undefined]);
+  assert.deepEqual(defaulted, ["Open ended"]);
+});
+
+test("a title ending in a backslash round-trips through render and import", () => {
+  const doc = { v: 1, tasks: [] };
+  addTask(doc, { id: "slash", title: "Path C:\\dir\\", status: "open" }, NOW);
+  const rendered = renderFeatureRequests(doc, "");
+  assert.ok(rendered.includes("| Path C:\\dir\\ | open |"), "the table row keeps the backslashes");
+  const back = importFeatureRequests(rendered, NOW);
+  assert.equal(back.tasks[0].title, "Path C:\\dir\\");
+  assert.equal(renderFeatureRequests(back, rendered), rendered);
 });
