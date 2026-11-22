@@ -24,5 +24,14 @@ export function parseSelection(hash) {
   };
   // pattern names the one inspected, raw=1 shows its definition text; edit=1 opens its team editor, edit=new a new team; run names a pattern run.
   if (at === "patterns") return { ...base, pattern: params.get("pattern") || "", raw: params.get("raw") === "1", ...(params.get("edit") ? { edit: params.get("edit") } : {}), run: params.get("run") || "" };
-  return base;
+  // from/to (epoch ms) cut a session's timeline to one schedule run; no other session tab reads them.
+  const window = at === "session" && base.tab === "activity" ? timeWindow(params) : null;
+  return window ? { ...base, window } : base;
+}
+
+// The {from, to} range a hash names, or null when a bound is missing, out of order or not a positive epoch time.
+function timeWindow(params) {
+  const from = Number(params.get("from"));
+  const to = Number(params.get("to"));
+  return Number.isSafeInteger(from) && Number.isSafeInteger(to) && from > 0 && to >= from ? { from, to } : null;
 }

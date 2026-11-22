@@ -183,7 +183,7 @@ function SessionName({ agent }) {
   return agent?.name ? <span className="block min-w-0 truncate text-xs text-foreground/80" title={agent.name}>{agent.name}</span> : null;
 }
 
-function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, disabled, projectAction }) {
+function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, disabled, projectAction, openHash }) {
   const current = selected.project || data.project;
   // Home's state carries the server's default project's agents; they are not "this project" here.
   const home = selected.level === "home";
@@ -213,7 +213,7 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
       </ul>
       {data.closedProjects?.length > 0 && <div className="pt-4"><ClosedProjects names={data.closedProjects} act={projectAction}/></div>}
     </section>
-    <ScheduledJobs/>
+    <ScheduledJobs project={home ? "" : current} openRun={openHash}/>
     {!home && <section className="px-2 pb-2">
       {/* The task board has its own entry, beside Patterns and teams, rather than a link beside SESSIONS. */}
       <button type="button" onClick={() => navigate({ project: current, level: "tasks" })} aria-current={selected.level === "tasks" ? "page" : undefined}
@@ -822,17 +822,29 @@ function Console({ account }) {
     navigate(session ? { project, level: "session", harness: peer, session: address } : { project, level: "session" });
   }
   // The raw view keeps every tool call as its own row; the timeline and subagents fold them into turns and runs.
-  const rows = useMemo(() => watching || inline || subagents ? groupSubagents(activityRows(activity)) : raw ? activityRows(activity) : [], [activity, watching, inline, subagents, raw]);
+  // A run link's window (selected.window) cuts the timeline to the rows of that schedule run.
+  const windowRows = useMemo(() => {
+    const from = selected.window?.from;
+    const to = selected.window?.to;
+    return Number.isSafeInteger(from) && Number.isSafeInteger(to) ? activity.filter(row => row.time * 1000 >= from && row.time * 1000 <= to) : activity;
+  }, [activity, selected.window]);
+  const rows = useMemo(() => watching || inline || subagents ? groupSubagents(activityRows(windowRows)) : raw ? activityRows(windowRows) : [], [watching, inline, subagents, raw, windowRows]);
   const goRun = row => navigate({ project, level: "session", harness: peerOf(row.agent), session: row.agent, tab: "subagents", run: row.run });
   // Answers whose card is listed show in the card, so their bubbles stay out of both threads.
   const visible = useMemo(() => withoutAnswered(data.messages), [data.messages]);
+  // A run window keeps the chat messages that arrived during the same run, so they sit beside its rows.
+  const scoped = useMemo(() => {
+    const from = selected.window?.from;
+    const to = selected.window?.to;
+    return Number.isSafeInteger(from) && Number.isSafeInteger(to) ? visible.filter(item => item.time * 1000 >= from && item.time * 1000 <= to) : visible;
+  }, [visible, selected.window]);
   const turns = useMemo(() => sessionTurns(rows), [rows]);
   // The project chat shows finished turns and busy sessions, not every tool call.
   const live = useMemo(() => watching ? liveRows(turns, rows, now) : [], [turns, rows, watching, now]);
-  const thread = useMemo(() => inline ? chatThread(visible, rows, selected.session)
+  const thread = useMemo(() => inline ? chatThread(scoped, rows, selected.session)
     : watching ? projectThread(visible, turns)
     : raw ? rows.map(activity => ({ activity }))
-    : visible.map(message => ({ message })), [visible, turns, rows, inline, watching, raw, selected.session]);
+    : visible.map(message => ({ message })), [visible, scoped, turns, rows, inline, watching, raw, selected.session]);
   const newSession = id => { setCreating(id); if (id !== project || level !== "project") navigate({ project: id, level: "project" }); else setNavOpen(false); };
   async function startSession(payload) {
     try { return await api("start", { project, ...payload }); } catch (err) { return { status: "failed", detail: err.message }; }
@@ -847,7 +859,8 @@ function Console({ account }) {
     const done = await action(path, { project: name }, path === "close" ? "Closed" : path === "reopen" ? "Reopened" : "Deleted");
     if (done && path !== "reopen" && name === (selected.project || data.project)) navigate({ level: "home" });
   }
-  const sidebar = <Sidebar data={data} selected={selected} now={now} navigate={navigate} newSession={newSession} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")} openRaw={openRaw} projectAction={projectAction}/>;
+  const sidebar = <Sidebar data={data} selected={selected} now={now} navigate={navigate} newSession={newSession} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")} openRaw={openRaw} projectAction={projectAction}
+    openHash={hash => { setNavOpen(false); location.hash = hash.slice(1); }}/>;
   const anyWaiting = data.projects.some(project => project.waiting > 0);
   return <SurfaceContext.Provider value={{ surfaces, submit: payload => action("a2ui", payload, "Sent"), disabled: !ready || working }}><div className="flex h-dvh w-full overflow-hidden">
     <aside className="hidden w-72 shrink-0 border-r bg-sidebar text-sidebar-foreground md:block">{sidebar}</aside>
@@ -902,6 +915,10 @@ function Console({ account }) {
         {agent?.wake?.status && <div className="mx-auto mt-2 flex w-full max-w-3xl flex-wrap items-center gap-2 rounded-xl border bg-muted/50 px-3 py-2 text-sm">
           Wake · {agent.wake.status}{agent.wake.detail && " · " + agent.wake.detail}
           {agent.wake.status === "failed" && !agent.online && <Button size="sm" variant="outline" disabled={working} onClick={() => action("wake", { target: selected.session }, "Wake requested")}>Retry wake</Button>}
+        </div>}
+        {selected.window && <div className="mx-auto mt-2 flex w-full max-w-3xl flex-wrap items-center gap-2 rounded-xl border bg-muted/50 px-3 py-2 text-sm">
+          <span className="min-w-0 flex-1">One schedule run · {new Date(selected.window.from).toLocaleString()} to {new Date(selected.window.to).toLocaleString()}</span>
+          <Button size="sm" variant="outline" onClick={() => navigate({ project, level: "session", harness: selected.harness, session: selected.session, tab: "activity" })}>Show all</Button>
         </div>}
         {loadError && <div role="alert" className="mx-auto mt-2 flex w-full max-w-3xl items-center gap-2 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
           <span className="flex-1">{loadError}</span>

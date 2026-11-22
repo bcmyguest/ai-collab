@@ -22,6 +22,7 @@ import { ownedFile, readOwned, writeOwned } from "../lib/owned.mjs";
 import { limitFromRunError } from "../lib/limits.mjs";
 import { alertLimit } from "../lib/limit-alert.mjs";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, LIMIT, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, permissionSettings } from "./contract.mjs";
+import { sessionOfCommand } from "../lib/schedule-session.mjs";
 import { DELIVERY, deliveryWorkflow } from "./delivery.mjs";
 import { publishApproval, publishApprovalEnd, publishEnded, publishEvent, publishReceipts } from "./publish.mjs";
 
@@ -882,15 +883,21 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
 
   const entryOf = (name) => {
     const entry = scheduleEntries.find((item) => item.name === name);
-    return entry ? { command: entry.command, cwd: entry.cwd } : {};
+    if (!entry) return {};
+    const session = sessionOfCommand(entry.command);
+    return { command: entry.command, cwd: entry.cwd, ...(session ? { session } : {}) };
   };
 
   return {
     start, send, interrupt, compact, respond, setMode, close, boot, stop, harnesses, deliveries, pump: pumpDeliveries,
     list: () => [...sessions.values()].map(view),
-    // Each schedule with the command and folder its schedules.json entry names.
+    // Each schedule with the command and folder its schedules.json entry names, and the session it resumes.
     schedules: () => ({ schedules: durable.schedules().map((s) => ({ ...s, ...entryOf(s.name) })), configError: scheduleErrors }),
-    scheduleRuns: (name) => durable.scheduleRuns(name),
+    // One schedule's ticks, each with the session its command resumes so the UI can open that run's timeline.
+    scheduleRuns: (name) => {
+      const session = sessionOfCommand(scheduleEntries.find((item) => item.name === name)?.command);
+      return durable.scheduleRuns(name).map((run) => (session ? { ...run, session } : run));
+    },
     runSchedule,
     get: (address) => view(find(address)),
     models: (harness) => adapterOf(harness).listModels(env),

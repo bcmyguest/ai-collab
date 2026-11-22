@@ -113,6 +113,8 @@ The first prompt is the first input; the loop starts with it, not with `recv`.
 
 A tick id is recorded with its first step, so a tick starts at most once while `runner.db` is intact. An operator who deletes or restores the database can start a tick twice. A skipped tick is not retried: its id stays in the log.
 
+**Run detail.** A command that resumes a harness session names it: `--resume <id>` / `-r <id>` for Cursor and Claude, `--session <id>` for OpenCode, `codex exec resume <id>` for Codex. The runner matches the id against the registered session label (`sessionLabel`, the hash the hooks publish), so each run in `GET /v1/schedules/:name/runs` carries `startedAt`, `finishedAt` and `session: {harness, session}`. The UI turns that into a link to the session's timeline cut to the run's window (the run plus 15 min either side), where the tick's prompts, tool calls and builders appear. A command that resumes nothing (a plain script, a wrapper like `npx`) lists its runs with no session and no link. Code: `lib/schedule-session.mjs`.
+
 The command runs with `spawn` (argv, no shell) in its own process group, stdin closed, in `cwd`, with `timeoutSec` as the deadline. A timeout or abort kills the group. A clean exit leaves processes the command started in the background (agents it handed work to) running. Its result is `{ok, exitCode, signal, timedOut, durationMs, tail, scheduledTime, actualTime}`, where `tail` is the last 2000 characters of stdout and stderr. Ticks publish no ntfy rows: a schedule has no session to publish under.
 
 Config: `$XDG_CONFIG_HOME/ai-collab/schedules.json` (default `~/.config/ai-collab/schedules.json`), or the path in `AI_COLLAB_SCHEDULES`. A JSON array. An invalid entry, unreadable file or bad JSON is reported in `configError` and skipped; the runner keeps serving. A missing file means no schedules. Code: `runner/schedules.mjs`.
@@ -135,7 +137,7 @@ The runner takes `runner.lock` beside `runner.db`; a second live runner on the s
 | `command` | non-empty array of strings: argv, no shell | yes |
 | `timeoutSec` | positive integer, default 900, shorter than `everyMinutes` × 60 | no |
 
-Control socket only (operator): `GET /v1/schedules` returns `{schedules: [{name, everyMs, nextRun, last: {id, status, scheduledTime, output, error}}], configError: [...]}`; `POST /v1/schedules/:name/run?caller=<label>` runs a tick now. Neither route is on MCP or ntfy.
+Control socket only (operator): `GET /v1/schedules` returns `{schedules: [{name, everyMs, nextRun, last: {id, status, scheduledTime, output, error}, command, cwd, session?}], configError: [...]}`; `GET /v1/schedules/:name/runs` returns the recent runs newest first, each `{id, status, scheduledTime, startedAt, finishedAt, updatedAt, output, error, session?}`, where `session` is `{harness, session}` when the command resumes one; `POST /v1/schedules/:name/run?caller=<label>` runs a tick now. Neither route is on MCP or ntfy.
 
 ## Delivery and wake workflows
 
@@ -360,7 +362,8 @@ HTTP/1.1 JSON over a unix socket: `AI_COLLAB_RUNNER_SOCKET`, else `$XDG_RUNTIME_
 | `POST /v1/sessions/:harness/:label/approvals/:id` | `{decision: "allow"\|"deny"}` or `{answers}` | `{status:"answered"}` |
 | `GET /v1/sessions/:harness/:label/context` | | `{context: {tokens, window?} \| null}` |
 | `DELETE /v1/sessions/:harness/:label` | | `{status: "ended"\|"closing"}` |
-| `GET /v1/schedules` | | `{schedules: [{name, everyMs, nextRun, last}]}`; see [Scheduled workflows](#scheduled-workflows) |
+| `GET /v1/schedules` | | `{schedules: [{name, everyMs, nextRun, last, command, cwd, session?}]}`; see [Scheduled workflows](#scheduled-workflows) |
+| `GET /v1/schedules/:name/runs` | | `[{id, status, scheduledTime, startedAt, finishedAt, updatedAt, output, error, session?}]`, newest first; `session` is `{harness, session}` when the command resumes one |
 | `GET /v1/deliveries` | | `{deliveries: [{id, kind, status, address, messageId, outcome, error, updatedAt}]}`; see [Delivery and wake workflows](#delivery-and-wake-workflows) |
 | `POST /v1/schedules/:name/run?caller=` | | 202 `{id, status: "started"\|"skipped"}`; 404 for an unknown schedule; 429 within 10 s of the last manual run |
 
@@ -466,6 +469,7 @@ Still unsolved:
 | `runner/contract.mjs` | Harness, mode and event constants; `PERMISSION_TABLE`; `eventProblem` |
 | `runner/durable.mjs` | SQLite workflow/step/message log; `scheduled` ticks |
 | `runner/schedules.mjs` | `schedules.json` loader and the scheduled command step |
+| `lib/schedule-session.mjs` | The registered session a schedule's command resumes, and the project a schedule's folder names |
 | `runner/lock.mjs` | Single-instance lock (`runner.lock` beside `runner.db`) |
 | `runner/runner.mjs` | Session workflow, control operations, ntfy input |
 | `runner/publish.mjs` | Event → envelope mapping |

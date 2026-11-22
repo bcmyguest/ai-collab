@@ -1274,7 +1274,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const name = new URL(request.url).searchParams.get("runs");
       if (name === null) return json(200, await readSchedules());
       if (!SCHEDULE_NAME.test(name)) reject(400, "Invalid schedule name");
-      return json(200, await readScheduleRuns(name));
+      return json(200, await readScheduleRuns(name, { env }));
     } catch (err) {
       return json(err.status || 400, { error: err.message });
     }
