@@ -88,6 +88,17 @@ test("a limit alert never spawns a harness CLI to list models", async (t) => {
   assert.equal(cards(fake).length, 1);
 });
 
+test("a limit card expires at its reset, or 5 hours after the first alert when the reset is unknown", async (t) => {
+  const { fake, cfg } = await setup(t);
+  const deps = { listed: async () => LISTED, available: () => ["codex"] };
+  const now = FIVE_HOUR.resetsAt - 60 * 60_000;
+  await alertLimit(cfg, { harness: "claude", limit: FIVE_HOUR, now, ...deps });
+  await alertLimit(cfg, { harness: "claude", limit: { ...FIVE_HOUR, window: "seven_day", windowName: "weekly", resetsAt: null }, now, ...deps });
+  const [known, unknown] = cards(fake);
+  assert.equal(known.expiresAt, FIVE_HOUR.resetsAt);
+  assert.equal(unknown.expiresAt, now + 5 * 3600_000);
+});
+
 test("a busy alert lock makes the limit a duplicate, not a second card", async (t) => {
   const { fake, cfg } = await setup(t);
   const sessionCfg = { ...cfg, session: SESSION };

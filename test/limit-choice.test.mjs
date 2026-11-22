@@ -80,14 +80,14 @@ test("the UI answers a limit card through the choice surface and starts the repl
   }), "a2ui");
   for await (const frame of stream) {
     if (frame.event !== "surface" || frame.data.id !== `approval-${sent.id}`) continue;
-    assert.equal((await post([[WAIT_LABEL]])).status, 201);
-    assert.equal(calls.length, 0);
+    assert.equal((await post([["codex:gpt-5"]])).status, 201);
     break;
   }
-  assert.equal(calls.length, 0);
-  assert.equal((await post([["codex:gpt-5"]])).status, 201);
   assert.equal(calls.length, 1);
+  const ends = fake.state.publishes.flatMap((p) => { try { const m = JSON.parse(p.message); return m.kind === "approval-end" ? [m] : []; } catch { return []; } });
+  assert.deepEqual(ends.map((m) => [m.id, m.reason]), [[sent.id, "answered"]]);
   assert.equal((await post([["codex:gpt-5"]])).status, 409);
+  assert.equal(calls.length, 1);
 });
 
 const rowsOf = (fake, type) => fake.state.publishes.flatMap((p) => { try { const m = JSON.parse(p.message); return m.kind === "activity" && m.type === type ? [m] : []; } catch { return []; } });
