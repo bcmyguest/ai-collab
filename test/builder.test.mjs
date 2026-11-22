@@ -11,6 +11,13 @@ import {
   briefNotes, builderPaths, builderSandbox, builderPolicy, captureHooks, harnessCommand, hostCaptureEvents, parseRecordedCall, replayable, sharedLibs,
 } from "../lib/builder.mjs";
 import { taskStoreFile } from "../lib/tasks.mjs";
+import { loadConfig } from "../lib/config.mjs";
+import { parseWireEnvelope } from "../lib/agui.mjs";
+import { openDurable } from "../runner/durable.mjs";
+import { createRunner } from "../runner/runner.mjs";
+import { listenControl } from "../runner/control.mjs";
+import codexAdapter from "../runner/adapters/codex.mjs";
+import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OPENSHELL = path.join(HERE, "helpers", "fake-openshell.mjs");
@@ -215,4 +222,78 @@ test("a CODEX_HOME with no login falls back to the user's ~/.codex login", async
   const src = toolSources({ harness: "codex", root: empty }, { PATH: "", HOME: empty, CODEX_HOME: empty });
   const own = join(homedir(), ".codex", "auth.json");
   assert.equal(src.codexAuth, existsSync(own) ? own : "");
+});
+
+test("Codex builder runs through the control socket and links its task before sending the brief", async (t) => {
+  const ntfy = await startFakeNtfy();
+  t.after(() => ntfy.close());
+  const l = lab({ AI_COLLAB_URL: ntfy.url, AI_COLLAB_PEERS: "claude,codex,operator" });
+  const tree = path.join(l.home, "codex-release");
+  mkdirSync(path.join(tree, "bin"), { recursive: true });
+  writeFileSync(path.join(tree, "bin", "codex"),
+    '#!/bin/sh\nexec node "' + path.join(HERE, "helpers", "fake-codex-app-server.mjs") + '" "$@"\n', { mode: 0o755 });
+  Object.assign(l.env, {
+    AI_COLLAB_CODEX_TREE: tree,
+    AI_COLLAB_RUNNER_SOCKET: path.join(l.home, "s"),
+    FAKE_CODEX_LOG: path.join(l.home, "codex.log"),
+  });
+  await withTask(l);
+  writeFileSync(l.brief, "hang");
+  const cfg = loadConfig(l.env, { cwd: l.root });
+  const durable = openDurable(path.join(l.home, "runner.db"));
+  const runner = createRunner({
+    projects: [cfg], adapters: new Map([["codex", codexAdapter()]]),
+    durable, env: l.env, watch: false,
+  });
+  t.after(() => runner.stop());
+  const control = await listenControl(runner, l.env.AI_COLLAB_RUNNER_SOCKET);
+  t.after(() => control.close());
+  const res = await l.cli("builder", "start", "--task", "smoke-task", "--harness", "codex", "--run", "run123", "--brief", l.brief);
+  assert.equal(res.code, 0, res.err);
+  const address = res.out.split("\t")[0];
+  assert.match(address, /^codex#[0-9a-f]{16}$/);
+  assert.equal(task(l).owner, address);
+  assert.equal(task(l).run, "run123");
+  assert.equal(task(l).status, "building");
+  assert.equal(runner.get(address).taskId, "smoke-task");
+  assert.match((await l.cli("builder", "list")).out, /codex#/);
+  assert.ok(readJsonLines(l.env.FAKE_SYSTEMD_LOG).every(row => row[0] !== "systemd-run"));
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline && !readJsonLines(l.env.FAKE_CODEX_LOG).some(row => row.method === "turn/start")) {
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  const turn = readJsonLines(l.env.FAKE_CODEX_LOG).find(row => row.method === "turn/start");
+  assert.match(turn?.params.input[0].text, /^hang[\s\S]*oncebitten check --base main/);
+  const stopped = await l.cli("builder", "stop", "smoke-task");
+  assert.equal(stopped.code, 0, stopped.err);
+  assert.equal(runner.get(address).status, "ended");
+  await runner.settle();
+  const label = address.split("#")[1];
+  const activity = ntfy.state.publishes
+    .filter(row => row.topic === "ai-collab-demo--activity")
+    .map(row => parseWireEnvelope(row.message))
+    .filter(row => row?.session === label);
+  assert.ok(activity.some(row => row.type === "prompt" && row.input?.startsWith("hang")));
+  assert.ok(activity.some(row => row.type === "stop"));
+  assert.equal(task(l).status, "blocked");
+  assert.equal(task(l).owner, address);
+  assert.deepEqual(JSON.parse(readFileSync(l.env.FAKE_OPENSHELL_STATE, "utf8")).sandboxes, []);
+});
+
+test("Codex builder uses the standalone unit when the control socket is absent", async () => {
+  const l = lab();
+  l.env.AI_COLLAB_RUNNER_SOCKET = path.join(l.home, "missing.sock");
+  const tree = path.join(l.home, "codex-release");
+  mkdirSync(path.join(tree, "bin"), { recursive: true });
+  const codex = path.join(tree, "bin", "codex");
+  writeFileSync(codex, '#!/bin/sh\n[ "$1" = exec ] || exit 1\nprintf "built\\n" >> notes.md\n', { mode: 0o755 });
+  symlinkSync(codex, path.join(l.home, "bin", "codex"));
+  l.env.AI_COLLAB_CODEX_TREE = tree;
+  await withTask(l);
+  const res = await l.cli("builder", "start", "--task", "smoke-task", "--harness", "codex", "--brief", l.brief);
+  assert.equal(res.code, 0, res.err);
+  assert.match(res.out, /^builder-smoke-task\t/);
+  assert.ok(readJsonLines(l.env.FAKE_SYSTEMD_LOG).some(row => row[0] === "systemd-run"));
+  assert.equal(task(l).status, "done");
+  assert.equal(task(l).owner, undefined);
 });

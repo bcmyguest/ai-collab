@@ -1,26 +1,32 @@
 # Builders
 
-A builder is one agent that implements one task on its own branch. `ai-collab builder start` runs each new builder inside its own OpenShell sandbox, detached from the caller in a transient systemd user unit, so a UI or runner restart does not kill it. Builders started by hand before this command existed run on the host and are left alone.
+A builder is one agent that implements one task on its own branch. `ai-collab builder start` runs each new builder inside its own OpenShell sandbox. Codex uses a runner-owned session when the runner is reachable. Cursor and Claude use a transient systemd user unit. Codex uses the same fallback when the runner is unavailable. Builders started by hand before this command existed run on the host and are left alone.
 
 Lib: `lib/builder.mjs`. OpenShell lifecycle: `runner/sandbox.mjs`. Tests: `test/builder.test.mjs` and `test/builder-claude.test.mjs` with fake `openshell`, `systemd-run`, `systemctl`, agent and `oncebitten` from `test/helpers/`.
 
 ## Commands
 
 ```
-ai-collab builder start --task <id> --harness cursor|codex|claude [--model M] --brief <file> [--branch B]
+ai-collab builder start --task <id> --harness cursor|codex|claude [--model M] --brief <file> [--branch B] [--run ID]
 ai-collab builder list [--all]
 ai-collab builder stop <id>
 ```
 
 | Command | Effect |
 |---|---|
-| `start` | Checks the task exists, creates `~/ai-collab-wt-<id>` on branch `builder/<id>` (or `--branch`) from `main`, links the repo's `node_modules` into it, writes the brief plus the sandbox notes, sets the task to `building`, and starts unit `builder-<id>` with `systemd-run --user --collect`. Prints `unit, task, sandbox, worktree, branch`. |
-| `list` | Builders started by `start` that are still running: `unit, task, sandbox, phase, unit state`. `--all` adds finished ones. |
-| `stop` | `systemctl --user stop builder-<id>`, then deletes the sandbox. Refuses an id that `start` did not create, so hand-started `builder-*` units are never touched. The worktree and branch stay. |
+| `start` | Checks the task exists, creates `~/ai-collab-wt-<id>` on branch `builder/<id>` (or `--branch`) from `main`, links the repo's `node_modules` into it, writes the brief plus the sandbox notes, and starts the builder. Prints `session or unit, task, sandbox, worktree, branch`. |
+| `list` | Builders started by `start` that are still running: `session or unit, task, sandbox, phase, state`. `--all` adds finished ones. |
+| `stop` | Closes an owned session through the runner or stops the standalone unit and deletes its sandbox. Refuses an id that `start` did not create, so hand-started `builder-*` units are never touched. The worktree and branch stay. |
 
 Defaults: Cursor `deepseek-v41-flash-1017-high`, Codex `gpt-6.2-sol`, Claude `haiku` (the alias for the latest Haiku). The id is the task id. State lives in `$XDG_STATE_HOME/ai-collab/builders/<id>/` (`state.json`, `brief.md`, `policy.yaml`); the unit's output is in `journalctl --user -u builder-<id>`.
 
-## What the unit does
+## Runner-owned Codex builders
+
+The runner starts a dedicated Codex app-server inside the staged OpenShell sandbox and sends the brief as its first turn. It sets the task to `building` and records the session address as the task owner before sending the brief. The phone shows the session activity and the task card opens it. Pass `--run ID` to attach the task to a team run. An existing run association is retained when the flag is omitted.
+
+When the turn ends, the runner collects the branch and task calls, runs the normal landing checks, and deletes the sandbox. A restart cuts the active turn and the runner attempts collection on recovery. The ended session remains linked from the task for its timeline. If the runner responds with a start error, the CLI reports that error. The standalone path is used when the control socket is absent or refuses the connection.
+
+## What the standalone unit does
 
 ```mermaid
 flowchart TD

@@ -21,6 +21,7 @@ import { claudeConfirmedSince, claudeSnapshot, claudeWindowMs } from "../lib/cla
 import { ackTracker, direct, MAX_ATTEMPTS, PUSHED, pushSession, readDispatchLedger, readySession, writeDispatchLedger } from "../lib/deliver-push.mjs";
 import { sessionIdleState } from "../lib/idle.mjs";
 import { opencodeRequest } from "../lib/opencode-api.mjs";
+import { BUILDER_START_TIMEOUT_MS, ownedBuilder, stageOwnedBuilder, claimOwnedBuilder, finishOwnedBuilder } from "../lib/builder.mjs";
 import { childEnv, checkPrompt, findExecutable, modelShape, projectRoot, worktreeNames } from "../lib/start.mjs";
 import { parseCodeMode, resolveCodeMode } from "../lib/code-mode.mjs";
 import { openTasks } from "../lib/tasks.mjs";
@@ -236,6 +237,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   async function liveHandle(s) {
     if (s.live) return s.live;
     if (s.record.status === "ended") fail(409, "The owned session has ended");
+    if (s.record.builder) fail(409, "The builder sandbox session cannot resume");
     const adapter = adapterOf(s.record.harness);
     if (adapter.capabilities.resume === "none") fail(409, `${s.record.harness} sessions cannot resume`);
     s.resuming ??= (async () => {
@@ -301,10 +303,21 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
 
   // The durable session workflow: place → open → claim, then one run.send/run.wait pair per input until closed.
   async function sessionWorkflow(wf, input) {
-    const { project, harness, place, permissionMode, model, codeMode, taskId, patternRun } = input;
+    const { project, harness, place, permissionMode, model, codeMode, taskId, patternRun, builder } = input;
     const adapter = adapterOf(harness);
     const holder = { s: null, live: null };
-    const cwd = await wf.step("place", () => placeCwd(project, harness, place, patternRun));
+    const staged = builder && await wf.step("builder.stage", async () => {
+      try {
+        return await stageOwnedBuilder(builder, env, log);
+      } catch (error) {
+        return { failed: error.message };
+      }
+    }, { onCut: () => ({ failed: "runner restarted while staging the builder" }) });
+    if (staged?.failed) {
+      await wf.step("builder.fail", () => finishOwnedBuilder(builder, null, 1, env, log, staged.failed));
+      return { ended: staged.failed };
+    }
+    const cwd = await wf.step("place", () => builder ? builder.worktree : placeCwd(project, harness, place, patternRun));
     const opened = await wf.step("open", async () => {
       // An adapter that starts its child before returning (Claude) calls beforeStart with the native id: the owned record exists first.
       const beforeStart = (nativeId) => {
@@ -315,20 +328,42 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         });
       };
       const options = { project, cwd, place, permissionMode, permission: permissionSettings(harness, permissionMode, place).settings, env: ownedEnv(), beforeStart, ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode) };
-      holder.live = await adapter.open(options, contextFor(holder, harness, wf.signal));
+      try {
+        holder.live = await adapter.open(staged ? { ...options, cwd: staged.workdir, sandboxArgv: staged.argv } : options, contextFor(holder, harness, wf.signal));
+      } catch (error) {
+        if (builder) return { failed: error.message };
+        throw error;
+      }
       return { nativeId: holder.live.nativeId };
     }, { onCut: () => ({ failed: "the runner stopped while the session opened" }) });
-    if (opened.failed) return { ended: opened.failed };
+    if (opened.failed) {
+      if (builder) await wf.step("builder.fail", () => finishOwnedBuilder(builder, staged, 1, env, log, opened.failed));
+      return { ended: opened.failed };
+    }
     const label = sessionLabel(opened.nativeId);
     const cfg = sessionCfg(project, harness, label);
-    await wf.step("claim", async () => {
+    const claim = await wf.step("claim", async () => {
       const record = {
         v: 1, label, address: `${harness}#${label}`, workflowId: wf.id, harness, nativeId: opened.nativeId, project, cwd, place, permissionMode,
         ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode), ...(taskId ? { taskId } : {}), status: "idle", run: null, approvals: [], createdAt: now(),
       };
-      writeOwned(cfg, record);
+      try {
+        if (builder) {
+          await claimOwnedBuilder(builder, record.address, env);
+          record.builder = builder.id;
+        }
+        writeOwned(cfg, record);
+      } catch (error) {
+        if (builder) return { failed: error.message };
+        throw error;
+      }
       return null;
     });
+    if (claim?.failed) {
+      await holder.live?.close().catch(() => {});
+      await wf.step("builder.fail", () => finishOwnedBuilder(builder, staged, 1, env, log, claim.failed));
+      return { ended: claim.failed };
+    }
     const s = runtime(wf, readOwned(cfg, label) || fail(500, "owned record missing"), holder);
     await recordSession(cfg, { id: opened.nativeId, cwd, harness, event: "owned", proc }).catch(() => {});
     if (!wf.replaying) await enqueuePublish(s, () => publishEvent(cfg, harness, { type: EventType.CUSTOM, name: NOTICE, value: `owned session started (${permissionMode})` }));
@@ -359,8 +394,16 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
           return { error: error.message };
         }
       }, { onCut: () => cutRun(s, null, "runner restarted before the harness accepted the input") });
-      if (!sent.runId) continue;
-      const finished = await wf.step("run.wait", () => waitRun(s, sent.runId), { onCut: () => cutRun(s, sent.runId, "runner restarted") });
+      if (!sent.runId && !builder) continue;
+      const finished = sent.runId && await wf.step("run.wait", () => waitRun(s, sent.runId), { onCut: () => cutRun(s, sent.runId, "runner restarted") });
+      if (builder) {
+        await wf.step("builder.finish", async () => {
+          await s.live?.close().catch(() => {});
+          s.live = null;
+          await finishOwnedBuilder(builder, staged, finished?.outcome === "success" ? 0 : 1, env, log);
+        });
+        return wf.step("close", () => endSession(s, "builder finished"));
+      }
       if (patternRun && finished?.handoff) {
         await wf.step("pattern.advance", async () => {
           try {
@@ -668,7 +711,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   durable.register("session", sessionWorkflow);
 
   /** Starts an owned session; resolves {status:"started", session, nativeId, workflowId, detail}. */
-  async function start({ project, harness, prompt, model, place = "folder", permissionMode, codeMode, taskId } = {}, patternRun) {
+  async function start({ project, harness, prompt, model, place = "folder", permissionMode, codeMode, taskId, builder: builderId } = {}, patternRun) {
     if (!configs.has(project)) fail(400, "Unknown project");
     const adapter = adapterOf(harness);
     if (!PLACES.includes(place)) fail(400, "Unknown start place");
@@ -684,19 +727,26 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       if (typeof taskId !== "string" || !taskId) fail(400, "Invalid task id");
       if (!openTasks(project, env).list().some(task => task.id === taskId)) fail(400, "Unknown task in this project");
     }
-    if (!patternRun && now() - lastStartAt < startGapMs) fail(429, "Wait 10 seconds between starts");
-    if (!patternRun) lastStartAt = now();
+    let builder;
+    if (builderId !== undefined) {
+      if (harness !== "codex" || place !== "openshell" || !taskId) fail(400, "A builder requires Codex, OpenShell and a task");
+      try { builder = ownedBuilder(project, builderId, env); } catch (error) { fail(400, error.message); }
+      if (builder.task !== taskId || builder.phase !== "starting") fail(409, "Builder already started or task mismatch");
+    }
+    if (!patternRun && !builder && now() - lastStartAt < startGapMs) fail(429, "Wait 10 seconds between starts");
+    if (!patternRun && !builder) lastStartAt = now();
     const workflowId = `session-${randomUUID()}`;
     const claimed = new Promise((resolve) => claims.set(workflowId, resolve));
     const timer = new AbortController();
+    const timeout = builder ? BUILDER_START_TIMEOUT_MS : START_TIMEOUT_MS;
     try {
-      const run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), codeMode: resolveCodeMode(codeMode, env) });
+      const run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, ...(builder ? { builder } : {}), ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), codeMode: resolveCodeMode(codeMode, env) });
       const ended = run.then((out) => fail(502, `${harness} session ended at once: ${out?.ended || "no reason"}`));
       ended.catch(() => {});
       const s = await Promise.race([
         claimed,
         ended,
-        delay(START_TIMEOUT_MS, null, { signal: timer.signal }).then(() => fail(504, `${harness} did not open within ${START_TIMEOUT_MS / 1000} s`)),
+        delay(timeout, null, { signal: timer.signal }).then(() => fail(504, `${harness} did not open within ${timeout / 1000} s`)),
       ]);
       return { status: "started", session: s.record.address, nativeId: s.record.nativeId, workflowId, ...(taskId ? { taskId } : {}), detail: `${harness} owned session started` };
     } catch (error) {
@@ -1024,7 +1074,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     if (s.record.project !== cfg.project) return;
     if (from === s.record.harness && (!sender || sender === s.record.label)) return;
     if (s.record.status === "ended" || wakeTail.has(s.record.address)) {
-      if (isDirect) wake(cfg, s, message);
+      if (isDirect && !s.record.builder) wake(cfg, s, message);
       return;
     }
     // A live session gets the message only after any attachment is in the shared cache, so it reads the file
