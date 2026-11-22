@@ -105,6 +105,8 @@ export function runCommand(command, { cwd, env = process.env, timeoutMs, signal,
     const finish = () => {
       if (settled) return;
       settled = true;
+      // A process left running may still hold the pipes: drain them without keeping its output.
+      for (const stream of [child.stdout, child.stderr]) { stream.removeListener("data", keep); stream.resume(); stream.unref?.(); }
       for (const timer of [deadline, escalate, giveUp, closeFallback]) clearTimeout(timer);
       signal?.removeEventListener("abort", onAbort);
       if (aborted) return reject(signal.reason);
@@ -127,7 +129,7 @@ export function runCommand(command, { cwd, env = process.env, timeoutMs, signal,
     child.on("error", (error) => { spawnError = error; finish(); });
     child.on("exit", (code, sig) => {
       exit = { code, signal: sig };
-      if (!escalate) killGroup("SIGKILL"); // members the command left behind
+      // Background work the command started (an agent it handed off to) outlives a clean exit; only a timeout or abort kills the group.
       closeFallback = setTimeout(finish, graceMs); // stdio can outlive the exit
     });
     child.on("close", (code, sig) => {
