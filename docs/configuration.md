@@ -60,6 +60,7 @@ Cursor shell commands use the conversation identity exported by Cursor, so `ai-c
 | `AI_COLLAB_IMPORTANT_MAX_S` | `86400` | Oldest important question the Stop hook still holds for. |
 | `AI_COLLAB_ACTIVITY` | `on` (or `"activity": "off"` in `projects.json`) | `off`, `0`, `false`, or `no` stops hooks from publishing [activity](activity.md). The environment overrides `projects.json`. |
 | `AI_COLLAB_APPROVAL_S` | `540` | How long a permission hook waits for the phone in AFK mode (0-570; 0 turns [phone approvals](approvals.md#phone-approvals) off). The hooks are registered with a 600-second timeout. |
+| `AI_COLLAB_TEAM_AUTHOR_MODEL` | `cursor:deepseek-v41-flash-1017-high` | `harness[:model]` of the writing agent that drafts `team.dot` from a [describe-a-team](teams.md#describe-a-team-in-words) request in the UI. |
 | `AI_COLLAB_PARENT` | unset | Address (`peer#label`) of the agent that started this one; see [Agents starting agents](messaging.md#agents-starting-agents). A session with it set takes its harness name as its peer and ignores an inherited `AI_COLLAB_SESSION`. |
 
 Invalid values disable the plugin and say why (`ai-collab peers` prints the reason).

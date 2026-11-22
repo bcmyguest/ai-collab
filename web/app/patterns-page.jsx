@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { toDot, toGraph } from "@/lib/pattern-graph";
 import { SCOPE_LABELS, canCopy, canDelete, handoffLine, firedCounts, pendingEvents, runsOf } from "@/lib/pattern-view";
 import { ConfirmButton, HandoffDiagram, RoleGraph } from "./pattern-graph";
+import { TeamAuthor } from "./team-author";
 import { TeamEditor } from "./team-editor";
 
 const clock = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -68,6 +69,7 @@ function PatternInspect({ pattern, own, go, act, busy, disabled, notice, raw }) 
         <Button type="button" size="sm" variant={raw ? "outline" : "default"} onClick={() => go({ pattern: pattern.name })}>Graph</Button>
         <Button type="button" size="sm" variant={raw ? "default" : "outline"} onClick={() => go({ pattern: pattern.name, raw: "1" })}>Raw</Button>
         {pattern.editable && <Button type="button" size="sm" variant="outline" onClick={() => go({ pattern: pattern.name, edit: "1" })}>Edit</Button>}
+        {!pattern.legacy && !pattern.invalid && (pattern.source === "project" || pattern.source === "global") && <Button type="button" size="sm" variant="outline" onClick={() => go({ author: "1", pattern: pattern.name })}>Refine with agent</Button>}
       </div>
       {raw && <pre className="overflow-x-auto rounded-xl border bg-muted/40 p-3 font-mono text-xs leading-relaxed">{pattern.dot || toDot(graph, pattern.name)}</pre>}
     </section>
@@ -116,7 +118,17 @@ export function PatternsPage({ data, project, selected, navigate, call, disabled
   if (selected.edit) {
     const pattern = selected.edit === "new" ? null : patterns.find(item => item.name === selected.pattern);
     if (selected.edit !== "new" && !pattern?.editable) return <p className="py-16 text-center text-sm text-muted-foreground">Only a project pattern can be edited here.</p>;
-    return <TeamEditor key={selected.edit + (selected.pattern || "")} pattern={pattern} templates={data.templates ?? []} project={project} call={call} go={go} disabled={disabled}/>;
+    // The author composer hands over the name typed there; the editor still starts a new team.
+    return <TeamEditor key={selected.edit + (selected.pattern || selected.authorName || "")} pattern={selected.edit === "new" ? null : pattern} initialName={selected.authorName || ""} templates={data.templates ?? []} project={project} call={call} go={go} disabled={disabled}/>;
+  }
+
+  if (selected.author) {
+    const editing = selected.pattern ? patterns.find(item => item.name === selected.pattern) : null;
+    if (selected.pattern && !editing) return <p className="py-16 text-center text-sm text-muted-foreground">Unknown pattern &quot;{selected.pattern}&quot;.</p>;
+    // Only a project team file or a project pattern can be replaced in place; other sources are read-only here.
+    const canRefine = editing && !editing.legacy && !editing.invalid && (editing.source === "project" || editing.source === "global");
+    if (editing && !canRefine) return <p className="py-16 text-center text-sm text-muted-foreground">{`${SCOPE_LABELS[editing.source] ?? editing.source} patterns are read-only here; copy it to the project or start a new team.`}</p>;
+    return <TeamAuthor key={selected.pattern || "new"} templates={data.templates ?? []} pattern={editing} project={project} call={call} go={go} disabled={disabled}/>;
   }
 
   if (selected.pattern) {
@@ -130,7 +142,10 @@ export function PatternsPage({ data, project, selected, navigate, call, disabled
   return <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-3 py-4 text-sm">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="text-xs text-muted-foreground">{projectCount} patterns · {patterns.length - projectCount} teams · {running} running</p>
-      <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => go({ edit: "new" })}>New team</Button>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" disabled={disabled} onClick={() => go({ author: "1" })}>Describe a team</Button>
+        <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => go({ edit: "new" })}>New team</Button>
+      </div>
     </div>
     {notice && <p role="alert" className="text-xs text-destructive">{notice}</p>}
     {!patterns.length && <p className="py-8 text-center text-muted-foreground">No patterns or teams yet.</p>}

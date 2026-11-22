@@ -110,9 +110,23 @@ Run state: `<stateDir>/<project>/pattern-runs/<run>.json`. `pattern status <run>
   - Layout: graph above the text on phones, side by side from 1024 px.
   - The check and save go through the `pattern` POST action (`checkDot`, `teamDot`, `team`), with the same same-origin, JSON and sign-in checks as other actions.
 
+## Describe a team in words
+
+A writing agent turns a plain-language request into one `team.dot`; the operator confirms before anything is written.
+
+- "Describe a team" on the Patterns list opens the composer (`#level=patterns&author=1`). "Refine with agent" on a project or global team's page opens it on that team (`&pattern=<name>`), so the agent sees the team as it is now and changes only what you ask.
+- The brief carries the `team.dot` rules, the name and scope, the current team, and the operator's messages. It is one start prompt, so it has the same 4000-character cap; the oldest history is dropped first, then the current team is cut, then the request.
+- The writing agent answers with one fenced ```dot block. The reply is checked by `checkTeamText`, the same parse and validate a save uses; the draft shows its graph, roles and DOT, and nothing is written.
+- The name is what you typed, else the team being refined, else the digraph the agent wrote. A name typed after the draft renames the digraph on save, as the editor does. A name already in use needs the confirm, which replaces it (`authorReplace`).
+- Nothing is saved until "Save team". A project save goes through `saveTeamText`; a global save writes `<config dir>/ai-collab/teams/<name>/team.dot`. A built-in name, a legacy team name, and a save into the other scope are refused, so one file never silently shadows another.
+- "Open in DOT editor" carries the name to the editor, where the text stays editable by hand.
+- The writing agent is `AI_COLLAB_TEAM_AUTHOR_MODEL` (default `cursor:deepseek-v41-flash-1017-high`), run once with the brief as one argv element. When the project cannot run that harness, another installed one writes instead (cursor, claude, codex, opencode), with no model. A failed or empty answer writes nothing.
+- Requests go through the `pattern` POST action (`authorRequest` for a draft, `authorDot` to save), with the same same-origin, JSON and sign-in checks as other actions.
+
 ## Limits
 
 - A team file cannot be renamed in the editor; save a copy under a new name instead. Deleting a team file is manual: remove its folder.
+- The composer renames the digraph to the name you type, so it can save a draft under a name the agent did not use.
 - Deleting or copying a JSON project pattern does not take the lock.
 - Team names may not collide with a legacy team name.
 
