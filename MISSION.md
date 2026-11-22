@@ -18,7 +18,7 @@ Give the operator one place to run, watch and steer a coding agents from a phone
 - New builders: `ai-collab builder start --task <id> --harness codex --brief <file>` (OpenShell sandbox). Do not start builders on the host. Leave existing host builders alone until they finish.
 - Gate merges on isolated HOME: `H=$(mktemp -d); PATH=… HOME=$H CODEX_HOME=$H/.codex TMPDIR=$(mktemp -d -p /dev/shm) npm test`.
 - Update test assertions when behaviour changes; never weaken tests. No ask_question for test edits.
-- Talk to the operator with send_to_all and ask_question; never route through Claude coordinator.
+- Talk to the operator with send_to_all; never route through Claude coordinator. A decision about a task goes on the task: `task_update ask` (with options), not ask_question. Each tick, read answered questions in task_list, act on them, then clear_question.
 - Track tasks with task_update + ai-collab task render; do not hand-edit docs/feature-requests.md.
 - Before marking done: oncebitten check --base main (when rules exist).
 - After every web/UI deploy: `node scripts/smoke-ui.mjs` (headless page load); if it fails, revert and redeploy. Builder briefs for web/ changes must say so.

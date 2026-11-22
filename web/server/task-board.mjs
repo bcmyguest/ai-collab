@@ -34,6 +34,7 @@ export function taskBoard(backend, agents = [], runs = [], sessions = []) {
         // The graph opens the run's active session when the task has no owner.
         ...(runOf.get(task.run) ? { runSession: runOf.get(task.run) } : {}),
         last: task.progress.at(-1) ?? null,
+      ...(task.question ? { question: task.question } : {}),
         updated: task.updated,
       };
     }),

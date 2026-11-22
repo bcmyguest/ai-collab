@@ -266,6 +266,8 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
         className={cn("flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left text-sm transition-colors hover:bg-sidebar-accent", selected.level === "tasks" && "bg-sidebar-accent font-medium")}>
         <ListChecks className="size-4 shrink-0 text-muted-foreground"/>
         <span className="min-w-0 flex-1 truncate">Tasks</span>
+        {(() => { const waiting = (data.tasks?.tasks || []).filter(task => task.question && !task.question.answer).length;
+          return waiting > 0 && <span aria-label={`${waiting} waiting on your decision`} className="shrink-0 rounded-full bg-amber-500 px-1.5 text-xs font-medium text-white">{waiting} need you</span>; })()}
         <span className="shrink-0 text-xs text-muted-foreground">{(data.tasks?.tasks || []).length}</span>
       </button>
       <button type="button" onClick={() => navigate({ project: current, level: "patterns" })} aria-current={selected.level === "patterns" ? "page" : undefined}
@@ -974,6 +976,7 @@ function Console({ account }) {
       </div>}
       {!patterns && !composing && (tasksView ? <TaskBoard board={ready ? data.tasks : null} now={now} taskId={selected.task}
         back={() => navigate({ project, level: "tasks" })} compose={id => navigate({ project, level: "project", composeTask: id })}
+        decide={(id, answer) => action("decide", { id, answer }, "Decided")}
         open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatContainerRoot contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
         <ChatContainerContent key={requested} className="mx-auto w-full max-w-3xl gap-5 px-3 py-4">
           {!ready && (home || listing || subagents || compactions) && !loadError && <p className="py-16 text-center text-sm text-muted-foreground">Loading sessions…</p>}

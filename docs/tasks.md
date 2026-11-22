@@ -16,6 +16,7 @@ The project task list is a store outside git: `$XDG_DATA_HOME/ai-collab/tasks/<p
 | `owner` | optional session address, `peer#16-hex-label`, e.g. `claude#0123456789abcdef` |
 | `run` | optional run id: 6-32 lowercase letters or digits |
 | `progress` | `{at, by, text}` entries, `at` in epoch ms, text at most 500 code points |
+| `question` | optional decision for the operator: `{text, by, at, options?, answer?}`; text one line, at most 500 code points; up to 6 options of 80; `answer` is `{text, by, at}` |
 | `created`, `updated` | epoch ms |
 
 ## Backends
@@ -31,6 +32,7 @@ ai-collab task add "<title>"
 ai-collab task set <id> status=<status>      (also title=, detail=, run=)
 ai-collab task block <id> <blocker-id>
 ai-collab task progress <id> "<text>"
+ai-collab task ask <id> "<question>" [--option <choice>]...   a decision for the operator; --clear removes it
 ai-collab task own <id> <address>
 ai-collab task remove <id>                   deletes a task no other task is blocked on
 ai-collab task render                        rewrites docs/feature-requests.md
@@ -49,7 +51,11 @@ Import reads the status word of a status cell only when it ends the cell or prec
 ## MCP tools
 
 - `task_list` (optional `status`): tasks with id, status, owner, run, blockers and the last progress entry.
-- `task_update` (`id`, plus any of `status`, `title`, `detail`, `run`, `owner`, `block_on`, `progress`): one change; the result returns the task and a note when progress text was clipped.
+- `task_update` (`id`, plus any of `status`, `title`, `detail`, `run`, `owner`, `block_on`, `progress`, `ask` with `options`, `clear_question`): one change; the result returns the task and a note when progress text was clipped.
+
+## Decisions
+
+An agent that needs the operator to decide puts a question on the task (`task ask` or `task_update` `ask`), optionally with choices. The board shows every unanswered question first, under **Needs you**, and the sidebar Tasks entry counts them. The operator taps a choice or types an answer; `POST /api/decide` (`{project, id, answer}`) stores it as `question.answer` plus a `Decision: …` progress line. No agent turn runs: the next agent run reads the answer from `task_list` and clears the question with `clear_question` once it has acted.
 
 ## Progress from agents
 
