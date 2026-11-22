@@ -48,6 +48,7 @@ Then open the UI on your phone: [Quick start](https://bcmyguest.github.io/ai-col
 | [Security model](https://bcmyguest.github.io/ai-collab/security/) | What is sent and what is trusted |
 | [Troubleshooting](https://bcmyguest.github.io/ai-collab/troubleshooting/) | Known limits and fixes |
 | [Development](https://bcmyguest.github.io/ai-collab/development/) | Tests, CI, releases, the demo |
+| [AG-UI design](docs/ag-ui.md) | Event protocol and migration |
 
 The docs source is [`docs/`](docs/); [`site/`](site/) builds it.
 
