@@ -20,7 +20,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Agents can read the project's public channel | done (`ai-collab history`, MCP `channel_history`) |
 | Model and worktree beside the agent id in chat | done |
 | Cursor starts without the trust prompt | done (`--trust`) |
-| Cursor in run-everything mode inside OpenShell | building OpenShell branch merged a30cd83; live verification on phone still open |
+| Cursor in run-everything mode inside OpenShell | open OpenShell branch merged a30cd83; live verification on phone still open |
 | Agent text in the activity feed | done (Claude sessions need `/reload-plugins` to load the hook) |
 | Bash rows show the command and its output | done |
 | Terminal-typed prompts appear in session chat | done |
@@ -30,7 +30,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Messages appear in the Claude terminal immediately (socket delivery, like Pulsar) | done (merged main 2026-11-21: `claude-socket.mjs`, dispatcher confirm + wait) |
 | Wake closed sessions on a message (durable, DBOS-like) | done in the runner (adapters merged main 2026-11-22; live wake verification open) |
 | Live wake verification for durable delivery across harness adapters | done claude+codex+cursor pass; codex closing-window bug separate task |
-| Owned sessions: runner service, durable workflows, AG-UI event names, four harness adapters | building runner adapters on: claude, codex (2026-11-22); cursor/opencode need auth |
+| Owned sessions: runner service, durable workflows, AG-UI event names, four harness adapters | open runner adapters on: claude, codex (2026-11-22); cursor/opencode need auth |
 | Copy T3 Code's code viewer (`@pierre/diffs`) for mobile and web | done (file edits render as diffs) |
 | Operator prompts and phone replies (ask_question answers) visible in session and project chat | done (merged main 2026-11-21; coordinator confirmed) |
 | Context management and slash commands from the phone: Compact, Clear/new, Model switch, any typed /cmd; context meter plus loaded files | done (compact partial for Claude/Codex; model and passthrough OpenCode only, unverified) |
@@ -38,20 +38,20 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Agent questions asked in the terminal (Claude AskUserQuestion, etc.) also appear in the UI in the same multiple-choice format and can be answered there | done (merged main 2026-11-21) |
 | Merge chat and activity: one session timeline; project chat for cross-session messages, completions, questions and live status; raw activity in the session menu | done (merged main 2026-11-21) |
 | A UI message to one session stays out of the project chat | decided |
-| Move to AG-UI end to end (official @ag-ui packages) | building (operator yes 2026-11-22: plugin 0.11.0 everywhere, then AI_COLLAB_WIRE=agui default; coordinator starting) |
+| Move to AG-UI end to end (official @ag-ui packages) | open (operator yes 2026-11-22: plugin 0.11.0 everywhere, then AI_COLLAB_WIRE=agui default; coordinator starting) |
 | Render questions, approvals and choice cards with A2UI over AG-UI | done (A2UI v0.9.1 until @a2ui/react binds v1.0) |
 | Message delivery as durable workflows in the runner (reserve, push, confirm, mark/release; durable backoff) instead of UI-server state | done (runner owns delivery; UI dispatcher stands down while it runs) |
 | Cursor-style tool groups between assistant messages in the session timeline | done |
 | Modern visual refresh of the whole UI | open (last; coordinator shows 2–3 design directions first; do not PM-dispatch) |
 | Teams as wteam-style DOT graphs: team.dot per team (project and global), full wteam semantics (agent, count, skill, prompt; on, kind broadcast/pair/fan-in; description, max_visits), DOT text editor with live graph | done merged 5494323, deployed; wteam role mapping/$pairs/gates not supported |
-| Inspect and edit teams in the UI | building |
+| Inspect and edit teams in the UI | open |
 | Compaction in all agents: compact every harness, before/after tokens per compaction, a cross-agent compaction map, one compaction event model | done merged 706b619, deployed 2026-11-22 |
 | Structured task list (tasks.json) with status board, dependency graph and live links to agents | done merged 706b619, deployed 2026-11-22 |
 | Clear and model/provider switch tracked like compaction, phone commands for every harness | done tracking merged 706b619; phone Clear/Model commands deferred (phone model switch row) |
 | Running-subagent count; hide long-idle subagents; fix 2 shown of 4 running | done (UI merge 21a47722, deployed 2026-11-22) |
-| Session view shows which agent is running now | building |
+| Session view shows which agent is running now | open |
 | Close or delete a project | done (UI merge 21a47722, deployed 2026-11-22) |
-| Operator's pending messages in project chat | building |
+| Operator's pending messages in project chat | open |
 | Sidebar projects show running/inactive counts, not harness types | done (UI merge 21a47722, deployed 2026-11-22) |
 | Subscription limits: phone alert with a choice card to pick the replacement model; no auto-switch | done merged 154a628, deployed; Claude limit types verified, others UNVERIFIED |
 | Fallback instructions per team role (e.g. a `fallback` attribute in team.dot that agents follow on a limit) | done merged 5494323, deployed; wteam role mapping/$pairs/gates not supported |
@@ -81,25 +81,25 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Operator @mention of the PM wakes its schedule at once (runner has no run-now) | done An @session tag in any chat wakes that idle session (ui.mjs routeMentions) |
 | Code-mode workflows: inference decides, code executes — map to DOT teams, runner/DBOS, OpenShell sandbox | decided Research /dev/shm/research/code-mode.md; operator agreed 2026-11-22; split into tasks A, team-runs, B, cap-suspend |
 | CI prek gate fails on main: end-of-file newlines in lib/compaction.mjs, lib/teams.mjs, test/teams.test.mjs, test/teams-mentions.test.mjs | done |
-| Chat to design teams: a Team Author agent that writes and edits team.dot from a plain-language conversation instead of the DOT editor | building |
+| Chat to design teams: a Team Author agent that writes and edits team.dot from a plain-language conversation instead of the DOT editor | open |
 | CLI send puts unknown flags (--reply-to, --progress) into the message body; add --reply-to and reject unknown flags | done |
 | Code mode A: ai-collab tool-API client for programs in the OpenShell sandbox; sandbox policy replaces per-call approval (operator: yes) | open |
 | Team runs live in the runner and run in OpenShell, not the project folder (operator: yes) | open |
 | Code mode B now: compile team.dot to a runner durable workflow; agents keep pattern advance (operator: yes) | open |
 | cap/max_visits hit suspends the run for the operator instead of failing it (operator: yes, confirm) | open |
 | Notification settings lost after UI rebuild: alert level and/or browser push not surviving deploy | open |
-| PM run detail: each schedule run links to the PM session timeline (tool calls, messages, builders started) | building |
+| PM run detail: each schedule run links to the PM session timeline (tool calls, messages, builders started) | done |
 | PM mission file: a file the PM owns and edits (mission, goals, rules), versioned in git, read each tick | open |
 | PM feedback loop: each run ends with a review; lessons go to openmem (substrate approved) and the mission file | open |
 | PM tracked handoffs: builders start as runner-owned sessions linked to tasks (rides on team-runs/OpenShell) | open |
-| Compact button really compacts the session (today it only asks the agent by message) | building |
-| Task board as its own left-sidebar entry, not a link beside SESSIONS | building |
-| Task board glitches while scrolling large lists | building |
+| Compact button really compacts the session (today it only asks the agent by message) | done |
+| Task board as its own left-sidebar entry, not a link beside SESSIONS | done |
+| Task board glitches while scrolling large lists | done |
 | #task tags: tapping a task opens a message tagged #<id>; it goes direct to the task's owner agent, else to the project chat | open |
 | Left panel lists named agents (PM and other set_identity names); tapping one opens a direct chat, no address needed | open |
 | Scheduled jobs and agents shown apart: the PM agent is not its schedule entry (operator: agent != scheduled job) | open |
 | Schedule run kills builders the PM started: runner SIGKILLs the whole process group on exit (runner/schedules.mjs:129) | done |
-| Builders the PM starts live in the runner's cgroup, so a runner restart (deploy) kills them; launch each as its own systemd-run --user unit | building |
+| Builders the PM starts live in the runner's cgroup, so a runner restart (deploy) kills them; launch each as its own systemd-run --user unit | open |
 | Sessions started from the UI live in the ai-collab-ui cgroup; a UI restart kills them (killed the Codex research session) | open |
 | Space to switch to local: a key in the terminal takes a phone-controlled session back to local control (as HAPI does) | open Design: /dev/shm/research/hapi-steal.md §2.1. HAPI is AGPL-3.0: clean-room, copy no code. |
 | Reply to any message: when the server can't accept a reply id, send it as text quoting the first/last bit of the original instead of failing 'Invalid reply' | open |
@@ -107,4 +107,5 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Queue bar: queued messages listed with Edit/Cancel/Steer, replacing the one-way queued badge (HAPI idea, clean-room) | open |
 | Job meters: sessions report real jobs (ai-collab job run); a running job counts as working, so 'building' claims are honest (HAPI idea, clean-room) | open |
 | Read state and durable history with search; ntfy as transport only (HAPI idea, clean-room) | open |
+| Task priority P0-P3 (default P2): set via CLI/MCP, shown on cards, lists and board ordered by priority; 'decided' shown as 'Ready' (approved, waiting for a builder) | building |
 <!-- tasks:end -->
