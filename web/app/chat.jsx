@@ -31,6 +31,8 @@ import { NotifyToggle } from "./notify";
 import { SessionList, SessionMenu, SubagentList } from "./home";
 import { RunningCount, SubagentRuns } from "./subagent-runs";
 import { ClosedProjects, ProjectMenu } from "./project-menu";
+import { Quote } from "./quote";
+import { quoteText } from "@/lib/quote";
 import { activityRows, groupSubagents } from "@/lib/activity-rows";
 import { conversationKey, drafts, views } from "@/lib/view-memory";
 import { toast } from "sonner";
@@ -290,7 +292,7 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
   const prefill = openable ? "@" + sender + " " : "";
   // The asking agent's avatar and name, the header row of an A2UI card.
   const cardHead = <><Avatar address={sender} by={other} className="size-6 text-[10px]"/><span className="truncate">{short(sender)}</span></>;
-  return <Message className={cn("max-w-full", outgoing && "flex-row-reverse")}
+  return <Message data-message-id={message.id} className={cn("max-w-full", outgoing && "flex-row-reverse")}
     onClick={event => { const tag = event.target.closest?.("[data-mention]"); if (tag) open(tag.textContent.replace(/^@/, "").split(/[:/]/)[0]); }}>
     {openable ? <button type="button" aria-label={"Open avatar " + sender} tabIndex={-1} className="shrink-0 self-start rounded-full" onClick={go}><Avatar address={sender}/></button> : <Avatar address={sender} by={other}/>}
     <div className={cn("flex min-w-0 max-w-[82%] flex-col gap-1", outgoing ? "items-end" : "items-start")}>
@@ -303,7 +305,7 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
         {message.terminal && <Badge variant="outline" data-terminal title="Typed in the agent's terminal" className="h-4 px-1.5 text-[10px]">terminal</Badge>}
         {message.replyTo && <Badge variant="outline" data-answer title={"Answers question " + message.replyTo} className="h-4 px-1.5 text-[10px]">answer</Badge>}
         {at > 0 && <time dateTime={new Date(at).toISOString()} title={clock.format(at)}>{ago(at, now)}</time>}
-        {replyFrom && message.kind !== "Approval" && <button type="button" aria-label={"Reply to " + sender} title="Reply" onClick={() => replyFrom({ id: message.id, sender, prefill })}
+        {replyFrom && message.kind !== "Approval" && <button type="button" aria-label={"Reply to " + sender} title="Reply" onClick={() => replyFrom({ id: message.id, sender, prefill, body: message.body })}
           className="rounded-full p-0.5 hover:bg-muted hover:text-foreground"><Reply className="size-3.5"/></button>}
         {message.scope === "all" && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">to all</Badge>}
         {message.urgent && <span role="img" aria-label="Sent now" title="Sent now: delivered at the agent's next tool call" data-urgent className="text-amber-500"><Zap className="size-3.5"/></span>}
@@ -317,6 +319,7 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
         </span>}
         {openable && sender.includes("#") && <GoToAgent onClick={go} className="size-6"/>}
       </div>
+      {message.quote && <Quote quote={message.quote} label={short(message.quote.sender)}/>}
       {message.kind === "Approval" ? <ApprovalCard approval={message.approval} now={now} disabled={disabled} act={act} head={cardHead}/>
         : message.kind === "Question" && message.question ? <QuestionCard question={message.question} body={withMentions(message.body)} answer={message.answer} by={message.answeredBy} disabled={disabled} onAnswer={body => answer(message.question, body)} head={cardHead}/>
         : <MessageContent markdown className={cn("bubble max-w-full rounded-2xl px-3.5 py-2 text-[15px] leading-relaxed shadow-xs [overflow-wrap:anywhere]",
@@ -457,7 +460,7 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
       <Button variant="ghost" size="sm" onClick={cancel}>Cancel</Button>
     </div>}
     {replying && !question && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border bg-muted px-3 py-1.5 text-sm">
-      <span className="min-w-0 truncate">Replying to {short(replying.sender)}</span>
+      <span className="min-w-0 truncate">Replying to {short(replying.sender)}{replying.body && <span className="text-muted-foreground"> · {quoteText(replying.body)}</span>}</span>
       <Button variant="ghost" size="icon" className="size-6" aria-label="Cancel reply" onClick={cancelReply}><X/></Button>
     </div>}
     {commandPicking && <div role="listbox" aria-label="Session commands"

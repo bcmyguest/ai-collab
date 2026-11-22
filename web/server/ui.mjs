@@ -49,6 +49,8 @@ const ONLINE_MS = 30 * 60_000;
 const KEEPALIVE_MS = 25_000;
 const PUSH_DELAY_MS = 25;
 const MAX_MESSAGES = 100;
+// Characters of the replied message sent with a reply; the browser shows the first 80.
+const QUOTE_MAX = 200;
 const IMPORTANT = /^IMPORTANT, the agent waits for this answer: /;
 // The hub keeps the newest 500 events per topic; 3 MB of cached history covers 500 full 4 KB activity envelopes.
 const ACTIVITY_TAIL_BYTES = 3 * 1024 * 1024;
@@ -164,7 +166,8 @@ function baseEntry(event) {
     const sender = envelope.session ? `${envelope.from}#${envelope.session}` : envelope.from;
     const to = envelope.toSession ? `${envelope.to}#${envelope.toSession}` : envelope.to;
     const by = envelope.from === "operator" && isGithubLogin(envelope.by) ? { by: envelope.by } : {};
-    return { id, time, kind: "Message", sender, from: sender, to, body: envelope.body, thread: envelope.operatorThread === true, ...(envelope.urgent === true ? { urgent: true } : {}), ...by };
+    // A reply to a message names it as replyOf; replyTo stays the answer link to a question.
+    return { id, time, kind: "Message", sender, from: sender, to, body: envelope.body, thread: envelope.operatorThread === true, ...(envelope.urgent === true ? { urgent: true } : {}), ...(typeof envelope.replyTo === "string" && envelope.replyTo ? { replyOf: envelope.replyTo } : {}), ...by };
   }
   const reply = parsePhoneReply(message);
   const by = replyBy(event);
@@ -688,6 +691,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       list = [...shared, ...answers.map(answerMessage), ...terminalPrompts(project, null, sent)];
     }
     const { ends, replies, senders } = outcomes(project.hub.events(project.topic));
+    // A reply carries its replied message's sender and opening text, even when that message is off the page.
+    const byId = new Map(list.map(item => [item.id, item]));
+    const quoted = item => {
+      const original = item.replyOf && byId.get(item.replyOf);
+      return original ? { ...item, quote: { id: original.id, sender: original.sender || original.from, body: String(original.body || "").slice(0, QUOTE_MAX) } } : item;
+    };
     return list.sort((a, b) => a.time - b.time || a.id.localeCompare(b.id)).slice(-MAX_MESSAGES)
       .map(item => {
         if (item.kind === "Approval") return { ...item, approval: approvalState(item.approval, ends, replies, senders) };
@@ -695,7 +704,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           const by = senders.get(item.question)[0];
           return { ...item, answer: replies.get(item.question)[0], ...(by ? { answeredBy: by } : {}) };
         }
-        return item.from === "operator" && item.kind === "Message" && item.to && !item.terminal && !item.replyTo ? { ...item, receipt: receiptOf(project, item, agentList) } : item;
+        const stated = item.from === "operator" && item.kind === "Message" && item.to && !item.terminal && !item.replyTo ? { ...item, receipt: receiptOf(project, item, agentList) } : item;
+        return quoted(stated);
       });
   }
 
