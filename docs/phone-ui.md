@@ -107,6 +107,10 @@ Teams are named rosters of `harness` or `harness:model` members (for example `li
 
 The mention picker lists configured teams. Post `@light-team <task>` in the project chat to start a new Claude orchestrator with the roster and instructions to split work using `team_start` / `team_status` (MCP or CLI). Post the same tag in a session chat to make that session the orchestrator; it receives a direct message with `for_team` set. The CLI mirrors MCP: `ai-collab team list|create|delete|start|status`. Member sessions are recorded under `$AI_COLLAB_STATE_DIR/<project>/teams/<name>.json`.
 
+## Patterns
+
+The Patterns page (sidebar **Patterns and teams**) lists patterns, teams and recent runs. Open a pattern to see its roles, graph, handoffs and runs; **Raw** shows its `team.dot` text. **Edit** opens the DOT editor for a project pattern: a graph above the text on a phone (390 px), side by side on desktop. The graph redraws about 300 ms after each edit; a parse error shows its line and that source line. **New team** starts from the shipped template. Details: [Teams and patterns](teams.md).
+
 **Send now** adds `urgent: true` to the send request, and a message whose envelope has `urgent: true` shows ⚡. See [Urgent messages](messaging.md#urgent-messages-send-now).
 
 The **AFK** switch in the header sets the operator mode to `on`, `off`, or `quiet`. Each change publishes a mode record to the broadcast topic of every project. The latest mode envelope in history is the current mode (none means `off`); the chat never shows mode envelopes. See [AFK mode](afk.md).
