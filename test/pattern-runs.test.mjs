@@ -54,8 +54,8 @@ test("fix-and-review runs in order, loops on changes requested, and fails at the
   const started = await startRun(cfg, "fix-and-review", "add retry to fetch", env, { start, models: MODELS, now });
   assert.equal(started.status, "running");
   assert.equal(started.active, "lead");
-  assert.equal(calls[0].harness, "claude");
-  assert.equal(calls[0].model, "claude-haiku-5-5");
+  assert.equal(calls[0].harness, "cursor");
+  assert.equal(calls[0].model, "deepseek-v41-flash-1017-high");
   assert.match(calls[0].prompt, /Pattern "fix-and-review".*role "lead"/s);
   const id = started.id;
 
