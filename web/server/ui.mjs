@@ -785,8 +785,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       // A system message rides the operator's address, so it belongs in the operator's thread with that session.
       const fromOperator = item => item.from === "operator" || item.system === true;
       const thread = item => item.thread && ((fromOperator(item) && item.to === session) || (item.from === session && item.to === "operator"));
-      const direct = withQueue(entries(events, inboxOf(project, peerOf(session)), thread));
-      list = [...direct, ...terminalPrompts(activity(session), direct),
+      const inbox = entries(events, inboxOf(project, peerOf(session)), () => true);
+      const sent = withQueue(inbox);
+      list = [...sent.filter(thread), ...terminalPrompts(activity(session), [...topic, ...sent]),
         ...shared.filter(item => item.from === session).map(item => ({ ...item, scope: "all" })),
         ...answers.filter(answer => answer.asker === session).map(answerMessage)];
     } else if (harness) {
@@ -1049,12 +1050,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     try {
       const required = [project.status, project.topic];
       if (harness) required.push(inboxOf(project, harness));
-      // Activity is required in an Activity view or a session chat (typed prompts); it keeps the newest history when the cache exceeds the poll cap.
+      // Project and session chats need activity for typed prompts in their first snapshot.
       const activity = hub.open(project.activity, { tailBytes: ACTIVITY_TAIL_BYTES });
-      if (!client.activity) activity.catch(() => {});
+      const needsActivity = client.activity || client.scope || session || !harness;
+      if (!needsActivity) activity.catch(() => {});
       // Other inboxes feed last-message times and receipts feed ticks; a failure is tolerated. Opening all at once lets the hub subscribe once.
       const optional = Promise.allSettled([project.receipts, ...project.inboxes.values()].filter(name => !required.includes(name)).map(name => hub.open(name)));
-      const opened = await Promise.allSettled([...required.map(name => hub.open(name)), client.activity || client.scope || client.session ? activity : null]);
+      const opened = await Promise.allSettled([...required.map(name => hub.open(name)), ...(needsActivity ? [activity] : [])]);
       const failed = opened.find(result => result.status === "rejected");
       if (failed && ![project.topic, project.activity, ...project.inboxes.values()].some(name => hub.history.events(name, 1).length)) throw failed.reason;
       await optional;

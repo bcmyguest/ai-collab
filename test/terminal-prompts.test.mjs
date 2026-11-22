@@ -23,9 +23,13 @@ test("session chat shows typed terminal prompts as operator messages, skipping m
     { type: "prompt", input: "[ai-collab] machine text" },
     { type: "prompt", input: WAKE_PROMPT },
     { type: "prompt", input: "echoed from UI" },
+    { type: "prompt", input: "echoed from peer inbox" },
+    { type: "prompt", input: "echoed from broadcast" },
     { type: "text", output: "agent reply in activity" },
   ]);
   await sendMessage(cfg, target, "echoed from UI", { operatorThread: true });
+  await sendMessage(cfg, "bob", "echoed from peer inbox");
+  await sendMessage(cfg, "all", "echoed from broadcast");
 
   const ui = createUi({ cfg });
   const ctrl = new AbortController();
@@ -39,6 +43,11 @@ test("session chat shows typed terminal prompts as operator messages, skipping m
     }
   };
 
+  const chat = await next(open(""), "state");
+  assert.deepEqual(chat.messages.filter(m => m.terminal).map(m => [m.from, m.to, m.body]), [["operator", target, "typed in terminal"]], "project chat shows terminal prompts with their session");
+  assert.equal(chat.messages.some(m => m.body === "echoed from UI" || m.body === "echoed from peer inbox"), false, "direct sends stay out of project chat");
+  assert.deepEqual(chat.messages.filter(m => m.body === "echoed from broadcast").map(m => m.terminal), [undefined], "the broadcast shows once");
+
   const session = await next(open(`session=${encodeURIComponent(target)}`), "state");
   const terminal = session.messages.filter(m => m.terminal);
   assert.deepEqual(terminal.map(m => [m.from, m.to, m.body, m.kind]), [["operator", target, "typed in terminal", "Message"]]);
@@ -46,8 +55,4 @@ test("session chat shows typed terminal prompts as operator messages, skipping m
   assert.deepEqual(session.messages.filter(m => m.body === "echoed from UI").map(m => m.terminal), [undefined], "the UI message stays, the echo goes");
   const times = session.messages.map(m => m.time);
   assert.deepEqual(times, [...times].sort((a, b) => a - b), "messages stay in time order");
-
-  const chat = await next(open(""), "state");
-  assert.deepEqual(chat.messages.filter(m => m.terminal).map(m => [m.from, m.to, m.body]), [["operator", target, "typed in terminal"]], "the all-messages view shows terminal prompts with their session");
-  assert.equal(chat.messages.some(m => m.body === "echoed from UI"), false, "direct sends stay out of project chat");
 });
