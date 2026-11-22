@@ -7,12 +7,11 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 <!-- tasks:start -->
 | Request | Priority | Status |
 |---|---|---|
+| sandbox smoke test: add one line to docs/builders.md | P2 | building throwaway smoke test of ai-collab builder start; do not review or merge; branch deleted after the run |
 | Session view: hide dead sessions older than a day by default (one tap shows them), and drop sessions whose worktree is gone | P2 | building |
 | Fetch each ntfy attachment once: UI and agents cache attachments locally instead of re-downloading (hit ntfy's daily attachment bandwidth limit) | P2 | building |
-| PM mission file: a file the PM owns and edits (mission, goals, rules), versioned in git, read each tick | P2 | building |
-| System messages (compact request etc.) render as from operator; give them a system sender | P2 | building |
 | Posts that only @harness:model-start a session still wake running agents (ui.mjs routeMentions) | P2 | building |
-| sandbox smoke test: add one line to docs/builders.md | P2 | blocked builder builder-sandbox-smoke-test-add-one-line-to-docs exited 1 with 0 commit(s) and set no status |
+| Deploys break the live site: next build rewrites web/.next under the running server (missing chunks) until the restart; build to a fresh dir and switch on restart | P2 | open |
 | Codex exec builders in a fresh worktree: ai-collab hooks fail (SessionStart/UserPromptSubmit/PostToolUse 'Failed'), so the session never registers or shows in the UI | P2 | open |
 | Scheduler card: a skipped extra trigger (previous run still going) must not replace the last real run's status | P2 | open |
 | Operator's pending messages in project chat | P2 | open |
@@ -38,6 +37,8 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Modern visual refresh of the whole UI | P2 | open (last; coordinator shows 2–3 design directions first; do not PM-dispatch) |
 | Move off ntfy eventually, so attachments and links work | P2 | open (operator 2026-11-22) |
 | Phone model switch: switch a runner-owned Claude session's model from the phone via SDK Query.setModel (sdk.d.ts:3227) | P2 | open deferred by operator |
+| PM mission file: a file the PM owns and edits (mission, goals, rules), versioned in git, read each tick | P2 | done |
+| System messages (compact request etc.) render as from operator; give them a system sender | P2 | done |
 | Notification settings lost after UI rebuild: alert level and/or browser push not surviving deploy | P2 | done |
 | task add treats --help as a title; add help output and a remove command | P2 | done |
 | #task tags: tapping a task opens a message tagged #<id>; it goes direct to the task's owner agent, else to the project chat | P2 | done |
