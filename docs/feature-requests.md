@@ -7,8 +7,9 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 <!-- tasks:start -->
 | Request | Priority | Status |
 |---|---|---|
+| Code mode A: ai-collab tool-API client for programs in the OpenShell sandbox; sandbox policy replaces per-call approval (operator: yes) | P2 | building |
+| Job meters: sessions report real jobs (ai-collab job run); a running job counts as working, so 'building' claims are honest (HAPI idea, clean-room) | P2 | building builder builder-job-meters-sessions-report-real-jobs-ai failed: Recursive option not enabled, cannot copy a directory: /lib/x86_64-linux-gnu/libstdc++.so.6/ |
 | Codex exec builders in a fresh worktree: ai-collab hooks fail (SessionStart/UserPromptSubmit/PostToolUse 'Failed'), so the session never registers or shows in the UI | P2 | building |
-| Job meters: sessions report real jobs (ai-collab job run); a running job counts as working, so 'building' claims are honest (HAPI idea, clean-room) | P2 | open builder builder-job-meters-sessions-report-real-jobs-ai failed: Recursive option not enabled, cannot copy a directory: /lib/x86_64-linux-gnu/libatomic.so.1/ |
 | Deploys break the live site: next build rewrites web/.next under the running server (missing chunks) until the restart; build to a fresh dir and switch on restart | P2 | open |
 | Operator's pending messages in project chat | P2 | open |
 | Session view shows which agent is running now | P2 | open |
@@ -26,7 +27,6 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | cap/max_visits hit suspends the run for the operator instead of failing it (operator: yes, confirm) | P2 | open |
 | Code mode B now: compile team.dot to a runner durable workflow; agents keep pattern advance (operator: yes) | P2 | open |
 | Team runs live in the runner and run in OpenShell, not the project folder (operator: yes) | P2 | open |
-| Code mode A: ai-collab tool-API client for programs in the OpenShell sandbox; sandbox policy replaces per-call approval (operator: yes) | P2 | open |
 | Hosted multi-user: users reach only their own agents; agents from other users are identified as such | P2 | open shelved by operator 2026-11-22; draft + Opus review on branch worktree-agent-ae3bb980a5eec65ea, unmerged |
 | A UI message to one session stays out of the project chat | P2 | decided |
 | Modern visual refresh of the whole UI | P2 | open (last; coordinator shows 2–3 design directions first; do not PM-dispatch) |
