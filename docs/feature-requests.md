@@ -81,4 +81,10 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Operator @mention of the PM wakes its schedule at once (runner has no run-now) | done An @session tag in any chat wakes that idle session (ui.mjs routeMentions) |
 | Code-mode workflows: inference decides, code executes — map to DOT teams, runner/DBOS, OpenShell sandbox | open |
 | CI prek gate fails on main: end-of-file newlines in lib/compaction.mjs, lib/teams.mjs, test/teams.test.mjs, test/teams-mentions.test.mjs | done |
+| Chat to design teams: a Team Author agent that writes and edits team.dot from a plain-language conversation instead of the DOT editor | building |
+| CLI send puts unknown flags (--reply-to, --progress) into the message body; add --reply-to and reject unknown flags | done |
+| Code mode A: ai-collab tool-API client for programs in the OpenShell sandbox; sandbox policy replaces per-call approval (operator: yes) | open |
+| Team runs live in the runner and run in OpenShell, not the project folder (operator: yes) | open |
+| Code mode B now: compile team.dot to a runner durable workflow; agents keep pattern advance (operator: yes) | open |
+| cap/max_visits hit suspends the run for the operator instead of failing it (operator: yes, confirm) | open |
 <!-- tasks:end -->
