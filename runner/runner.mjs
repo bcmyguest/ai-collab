@@ -792,6 +792,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     const item = (s) => ({
       id: ev.id, from: sender ? `${m.from}#${sender}` : m.from, to: s.record.address, ts: typeof m.ts === "string" ? m.ts : "", body: m.body,
       ...(m.operatorThread === true && m.from === "operator" ? { operatorThread: true } : {}),
+      ...(m.from === "operator" && m.system === true ? { system: true } : {}),
       ...(m.from === "operator" && broadcast ? { operatorBroadcast: true } : {}),
       ...(m.urgent === true ? { urgent: true } : {}),
       ...(m.from === "operator" && typeof m.mentionedIn === "string" ? { mentionedIn: m.mentionedIn } : {}),

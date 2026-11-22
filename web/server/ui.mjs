@@ -181,11 +181,13 @@ function baseEntry(event) {
   if (envelope) {
     if (envelope.kind === "approval" || envelope.kind === "approval-view") return approvalEntry(event, envelope);
     if (envelope.kind !== "msg" || typeof envelope.body !== "string") return null;
-    const sender = envelope.session ? `${envelope.from}#${envelope.session}` : envelope.from;
+    // ai-collab's own messages ride the operator's address for its reply route; the chat shows ai-collab as the sender.
+    const system = envelope.from === "operator" && envelope.system === true;
+    const sender = system ? "system" : envelope.session ? `${envelope.from}#${envelope.session}` : envelope.from;
     const to = envelope.toSession ? `${envelope.to}#${envelope.toSession}` : envelope.to;
     const by = envelope.from === "operator" && isGithubLogin(envelope.by) ? { by: envelope.by } : {};
     // A reply to a message names it as replyOf; replyTo stays the answer link to a question.
-    return { id, time, kind: "Message", sender, from: sender, to, body: envelope.body, thread: envelope.operatorThread === true, ...(envelope.urgent === true ? { urgent: true } : {}), ...(typeof envelope.replyTo === "string" && envelope.replyTo ? { replyOf: envelope.replyTo } : {}), ...by };
+    return { id, time, kind: "Message", sender, from: sender, to, body: envelope.body, thread: envelope.operatorThread === true, ...(system ? { system: true } : {}), ...(envelope.urgent === true ? { urgent: true } : {}), ...(typeof envelope.replyTo === "string" && envelope.replyTo ? { replyOf: envelope.replyTo } : {}), ...by };
   }
   const reply = parsePhoneReply(message);
   const by = replyBy(event);
@@ -437,7 +439,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     } else if ([...project.inboxes.values()].includes(topic)) {
       for (const event of fresh) {
         const item = baseEntry(event);
-        if (item?.kind === "Message" && item.to === "operator" && item.thread && item.from !== "operator") send(event.id, { kind: "message", sender: item.from, text: item.body });
+        // A system message is ai-collab's own machinery, not the operator's words, so it sends no phone push.
+        if (item?.kind === "Message" && item.to === "operator" && item.thread && item.from !== "operator" && !item.system) send(event.id, { kind: "message", sender: item.from, text: item.body });
       }
     }
   }
@@ -742,7 +745,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const shared = topic.filter(item => !(item.kind === "Reply" && answered.has(item.question)));
     let list;
     if (session) {
-      const thread = item => item.thread && ((item.from === "operator" && item.to === session) || (item.from === session && item.to === "operator"));
+      // A system message rides the operator's address, so it belongs in the operator's thread with that session.
+      const fromOperator = item => item.from === "operator" || item.system === true;
+      const thread = item => item.thread && ((fromOperator(item) && item.to === session) || (item.from === session && item.to === "operator"));
       const direct = entries(project, inboxOf(project, peerOf(session)), thread);
       list = [...direct, ...terminalPrompts(project, session, direct),
         ...shared.filter(item => item.from === session).map(item => ({ ...item, scope: "all" })),

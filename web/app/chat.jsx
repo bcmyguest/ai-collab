@@ -48,6 +48,7 @@ const PULL_MAX_PX = 110;
 const HARNESS_COLORS = {
   claude: "[&_[data-slot=avatar-fallback]]:bg-claude", codex: "[&_[data-slot=avatar-fallback]]:bg-codex",
   cursor: "[&_[data-slot=avatar-fallback]]:bg-cursor", opencode: "[&_[data-slot=avatar-fallback]]:bg-opencode", operator: "[&_[data-slot=avatar-fallback]]:bg-primary",
+  system: "[&_[data-slot=avatar-fallback]]:bg-muted-foreground",
 };
 const CONNECTION_TOAST = "connection";
 const UPDATE_TOAST = "update";
@@ -136,7 +137,7 @@ const colorOf = address => HARNESS_COLORS[peerOf(address)] || "[&_[data-slot=ava
 
 export function Avatar({ address, className, by }) {
   const peer = peerOf(address);
-  const label = by ? by.slice(0, 2).toUpperCase() : peer === "operator" ? "You" : peer.slice(0, 2).toUpperCase();
+  const label = by ? by.slice(0, 2).toUpperCase() : peer === "operator" ? "You" : peer === "system" ? "Sys" : peer.slice(0, 2).toUpperCase();
   const fallback = !by && hasLogo(peer) ? <HarnessLogo peer={peer} className="size-[55%]"/> : label;
   return <MessageAvatar fallback={fallback} className={cn("size-8 text-[11px] font-semibold [&_[data-slot=avatar-fallback]]:text-white", colorOf(address), className)}/>;
 }
@@ -324,8 +325,8 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
   const other = message.by && message.by !== me ? message.by : "";
   const label = ["Question", "Reply", "Approval"].includes(message.kind) ? message.kind + " · " + (message.by || short(sender)) : short(sender);
   const at = message.time ? message.time * 1000 : 0;
-  // An agent's avatar and name open its session (or harness) view; the operator's own and ntfy posts stay plain.
-  const openable = !outgoing && sender !== "ntfy" && sender !== "operator";
+  // An agent's avatar and name open its session (or harness) view; the operator's own, system and ntfy posts stay plain.
+  const openable = !outgoing && sender !== "ntfy" && sender !== "operator" && sender !== "system";
   const go = () => open(sender);
   // A reply to an agent prefills its address so the mention routes the reply to that session.
   const prefill = openable ? "@" + sender + " " : "";
@@ -854,7 +855,7 @@ function Console({ account }) {
   // A tapped sender or @tag: a session address opens its thread, a bare harness name the session list.
   function openAddress(address) {
     const [peer, session] = String(address).split("#");
-    if (!peer || peer === "all" || peer === "operator" || peer === "ntfy") return;
+    if (!peer || peer === "all" || peer === "operator" || peer === "ntfy" || peer === "system") return;
     navigate(session ? { project, level: "session", harness: peer, session: address } : { project, level: "session" });
   }
   // The raw view keeps every tool call as its own row; the timeline and subagents fold them into turns and runs.

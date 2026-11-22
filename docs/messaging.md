@@ -44,6 +44,8 @@ Every operator message the hooks inject says how to answer it, and the identity 
 
 Peer agents' messages carry no reply hint. An agent's own `ask_question` post is not delivered back to it.
 
+Messages ai-collab sends on its own initiative travel under the operator's address, so the reply routes above work unchanged, but carry `"system": true`. Readers show them as a system sender, not as the operator: the UI chat labels them **system**, and the hook text says they are from ai-collab, not the operator, and expect no reply. Today: the compaction request a running session cannot compact from outside (`COMPACT_REQUEST`, `lib/controls.mjs`) and pattern-run notices and role briefs (`lib/pattern-runs.mjs`).
+
 ### Screenshots
 
 `send --file /abs/image.png`, and the `attachment` field of the MCP `send_to_all` and `reply_to_operator` tools, upload one image as an ntfy attachment. Allowed: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, at most 15 MB, with file bytes that match the extension (a renamed text file is refused). The UI shows the image inline and serves it through `/api/file/<id>` only when that ID appears in a loaded topic. ntfy keeps attachments for the cache duration (12 h); its `/file/<id>` URLs need no token, so the unguessable ID and the loopback/tailnet binding are the protection.
