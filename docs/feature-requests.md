@@ -68,7 +68,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Context info fits the phone (no cutoff at 390px) | done merged 4c444e5, deployed |
 | Two near-identical bell icons: make them distinct or merge | done merged 4c444e5, deployed |
 | task add treats --help as a title; add help output and a remove command | open |
-| Runner wake.send retries a codex thread that is closing (runner/runner.mjs:379-399) | open |
+| Runner wake.send retries a codex thread that is closing (runner/runner.mjs:379-399) | building |
 | Limit card: typed rate_limit_event suppressed by earlier untyped StopFailure card (lib/limit-alert.mjs:207) | blocked Fix needs test/limit-alert.test.mjs:135-136 changed (upgrade republishes the card) or a state-only upgrade |
 | Fan-in hangs when another role stays live (lib/pattern-runs.mjs:354-360) | done branch cursor-verify-fixes (Cursor deepseek, started 16:23); do not dispatch |
 | Limit card: two open cards for one window when resetsAt differs (lib/limit-alert.mjs:202) | done branch cursor-verify-fixes (Cursor deepseek, started 16:23); do not dispatch |
@@ -78,4 +78,6 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | DOT prompt optional in parser but required by validatePattern (lib/dot.mjs:150-155) | done Team check reports the missing prompt with its line; parser unchanged |
 | System messages (compact request etc.) render as from operator; give them a system sender | open |
 | Posts that only @harness:model-start a session still wake running agents (ui.mjs routeMentions) | open |
+| Operator @mention of the PM wakes its schedule at once (runner has no run-now) | done An @session tag in any chat wakes that idle session (ui.mjs routeMentions) |
+| Code-mode workflows: inference decides, code executes — map to DOT teams, runner/DBOS, OpenShell sandbox | open |
 <!-- tasks:end -->
