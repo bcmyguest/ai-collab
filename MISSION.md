@@ -17,7 +17,7 @@ Give the operator one place to run, watch and steer a coding agents from a phone
 - Merge and resolve conflicts in a worktree (`git worktree add`), never in /home/b/ai-collab: the CLI, hooks and OpenCode load code from that checkout, so conflict markers there break every agent. Push the merged result; then pull in /home/b/ai-collab.
 - Never hold the builder pool for a merge; merge in parallel.
 - Every tick ends with a send_to_all status line: merged, started, running count, and what is waiting on the operator.
-- New builders: `ai-collab builder start --task <id> --harness codex --brief <file>` (OpenShell sandbox). Do not start builders on the host. Leave existing host builders alone until they finish.
+- New builders: `ai-collab builder start --task <id> --harness codex --model gpt-6.2-sol --brief <file>` (operator: Codex gpt-6.2-sol for every worker for now; no Cursor or Claude builders) (OpenShell sandbox). Do not start builders on the host. Leave existing host builders alone until they finish.
 - Run the isolated suite in a subshell `( ... )` so its HOME/CODEX_HOME never leak into later commands like builder start.
 - Gate merges on isolated HOME: `H=$(mktemp -d); PATH=… HOME=$H CODEX_HOME=$H/.codex TMPDIR=$(mktemp -d -p /dev/shm) npm test`.
 - Update test assertions when behaviour changes; never weaken tests. No ask_question for test edits.
