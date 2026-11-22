@@ -50,6 +50,7 @@ export interface SessionContext {
 export interface OpenOptions {
   project: string;
   cwd: string;
+  patternRun?: string;
   model?: string;
   permissionMode: PermissionMode;
   // The harness settings for permissionMode, from PERMISSION_TABLE in runner/contract.mjs.
@@ -71,6 +72,7 @@ export interface OwnedRecord {
   project: string;
   cwd: string;
   place: Place;
+  patternRun?: string;
   model?: string;
   permissionMode: PermissionMode;
   status: SessionStatus;

@@ -75,7 +75,7 @@ Does not load (the file shows `invalid` with the line):
 - A run uses the pattern snapshot taken at start; later edits to the file do not change it.
 - Handoff notes reach the next role labeled as untrusted data.
 - A finished or failed run sends each role's session a closing message ("Stop work on this run"). The operator gets a project broadcast on failure.
-- DOT role launches share the runner’s start rate limit. Legacy JSON patterns use the project’s 10-second start gate.
+- New DOT runs share the runner’s start rate limit. Roles within a run can start as soon as their handoff is ready. Legacy JSON patterns use the project’s 10-second start gate.
 
 ## Runs and kinds
 
@@ -89,7 +89,9 @@ A role with `count` N runs N live instances; each has its own session and its br
 
 DOT patterns start through the local runner. It checkpoints the compiled graph and queues advances in its durable log. A run waiting for an event resumes after a restart. If a restart interrupts a start or handoff, the run fails when repeating the operation could duplicate an agent launch or a message.
 
-Run state: `<stateDir>/<project>/pattern-runs/<run>.json`. `pattern status <run>` lists the role sessions, notes and handoff log.
+Each new DOT run shares one OpenShell sandbox and worktree across all its roles. Every role needs an OpenShell-capable adapter (currently Cursor). A role requests a handoff by ending its reply with `PATTERN_ADVANCE {"event":"<event>","note":"<optional note>"}`. The runner verifies that the session belongs to a live role. Operators can advance or confirm handoffs from the UI.
+
+The runner stores run state in `<stateDir>/runner/pattern-runs/<project>/<run>.json` and still reads earlier project run records. `pattern status <run>` lists the role sessions, notes and handoff log.
 
 ## Storage
 
