@@ -196,3 +196,19 @@ test("the committed feature-requests.md is the render of its own table", () => {
   assert.equal(renderFeatureRequests(importFeatureRequests(text, NOW), text), text);
   assert.ok(slugify("Teams: dynamic, stored!") === "teams-dynamic-stored");
 });
+
+test("render refuses a file with content but no valid marker pair", () => {
+  const doc = importFeatureRequests(FIXTURE, NOW);
+  assert.throws(() => renderFeatureRequests(doc, "# Prose only\n\n| a | done |\n"), /needs one/);
+  assert.throws(() => renderFeatureRequests(doc, `${TABLE_END}\n${TABLE_START}\n`), /needs one/);
+  assert.throws(() => renderFeatureRequests(doc, `${TABLE_START}\n${TABLE_START}\n${TABLE_END}\n`), /needs one/);
+  assert.match(renderFeatureRequests(doc, ""), /^# Feature requests/);
+});
+
+test("import without markers takes the one table and refuses two", () => {
+  const one = "# Notes\n\n| Request | Status |\n|---|---|\n| Alpha | open |\n\nMore prose.\n";
+  assert.deepEqual(importFeatureRequests(one, NOW).tasks.map((t) => t.title), ["Alpha"]);
+  const two = "| Request | Status |\n|---|---|\n| A | open |\n\ntext\n\n| Request | Status |\n|---|---|\n| B | open |\n";
+  assert.throws(() => importFeatureRequests(two, NOW), /2 tables/);
+  assert.throws(() => importFeatureRequests(`${TABLE_START}\n| Request | Status |\n`, NOW), /unbalanced/);
+});
