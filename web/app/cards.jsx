@@ -6,22 +6,12 @@ import { Button } from "@/components/ui/button";
 import { MessageContent } from "@/components/ui/message";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { IN_TERMINAL, approvalOutcome, approvalSurfaceId, questionSurfaceId } from "@/lib/a2ui";
+import { Surface } from "@/components/a2ui/surface";
+
+export { approvalOutcome };
 
 const CARD = "w-full max-w-full rounded-2xl border bg-card px-3.5 py-3 text-sm text-card-foreground shadow-xs [overflow-wrap:anywhere]";
-const ENDED = {
-  allowed: "Allowed from the phone", denied: "Denied from the phone", answered: "Answered from the phone",
-  timeout: "Timed out: the terminal prompt took over", "afk-off": "AFK turned off: the terminal prompt took over",
-  cancelled: "Closed: answered in the terminal or the agent stopped", terminal: "Answered in the terminal",
-};
-const IN_TERMINAL = "Answer in the terminal";
-
-/** Outcome line for an approval: its end reason, "sent", or expiry; "" while it waits for an answer. */
-export function approvalOutcome(approval, now) {
-  if (ENDED[approval.state]) return ENDED[approval.state];
-  if (approval.expiresAt && approval.expiresAt < now) return approval.decision ? "Expired before the agent read the answer" : "Expired: answered in the terminal or timed out";
-  if (approval.state === "sent") return approval.decision === "deny" ? "Deny sent, waiting for the agent" : "Answer sent, waiting for the agent";
-  return "";
-}
 
 /** AskUserQuestion questions: options as buttons (checkboxes when multiSelect), an Other field, one Submit; read-only without onSubmit. */
 export function ChoiceCard({ questions, answers, onSubmit, disabled, title }) {
@@ -69,8 +59,13 @@ export function ChoiceCard({ questions, answers, onSubmit, disabled, title }) {
   </div>;
 }
 
+/** A permission request or choice an agent waits on: the A2UI surface when the stream sent one, else the card below. */
+export function ApprovalCard(props) {
+  return <Surface id={approvalSurfaceId(props.approval.id)} fallback={<LegacyApprovalCard {...props}/>}/>;
+}
+
 /** A permission request or choice an agent waits on: Allow / Deny (or the choice card) until it closes, then the outcome. */
-export function ApprovalCard({ approval, now, disabled, act }) {
+export function LegacyApprovalCard({ approval, now, disabled, act }) {
   const outcome = approvalOutcome(approval, now);
   const open = !outcome;
   // AFK off: the terminal prompt answers, so the card shows the request without answer buttons.
@@ -94,8 +89,13 @@ export function ApprovalCard({ approval, now, disabled, act }) {
   </div>;
 }
 
+/** An ask_question post: the A2UI surface when the stream sent one, else the card below. */
+export function QuestionCard(props) {
+  return <Surface id={questionSurfaceId(props.question)} fallback={<LegacyQuestionCard {...props}/>}/>;
+}
+
 /** An ask_question post: the question, then its answer or an answer field. */
-export function QuestionCard({ body, answer, by, disabled, onAnswer }) {
+export function LegacyQuestionCard({ body, answer, by, disabled, onAnswer }) {
   const [draft, setDraft] = useState("");
   return <div className={cn(CARD, "flex flex-col gap-2", !answer && "border-amber-500/50")} data-card="question">
     <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><CircleHelp className="size-3.5"/>Question</p>

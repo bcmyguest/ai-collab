@@ -103,7 +103,7 @@ function SessionCard({ node, now, open, openAddress, act, answer, dispose, raw, 
       </button>}
       {!compact && node.pending.map(item => <div key={item.id} className="min-w-0">
         {item.kind === "Approval" ? <ApprovalCard approval={item.approval} now={now} disabled={disabled} act={payload => act({ ...payload, project: item.project })}/>
-          : <QuestionCard body={item.body} answer={item.answer} disabled={disabled} onAnswer={body => answer(item.project, item.question, body)}/>}
+          : <QuestionCard question={item.question} body={item.body} answer={item.answer} disabled={disabled} onAnswer={body => answer(item.project, item.question, body)}/>}
       </div>)}
     </div>
     {node.children.length > 0 && <ul aria-label={"Started by " + short(node.id)} className="ml-4 flex flex-col gap-2 border-l pl-3">

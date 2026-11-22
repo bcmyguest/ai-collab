@@ -33,9 +33,10 @@ import { createHub } from "./hub.mjs";
 import { createPush, notice } from "./push.mjs";
 import { createDispatcher } from "./dispatch.mjs";
 import { answerMessage, answerText, terminalMessages } from "../lib/operator-messages.js";
+import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a2ui.js";
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "approve", "start", "models", "dispose", "team", "interrupt", "command", "pattern"];
+const ACTIONS = ["messages", "send", "reply", "nudge", "compact", "wake", "afk", "approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern"];
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
 const PARENT = /^[a-z0-9-]{1,24}#[a-f0-9]{16}$/;
@@ -721,6 +722,37 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return item.approval;
   }
 
+  // Publishes an allow/deny decision, or the answers to a choice, as the reply the hook waits on.
+  async function answerApproval(project, id, { decision, answers }, by) {
+    const approval = findApproval(project, id);
+    let answer;
+    if (approval.questions) {
+      if (!answers || typeof answers !== "object" || Array.isArray(answers)) reject(400, "Answer every question");
+      answer = JSON.stringify(answers);
+      if (answer.length > ANSWER_MAX_CHARS || !parseChoice(approval.questions, answer)) reject(400, "Answer every question");
+    } else {
+      if (!["allow", "deny"].includes(decision)) reject(400, "Decision must be allow or deny");
+      answer = decision;
+    }
+    await publish(project.cfg, project.topic, `reply ${id} ${answer}`, { title: replyTitle(project.cfg, by) });
+    return { sent: true, status: approval.questions ? "Answer sent" : decision === "allow" ? "Allow sent" : "Deny sent" };
+  }
+
+  // An A2UI surface action: a choice's picks become the answers object, a question's text the reply body.
+  async function answerSurface(project, answer, by) {
+    if (answer.kind === "approval") {
+      const approval = findApproval(project, answer.id);
+      const answers = approval.questions && answer.picks ? choiceAnswers(approval.questions, answer.picks, answer.other) : undefined;
+      return answerApproval(project, answer.id, { decision: answer.decision, answers }, by);
+    }
+    const text = answer.body.trim();
+    if (!/^[a-f0-9]{12}$/.test(answer.question) || !text || text.length > 2000) reject(400, "Enter 1–2000 characters");
+    const reply = `reply ${answer.question} ${text}`;
+    if (Buffer.byteLength(reply) > NTFY_MESSAGE_MAX_BYTES) reject(400, "Reply exceeds the size limit");
+    await publish(project.cfg, project.topic, reply, { title: replyTitle(project.cfg, by) });
+    return { sent: true };
+  }
+
   // Harnesses each project can start, cached because it scans PATH.
   function startable(project) {
     if (!project.startable || Date.now() - project.startable.at > STARTABLE_CACHE_MS) project.startable = { at: Date.now(), list: availableHarnesses(project.cfg, env) };
@@ -801,8 +833,29 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     client.send(buildEvent(EventType.CUSTOM, { name: ACTIVITY_BATCH, value: { reset } }));
   }
 
+  // A2UI surfaces for the cards on screen: one ACTIVITY_SNAPSHOT per surface whose operations changed since the last push.
+  function pushSurfaces(client, current) {
+    const entries = [...(current.messages || []), ...(current.sessions || []).flatMap(card => card.pending || [])];
+    const sent = new Map();
+    const now = Date.now();
+    for (const entry of entries) {
+      const surface = surfaceOf(entry, now);
+      if (!surface || sent.has(surface.id)) continue;
+      const json = JSON.stringify(surface.operations);
+      sent.set(surface.id, json);
+      if (client.surfaces.get(surface.id) === json) continue;
+      client.send(buildEvent(EventType.ACTIVITY_SNAPSHOT, {
+        messageId: surface.id, activityType: A2UI_ACTIVITY, content: { a2ui_operations: surface.operations }, replace: true,
+      }));
+    }
+    // Surfaces that left the screen are dropped, so a long connection does not grow the map.
+    client.surfaces = sent;
+  }
+
+  // Surfaces go before the state frame: a client that stops reading at the state frame must not get frames after it.
   function push(client) {
     const current = snapshot(client);
+    pushSurfaces(client, current);
     const state = JSON.stringify(buildEvent(EventType.STATE_SNAPSHOT, { snapshot: current }));
     if (state !== client.last) {
       if (!client.last) client.write(`event: state\ndata: ${JSON.stringify(current)}\n\n`);
@@ -884,7 +937,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const body = new ReadableStream({
       start(controller) {
         client = {
-          ...selected, ready: false, last: "",
+          ...selected, ready: false, last: "", surfaces: new Map(),
           send(event) { this.write(`data: ${JSON.stringify(event)}\n\n`); },
           write(text) {
             try { controller.enqueue(encoder.encode(text)); } catch { close(); }
@@ -909,7 +962,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const by = caller(request)?.login;
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
-      const { project: name, target, body, question, mode, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, team: teamName, members, delete: deleteTeamName, replyTo, command, pattern: patternSpec, deletePattern: deletePatternName, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote } = await payload(request);
+      const { project: name, target, body, question, mode, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, model, team: teamName, members, delete: deleteTeamName, replyTo, command, pattern: patternSpec, deletePattern: deletePatternName, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, forwardedProps } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -917,19 +970,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }
       const project = projectFor(name);
       const { cfg, operator, topic } = project;
-      if (action === "approve") {
-        const approval = findApproval(project, id);
-        let answer;
-        if (approval.questions) {
-          if (!answers || typeof answers !== "object" || Array.isArray(answers)) reject(400, "Answer every question");
-          answer = JSON.stringify(answers);
-          if (answer.length > ANSWER_MAX_CHARS || !parseChoice(approval.questions, answer)) reject(400, "Answer every question");
-        } else {
-          if (!["allow", "deny"].includes(decision)) reject(400, "Decision must be allow or deny");
-          answer = decision;
-        }
-        await publish(cfg, topic, `reply ${id} ${answer}`, { title: replyTitle(cfg, by) });
-        return json(201, { sent: true, status: approval.questions ? "Answer sent" : decision === "allow" ? "Allow sent" : "Deny sent" });
+      if (action === "approve") return json(201, await answerApproval(project, id, { decision, answers }, by));
+      // AG-UI run input from an A2UI surface: its userAction is the answer, mapped onto the approval or question reply path.
+      if (action === "a2ui") {
+        const answer = surfaceAnswer(forwardedProps?.a2uiAction?.userAction);
+        if (!answer) reject(400, "Unknown answer");
+        return json(201, await answerSurface(project, answer, by));
       }
       if (action === "models") return json(200, await models(cfg.stateDir, env, { peers: cfg.peers }));
       if (action === "team") {

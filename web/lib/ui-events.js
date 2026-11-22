@@ -1,6 +1,7 @@
 import { EventType } from "@ag-ui/core";
 import { parseSSEStream, runHttpRequest } from "@ag-ui/client";
 import { parseEvent, projectEvent } from "../../lib/agui.mjs";
+import { A2UI_ACTIVITY } from "./a2ui.js";
 
 export const ACTIVITY_BATCH = "ai-collab.activity-batch";
 export const STREAM_ERROR = "ai-collab.stream-error";
@@ -13,6 +14,9 @@ export function projectUiEvents() {
     if (!event) return null;
     if (event.type === EventType.STATE_SNAPSHOT) {
       return { type: event.type, event: "state", data: event.snapshot };
+    }
+    if (event.type === EventType.ACTIVITY_SNAPSHOT && event.activityType === A2UI_ACTIVITY && Array.isArray(event.content.a2ui_operations)) {
+      return { type: event.type, event: "surface", data: { id: event.messageId, operations: event.content.a2ui_operations } };
     }
     if (event.type === EventType.CUSTOM && event.name === STREAM_ERROR) {
       return { type: event.type, event: "problem", data: event.value };
