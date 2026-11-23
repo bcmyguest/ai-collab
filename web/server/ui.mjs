@@ -4,8 +4,10 @@ import { EventType } from "@ag-ui/core";
 import { operatorPrompt, publishMode as publishModeAll } from "../../lib/mode.mjs";
 import { buildEvent, envelopeToEvent, projectEvent, readWireRecord } from "../../lib/agui.mjs";
 import { ACTIVITY_BATCH, STREAM_ERROR } from "../lib/ui-events.js";
+import { execFile } from "node:child_process";
 import { mkdirSync, watch } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
+import { promisify } from "node:util";
 import { buzzes, readAlertLevel, writeAlertLevel } from "../../lib/alerts.mjs";
 import { loadConfig, loadProjects, activityTopic, startDefaultSetting, broadcastTopic, configDir, stateDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.mjs";
 import { ACTIVITY_TYPES } from "../../lib/activity.mjs";
@@ -36,7 +38,7 @@ import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern
 import { authorTeam, saveAuthoredTeam } from "../../lib/team-author.mjs";
 import { listOwned, readOwned } from "../../lib/owned.mjs";
 import { builderAssignment, recoverBuilder, stoppedBuilder } from "../../lib/builder.mjs";
-import { STATUSES, openTasks } from "../../lib/tasks.mjs";
+import { REVIEW_ACTIONS, STATUSES, openTasks } from "../../lib/tasks.mjs";
 import { priorityOf } from "../../lib/task-order.mjs";
 import { mentions, mentionedNames, mentionedTeams, startOnlyMentions, messageDestinations } from "../lib/message-routing.js";
 import { taskTags } from "../lib/task-tags.js";
@@ -61,7 +63,7 @@ import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a
 export { mentionedNames, mentionedTeams, startOnlyMentions };
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "move-task", "continue-builder", "recover-builder", "project-pause"];
+const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "move-task", "continue-builder", "recover-builder", "project-pause", "review"];
 const HOSTED_ACTIONS = new Set(["history", "messages", "send", "reply", "afk", "approve", "a2ui"]);
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
@@ -88,9 +90,12 @@ const NOTIFY_RECENT_MS = 15 * 60_000;
 const NOTIFY_RETRY_MS = 30_000;
 const IMPORTANT_PREFIX = "IMPORTANT, the agent waits for this answer: ";
 const PUSH_ACTIONS = ["key", "subscribe", "test"];
+// A review diff is plain text in one response; past this it is a download, not a phone view.
+const DIFF_MAX_BYTES = 4 * 1024 * 1024;
 // A question or approval reply the UI sent for a signed-in user names them in its ntfy title.
 const REPLY_TITLE = /^Reply from operator \(([^)]+)\)$/;
 const encoder = new TextEncoder();
+const runFile = promisify(execFile);
 
 const peerOf = address => String(address || "").split("#")[0];
 const replyTitle = (cfg, by) => "Reply from " + cfg.peer + (by ? ` (${by})` : "");
@@ -935,6 +940,18 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return project.places.list;
   }
 
+  // A project's checkout, for the git reads behind review packets; "" when it is unregistered or missing.
+  function taskRoot(project) {
+    try { return projectRoot(project.cfg.project, env); } catch { return ""; }
+  }
+
+  // The plain-text diff of one build, capped so a huge change cannot exhaust memory or the connection.
+  async function diffRange(root, base, commit) {
+    const { stdout } = await runFile("git", ["diff", "--no-ext-diff", "--no-textconv", base, commit, "--"],
+      { cwd: root, timeout: 10_000, maxBuffer: DIFF_MAX_BYTES }).catch(() => reject(422, "The build diff is unavailable or larger than 4 MiB"));
+    return stdout;
+  }
+
   function snapshot({ project, harness, session, scope, history: wantHistory }) {
     const last = lastMessages(project);
     const list = agents(project, last);
@@ -1004,7 +1021,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       runs: runs.slice(0, 20),
       tasks: taskBoard(project.tasks, list, runs, project.tasks ? listOwned(project.cfg) : [],
         hosted ? undefined : task => stoppedBuilder(project.cfg.project, task, env),
-        project.tasks ? (task, sessions) => builderAssignment(project.cfg.project, task, sessions, env) : undefined),
+        project.tasks ? (task, sessions) => builderAssignment(project.cfg.project, task, sessions, env) : undefined,
+        hosted ? undefined : { project: project.cfg.project, root: taskRoot(project) }),
     };
   }
 
@@ -1070,6 +1088,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     if (client.authorized && !client.authorized()) return client.disconnect();
     const current = snapshot(client);
     client.hasOpenTasks = current.tasks.tasks.some(task => task.status !== "done");
+    client.hasReview = current.tasks.tasks.some(task => task.review && !task.review.decision);
     client.hasRunningJobs = current.agents.some(agent => agent.runningJobs) || current.sessions?.some(agent => agent.runningJobs);
     pushSurfaces(client, current);
     const state = JSON.stringify(buildEvent(EventType.STATE_SNAPSHOT, { snapshot: current }));
@@ -1170,8 +1189,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         keepalive = setInterval(() => {
           if (client.authorized && !client.authorized()) return client.disconnect();
           client.write(": keepalive\n\n");
-          // A process can exit without a task or job registry write.
-          if (client.ready && (client.hasRunningJobs || client.hasOpenTasks) && clients.has(client)) push(client);
+          // A process can exit without a task or job registry write, and a build review shows a branch that can move.
+          if (client.ready && (client.hasRunningJobs || client.hasOpenTasks || client.hasReview) && clients.has(client)) push(client);
         }, KEEPALIVE_MS);
         keepalive.unref?.();
         request.signal?.addEventListener("abort", close, { once: true });
@@ -1230,6 +1249,33 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return json(200, { messages: page, next: before > 50 ? page.at(-1).id : null, unread, latest });
   }
 
+  /**
+   * The submitted build's changes as plain text, read from the project checkout for the packet named in the query.
+   * The commit and base come from the stored packet, never the request, so a URL cannot ask for an arbitrary diff.
+   */
+  async function reviewDiff(request) {
+    try {
+      caller(request);
+      if (hosted) reject(403, "Build reviews are unavailable in hosted mode");
+      const query = new URL(request.url).searchParams;
+      const project = projectFor(query.get("project"));
+      const id = query.get("id");
+      const task = project.tasks && typeof id === "string" ? project.tasks.list().find(item => item.id === id) : undefined;
+      const review = task?.review;
+      if (!review || review.submission !== query.get("submission")) reject(404, "Review packet unavailable");
+      const root = taskRoot(project);
+      if (!root) reject(409, "The project checkout is unavailable");
+      const diff = await diffRange(root, review.base, review.commit);
+      return new Response(diff, { headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-store",
+      } });
+    } catch (err) {
+      return json(err.status || 400, { error: err.message });
+    }
+  }
+
   async function handle(request, action) {
     try {
       if (request.method !== "POST" || !ACTIONS.includes(action)) reject(404, "Unknown route");
@@ -1238,7 +1284,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
       if (action === "history") return history(request, by, await payload(request));
-      const { project: name, paused, target, body, queueAction, question, mode, level: alertLevel, id, status: taskStatus, decision, answers, harness, prompt, place, worktree, openshell, urgent, sendAnyway, model, startMode, codeMode, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText } = await payload(request);
+      const { project: name, paused, target, body, queueAction, question, mode, level: alertLevel, id, status: taskStatus, decision, answers, harness, prompt, place, worktree, openshell, urgent, sendAnyway, model, startMode, codeMode, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText, commit, submission, note: reviewNote } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -1295,6 +1341,20 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         catch (err) { reject(400, err.message); }
         broadcast();
         return json(200, { status: "Task moved", detail: id });
+      }
+      // The operator's verdict on a build: accept finishes the task at that commit, return queues it with a note.
+      if (action === "review") {
+        if (!project.tasks || typeof id !== "string" || !REVIEW_ACTIONS.includes(decision)) reject(400, "Invalid build review request");
+        if (typeof commit !== "string" || typeof submission !== "string") reject(400, "The review packet is missing its commit");
+        // The branch tip is read fresh inside decideReview: a stale read could accept a build the branch has left.
+        try {
+          await project.tasks.decideReview(id, {
+            commit, submission, action: decision, note: typeof reviewNote === "string" ? reviewNote.trim() : "",
+            by: by ? `operator:${by}` : "operator", root: taskRoot(project),
+          });
+        } catch (err) { reject(409, err.message); }
+        broadcast();
+        return json(201, { status: decision === "accept" ? "Build accepted" : "Build returned", detail: id });
       }
       // The next agent run reads the operator's answer from the task store.
       if (action === "decide") {
@@ -1614,6 +1674,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     auth: authApi,
     events,
     schedules,
+    reviewDiff,
     file,
     handle,
     push: pushApi,

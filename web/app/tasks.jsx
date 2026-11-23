@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { views } from "@/lib/view-memory";
 import { TaskGraph } from "./task-graph";
 
-const DOT = { open: "bg-muted-foreground", decided: "bg-sky-500", building: "bg-amber-500", blocked: "bg-destructive", done: "bg-emerald-500" };
+const DOT = { open: "bg-muted-foreground", decided: "bg-sky-500", building: "bg-amber-500", review: "bg-violet-500", blocked: "bg-destructive", done: "bg-emerald-500" };
 const PRIORITY_BADGE = {
   P0: "border-destructive/40 bg-destructive/10 text-destructive",
   P1: "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400",
@@ -61,6 +61,7 @@ function CompactCard({ task, age, inspect, move, dragStart }) {
     <button type="button" className="flex w-full min-w-0 flex-col gap-1 text-left hover:underline" onClick={() => inspect(task.id)}>
       <TaskMetadata task={task}/>
       <span className="line-clamp-2 text-sm font-medium wrap-anywhere">{task.title}</span>
+      {task.review && <ReviewLine review={task.review}/>}
     </button>
     <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
       <span className="min-w-0 flex-1 truncate">{task.owner || task.builderUnit || "No owner"}{age && ` · ${age} ago`}</span>
