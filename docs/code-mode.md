@@ -89,14 +89,32 @@ and Codex expose MCP tools as nested tools, so `run_code` is one of them; neithe
 mode runs the harness's own tools in the harness's sandbox; `run_code` is the only one that runs inside OpenShell
 and the only one Cursor and OpenCode have.
 
+## Measuring
+
+`ai-collab analyze run-code` compares agent behaviour and cost before and after reads were forced through run_code. It reads local logs only: Claude Code transcripts, Codex sessions, the OpenCode database, Cursor chat stores, the runner journal (`journalctl --user -u ai-collab-runner`) and the task store.
+
+```bash
+ai-collab analyze run-code --since 2026-11-16T00:00:00Z \
+  --cutover 2026-11-23T03:15:00Z --partial 2026-11-23T02:30:00Z \
+  --out docs/research/run-code-impact-2026-11-23.md --jsonl /tmp/run-code-impact.jsonl
+ai-collab analyze run-code --agent pm --agent claude       # only Claude sessions with the role pm
+```
+
+- `--cutover` is the instant CLI and MCP reads were both enforced (default 2026-11-23T03:15:00Z). `--partial` marks the earlier instant MCP reads were enforced; `--partial none` drops the middle period.
+- `--agent` takes `harness#<16 hex label>`, a harness (`claude`, `codex`, `cursor`, `opencode`) or a role (`pm`, `builder`, `interactive`, `subagent`). Values of one kind are alternatives; different kinds must all match.
+- The report counts read calls by path (MCP, CLI, run_code, run_read_code, bypass reads of the task store), refusals, run_code failures, tool calls per turn, tokens per turn with and without reads, list-price dollars per ISO week, runner schedule wall times and a per-agent table. Its "Method and gaps" section states what each source cannot show (Cursor has no token usage and no per-message time).
+- `--jsonl` writes one row per agent x model x role x period x week, each carrying `agent`, `harness`, `model` and `role`.
+- Phoenix: `--otlp-export http://localhost:6006/v1/traces` posts one span per turn as OTLP/HTTP protobuf (Phoenix rejects OTLP JSON with 415). Spans carry `session.id` (the agent address), `llm.model_name`, token counts and `ai_collab.*` attributes; `--phoenix-project` names the Phoenix project. A Phoenix source can join the analysis later by implementing `{name, load({since, until}) -> {turns}}` in `lib/analyze-sources.mjs`.
+
 ## Files
 
 | Path | Role |
 |---|---|
 | `lib/code-mode.mjs` | the setting and each harness's switch |
 | `lib/code-run.mjs` | run_code: description, schema check, sandbox staging, the in-sandbox bootstrap, limits |
+| `lib/analyze-run-code.mjs`, `lib/analyze-sources.mjs`, `lib/analyze-otlp.mjs` | `ai-collab analyze run-code`: aggregation and report, per-harness log readers, OTLP encoder |
 | `scripts/ai-collab-code-mcp.mjs` | the `ai-collab-code` MCP server |
-| `test/code-mode.test.mjs`, `test/code-mode-ui.test.mjs`, `test/code-run.test.mjs`, `test/code-mcp-register.test.mjs` | tests with fakes (fake openshell, fake Codex app-server, fake SDK query) |
+| `test/code-mode.test.mjs`, `test/code-mode-ui.test.mjs`, `test/code-run.test.mjs`, `test/code-mcp-register.test.mjs`, `test/analyze-run-code.test.mjs` | tests with fakes (fake openshell, fake Codex app-server, fake SDK query) |
 
 ## Cursor and OpenCode builders
 
