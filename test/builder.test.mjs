@@ -15,6 +15,7 @@ import { listOwned } from "../lib/owned.mjs";
 import { taskStoreFile } from "../lib/tasks.mjs";
 import { saveTeamText } from "../lib/patterns.mjs";
 import { loadConfig } from "../lib/config.mjs";
+import { setProjectPaused } from "../lib/project-pause.mjs";
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
@@ -82,6 +83,18 @@ async function withTask(l) {
 const readJsonLines = (file) => (existsSync(file) ? readFileSync(file, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []);
 const task = (l) => JSON.parse(readFileSync(taskStoreFile("demo", l.env), "utf8")).tasks.find((t) => t.id === "smoke-task");
 const wtGit = (l, ...args) => execFileSync("git", ["-C", path.join(l.home, "ai-collab-wt-smoke-task"), ...args], { encoding: "utf8" });
+
+test("builder start leaves a paused project’s task and worktree untouched", async () => {
+  const l = lab();
+  await withTask(l);
+  const cfg = loadConfig(l.env);
+  setProjectPaused(cfg, true);
+  const refused = await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief);
+  assert.equal(refused.code, 1);
+  assert.match(refused.err, /New work is paused/);
+  assert.equal(task(l).status, "open");
+  assert.equal(existsSync(builderPaths("smoke-task", l.env).worktree), false);
+});
 
 test("builder start runs the agent in its own sandbox and lands its commit on the host branch", async () => {
   const l = lab();

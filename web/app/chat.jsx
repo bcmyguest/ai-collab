@@ -314,7 +314,7 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
             <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground" title={data.projectCounts?.[project.id] ? data.projectCounts[project.id].running + " running · " + data.projectCounts[project.id].inactive + " inactive" : undefined}>{data.projectCounts?.[project.id] ? data.projectCounts[project.id].running + " ▶ · " + data.projectCounts[project.id].inactive + " off" : ""}</span>
           </button>
           <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label={"New session in " + project.id}
-            title="New session" onClick={() => newSession(project.id)}><Plus/></Button>
+            disabled={disabled || project.paused} title="New session" onClick={() => newSession(project.id)}><Plus/></Button>
           {!data.autoProjects?.includes(project.id) && <ProjectMenu project={project.id} act={projectAction}/>}
         </li>)}
       </ul>
@@ -929,8 +929,13 @@ function Console({ account }) {
   const composeTask = selected.composeTask || "";
   const taskLinks = useMemo(() => ({ project, ids: new Set(data.tasks?.tasks.map(task => task.id)) }), [project, data.tasks]);
   // The new-agent composer replaces the chat while it is open.
+<<<<<<< HEAD
   const composing = level === "project" && Boolean(creating) && creating === project && ready;
   const projectLinks = projectNavigation(project, level);
+=======
+  const paused = data.projects.some(item => item.id === project && item.paused);
+  const composing = Boolean(creating) && creating === project && ready && !paused;
+>>>>>>> builder/let-the-operator-pause-new-work-across-a
   const agent = level === "session" ? data.agents.find(item => item.id === selected.session) : undefined;
   const target = level === "session" ? selected.session : "all";
   const missing = level === "session" && !target;
@@ -1078,6 +1083,11 @@ function Console({ account }) {
         {account.user && <p className="-mt-1 truncate text-right text-[11px] text-muted-foreground" data-account={account.user.login}>
           signed in as <span className="font-medium text-foreground" title={account.user.name || undefined}>{account.user.login}</span>
           {" · "}<button type="button" className="underline-offset-2 hover:underline" onClick={signOut}>sign out</button></p>}
+        {level === "project" && ready && !data.hosted && !missing && <div className="flex items-center gap-2">
+          {paused && <Badge variant="secondary">New work paused</Badge>}
+          <Button variant="outline" size="sm" disabled={working}
+            onClick={() => action("project-pause", { paused: !paused }, paused ? "New work resumed" : "New work paused")}>{paused ? "Resume new work" : "Pause new work"}</Button>
+        </div>}
         {!home && !patterns && <ZoomControls data={data} selected={selected} now={now} navigate={navigate}
           compact={level === "session" && agent?.session && <span className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {agent.modelControl && modelsOf(models, "claude").length > 0 && <select
@@ -1120,7 +1130,7 @@ function Console({ account }) {
       </div>}
       {!patterns && !composing && (tasksView ? <TaskBoard key={project} project={project} board={ready ? data.tasks : null} now={now} taskId={selected.task}
         back={() => navigate({ project, level: "tasks" })} compose={id => navigate({ project, level: "project", composeTask: id })}
-        continuation={{ harnesses: data.startable || [], launch: (id, harness) => action("continue-builder", { id, harness }, "Replacement started") }}
+        continuation={{ harnesses: paused ? [] : data.startable || [], launch: (id, harness) => action("continue-builder", { id, harness }, "Replacement started") }}
         recover={(id, harness) => action("recover-builder", { id, harness }, "Builder started")}
         decide={(id, answer) => action("decide", { id, answer }, "Decided")}
         open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatContainerRoot key={inbox ? "inbox" : home ? "home" : "conversation"} initial={home ? false : "instant"} contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
@@ -1128,6 +1138,11 @@ function Console({ account }) {
           {!ready && (home || listing || subagents || compactions) && !loadError && <p className="py-16 text-center text-sm text-muted-foreground">Loading sessions…</p>}
           {ready && (home || listing) && <>
             {home && data.unavailable?.length > 0 && <p role="alert" className="text-xs text-destructive">Unavailable: {data.unavailable.join(", ")}</p>}
+            {home && !inbox && data.projects.filter(item => item.paused).map(item =>
+              <button key={item.id} type="button" className="flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm"
+                onClick={() => navigate({ project: item.id, level: "project" })}>
+                <span className="truncate">{item.id}</span><Badge variant="secondary">New work paused</Badge>
+              </button>)}
             {home && <DecisionQueue decisions={data.decisions} inbox={inbox} now={now} disabled={working} action={action}
               seen={seenDecisions} markSeen={markDecisionSeen} openInbox={() => navigate({ level: "inbox" })}/>}
             {!inbox && <SessionList sessions={data.sessions} now={now} open={openCard} raw={openRaw} disabled={working} showProject={home} compact={home}

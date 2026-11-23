@@ -1,3 +1,4 @@
+import { isProjectPaused, PROJECT_PAUSED, setProjectPaused } from "../../lib/project-pause.mjs";
 import { terminalHasDraft } from "../../lib/terminal-draft.mjs";
 import { EventType } from "@ag-ui/core";
 import { operatorPrompt, publishMode as publishModeAll } from "../../lib/mode.mjs";
@@ -60,7 +61,7 @@ import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a
 export { mentionedNames, mentionedTeams, startOnlyMentions };
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "continue-builder", "recover-builder"];
+const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "continue-builder", "recover-builder", "project-pause"];
 const HOSTED_ACTIONS = new Set(["history", "messages", "send", "reply", "afk", "approve", "a2ui"]);
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
@@ -316,7 +317,7 @@ function originalOf(quote) {
   return { sender: typeof source.sender === "string" ? source.sender : "", body: typeof source.body === "string" ? source.body : "" };
 }
 
-export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start = startSession, models = listModels, push: notifier = null, auth = null, runner = runnerClient, hasDraft = terminalHasDraft, hosted = false }) {
+export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start: launch = startSession, models = listModels, push: notifier = null, auth = null, runner = runnerClient, hasDraft = terminalHasDraft, hosted = false }) {
   if (!configs.length) throw new Error("No ai-collab project is configured");
   for (const item of configs) if (!item.enabled) throw new Error(item.reason);
   if (allowedOrigin && (!allowedOrigin.startsWith("https://") || new URL(allowedOrigin).origin !== allowedOrigin)) {
@@ -333,6 +334,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   let pushTimer = null;
   let lastStartAt = 0;
   let closed = false;
+
+  const start = launch === startSession ? startSession : async (cfg, options) =>
+    isProjectPaused(cfg) ? { status: "failed", detail: PROJECT_PAUSED } : launch(cfg, options);
 
   function broadcast() {
     if (pushTimer) return;
@@ -508,6 +512,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
 
   // Starts a mention's session in the project folder, one start per START_GAP_MS; returns the note after the tag.
   async function startFor(cfg, body, options) {
+    if (isProjectPaused(cfg)) return ": " + PROJECT_PAUSED;
     const checked = checkPrompt(body);
     if (checked.error) return ": " + checked.error;
     if (Date.now() - lastStartAt < START_GAP_MS) return ": wait 10 seconds between starts";
@@ -955,7 +960,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       // Waiting counts per project, present only when above 0; a failed project has no sessions to count.
       projects: shown.map(item => {
         const count = item === project ? waiting.size : item.failed ? 0 : waitingIds(item, placed(agents(item, lastMessages(item)))).size;
-        return { id: item.cfg.project, peers: item.cfg.peers, ...(count ? { waiting: count } : {}) };
+        return { id: item.cfg.project, peers: item.cfg.peers, ...(isProjectPaused(item.cfg) ? { paused: true } : {}), ...(count ? { waiting: count } : {}) };
       }),
       // Registered projects marked closed, listed so the sidebar can reopen them.
       closedProjects: closedProjectNames(env).filter(name => !removed.has(name) && (!hosted || projects.has(name))),
@@ -1231,7 +1236,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
       if (action === "history") return history(request, by, await payload(request));
-      const { project: name, target, body, queueAction, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, sendAnyway, model, startMode, codeMode, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText } = await payload(request);
+      const { project: name, paused, target, body, queueAction, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, sendAnyway, model, startMode, codeMode, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -1256,6 +1261,14 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }
       const project = projectFor(name);
       const { cfg, operator, topic } = project;
+      if (action === "project-pause") {
+        if (!projects.has(name)) reject(400, "Select a project");
+        if (typeof paused !== "boolean") reject(400, "paused must be true or false");
+        setProjectPaused(cfg, paused);
+        broadcast();
+        return json(200, { status: paused ? "New work paused" : "New work resumed" });
+      }
+      if (["start", "continue-builder", "recover-builder"].includes(action) && isProjectPaused(cfg)) reject(409, PROJECT_PAUSED);
       if (action === "approve") return json(201, await answerApproval(project, id, { decision, answers }, by));
       // The operator's decision on a task question goes straight into the task store; the next agent run reads it.
       if (action === "continue-builder") {
@@ -1336,6 +1349,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         }
         if (copyPatternName) return json(201, await copyPattern(cfg, String(copyPatternName), env, await models(cfg.stateDir, env, { peers: cfg.peers })).catch((error) => reject(400, error.message)));
         if (startPattern) {
+          if (isProjectPaused(cfg)) reject(409, PROJECT_PAUSED);
           const started = await startRun(cfg, String(startPattern), String(patternTask ?? ""), env, { start, models: await models(cfg.stateDir, env, { peers: cfg.peers }) })
             .catch((error) => reject(400, error.message));
           return json(201, started);
