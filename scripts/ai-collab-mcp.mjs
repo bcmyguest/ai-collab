@@ -2,9 +2,7 @@
 import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { toolClient } from "../lib/tool-api.mjs";
-import { READ_TOOLS } from "../lib/code-run.mjs";
-import { autoDefaults } from "../lib/config.mjs";
-import { findExecutable } from "../lib/start.mjs";
+import { READ_TOOLS, readsThroughRunCode } from "../lib/code-run.mjs";
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 const INSTRUCTIONS = "AI Collab connects this session to the human operator over a private ntfy server. "
@@ -23,8 +21,7 @@ const INSTRUCTIONS = "AI Collab connects this session to the human operator over
 
 const host = process.argv[2] || "";
 // defaults.json "readsThroughRunCode": true refuses direct read calls while run_code can run (OpenShell on PATH).
-const runCodeFirst = autoDefaults()?.readsThroughRunCode === true
-  && Boolean(process.env.AI_COLLAB_OPENSHELL_BIN || findExecutable("openshell", process.env.PATH || ""));
+const runCodeFirst = readsThroughRunCode();
 const client = toolClient({ host });
 const active = new Map();
 const protocolVersions = new Set(["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"]);

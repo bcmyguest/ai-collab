@@ -36,6 +36,8 @@ its `exec` code tool with `features.code_mode=false` too. Measurements: `/dev/sh
 
 **Reads go through run_code.** With `"readsThroughRunCode": true` in `~/.config/ai-collab/defaults.json` and `openshell` on PATH, the `ai-collab` MCP server prefixes the read tools' descriptions (`list_agents`, `list_sessions`, `channel_history`, `task_list`, `team_status`, `pattern_list`, `pattern_status`) with "Do not call directly: call run_code" and refuses a direct call with the `run_code` call to make instead. The tools stay listed: a probe with them hidden fell back to the `ai-collab` CLI. Writes and operator tools (`send`, `ask_question`, `reply_to_operator`, `wait`) stay direct. Without OpenShell, as inside a builder sandbox, reads stay direct.
 
+The CLI read commands follow the same rule: `peers`, `history`, `agents`, `sessions`, `task list`, `task show`, `team status`, `pattern list` and `pattern status` exit 3 and print the `run_code` program that answers them on stderr when the caller is an agent session (`AI_COLLAB_SESSION` set, or a Claude Code, Codex, Cursor or OpenCode process among its ancestors). A human at a terminal, `AI_COLLAB_DIRECT_READS=1`, and runner schedules that start no harness keep direct reads. Builder sandboxes have no `openshell` and use their own `ai-collab` shim, so their `task show` stays direct. `task show` maps to the `task_list` entry, which carries the last progress line only.
+
 `scripts/ai-collab-code-mcp.mjs` is a second MCP server, `ai-collab-code`, with the tools `run_code` and `run_read_code`. Call `run_code` like this:
 
 ```json
