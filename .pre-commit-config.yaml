@@ -6,6 +6,7 @@
 default_install_hook_types:
   - pre-commit
   - commit-msg
+  - pre-push
 default_stages:
   - pre-commit
 
@@ -32,3 +33,9 @@ repos:
     hooks:
       - id: conventional-pre-commit
         stages: [commit-msg]
+
+  # Blocks a push that adds a violation of an active oncebitten rule; uses the oncebitten on PATH.
+  - repo: https://github.com/bcmyguest/oncebitten
+    rev: 5dd2feee15402866b6106b1eb5a841c2b9cc0079 # frozen: v0.5.0
+    hooks:
+      - id: oncebitten-gate-system
