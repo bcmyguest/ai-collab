@@ -16,7 +16,7 @@ import { agentHarness } from "../lib/agent-guard.mjs";
 import { autoDefaults, listProjects, stateDir } from "../lib/config.mjs";
 import { builderPolicy, replayable, parseRecordedCall, sharedLibs, toolSources } from "../lib/builder.mjs";
 import { projectOfFolder } from "../lib/schedule-session.mjs";
-import { destroySandbox, execArgv, parseSandboxList, runTool, uploadFile } from "./sandbox.mjs";
+import { destroySandbox, execArgv, runTool, sandboxCapRefusal, uploadFile } from "./sandbox.mjs";
 
 const APP_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const CLI = join(APP_ROOT, "scripts", "ai-collab.mjs");
@@ -31,8 +31,6 @@ const NODE_IN = `${TOOLS}/node/bin/node`;
 const TOKEN_IN = `${HOME_IN}/.config/ai-collab/ntfy-token`;
 const SANDBOX_PATH = `${TOOLS}/bin:${TOOLS}/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`;
 const NTFY = "http://host.openshell.internal:8794";
-// The concurrency cap when defaults.json names no maxSandboxes: every OpenShell sandbox on the machine counts.
-export const DEFAULT_MAX_SANDBOXES = 8;
 const SYNC_TIMEOUT_MS = 900_000;
 const NAME_PREFIX_MAX = 8;
 // Harnesses whose host login this runner copies in; Claude and Codex credentials wait for an operator decision (docs/builders.md).
@@ -61,12 +59,6 @@ exec ${NODE_IN} ${APP_IN}/scripts/ai-collab.mjs "$@"
 export function runSandboxName(name, at = Date.now()) {
   const hash = createHash("sha256").update(`${name}@${at}`).digest("hex").slice(0, 6);
   return `s-${String(name).slice(0, NAME_PREFIX_MAX).replace(/-+$/, "")}-${hash}`;
-}
-
-/** The sandbox cap: defaults.json maxSandboxes when a positive integer, else DEFAULT_MAX_SANDBOXES. */
-export function maxSandboxes(env = process.env) {
-  const value = autoDefaults(env)?.maxSandboxes;
-  return Number.isSafeInteger(value) && value > 0 ? value : DEFAULT_MAX_SANDBOXES;
 }
 
 /** The argv to run inside the sandbox: the harness binary replaced by its launcher's name, every other element kept. */
@@ -244,11 +236,9 @@ export async function sandboxRun({ name, cwd, project, command }, { env = proces
   const inner = sandboxCommand(command);
   if (!existsSync(join(cwd, ".git"))) throw new Error(`${cwd} is not a git work tree; a sandboxed run needs one to land its commits`);
   const openshell = env.AI_COLLAB_OPENSHELL_BIN || "openshell";
-  const list = await runTool(openshell, ["sandbox", "list", "-o", "json"], { env });
-  if (list.code !== 0) throw new Error(`openshell sandbox list failed: ${(list.stderr || "").trim()}`);
-  const cap = maxSandboxes(env);
-  const running = parseSandboxList(list.stdout).length;
-  if (running >= cap) throw new Error(`${running} OpenShell sandboxes are running, the cap is ${cap} (defaults.json maxSandboxes); this run waits for the next tick`);
+  // Over the cap a tick is skipped, not failed: the next tick tries again.
+  const capped = await sandboxCapRefusal({ openshell, env });
+  if (capped) { log(`skipped: ${capped}; the next tick tries again`); return 0; }
   const proj = project || projectOfFolder(cwd, listProjects(env));
   mkdirSync(stateDir(env), { recursive: true, mode: 0o700 });
   const dir = mkdtempSync(join(stateDir(env), "sandbox-run-"));

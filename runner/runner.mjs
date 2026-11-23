@@ -33,6 +33,7 @@ import { alertLimit } from "../lib/limit-alert.mjs";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, LIMIT, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, OPENSHELL_PERMISSION, permissionSettings } from "./contract.mjs";
 import { sessionOfCommand } from "../lib/schedule-session.mjs";
 import { ALLOW_HOST_AGENT_ENV } from "../lib/agent-guard.mjs";
+import { sandboxCapRefusal, sandboxName, teamSandboxName } from "./sandbox.mjs";
 import { DELIVERY, deliveryWorkflow } from "./delivery.mjs";
 import { publishApproval, publishApprovalEnd, publishEnded, publishEvent, publishReceipts } from "./publish.mjs";
 
@@ -788,6 +789,11 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       if (builder.task !== taskId || builder.phase !== "starting") fail(409, "Builder already started or task mismatch");
     }
     checkOpenShellLaunch(harness, place, builder);
+    // A builder passed the cap at `builder start`; any other OpenShell start that would add a sandbox is checked here.
+    if (place === "openshell" && !builder) {
+      const capped = await sandboxCapRefusal({ openshell: env.AI_COLLAB_OPENSHELL_BIN || "openshell", env, name: patternRun ? teamSandboxName(project, patternRun) : sandboxName(project) });
+      if (capped) fail(409, capped);
+    }
     if (!patternRun && !builder && now() - lastStartAt < startGapMs) fail(429, "Wait 10 seconds between starts");
     if (!patternRun && !builder) lastStartAt = now();
     const workflowId = `session-${randomUUID()}`;

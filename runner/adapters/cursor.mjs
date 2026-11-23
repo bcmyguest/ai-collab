@@ -1,6 +1,6 @@
 // Cursor adapter: one `<cursor cli> acp` child per owned session over stdio JSON-RPC, optionally inside an OpenShell sandbox.
 import { spawn } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -11,7 +11,7 @@ import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, permissionSettings } from "../co
 import { builderPolicy } from "../../lib/builder.mjs";
 import {
   destroySandbox, downloadTree, ensureSandbox as ensureSandboxIn, execArgv as sandboxExecArgv, runTool,
-  sandboxName as sandboxNameFor, uploadFile, uploadTree,
+  sandboxName as sandboxNameFor, teamSandboxName, uploadFile, uploadTree,
 } from "../sandbox.mjs";
 
 // ACP protocolVersion 1 and the method names come from the ACP spec; `agent acp` answered `initialize`
@@ -355,9 +355,7 @@ export default function cursorAdapter(config = {}) {
     try {
       if (spec.place === "openshell") {
         // One sandbox per project, reused: created by the first session and deleted when the last one closes.
-        const name = spec.patternRun
-          ? "team-" + createHash("sha256").update(spec.project + "/" + spec.patternRun).digest("hex").slice(0, 14)
-          : sandboxName(spec.project);
+        const name = spec.patternRun ? teamSandboxName(spec.project, spec.patternRun) : sandboxName(spec.project);
         policyPath ||= writePolicy(cursorTree);
         sandbox = await ensureSandboxIn({ openshell: openshellBin, env, name, policy: policyPath });
         claim(sandbox, spec.cwd);

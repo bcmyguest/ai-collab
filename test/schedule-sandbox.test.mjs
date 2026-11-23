@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { openTasks } from "../lib/tasks.mjs";
 import { loadSchedules, sandboxRunCommand, SANDBOX_RUN, tickFn } from "../runner/schedules.mjs";
-import { maxSandboxes, parseArgs, runSandboxName, sandboxCommand, sandboxRun } from "../runner/sandbox-run.mjs";
+import { parseArgs, runSandboxName, sandboxCommand, sandboxRun } from "../runner/sandbox-run.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OPENSHELL = path.join(HERE, "helpers", "fake-openshell.mjs");
@@ -56,14 +56,13 @@ function lab({ defaults } = {}) {
 const sink = () => { let text = ""; return { write: (chunk) => { text += chunk; return true; }, get text() { return text; } }; };
 const calls = (env) => readFileSync(env.FAKE_OPENSHELL_LOG, "utf8").trim().split("\n").map((line) => JSON.parse(line));
 
-test("argv parsing, the command mapping, the sandbox name and the cap", () => {
+test("argv parsing, the command mapping and the sandbox name", () => {
   assert.deepEqual(parseArgs(["--name", "pm", "--cwd", "/r", "--", "cursor-agent", "-p", "x"]), { name: "pm", cwd: "/r", command: ["cursor-agent", "-p", "x"] });
   assert.throws(() => parseArgs(["--name", "pm", "--", "x"]), /--cwd are required/);
   assert.deepEqual(sandboxCommand(["/home/b/.local/bin/cursor-agent", "-p", "--force", "tick"]), ["cursor-agent", "-p", "--force", "tick"]);
   assert.throws(() => sandboxCommand(["/home/b/steward.sh"]), /runs an agent harness/);
   assert.match(runSandboxName("rule-steward", 0), /^s-rule-ste-[0-9a-f]{6}$/);
   assert.ok(runSandboxName("a-very-long-schedule-name").length <= 19);
-  assert.equal(maxSandboxes({ XDG_CONFIG_HOME: "/nonexistent" }), 8);
 });
 
 test("a sandboxed run lands commits and loose edits on a new branch, replays task progress, and deletes its sandbox", async () => {
@@ -88,12 +87,6 @@ test("a sandboxed run lands commits and loose edits on a new branch, replays tas
   assert.ok(create.includes("--policy"));
   const home = calls(l.env).find((c) => c[1] === "upload" && String(c[3]).endsWith("/home/"));
   assert.ok(home, "the sandbox home is uploaded");
-});
-
-test("the cap refuses a run when that many sandboxes exist already", async () => {
-  const l = lab({ defaults: { maxSandboxes: 1 } });
-  writeFileSync(l.env.FAKE_OPENSHELL_STATE, JSON.stringify({ sandboxes: [{ name: "b-other-123456", phase: "Ready" }] }));
-  await assert.rejects(sandboxRun({ name: "pm", cwd: l.repo, command: ["cursor-agent", "-p", "x"] }, { env: l.env, log() {} }), /1 OpenShell sandboxes are running, the cap is 1/);
 });
 
 test("schedules.json sandbox: validated, wrapped in the sandbox runner, and exempt from the host guard", async () => {

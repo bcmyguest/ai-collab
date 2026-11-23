@@ -23,10 +23,15 @@
 //     from the uploaded CLI tree.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { autoDefaults } from "../lib/config.mjs";
 
 const SETUP_TIMEOUT_MS = 60_000;
 const SYNC_TIMEOUT_MS = 600_000;
 const SANDBOX_NAME_MAX = 19;
+// The cap on OpenShell sandboxes when defaults.json names no maxSandboxes (operator decision 2026-11-23).
+export const DEFAULT_MAX_SANDBOXES = 6;
+// Outside the cap: run_code's shared sandbox and its per-call read sandboxes (lib/code-run.mjs), short-lived tool plumbing.
+const CAP_EXEMPT = /^(ai-collab-code$|aic-ro-)/;
 
 /** Lowercase DNS-label-safe sandbox name for a project. */
 export function sandboxName(project) {
@@ -35,6 +40,11 @@ export function sandboxName(project) {
   if (slug && name.length <= SANDBOX_NAME_MAX) return name;
   const suffix = createHash("sha256").update(String(project)).digest("hex").slice(0, 8);
   return `ai-collab-${suffix}`;
+}
+
+/** The sandbox a team run's OpenShell members share: team-<14 hex of project/run>. */
+export function teamSandboxName(project, run) {
+  return "team-" + createHash("sha256").update(project + "/" + run).digest("hex").slice(0, 14);
 }
 
 /** The phase a sandbox JSON record reports; 0.1.9 writes "Ready" on `sandbox get` and `sandbox list`. */
@@ -158,4 +168,30 @@ export async function destroySandbox({ openshell, env, name }) {
 /** Names of sandboxes this runner owns for a project. */
 export function ownedSandboxNames(project) {
   return [sandboxName(project)];
+}
+
+/** The sandbox cap: defaults.json maxSandboxes when a positive integer, else DEFAULT_MAX_SANDBOXES. */
+export function maxSandboxes(env = process.env) {
+  const value = autoDefaults(env)?.maxSandboxes;
+  return Number.isSafeInteger(value) && value > 0 ? value : DEFAULT_MAX_SANDBOXES;
+}
+
+/** The sandbox names the cap counts: every one but run_code's. */
+export function countedSandboxes(names) {
+  return names.filter((name) => typeof name === "string" && !CAP_EXEMPT.test(name));
+}
+
+/**
+ * Why a new sandbox named `name` may not start, or "" when it may: the cap counts builders, runner sessions and schedule
+ * ticks alike. A name already listed is a reuse, not a new sandbox. A failed list is left to the create step to report.
+ */
+export async function sandboxCapRefusal({ openshell, env, name = "" }) {
+  const list = await runTool(openshell, ["sandbox", "list", "-o", "json"], { env });
+  if (list.code !== 0) return "";
+  let names;
+  try { names = parseSandboxList(list.stdout).map((s) => s?.name); } catch { return ""; }
+  if (name && names.includes(name)) return "";
+  const counted = countedSandboxes(names);
+  const cap = maxSandboxes(env);
+  return counted.length >= cap ? `${counted.length} OpenShell sandboxes are running (${counted.join(", ")}); the cap is ${cap} (defaults.json maxSandboxes)` : "";
 }
