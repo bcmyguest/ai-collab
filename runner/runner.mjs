@@ -10,7 +10,7 @@ import { DOT_EVENT_MAX } from "../lib/dot.mjs";
 import { getPattern } from "../lib/patterns.mjs";
 import { applyPatternAdvance, cutPatternRun, launchPatternRun, NOTE_MAX, preparePatternRun, RUN_ID, runStatus } from "../lib/pattern-runs.mjs";
 import { statePath } from "../lib/state.mjs";
-import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, receiptsTopic, sessionLabel } from "../lib/config.mjs";
+import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, receiptsTopic, sessionLabel, startPlaceSetting } from "../lib/config.mjs";
 import { RESERVE_MS, ATTACHMENT_BUDGET_MS, claimInbox, markDelivered, parseEnvelope, releaseOwned, reserveOwned, reservedMessage } from "../lib/inbox.mjs";
 import { parsePhoneReply, parseQuestionText } from "../lib/questions.mjs";
 import { replyDecision, APPROVAL_ID } from "../lib/approvals.mjs";
@@ -307,6 +307,21 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     const code = await git(gitFile, ["-C", root, "worktree", "add", "-b", tree.branch, cwd], { cwd: root, env: childEnv(env) });
     if (code !== 0) fail(500, `git worktree add exited ${code}`);
     return cwd;
+  }
+
+  /**
+   * The place a start gets when the caller names none: defaults.json startPlace (default openshell) when this harness's
+   * adapter can run there and openshell is installed, else the project folder. Codex in OpenShell needs a builder.
+   */
+  function defaultPlace(harness) {
+    const preferred = startPlaceSetting(env);
+    if (preferred === "folder") return "folder";
+    const places = adapterOf(harness).capabilities.places ?? ["folder", "worktree"];
+    if (!places.includes(preferred)) return "folder";
+    if (preferred !== "openshell") return preferred;
+    if (harness === "codex") return "folder";
+    const bin = env.AI_COLLAB_OPENSHELL_BIN || "openshell";
+    return (bin.startsWith("/") ? existsSync(bin) : findExecutable(bin, childEnv(env).PATH)) ? "openshell" : "folder";
   }
 
   function checkOpenShellLaunch(harness, place, builder) {
@@ -746,10 +761,11 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   durable.register("session", sessionWorkflow);
 
   /** Starts an owned session; resolves {status:"started", session, nativeId, workflowId, detail}. */
-  async function start({ project, harness, prompt, model, place = "folder", permissionMode, codeMode, taskId, builder: builderId, system = true } = {}, patternRun, continuation) {
+  async function start({ project, harness, prompt, model, place: named, permissionMode, codeMode, taskId, builder: builderId, system = true } = {}, patternRun, continuation) {
     if (!configs.has(project)) fail(400, "Unknown project");
     if (isProjectPaused(configs.get(project))) fail(409, PROJECT_PAUSED);
     const adapter = adapterOf(harness);
+    const place = named ?? defaultPlace(harness);
     if (!PLACES.includes(place)) fail(400, "Unknown start place");
     // OpenShell is the boundary: every harness there runs with approvals off, whatever mode the caller named.
     const mode = place === "openshell" ? OPENSHELL_PERMISSION : permissionMode ?? defaultPermission(harness, place);

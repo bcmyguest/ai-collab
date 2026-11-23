@@ -1,13 +1,14 @@
 // Cursor adapter: one `<cursor cli> acp` child per owned session over stdio JSON-RPC, optionally inside an OpenShell sandbox.
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { EventType } from "@ag-ui/core";
 import { sessionLabel } from "../../lib/config.mjs";
 import { cursorBinary, findExecutable } from "../../lib/start.mjs";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, permissionSettings } from "../contract.mjs";
+import { builderPolicy } from "../../lib/builder.mjs";
 import {
   destroySandbox, downloadTree, ensureSandbox as ensureSandboxIn, execArgv as sandboxExecArgv, runTool,
   sandboxName as sandboxNameFor, uploadFile, uploadTree,
@@ -27,6 +28,9 @@ const SANDBOX_HOME = "/sandbox/home";
 const SANDBOX_BIN = "/sandbox/bin";
 // The name the CLI is launched by inside a sandbox, whatever it is called on the host.
 const SANDBOX_LAUNCHER = "cursor-agent";
+// The CLI marks itself non-dumpable unless this is set; OpenShell then cannot read its /proc/<pid>/exe and denies its sockets (lib/builder.mjs).
+const SANDBOX_CURSOR_ENV = { CURSOR_AGENT_ALLOW_PROCESS_INSPECTION: "1" };
+const GIT_TIMEOUT_MS = 120_000;
 
 /** The OpenShell sandbox name for a project: ai-collab-<project>, lowercase, at most 40 characters of project. */
 export const sandboxName = (project) => sandboxNameFor(project);
@@ -178,7 +182,8 @@ export async function prepareSandbox({ openshell, env, sandbox, cwd, home = home
   const exec = (command) => runTool(openshell, sandboxExecArgv({ openshell, sandbox, command }).slice(1), { env });
   const ready = reuseWorktree && (await exec(["test", "-f", marker])).code === 0;
   if (!ready) {
-    await uploadTree({ openshell, env, sandbox, local: cwd, remote: remoteWork });
+    if (existsSync(join(cwd, ".git"))) await uploadClone({ openshell, env, sandbox, cwd, remote: remoteWork });
+    else await uploadTree({ openshell, env, sandbox, local: cwd, remote: remoteWork });
     if (reuseWorktree && (await exec(["touch", marker])).code !== 0) throw new Error("Could not mark team worktree ready");
   }
   const execEnv = { HOME: SANDBOX_HOME, XDG_CONFIG_HOME: `${SANDBOX_HOME}/.config` };
@@ -229,15 +234,97 @@ async function uploadAuth({ openshell, env, sandbox, authPath, log }) {
   }
 }
 
-/** Copies the sandbox worktree back over the host worktree after a run or on close; never throws. */
+// Runs git with a fixed argv; throws with its stderr on a non-zero exit.
+async function git(cwd, args, env) {
+  const out = await runTool("git", ["-C", cwd, ...args], { env, timeoutMs: GIT_TIMEOUT_MS });
+  if (out.code !== 0) throw new Error(`git ${args[0]} failed: ${(out.stderr || "").trim() || `exit ${out.code}`}`);
+  return out.stdout;
+}
+
+/**
+ * Uploads a git work tree as a self-contained clone of its checked-out branch, so git works inside the sandbox:
+ * a linked worktree's .git is a file pointing into the host repo, which the sandbox does not have (as lib/builder.mjs).
+ */
+async function uploadClone({ openshell, env, sandbox, cwd, remote }) {
+  const dir = mkdtempSync(join(tmpdir(), "ai-collab-sandbox-clone-"));
+  const clone = join(dir, basename(cwd));
+  try {
+    const branch = (await git(cwd, ["rev-parse", "--abbrev-ref", "HEAD"], env)).trim();
+    await runTool("git", ["clone", "--quiet", "--no-hardlinks", ...(branch && branch !== "HEAD" ? ["--branch", branch] : []), cwd, clone], { env, timeoutMs: GIT_TIMEOUT_MS })
+      .then((out) => { if (out.code !== 0) throw new Error(`git clone failed: ${(out.stderr || "").trim()}`); });
+    await git(clone, ["remote", "remove", "origin"], env);
+    for (const key of ["user.name", "user.email"]) {
+      const value = (await runTool("git", ["-C", cwd, "config", key], { env })).stdout.trim();
+      if (value) await git(clone, ["config", key, value], env);
+    }
+    const out = await runTool(openshell, ["sandbox", "upload", sandbox, `${clone}/`, `${remote.replace(/\/+$/, "")}/`, "--no-git-ignore"], { env, timeoutMs: SANDBOX_TIMEOUT_MS });
+    if (out.code !== 0) throw new Error(`openshell sandbox upload failed: ${(out.stderr || "").trim() || `exit ${out.code}`}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Lands a sandbox clone's work on the host work tree the way builders do: uncommitted changes become one commit, then
+ * the host branch fast-forwards to it. A branch that moved on the host keeps the download and says where it is.
+ */
+async function landClone({ openshell, env, sandbox, cwd, log }) {
+  const incoming = mkdtempSync(join(tmpdir(), "ai-collab-sandbox-back-"));
+  const back = join(incoming, basename(cwd));
+  let keep = false;
+  try {
+    await downloadTree({ openshell, env, sandbox, remote: `${SANDBOX_ROOT}/work/${basename(cwd)}`, local: back });
+    if (!existsSync(join(back, ".git"))) throw new Error("the downloaded workspace has no git repository");
+    if ((await git(back, ["status", "--porcelain"], env)).trim()) {
+      await git(back, ["add", "-A"], env);
+      await git(back, ["commit", "--quiet", "--no-verify", "-m", "chore(openshell): uncommitted work from a sandboxed session", "-m", "Assisted-by: Cursor:cursor-agent"], env);
+    }
+    const ahead = Number((await git(back, ["rev-list", "--count", "HEAD", "--not", (await git(cwd, ["rev-parse", "HEAD"], env)).trim()], env).catch(() => "0")).trim()) || 0;
+    if (!ahead) return true;
+    await git(cwd, ["fetch", "--quiet", back, "HEAD"], env);
+    try {
+      await git(cwd, ["merge", "--quiet", "--ff-only", "FETCH_HEAD"], env);
+      log(`cursor: landed ${ahead} commit(s) from the sandbox on ${cwd}`);
+    } catch (error) {
+      keep = true;
+      log(`cursor: could not fast-forward ${cwd}; the sandbox work is kept in ${back}: ${error.message}`);
+      return false;
+    }
+    return true;
+  } finally {
+    if (!keep) rmSync(incoming, { recursive: true, force: true });
+  }
+}
+
+/** Copies the sandbox worktree back to the host after a run or on close: commits for a git work tree, files otherwise; never throws. */
 export async function syncSandboxBack({ openshell, env, sandbox, cwd, log = () => {} }) {
   try {
+    if (existsSync(join(cwd, ".git"))) return await landClone({ openshell, env, sandbox, cwd, log });
     await downloadTree({ openshell, env, sandbox, remote: `${SANDBOX_ROOT}/work/${basename(cwd)}`, local: cwd });
     return true;
   } catch (error) {
     log(`cursor: could not copy edits back from the sandbox: ${error.message}`);
     return false;
   }
+}
+
+/** The network policy a Cursor sandbox gets when AI_COLLAB_OPENSHELL_POLICY names none: Cursor's API and the host's ntfy, for the uploaded CLI's binaries. */
+export function cursorPolicy(cursorTree) {
+  const inTree = `${SANDBOX_ROOT}/agent/${basename(cursorTree)}`;
+  let files = [];
+  try {
+    files = readdirSync(cursorTree).filter((f) => { const st = statSync(join(cursorTree, f)); return st.isFile() && (st.mode & 0o111) !== 0; });
+  } catch { /* no tree: the policy names no binary */ }
+  return builderPolicy({ harness: "cursor", binaries: files.map((f) => `${inTree}/${f}`) });
+}
+
+// Writes cursorPolicy to a private file once per adapter and returns its path; "" without a CLI tree.
+function writePolicy(cursorTree) {
+  if (!cursorTree) return "";
+  const dir = mkdtempSync(join(tmpdir(), "ai-collab-cursor-policy-"));
+  const file = join(dir, "policy.yaml");
+  writeFileSync(file, `${JSON.stringify(cursorPolicy(cursorTree), null, 2)}\n`, { mode: 0o600 });
+  return file;
 }
 
 /** Maps AG-UI output for one harness session: a run, its text and tool calls, and its approval cards. */
@@ -249,7 +336,7 @@ export default function cursorAdapter(config = {}) {
   const cursorBin = envOf.AI_COLLAB_CURSOR_BIN || cursorBinary(lookupPath);
   // The CLI tree uploaded into a sandbox: the version directory that holds the host binary's real path.
   const cursorTree = envOf.AI_COLLAB_CURSOR_TREE || treeOf(cursorBin, lookupPath);
-  const policyPath = envOf.AI_COLLAB_OPENSHELL_POLICY || "";
+  let policyPath = envOf.AI_COLLAB_OPENSHELL_POLICY || "";
   const connections = new Set();
   // One sandbox per project, reused: created by the first session and deleted when the last one closes.
   const sandboxes = new Map();
@@ -271,6 +358,7 @@ export default function cursorAdapter(config = {}) {
         const name = spec.patternRun
           ? "team-" + createHash("sha256").update(spec.project + "/" + spec.patternRun).digest("hex").slice(0, 14)
           : sandboxName(spec.project);
+        policyPath ||= writePolicy(cursorTree);
         sandbox = await ensureSandboxIn({ openshell: openshellBin, env, name, policy: policyPath });
         claim(sandbox, spec.cwd);
         session.sandbox = sandbox;
@@ -278,7 +366,7 @@ export default function cursorAdapter(config = {}) {
           openshell: openshellBin, env, sandbox, cwd: spec.cwd, home: spec.home, cursorTree,
           staged: stagedTrees, reuseWorktree: Boolean(spec.patternRun), log: (l) => ctx.log(l),
         });
-        argv = execArgv({ openshell: openshellBin, sandbox, args: cursorArgs, workdir: prepared.workdir, env: prepared.env });
+        argv = execArgv({ openshell: openshellBin, sandbox, args: cursorArgs, workdir: prepared.workdir, env: { ...prepared.env, ...SANDBOX_CURSOR_ENV } });
         // The CLI runs in the sandbox, so it must be told the sandbox path, not the host's.
         session.remoteCwd = prepared.workdir;
       } else {
