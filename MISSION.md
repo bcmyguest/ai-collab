@@ -35,4 +35,4 @@ Give the operator one place to run, watch and steer a coding agents from a phone
 - Before marking done: oncebitten check --base main (when rules exist).
 - After every web/UI deploy, run `node deploy/verify-ui.mjs` for the headless smoke and decision inbox check, or use `npm run build -- --deploy-and-verify` to build, restart the UI service, and verify. On failure, revert and redeploy. Builder briefs for web/ changes must say so.
 - Isolated suite gate: use mise-installed node/npm binaries (not mise shims) when TMP HOME breaks mise trust.
-- Do not git stash uncommitted work on main; leave it and notify the owner.
+- Run `git -C /home/b/ai-collab stash` only when the operator explicitly requests it in a DM or broadcast. Otherwise, leave uncommitted work on main in place and notify the owner.
