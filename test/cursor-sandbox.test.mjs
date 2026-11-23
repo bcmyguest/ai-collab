@@ -32,6 +32,7 @@ function lab({ auth = true } = {}) {
   }
   const env = {
     PATH: process.env.PATH, HOME: home, AI_COLLAB_CURSOR_BIN: CURSOR, AI_COLLAB_OPENSHELL_BIN: OPENSHELL,
+    LD_LIBRARY_PATH: process.env.LD_LIBRARY_PATH,
     // The real tree layout, since a lone fake binary has no node beside it to upload.
     AI_COLLAB_CURSOR_TREE: version,
     FAKE_CURSOR_LOG: path.join(home, "cursor.log"), FAKE_OPENSHELL_LOG: path.join(home, "openshell.log"),
