@@ -929,13 +929,9 @@ function Console({ account }) {
   const composeTask = selected.composeTask || "";
   const taskLinks = useMemo(() => ({ project, ids: new Set(data.tasks?.tasks.map(task => task.id)) }), [project, data.tasks]);
   // The new-agent composer replaces the chat while it is open.
-<<<<<<< HEAD
-  const composing = level === "project" && Boolean(creating) && creating === project && ready;
-  const projectLinks = projectNavigation(project, level);
-=======
   const paused = data.projects.some(item => item.id === project && item.paused);
-  const composing = Boolean(creating) && creating === project && ready && !paused;
->>>>>>> builder/let-the-operator-pause-new-work-across-a
+  const composing = level === "project" && Boolean(creating) && creating === project && ready && !paused;
+  const projectLinks = projectNavigation(project, level);
   const agent = level === "session" ? data.agents.find(item => item.id === selected.session) : undefined;
   const target = level === "session" ? selected.session : "all";
   const missing = level === "session" && !target;
@@ -1131,6 +1127,8 @@ function Console({ account }) {
       {!patterns && !composing && (tasksView ? <TaskBoard key={project} project={project} board={ready ? data.tasks : null} now={now} taskId={selected.task}
         back={() => navigate({ project, level: "tasks" })} compose={id => navigate({ project, level: "project", composeTask: id })}
         continuation={{ harnesses: paused ? [] : data.startable || [], launch: (id, harness) => action("continue-builder", { id, harness }, "Replacement started") }}
+        inspect={id => navigate({ project, level: "tasks", task: id })}
+        move={(id, status) => action("move-task", { id, status }, "Task moved")}
         recover={(id, harness) => action("recover-builder", { id, harness }, "Builder started")}
         decide={(id, answer) => action("decide", { id, answer }, "Decided")}
         open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatContainerRoot key={inbox ? "inbox" : home ? "home" : "conversation"} initial={home ? false : "instant"} contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>

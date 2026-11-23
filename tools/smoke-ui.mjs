@@ -1,4 +1,4 @@
-// Loads the UI at phone width. Pass --decisions, --composer, --home-sessions, or --inactive.
+// Loads the UI at phone width. Pass --decisions, --composer, --home-sessions, --inactive, or --kanban.
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -10,7 +10,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 
-async function phoneFixture({ homeSessions = false, inactive = false } = {}) {
+async function phoneFixture({ homeSessions = false, inactive = false, kanban = false } = {}) {
   const { createUi, installUi } = await import("../web/server/ui.mjs");
   const { broadcastTopic, inboxTopic, loadProjects, sessionLabel } = await import("../lib/config.mjs");
   const { addTask, taskStoreFile, writeStore } = await import("../lib/tasks.mjs");
@@ -26,6 +26,7 @@ async function phoneFixture({ homeSessions = false, inactive = false } = {}) {
     mkdirSync(root);
     const doc = { v: 1, tasks: [] };
     addTask(doc, { id: project, title: project === names[0] ? "Mobile layout" : "Publish draft", priority: "P1" });
+    if (kanban) addTask(doc, { id: "archived", title: "Archived task", status: "done" });
     writeStore(taskStoreFile(project, env), doc);
     return { root, project, url: fake.url, peers: "claude" };
   });
@@ -247,6 +248,50 @@ async function checkOperatorWorkflow(page) {
   await home.waitFor();
 }
 
+async function checkKanban(page, fixture) {
+  await page.goto(fixture.url + "/#project=decision-first&level=tasks");
+  const rail = page.getByLabel("Status columns");
+  const column = status => rail.locator(`[data-task-column="${status}"]`);
+  const open = column("open");
+  const ready = column("decided");
+  const card = open.getByRole("button", { name: /Mobile layout/ });
+  await card.click();
+  await page.getByRole("button", { name: "Message about Mobile layout" }).waitFor();
+  await page.getByRole("button", { name: "Back to board" }).click();
+
+  const handle = open.getByText("⠿");
+  const source = await handle.boundingBox();
+  const destination = await ready.boundingBox();
+  await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(destination.x + 6, destination.y + 35, { steps: 8 });
+  await page.mouse.up();
+  await ready.getByRole("button", { name: /Mobile layout/ }).waitFor();
+  await page.reload();
+  await ready.getByRole("button", { name: /Mobile layout/ }).waitFor();
+
+  const bounds = await rail.boundingBox();
+  const client = await page.context().newCDPSession(page);
+  for (const [index, offset] of [320, 285, 235, 175, 110, 55].entries()) {
+    await client.send("Input.dispatchTouchEvent", {
+      type: index === 0 ? "touchStart" : "touchMove",
+      touchPoints: [{ x: bounds.x + offset, y: bounds.y + 35 }],
+    });
+  }
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await page.waitForFunction(() => document.querySelector('[aria-label="Status columns"]').scrollLeft > 100);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390);
+
+  const done = column("done");
+  const toggle = done.getByRole("button", { name: /done · 1/i });
+  assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+  assert.equal(await done.getByText("Archived task").count(), 0);
+  await toggle.click();
+  await done.getByText("Archived task").waitFor();
+  await toggle.click();
+  assert.equal(await done.getByText("Archived task").count(), 0);
+}
+
 const deployedChrome = "/home/b/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome";
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || (existsSync(deployedChrome) ? deployedChrome : undefined) });
 let fixture;
@@ -256,8 +301,9 @@ try {
   const decisions = process.argv.includes("--decisions");
   const homeSessions = process.argv.includes("--home-sessions");
   const inactive = process.argv.includes("--inactive");
-  if (composer || decisions || homeSessions || inactive) fixture = await phoneFixture({ homeSessions, inactive });
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, ...(composer || homeSessions || inactive ? { isMobile: true, hasTouch: true } : {}) });
+  const kanban = process.argv.includes("--kanban");
+  if (composer || decisions || homeSessions || inactive || kanban) fixture = await phoneFixture({ homeSessions, inactive, kanban });
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, ...(composer || homeSessions || inactive || kanban ? { isMobile: true, hasTouch: true } : {}) });
   const errors = [];
   page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
   page.on("pageerror", error => errors.push("pageerror: " + error.message));
@@ -276,13 +322,14 @@ try {
   }
   if (composer) await checkComposer(page, fixture);
   else if (decisions) await checkDecisions(page, fixture);
+  else if (kanban) await checkKanban(page, fixture);
   else if (homeSessions) await checkHomeSessions(page, fixture);
   else if (inactive) await checkInactive(page, fixture);
   else if (operatorWorkflow) await checkOperatorWorkflow(page);
   else await page.waitForTimeout(6000);
   console.log(errors.slice(0, 15).join("\n") || "no errors");
   console.log("text:", (await page.innerText("body")).slice(0, 300).replace(/\n+/g, " | "));
-  if ((operatorWorkflow && errors.length) || /pageerror|couldn.t load/.test(errors.join("\n"))) process.exitCode = 1;
+  if (((operatorWorkflow || kanban) && errors.length) || /pageerror|couldn.t load/.test(errors.join("\n"))) process.exitCode = 1;
 } finally {
   await browser.close();
   await fixture?.close();

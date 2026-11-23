@@ -36,7 +36,7 @@ import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern
 import { authorTeam, saveAuthoredTeam } from "../../lib/team-author.mjs";
 import { listOwned, readOwned } from "../../lib/owned.mjs";
 import { builderAssignment, recoverBuilder, stoppedBuilder } from "../../lib/builder.mjs";
-import { openTasks } from "../../lib/tasks.mjs";
+import { STATUSES, openTasks } from "../../lib/tasks.mjs";
 import { priorityOf } from "../../lib/task-order.mjs";
 import { mentions, mentionedNames, mentionedTeams, startOnlyMentions, messageDestinations } from "../lib/message-routing.js";
 import { taskTags } from "../lib/task-tags.js";
@@ -61,7 +61,7 @@ import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a
 export { mentionedNames, mentionedTeams, startOnlyMentions };
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "continue-builder", "recover-builder", "project-pause"];
+const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "move-task", "continue-builder", "recover-builder", "project-pause"];
 const HOSTED_ACTIONS = new Set(["history", "messages", "send", "reply", "afk", "approve", "a2ui"]);
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
@@ -1236,7 +1236,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
       if (action === "history") return history(request, by, await payload(request));
-      const { project: name, paused, target, body, queueAction, question, mode, level: alertLevel, id, decision, answers, harness, prompt, place, worktree, openshell, urgent, sendAnyway, model, startMode, codeMode, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText } = await payload(request);
+      const { project: name, paused, target, body, queueAction, question, mode, level: alertLevel, id, status: taskStatus, decision, answers, harness, prompt, place, worktree, openshell, urgent, sendAnyway, model, startMode, codeMode, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -1270,7 +1270,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }
       if (["start", "continue-builder", "recover-builder"].includes(action) && isProjectPaused(cfg)) reject(409, PROJECT_PAUSED);
       if (action === "approve") return json(201, await answerApproval(project, id, { decision, answers }, by));
-      // The operator's decision on a task question goes straight into the task store; the next agent run reads it.
+
       if (action === "continue-builder") {
         if (!startable(project).includes(harness)) reject(400, "Select an available harness");
         const result = await runner({ socket: runnerSocket(env), timeoutMs: 120_000 })
@@ -1287,6 +1287,14 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         broadcast();
         return json(201, { status: "Builder started", detail: id });
       }
+      if (action === "move-task") {
+        if (!project.tasks || typeof id !== "string" || !STATUSES.includes(taskStatus)) reject(400, "Give a task id and valid status");
+        try { await project.tasks.update(id, { status: taskStatus }); }
+        catch (err) { reject(400, err.message); }
+        broadcast();
+        return json(200, { status: "Task moved", detail: id });
+      }
+      // The next agent run reads the operator's answer from the task store.
       if (action === "decide") {
         if (!project.tasks) reject(400, "This project has no task store");
         const text = typeof decisionText === "string" ? decisionText.trim() : "";

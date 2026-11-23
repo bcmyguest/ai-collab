@@ -2,7 +2,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ageOf, boardClock, columnsOf, countsOf, FILTERS, statusLabel } from "@/lib/task-board";
+import { ageOf, boardClock, columnsOf, countsOf, COLUMNS, FILTERS, statusLabel } from "@/lib/task-board";
 import { priorityOf, sortTasks } from "../../lib/task-order.mjs";
 import { cn } from "@/lib/utils";
 import { views } from "@/lib/view-memory";
@@ -55,6 +55,24 @@ const Card = memo(function Card({ task, age, compose, open, fullId, continuation
     {task.previousHarness && continuation && !task.recovery && <ContinueBuilder task={task} {...continuation}/>}
   </li>;
 });
+
+function CompactCard({ task, age, inspect, move, dragStart }) {
+  return <li className="min-w-0 rounded-xl border bg-card p-2">
+    <button type="button" className="flex w-full min-w-0 flex-col gap-1 text-left hover:underline" onClick={() => inspect(task.id)}>
+      <TaskMetadata task={task}/>
+      <span className="line-clamp-2 text-sm font-medium wrap-anywhere">{task.title}</span>
+    </button>
+    <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+      <span className="min-w-0 flex-1 truncate">{task.owner || task.builderUnit || "No owner"}{age && ` · ${age} ago`}</span>
+      <select aria-label={`Move ${task.title}`} className="max-w-24 rounded border bg-background p-1 capitalize"
+        value={task.status} onChange={event => move(task, event.target.value)}>
+        {COLUMNS.map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}
+      </select>
+      {dragStart && <span aria-hidden className="cursor-grab touch-none select-none px-2 py-1 text-base"
+        onPointerDown={event => dragStart(event, task)}>⠿</span>}
+    </div>
+  </li>;
+}
 
 function ContinueBuilder({ task, harnesses, launch }) {
   const choices = harnesses.filter(harness => harness !== task.previousHarness);
@@ -134,20 +152,97 @@ function Decision({ task, decide, compose, fullId }) {
   </li>;
 }
 
-const Column = memo(function Column({ status, list, now, compose, open, fullId, continuation, recover }) {
-  return <section aria-label={status} className="flex min-w-0 flex-col gap-2">
+const Column = memo(function Column({ status, list, now, compose, open, fullId, continuation, recover, inspect, move, dragStart, collapsed, toggle, target }) {
+  const heading = <>
+    <span aria-hidden className={cn("inline-block size-2 rounded-full", DOT[status])}/>{statusLabel(status)} · {list.length}
+  </>;
+  return <section aria-label={status} data-task-column={status} className={cn("flex min-w-0 flex-col gap-2",
+    !fullId && "min-h-24 snap-start rounded-xl border bg-muted/30 p-2", target && "ring-2 ring-inset ring-primary")}>
     <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-      <span aria-hidden className={cn("inline-block size-2 rounded-full", DOT[status])}/>{statusLabel(status)} · {list.length}
+      {toggle ? <button type="button" aria-expanded={!collapsed} onClick={toggle}
+        className="flex w-full items-center gap-2 py-1 uppercase">
+        {heading}<span aria-hidden className="ml-auto">{collapsed ? "+" : "−"}</span>
+      </button> : heading}
     </h2>
-    {list.length ? <ul className="flex flex-col gap-2">{list.map(task => <Card key={task.id} task={task} age={task.last ? ageOf(task.last.at, now) : ""} compose={compose} open={open} fullId={fullId} continuation={continuation} recover={recover}/>)}</ul>
-      : <p className="text-xs text-muted-foreground">No {statusLabel(status)} tasks.</p>}
+    {!collapsed && (list.length ? <ul className="flex flex-col gap-2">{list.map(task => {
+      const age = task.last ? ageOf(task.last.at, now) : "";
+      return fullId
+        ? <Card key={task.id} task={task} age={age} compose={compose} open={open} fullId continuation={continuation} recover={recover}/>
+        : <CompactCard key={task.id} task={task} age={age} inspect={inspect} move={move} dragStart={dragStart}/>;
+    })}</ul> : <p className="text-xs text-muted-foreground">No {statusLabel(status)} tasks.</p>)}
   </section>;
 });
 
-export function TaskBoard({ project, board, now, open, compose, decide, taskId, back, continuation, recover }) {
+export function TaskBoard({ project, board, now, open, compose, decide, taskId, back, continuation, recover, inspect, move }) {
   const filterKey = "task filter " + project;
   const [filter, setFilter] = useState(() => views.get(filterKey, "all"));
   const [view, setView] = useState("board");
+  const [doneOpen, setDoneOpen] = useState(false);
+  const [target, setTarget] = useState(null);
+  const lane = useRef(null);
+  const stopDrag = useRef(null);
+  const moving = useRef(new Set());
+  useEffect(() => () => stopDrag.current?.(), [filter, taskId, view]);
+
+  const moveRef = useRef(move);
+  const inspectRef = useRef(inspect);
+  useEffect(() => { moveRef.current = move; inspectRef.current = inspect; });
+  const inspectTask = useCallback(id => inspectRef.current(id), []);
+  const toggleDone = useCallback(() => setDoneOpen(value => !value), []);
+
+  const moveCard = useCallback(async (task, status) => {
+    if (status === task.status || moving.current.has(task.id)) return;
+    moving.current.add(task.id);
+    try { await moveRef.current(task.id, status); }
+    finally { moving.current.delete(task.id); }
+  }, []);
+
+  const dragStart = useCallback((event, task) => {
+    if (!event.isPrimary || event.button !== 0 || stopDrag.current) return;
+    const rail = lane.current;
+    const handle = event.currentTarget;
+    const pointer = event.pointerId;
+    let { clientX: x, clientY: y } = event;
+    const columnAt = () => {
+      const column = document.elementFromPoint(x, y)?.closest("[data-task-column]");
+      return rail.contains(column) ? column.dataset.taskColumn : null;
+    };
+    const track = next => {
+      x = next.clientX;
+      y = next.clientY;
+      setTarget(columnAt());
+    };
+    const timer = window.setInterval(() => {
+      const bounds = rail.getBoundingClientRect();
+      if (y < bounds.top || y > bounds.bottom) return;
+      if (x >= bounds.left && x < bounds.left + 32) rail.scrollLeft -= 14;
+      else if (x <= bounds.right && x > bounds.right - 32) rail.scrollLeft += 14;
+      setTarget(columnAt());
+    }, 30);
+    const stop = () => {
+      window.clearInterval(timer);
+      handle.removeEventListener("pointermove", track);
+      handle.removeEventListener("pointerup", drop);
+      handle.removeEventListener("lostpointercapture", stop);
+      if (handle.hasPointerCapture(pointer)) handle.releasePointerCapture(pointer);
+      delete rail.dataset.dragging;
+      stopDrag.current = null;
+      setTarget(null);
+    };
+    const drop = next => {
+      track(next);
+      const status = columnAt();
+      stop();
+      if (status) moveCard(task, status);
+    };
+    stopDrag.current = stop;
+    rail.dataset.dragging = "true";
+    handle.setPointerCapture(pointer);
+    handle.addEventListener("pointermove", track);
+    handle.addEventListener("pointerup", drop);
+    handle.addEventListener("lostpointercapture", stop);
+  }, [moveCard]);
+
   const tasks = board?.tasks || [];
   const columns = useMemo(() => columnsOf(tasks, filter), [tasks, filter]);
   const counts = useMemo(() => countsOf(tasks), [tasks]);
@@ -184,13 +279,20 @@ export function TaskBoard({ project, board, now, open, compose, decide, taskId, 
           {FILTERS.map(status => <Button key={status} type="button" size="sm" variant={filter === status ? "default" : "outline"}
             aria-pressed={filter === status} className="h-8 rounded-full capitalize" onClick={() => {
               views.set(filterKey, status === "all" ? "" : status);
+              stopDrag.current?.();
               setFilter(status);
+              if (lane.current) lane.current.scrollLeft = 0;
             }}>
             {status === "all" ? "All" : statusLabel(status)} · {status === "all" ? tasks.length : counts[status]}
           </Button>)}
         </div>
-        <div className="flex flex-col gap-4 md:grid md:grid-cols-5 md:items-start">
-          {columns.map(([status, list]) => <Column key={status} status={status} list={list} now={clock} compose={message} open={openOwner} continuation={continuation} recover={recover && recoverTask}/>)}
+        <div ref={lane} aria-label="Status columns" tabIndex={filter === "all" ? 0 : undefined}
+          className={cn("grid shrink-0 items-stretch gap-3 pb-2", filter === "all" &&
+            "auto-cols-[85%] grid-flow-col snap-x snap-mandatory overflow-x-auto overscroll-x-contain data-[dragging=true]:snap-none sm:auto-cols-[minmax(13rem,1fr)]")}>
+          {columns.map(([status, list]) => <Column key={status} status={status} list={list} now={clock}
+            inspect={inspectTask} move={moveCard} dragStart={filter === "all" ? dragStart : null} target={target === status}
+            collapsed={status === "done" && filter === "all" && !doneOpen}
+            toggle={status === "done" && filter === "all" ? toggleDone : undefined}/>)}
         </div>
       </>}
     </>}

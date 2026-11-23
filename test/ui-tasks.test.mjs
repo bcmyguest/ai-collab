@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { loadProjects } from "../lib/config.mjs";
-import { addTask, ownTask, taskStoreFile, writeStore } from "../lib/tasks.mjs";
+import { addTask, ownTask, readStore, taskStoreFile, writeStore } from "../lib/tasks.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { firstUpdate } from "./helpers/ui-stream.mjs";
@@ -12,7 +12,7 @@ import { firstUpdate } from "./helpers/ui-stream.mjs";
 const base = "http://127.0.0.1:8795";
 const OWNER = "claude#0123456789abcdef";
 
-test("the UI state snapshot carries the project's task board", async (t) => {
+test("the UI state snapshot carries the task board and persists operator status moves", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
   const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-ui-tasks-"));
@@ -28,12 +28,23 @@ test("the UI state snapshot carries the project's task board", async (t) => {
 
   const ui = createUi({ projects: loadProjects(env, { host: "operator" }), env });
   t.after(() => ui.close());
+  const post = (id, status) => ui.handle(new Request(`${base}/api/move-task`, {
+    method: "POST", headers: { Origin: base, "Content-Type": "application/json" },
+    body: JSON.stringify({ project: "demo", id, status }),
+  }), "move-task");
+  assert.equal((await post("first", "ready")).status, 400);
+  assert.equal((await post("missing", "done")).status, 400);
+  assert.equal((await post("first", "done")).status, 200);
+  const [stored] = readStore(taskStoreFile("demo", env)).tasks;
+  assert.equal(stored.status, "done");
+  assert.equal(stored.title, "First task");
+  assert.equal(stored.owner, OWNER);
   const ctrl = new AbortController();
   try {
     const state = await firstUpdate(ui.events(new Request(`${base}/api/events?project=demo`, { signal: ctrl.signal })), "state");
     assert.equal(state.tasks.error, undefined);
     assert.equal(state.tasks.tasks.length, 1);
-    assert.deepEqual([state.tasks.tasks[0].id, state.tasks.tasks[0].status, state.tasks.tasks[0].owner, state.tasks.tasks[0].ownerOnline], ["first", "building", OWNER, false]);
+    assert.deepEqual([state.tasks.tasks[0].id, state.tasks.tasks[0].status, state.tasks.tasks[0].owner, state.tasks.tasks[0].ownerOnline], ["first", "done", OWNER, false]);
   } finally {
     ctrl.abort();
   }
