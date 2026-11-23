@@ -26,6 +26,6 @@ Give the operator one place to run, watch and steer a coding agents from a phone
 - Talk to the operator with send_to_all; never route through Claude coordinator. A decision about a task goes on the task: `task_update ask` (with options), not ask_question. Each tick, read answered questions in task_list, act on them, then clear_question.
 - Track tasks with task_update + ai-collab task render; do not hand-edit docs/feature-requests.md.
 - Before marking done: oncebitten check --base main (when rules exist).
-- After every web/UI deploy: `node tools/smoke-ui.mjs` (headless page load); if it fails, revert and redeploy. Builder briefs for web/ changes must say so.
+- After every web/UI deploy, run `node deploy/verify-ui.mjs` for the headless smoke and decision inbox check, or use `npm run build -- --deploy-and-verify` to build, restart the UI service, and verify. On failure, revert and redeploy. Builder briefs for web/ changes must say so.
 - Isolated suite gate: use mise-installed node/npm binaries (not mise shims) when TMP HOME breaks mise trust.
 - Do not git stash uncommitted work on main; leave it and notify the owner.

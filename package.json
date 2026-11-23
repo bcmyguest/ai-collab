@@ -17,6 +17,7 @@
     ".mcp.json",
     "commands",
     "deploy",
+    "tools/smoke-ui.mjs",
     "hooks",
     "lib",
     "runner",
