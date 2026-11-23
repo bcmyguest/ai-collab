@@ -1,8 +1,9 @@
 version: 1
 filesystem_policy:
   include_workdir: false
-  read_only: [/bin, /usr, /lib, /proc, /dev/urandom, /etc, /sandbox]
-  read_write: [/sandbox/.ai-collab-code, /tmp, /dev/null]
+  # /sandbox must be writable: the node runtime is uploaded to /sandbox/.ai-collab-code, which does not exist yet.
+  read_only: [/bin, /usr, /lib, /proc, /dev/urandom, /etc]
+  read_write: [/sandbox, /tmp, /dev/null]
 landlock:
   compatibility: best_effort
 network_policies: {}
