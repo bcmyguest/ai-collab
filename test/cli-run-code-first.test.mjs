@@ -35,6 +35,8 @@ async function cli(argv, env, agent) {
 
 const READS = [
   [["task", "list", "open"], /ai\.task_list\(\{"status":"open"\}\)/],
+  // An agent's guessed --status flag still yields a valid program.
+  [["task", "list", "--status", "open"], /ai\.task_list\(\{"status":"open"\}\)/],
   [["task", "show", "fix-x"], /ai\.task_list\(.*"fix-x"/],
   [["agents", "--all"], /ai\.list_agents\(\{"all":true\}\)/],
   [["sessions"], /ai\.list_sessions\(/],
