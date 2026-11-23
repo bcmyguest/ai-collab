@@ -15,9 +15,11 @@ if (mode !== "empty") appendFileSync(join(process.cwd(), "notes.md"), "a line fr
 if (mode === "commit") {
   execFileSync("git", ["add", "-A"]);
   execFileSync("git", ["commit", "-q", "-m", "docs: add a line"]);
-  const hooks = JSON.parse(readFileSync(join(process.env.HOME, ".cursor", "hooks.json"), "utf8")).hooks;
-  const command = hooks.postToolUse[0].command.split("/sandbox/").join(`${sandbox}/`);
-  execFileSync("sh", ["-c", command], { input: JSON.stringify({ hook_event_name: "postToolUse", cwd: `/sandbox/work/${basename(process.cwd())}` }) });
+  if (args[0] !== "run") {
+    const hooks = JSON.parse(readFileSync(join(process.env.HOME, ".cursor", "hooks.json"), "utf8")).hooks;
+    const command = hooks.postToolUse[0].command.split("/sandbox/").join(`${sandbox}/`);
+    execFileSync("sh", ["-c", command], { input: JSON.stringify({ hook_event_name: "postToolUse", cwd: `/sandbox/work/${basename(process.cwd())}` }) });
+  }
 }
 if (mode === "commit" || mode === "empty") {
   const task = process.env.FAKE_BUILDER_TASK;

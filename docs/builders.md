@@ -1,13 +1,13 @@
 # Builders
 
-A builder is one agent that implements one task on its own branch. `ai-collab builder start` runs each new builder inside its own OpenShell sandbox. Codex uses a runner-owned session when the runner is reachable. Cursor and Claude use a transient systemd user unit. Codex uses the same fallback when the runner is unavailable. Builders started by hand before this command existed run on the host and are left alone.
+A builder is one agent that implements one task on its own branch. `ai-collab builder start` runs each new builder inside its own OpenShell sandbox. Codex uses a runner-owned session when the runner is reachable. Cursor, Claude, and OpenCode use a transient systemd user unit. Codex uses the same fallback when the runner is unavailable. Builders started by hand before this command existed run on the host and are left alone.
 
 Lib: `lib/builder.mjs`. OpenShell lifecycle: `runner/sandbox.mjs`. Tests: `test/builder.test.mjs` and `test/builder-claude.test.mjs` with fake `openshell`, `systemd-run`, `systemctl`, agent and `oncebitten` from `test/helpers/`.
 
 ## Commands
 
 ```
-ai-collab builder start --task <id> [--harness cursor|codex|claude] [--model M] --brief <file> [--branch B] [--run ID]
+ai-collab builder start --task <id> [--harness cursor|codex|claude|opencode] [--model M] --brief <file> [--branch B] [--run ID]
 ai-collab builder list [--all]
 ai-collab builder stop <id>
 ```
@@ -206,3 +206,7 @@ credentials inside the sandbox if the endpoint requires them. Tools that
 operate on files use the sandbox's own AI Collab state. The builder's
 recorded `ai-collab task set` and `task progress` calls remain the way to
 apply task changes to the host store.
+
+Cursor and OpenCode builders can batch worktree operations with `ai-collab-code` `run_code`. The server and program run inside the builder's OpenShell session. See [builder code mode](code-mode.md#cursor-and-opencode-builders).
+
+OpenCode uses the OpenCode 2 CLI in standalone mode. The supervisor stages the executable found on PATH or at `AI_COLLAB_OPENCODE_BIN`. For an installation with a launcher shim, set that override to the standalone executable. The default model is `opencode/deepseek-v4.1-flash-free`, and the sandbox policy permits OpenCode's model endpoint and model catalog. The launcher and MCP registration follow the [OpenCode CLI](https://opencode.ai/docs/cli/commands/) and [MCP configuration](https://opencode.ai/docs/mcp-servers/) documentation.

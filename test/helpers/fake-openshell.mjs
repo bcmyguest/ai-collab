@@ -92,10 +92,14 @@ if (args[0] === "sandbox" && args[1] === "exec") {
   const mapped = (value) => (root() ? String(value).split("/sandbox/").join(`${join(root(), name)}/`) : String(value));
   for (let i = 0; i < cmd.length; i += 1) cmd[i] = mapped(cmd[i]);
   if (cmd[0] === "cursor-agent" || cmd[0] === "agent") cmd[0] = process.env.FAKE_SANDBOX_CURSOR_BIN;
+  if (cmd[0] === "opencode" && process.env.FAKE_SANDBOX_OPENCODE_BIN) cmd[0] = process.env.FAKE_SANDBOX_OPENCODE_BIN;
   const env = { ...process.env };
   // The fake runs the command on the host, so it keeps the host PATH; the sandbox's own PATH would break a shebang.
   for (const pair of envAt) { const [k, ...v] = pair.split("="); if (k !== "PATH") env[k] = mapped(v.join("=")); }
   const cwd = workdirAt >= 0 ? inside(name, args[workdirAt + 1]) : undefined;
+  if (process.env.LD_LIBRARY_PATH && env.LD_LIBRARY_PATH !== process.env.LD_LIBRARY_PATH) {
+    env.LD_LIBRARY_PATH = [env.LD_LIBRARY_PATH, process.env.LD_LIBRARY_PATH].filter(Boolean).join(":");
+  }
   if (cwd) mkdirSync(cwd, { recursive: true });
   const child = spawn(cmd[0], cmd.slice(1), { stdio: "inherit", env, ...(cwd ? { cwd } : {}) });
   child.on("exit", (code) => process.exit(code ?? 1));

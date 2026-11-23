@@ -54,7 +54,7 @@ function lab(extra = {}) {
   git("add", "-A");
   git("commit", "-q", "-m", "init");
   const env = {
-    PATH: `${bin}:${process.env.PATH}`, HOME: home, XDG_DATA_HOME: path.join(home, "data"), XDG_CONFIG_HOME: path.join(home, ".config"),
+    PATH: `${bin}:${process.env.PATH}`, GIT_EXEC_PATH: process.env.GIT_EXEC_PATH, LD_LIBRARY_PATH: process.env.LD_LIBRARY_PATH, HOME: home, XDG_DATA_HOME: path.join(home, "data"), XDG_CONFIG_HOME: path.join(home, ".config"),
     AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "claude", AI_COLLAB_STATE_DIR: path.join(home, "state"),
     AI_COLLAB_BUILDER_WORKTREES: home, AI_COLLAB_OPENSHELL_BIN: OPENSHELL, AI_COLLAB_CURSOR_TREE: tree, AI_COLLAB_ONCEBITTEN_BIN: ONCEBITTEN,
     AI_COLLAB_BUILDER_NODE: "none", AI_COLLAB_BUILDER_NODE_MODULES: "none", AI_COLLAB_BUILDER_GIT: "none", AI_COLLAB_BUILDER_GIT_CORE: "none",
@@ -260,7 +260,7 @@ test("builder list shows live builders and stop ends only builders it started", 
 test("builder start refuses a bad harness, a missing task and an existing worktree", async () => {
   const l = lab();
   await withTask(l);
-  assert.equal((await l.cli("builder", "start", "--task", "smoke-task", "--harness", "opencode", "--brief", l.brief)).code, 1);
+  assert.equal((await l.cli("builder", "start", "--task", "smoke-task", "--harness", "unknown", "--brief", l.brief)).code, 1);
   assert.match((await l.cli("builder", "start", "--task", "nope", "--harness", "cursor", "--brief", l.brief)).err, /no task nope/);
   mkdirSync(path.join(l.home, "ai-collab-wt-smoke-task"));
   assert.match((await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief)).err, /already exists/);
@@ -459,3 +459,30 @@ test("standalone Codex retries a usage limit with Cursor and carries uncommitted
   assert.equal(calls.filter((row) => row[1] === "delete").length, 2);
   assert.ok(readJsonLines(l.env.FAKE_ONCEBITTEN_LOG).some((row) => row.args[0] === "check"));
 });
+
+for (const harness of ["cursor", "opencode"]) {
+  test(`${harness} stages a local code MCP server in the builder sandbox`, async () => {
+    const l = lab({ AI_COLLAB_BUILDER_NODE: process.execPath, AI_COLLAB_OPENCODE_BIN: AGENT, FAKE_SANDBOX_OPENCODE_BIN: AGENT });
+    await withTask(l);
+    const started = await l.cli("builder", "start", "--task", "smoke-task", "--harness", harness, "--brief", l.brief);
+    assert.equal(started.code, 0, started.err);
+    const home = path.join(l.home, "sandboxes", SANDBOX, "home");
+    const cursor = harness === "cursor";
+    const config = JSON.parse(readFileSync(path.join(home, cursor ? ".cursor/mcp.json" : ".config/opencode/opencode.json"), "utf8"));
+    const server = (cursor ? config.mcpServers : config.mcp.servers)["ai-collab-code"];
+    assert.deepEqual(cursor ? [server.command, ...server.args] : server.command, [
+      "/sandbox/tools/node/bin/node",
+      "/sandbox/tools/ai-collab/scripts/ai-collab-code-mcp.mjs",
+      "--builder-local",
+      "/sandbox/work/ai-collab-wt-smoke-task",
+    ]);
+    const [agent] = readJsonLines(l.env.FAKE_BUILDER_LOG);
+    assert.match(agent.args.at(-1), /run_code to batch/);
+    if (cursor) assert.ok(agent.args.includes("--approve-mcps"));
+    else {
+      assert.equal(server.codemode, false);
+      assert.deepEqual(agent.args.slice(0, 5), ["run", "--standalone", "--auto", "--format", "json"]);
+    }
+    assert.equal(task(l).status, "done");
+  });
+}

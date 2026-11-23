@@ -93,3 +93,23 @@ and the only one Cursor and OpenCode have.
 | `lib/code-run.mjs` | run_code: description, schema check, sandbox staging, the in-sandbox bootstrap, limits |
 | `scripts/ai-collab-code-mcp.mjs` | the `ai-collab-code` MCP server |
 | `test/code-mode.test.mjs`, `test/code-mode-ui.test.mjs`, `test/code-run.test.mjs`, `test/code-mcp-register.test.mjs` | tests with fakes (fake openshell, fake Codex app-server, fake SDK query) |
+
+## Cursor and OpenCode builders
+
+These builders get an `ai-collab-code` MCP server staged directly into their session sandbox. Its `run_code` starts in the builder worktree. Pass `code` and optionally `timeout_ms`. This registration exposes the local worktree helpers.
+
+```js
+const matches = grep("oldName", "src");
+const source = read("src/example.js");
+if (!source.includes("oldName")) throw new Error("Expected oldName in example.js");
+edit("src/example.js", "oldName", "newName");
+const check = sh("git diff --check");
+if (check.code !== 0) throw new Error(check.stderr || check.stdout);
+return { matches: matches.trim().split("\n").length, diffCheck: check.code };
+```
+
+Group a search and related reads in one call, then batch a known edit with its verification. Use ordinary JavaScript to filter results and return a short summary. Check `sh`'s `code`, `stdout`, and `stderr` before relying on its result. `grep` uses extended regex and returns an empty string for no matches. `edit` replaces one literal occurrence and throws for missing or ambiguous matches. Use worktree-relative paths. The helpers share the sandbox's access and run under its OpenShell policy.
+
+The default timeout is 30 seconds, up to 120 seconds. A program can call up to 200 helpers. Reads and individual command streams are capped at 1 MiB, and the tool response is clipped at 16,000 characters.
+
+The fixed worktree task in `test/code-run.test.mjs` searches, reads, edits, and checks the same file in both paths. Its scripted transcripts record four top-level tool calls for the separate operations and one for the batch. The test checks both resulting files and command results. Live harness transcripts can be collected from the builder unit journal, which receives Cursor stream JSON and OpenCode JSON events.

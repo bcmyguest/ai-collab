@@ -1,7 +1,7 @@
 // run_code (lib/code-run.mjs, scripts/ai-collab-code-mcp.mjs) against fakes: a fake openshell, no real sandbox or CLI.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -140,7 +140,7 @@ test("without openshell nothing runs, and the error says why", async () => {
 test("prepareSandbox uploads node and its marker once, then reuses the staged runtime", async (t) => {
   const dir = temp(t);
   const fake = fakeOpenshell(dir);
-  const env = { PATH: process.env.PATH, AI_COLLAB_OPENSHELL_BIN: fake.bin, FAKE_OPENSHELL_STATE: fake.state, FAKE_OPENSHELL_LOG: fake.log };
+  const env = { PATH: process.env.PATH, LD_LIBRARY_PATH: process.env.LD_LIBRARY_PATH, AI_COLLAB_OPENSHELL_BIN: fake.bin, FAKE_OPENSHELL_STATE: fake.state, FAKE_OPENSHELL_LOG: fake.log };
   const uploads = () => readFileSync(fake.log, "utf8").split("\n").filter((l) => l.includes('"upload"')).length;
   const first = await prepareSandbox({ env, nodePath: fake.node, libs: async () => [] });
   assert.deepEqual(first, { openshell: fake.bin, name: "ai-collab-code" });
@@ -168,7 +168,7 @@ test("the MCP server lists run_code, runs a program in the (fake) sandbox, and a
   const dir = temp(t);
   const fake = fakeOpenshell(dir);
   const env = {
-    PATH: process.env.PATH, HOME: dir, XDG_DATA_HOME: dir, XDG_CONFIG_HOME: join(dir, "config"), XDG_STATE_HOME: join(dir, "state"),
+    PATH: process.env.PATH, LD_LIBRARY_PATH: process.env.LD_LIBRARY_PATH, HOME: dir, XDG_DATA_HOME: dir, XDG_CONFIG_HOME: join(dir, "config"), XDG_STATE_HOME: join(dir, "state"),
     AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "claude",
     AI_COLLAB_OPENSHELL_BIN: fake.bin, AI_COLLAB_CODE_NODE: fake.node, FAKE_OPENSHELL_STATE: fake.state, FAKE_OPENSHELL_LOG: fake.log,
   };
@@ -214,7 +214,7 @@ test("the MCP server lists run_code, runs a program in the (fake) sandbox, and a
 
 test("the MCP server refuses to run when openshell is missing", async (t) => {
   const dir = temp(t);
-  const server = mcp({ PATH: "/nonexistent", HOME: dir, XDG_DATA_HOME: dir, AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "claude" }, dir);
+  const server = mcp({ PATH: "/nonexistent", LD_LIBRARY_PATH: process.env.LD_LIBRARY_PATH, HOME: dir, XDG_DATA_HOME: dir, AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "claude" }, dir);
   t.after(() => server.close());
   await server.request("initialize", {});
   const { result } = await server.request("tools/call", { name: "run_code", arguments: { code: "return 1", session: SESSION } });
@@ -227,4 +227,61 @@ test("programArgv runs the bootstrap through sandbox exec with the staged node",
   assert.deepEqual(argv.slice(0, 6), ["openshell", "sandbox", "exec", "--no-tty", "-n", "ai-collab-code"]);
   assert.ok(argv.includes(`LD_LIBRARY_PATH=${REMOTE_DIR}/rt/lib`));
   assert.deepEqual(argv.slice(argv.indexOf("--") + 1, argv.indexOf("--") + 4), [`${REMOTE_DIR}/rt/node`, "--max-old-space-size=256", "-e"]);
+});
+
+test("fixed worktree task uses one batched call instead of four top-level calls", async (t) => {
+  const baseline = temp(t);
+  const batched = temp(t);
+  for (const dir of [baseline, batched]) writeFileSync(join(dir, "notes.txt"), "state=pending\n");
+
+  const before = [];
+  const record = (tool, result) => before.push({ type: "tool_call", tool, result });
+  record("grep", execFileSync("grep", ["-n", "pending", "notes.txt"], { cwd: baseline, encoding: "utf8" }));
+  const initial = readFileSync(join(baseline, "notes.txt"), "utf8");
+  record("read", initial);
+  writeFileSync(join(baseline, "notes.txt"), initial.replace("pending", "done"));
+  record("edit", null);
+  const check = "test \"$(cat notes.txt)\" = state=done";
+  record("sh", spawnSync("/bin/sh", ["-c", check], { cwd: baseline }).status);
+
+  const helper = fileURLToPath(new URL("../lib/builder-code.cjs", import.meta.url));
+  const argv = [...LOCAL, helper];
+  const result = await runProgram({
+    argv, cwd: batched, builder: true,
+    code: `
+      const matches = grep("pending", "notes.txt");
+      const initial = read("notes.txt");
+      edit("notes.txt", "pending", "done");
+      return [matches, initial, null, sh(${JSON.stringify(check)}).code];
+    `,
+  });
+  const after = [{ type: "tool_call", tool: "run_code", result }];
+  const count = (transcript) => transcript.filter(({ type }) => type === "tool_call").length;
+  assert.equal(result.ok, true, result.error);
+  assert.equal(result.calls, 4);
+  assert.deepEqual(result.value, before.map(({ result }) => result));
+  assert.equal(result.value.at(-1), 0);
+  assert.equal(readFileSync(join(batched, "notes.txt"), "utf8"), readFileSync(join(baseline, "notes.txt"), "utf8"));
+  assert.deepEqual([count(before), count(after)], [4, 1]);
+});
+
+test("builder helpers report command failures and reject ambiguous edits", async (t) => {
+  const cwd = temp(t);
+  writeFileSync(join(cwd, "notes"), "aaa");
+  const helper = fileURLToPath(new URL("../lib/builder-code.cjs", import.meta.url));
+  const argv = [...LOCAL, helper];
+  const run = (code) => runProgram({ argv, code, cwd, builder: true });
+  const failure = await run('edit("notes", "aa", "b")');
+  assert.match(failure.error, /exactly one/);
+  assert.equal(readFileSync(join(cwd, "notes"), "utf8"), "aaa");
+  const response = await run('return [grep("missing", "notes"), sh("echo error >&2; exit 7"), Object.keys(ai)];');
+  assert.deepEqual(response.value, ["", { code: 7, stdout: "", stderr: "error\n" }, []]);
+});
+
+test("builder MCP refuses to launch outside the sandbox", () => {
+  const env = { ...process.env };
+  delete env.OPENSHELL_SANDBOX;
+  const result = spawnSync(process.execPath, [SERVER, "--builder-local", "/sandbox/work/test"], { env, encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /requires an OpenShell builder worktree/);
 });
