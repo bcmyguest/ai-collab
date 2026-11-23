@@ -296,6 +296,16 @@ test("harness argv, policy, hooks and recorded calls", () => {
   assert.match(briefNotes({ task: "t", branch: "b", workdir: "/sandbox/work/w" }), /oncebitten check --base main/);
 });
 
+test("an OpenCode builder dials its APIs with its own TLS", () => {
+  // Through OpenShell's TLS-terminating proxy, Zen answers free models with FreeUsageLimitError (measured 2026-11-22).
+  const policy = builderPolicy({ harness: "opencode", binaries: ["/sandbox/opencode/opencode"] });
+  assert.deepEqual(policy.network_policies.opencode.endpoints, [
+    { host: "opencode.ai", port: 443, protocol: "tcp", tls: "skip" },
+    { host: "models.dev", port: 443, protocol: "tcp", tls: "skip" },
+  ]);
+  assert.equal(policy.network_policies.ai_collab.endpoints[0].protocol, "rest");
+});
+
 test("sharedLibs lists a binary's libraries without glibc's own", async () => {
   const libs = await sharedLibs(process.execPath);
   assert.ok(Array.isArray(libs));
