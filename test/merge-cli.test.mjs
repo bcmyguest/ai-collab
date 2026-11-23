@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import test from "node:test";
 import { merge } from "../lib/merge-cli.mjs";
 import { runCli } from "../lib/cli.mjs";
@@ -37,6 +37,8 @@ for (const failure of [null, "checkout", "merge", "ci", "test", "changed HEAD", 
         calls.push([file, argv]);
         if (file === "npm") {
           assert.equal(options.cwd, worktree);
+          assert.deepEqual(Object.keys(options.env).sort(), ["CODEX_HOME", "HOME", "PATH", "TMPDIR"]);
+          assert.equal(options.env.PATH, [dirname(process.execPath), "/usr/bin", "/bin"].join(delimiter));
           assert.ok(existsSync(options.env.HOME));
           assert.ok(existsSync(options.env.TMPDIR));
           assert.equal(options.env.CODEX_HOME, join(options.env.HOME, ".codex"));
