@@ -56,10 +56,13 @@ test("a tick's prompt ends with the mission, then the review", async () => {
   const prompt = await tick();
   assert.match(prompt, /^PM tick\n\nMission file MISSION\.md/);
   assert.ok(prompt.endsWith(reviewBlock({ project: "demo" })), "the review is the closing instruction");
+  assert.match(prompt, /Review project outcomes with ai-collab task outcomes/);
   assert.ok(prompt.indexOf("Mission file MISSION.md") < prompt.indexOf(REVIEW_HEADING), "the review follows the mission");
-  // A project with no mission file still gets the review, straight after its own prompt, and is told to write one.
+  // A project with no mission file still gets the outcome instructions and the closing review.
   rmSync(path.join(root, "MISSION.md"));
-  assert.equal(await tick(), `PM tick\n\n${reviewBlock({ project: "demo" })}`);
+  const withoutMission = await tick();
+  assert.match(withoutMission, /^PM tick\nReview project outcomes/);
+  assert.ok(withoutMission.endsWith(reviewBlock({ project: "demo" })));
 });
 
 test("a plain script's tick is untouched by the review", async () => {

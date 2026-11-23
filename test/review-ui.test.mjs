@@ -18,6 +18,7 @@ const dependencies = {
     COLUMNS: ["open", "decided", "building", "review", "blocked", "done"], FILTERS: ["all"], statusLabel: (s) => s,
   },
   "../../lib/task-order.mjs": { priorityOf: (task) => task.priority ?? "P2", sortTasks: (list) => list },
+  "./outcomes": { OutcomeCards: () => null },
   "./task-graph": { TaskGraph: () => null },
 };
 await swc.loadBindings();
