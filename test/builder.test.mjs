@@ -156,6 +156,7 @@ test("a cursor builder runs with process inspection allowed so OpenShell can ide
   const run = readJsonLines(l.env.FAKE_OPENSHELL_LOG).find((a) => a[1] === "exec" && a.includes("cursor-agent"));
   assert.ok(run, "no exec of cursor-agent");
   assert.equal(run[run.indexOf("CURSOR_AGENT_ALLOW_PROCESS_INSPECTION=1") - 1], "--env");
+  assert.equal(run[run.indexOf("AI_COLLAB_PROJECT=demo") - 1], "--env");
 });
 
 test("uncommitted work is committed on the host and waits for review", async () => {

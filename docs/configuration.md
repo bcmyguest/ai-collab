@@ -14,7 +14,7 @@ Configuration lives in `${XDG_CONFIG_HOME:-~/.config}/ai-collab/`. Keep the toke
 
 `"otlpEndpoint"` is the OTLP/HTTP traces URL every Cursor run reports to (default `http://localhost:6006/v1/traces`, the local Phoenix); `"off"` or `false` turns the traces off. With no `defaults.json` nothing is exported. See [Cursor traces](code-mode.md#cursor-traces).
 
-A session in a git repo without a `projects.json` entry then joins under the repo's folder name: lowercase, other characters become hyphens, cut to 24 characters, and a linked worktree uses its main repo's name. An empty `.ai-collab-off` file in the repo root keeps that repo out. The first session records the repo in `$AI_COLLAB_STATE_DIR/auto-projects/`, and the UI adds it within 10 seconds. Two repos with the same folder name share one project.
+A session in a git repo without a `projects.json` entry then joins under a project ID made from the origin’s repository name and a hash of its host and repository path. Repos without an origin use their main checkout’s folder name. An empty `.ai-collab-off` file in the repo root keeps that repo out. The first session records the repo in `$AI_COLLAB_STATE_DIR/auto-projects/`, and the UI adds it within 10 seconds. Checkouts with the same origin share one project.
 
 ## Per-workspace settings (projects.json)
 
