@@ -6,6 +6,7 @@ import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { EventType } from "@ag-ui/core";
 import { sessionLabel } from "../../lib/config.mjs";
+import { exportSpans, otlpEndpoint, runRecorder } from "../../lib/cursor-trace.mjs";
 import { cursorBinary, findExecutable } from "../../lib/start.mjs";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, permissionSettings } from "../contract.mjs";
 import { builderPolicy } from "../../lib/builder.mjs";
@@ -353,7 +354,7 @@ export default function cursorAdapter(config = {}) {
     let argv;
     // A claimed sandbox (and the session that holds it) is released again on any failure below.
     let sandbox = null;
-    const session = { sessionId: null, run: null, approvals: new Map(), tools: new Map(), closed: false, ctx, sandbox: null, env, cwd: spec.cwd };
+    const session = { sessionId: null, run: null, approvals: new Map(), tools: new Map(), closed: false, ctx, sandbox: null, env, cwd: spec.cwd, model: spec.model };
     try {
       if (spec.place === "openshell") {
         // One sandbox per project, reused: created by the first session and deleted when the last one closes.
@@ -422,6 +423,7 @@ export default function cursorAdapter(config = {}) {
         flushText(session, run);
         const toolCallName = update.title || update.kind || "tool";
         session.tools.set(update.toolCallId, toolCallName);
+        run.trace?.toolStart(update.toolCallId, toolCallName, update.rawInput);
         session.ctx.emit({
           type: EventType.TOOL_CALL_CHUNK, toolCallId: update.toolCallId, toolCallName,
           delta: JSON.stringify(update.rawInput ?? {}, null, 2),
@@ -431,6 +433,7 @@ export default function cursorAdapter(config = {}) {
       case "tool_call_update": {
         if (typeof update.toolCallId !== "string" || !["completed", "failed"].includes(update.status)) return;
         const failed = update.status === "failed";
+        run.trace?.toolEnd(update.toolCallId, { name: session.tools.get(update.toolCallId), failed });
         session.ctx.emit({
           type: EventType.TOOL_CALL_RESULT, toolCallId: update.toolCallId, messageId: `${update.toolCallId}:result`, role: "tool",
           content: resultText(update, failed),
@@ -482,7 +485,13 @@ export default function cursorAdapter(config = {}) {
     run.text = "";
   }
 
+  // Each run's OTLP trace (lib/cursor-trace.mjs): model and tool calls; ACP reports no token counts. Never awaited.
+  function exportRun(run, status) {
+    if (run.trace) void exportSpans(run.trace.spans({ status }), { endpoint: otlpEndpoint({ ...process.env, ...envOf }) });
+  }
+
   function endRun(session, run, outcome) {
+    exportRun(run, outcome === "success" ? "ok" : outcome);
     flushText(session, run);
     cancelApprovals(session);
     session.run = null;
@@ -490,6 +499,7 @@ export default function cursorAdapter(config = {}) {
   }
 
   function failRun(session, run, error) {
+    exportRun(run, "error");
     cancelApprovals(session);
     session.run = null;
     // The message carries the ACP code, data and stderr tail too, so a limit classifier sees everything the error had.
@@ -538,7 +548,7 @@ export default function cursorAdapter(config = {}) {
         if (session.run) throw new Error("a cursor run is already running");
         if (conn.dead) throw conn.dead;
         const runId = randomUUID();
-        const run = { runId, text: "", messageSeq: 0 };
+        const run = { runId, text: "", messageSeq: 0, trace: runRecorder({ address: threadOf(session), role: "runner", model: session.model }) };
         session.run = run;
         session.ctx.emit({
           type: EventType.RUN_STARTED, threadId: threadOf(session), runId,
@@ -587,6 +597,7 @@ export default function cursorAdapter(config = {}) {
       try {
         const created = await attached.conn.request("session/new", { cwd: attached.session.remoteCwd ?? options.cwd, mcpServers: [] }, SETUP_TIMEOUT_MS);
         attached.session.sessionId = created.sessionId;
+        attached.session.model ||= created.models?.currentModelId;
         return makeHandle(attached);
       } catch (error) {
         attached.conn.kill();

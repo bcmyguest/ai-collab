@@ -10,6 +10,7 @@ import { isProjectPaused, PROJECT_PAUSED } from "../lib/project-pause.mjs";
 import { harnessOfCommand, projectOfFolder, sessionOfCommand } from "../lib/schedule-session.mjs";
 import { childEnv } from "../lib/start.mjs";
 import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.mjs";
+import { ROLE_ENV } from "../lib/cursor-trace.mjs";
 import { scopeLaunch } from "../lib/scope.mjs";
 import { agentHarness, hostAgentRefusal } from "../lib/agent-guard.mjs";
 
@@ -185,7 +186,7 @@ export function tickFn(entry, { env = process.env, log = () => {}, graceMs, proj
       if (refusal) return { ok: false, exitCode: null, signal: null, timedOut: false, durationMs: 0, tail: refusal };
       const run = entry.sandbox ? sandboxRunCommand(entry, command, project) : command;
       const pass = entry.sandbox ? Object.fromEntries(SANDBOX_RUN_KEYS.filter((key) => env[key]).map((key) => [key, env[key]])) : {};
-      return runCommand(run, { cwd: entry.cwd, env: { ...childEnv(env), ...pass, [SYSTEM_PROMPT_ENV]: "1" }, timeoutMs: entry.timeoutMs, signal: wf.signal, graceMs, scope: { env, label: entry.name, description: `AI Collab schedule ${entry.name}` } });
+      return runCommand(run, { cwd: entry.cwd, env: { ...childEnv(env), ...pass, [SYSTEM_PROMPT_ENV]: "1", [ROLE_ENV]: `schedule:${entry.name}` }, timeoutMs: entry.timeoutMs, signal: wf.signal, graceMs, scope: { env, label: entry.name, description: `AI Collab schedule ${entry.name}` } });
     }, {
       onCut: () => ({ ok: false, exitCode: null, signal: null, timedOut: false, durationMs: 0, tail: "", cut: "runner restarted during the run; not re-run" }),
     });
