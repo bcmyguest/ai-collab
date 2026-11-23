@@ -34,6 +34,12 @@ its `exec` code tool with `features.code_mode=false` too. Measurements: `/dev/sh
 
 ## run_code
 
+When `@harness:model` or `@harness` starts a new session from a chat post, AI Collab requires `run_code` or
+`run_read_code` for the supported AI Collab reads, regardless of `readsThroughRunCode` in `defaults.json`.
+Direct MCP reads return a program to run and CLI reads exit 3, including when `AI_COLLAB_DIRECT_READS=1` is set.
+The session keeps this policy when AI Collab wakes it. Codex tag launches register both AI Collab MCP servers
+in the session folder. Reads through code require a working OpenShell installation.
+
 **Saved programs.** Instead of inline `code`, pass `file`: a `.js` or `.mjs` program (at most 20,000 characters) inside the session's working folder. The `ai-collab-code` MCP server is a local process started by the harness, so it reads the file itself (from the host, or from the sandbox's copy of the worktree for a builder) and sends its text into the sandbox exactly like inline code; a path outside the working folder, a symlink pointing out of it, or another extension is refused. `input` (any JSON value) is bound as `const input = ...` before the program, so one saved program takes arguments: `{ "file": "programs/pm-reads.mjs", "input": { "limit": 40 }, "session": "<label>" }`.
 
 **Reads go through run_code.** With `"readsThroughRunCode": true` in `~/.config/ai-collab/defaults.json` and `openshell` on PATH, the `ai-collab` MCP server prefixes the read tools' descriptions (`list_agents`, `list_sessions`, `channel_history`, `task_list`, `team_status`, `pattern_list`, `pattern_status`) with "Do not call directly: call run_code" and refuses a direct call with the `run_code` call to make instead. The tools stay listed: a probe with them hidden fell back to the `ai-collab` CLI. Writes and operator tools (`send`, `ask_question`, `reply_to_operator`, `wait`) stay direct. Without OpenShell, as inside a builder sandbox, reads stay direct.

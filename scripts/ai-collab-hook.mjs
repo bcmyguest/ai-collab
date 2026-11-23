@@ -26,6 +26,7 @@ import { formatInbox, hookOutput, identityLine, stopOutput } from "../lib/format
 import { currentMode, operatorPrompt, takeModeNote } from "../lib/mode.mjs";
 import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.mjs";
 import { decideStop } from "../lib/stop.mjs";
+import { REQUIRE_RUN_CODE_ENV } from "../lib/code-mode.mjs";
 import { recordSession } from "../lib/sessions.mjs";
 import { sessionName } from "../lib/names.mjs";
 import { harnessProcess, isRunning } from "../lib/process.mjs";
@@ -236,6 +237,7 @@ async function main() {
       if (!subagent) await recordSession(cfg, {
         id: sessionId, cwd, harness: host, event: event || key.slice(0, 32), proc: harnessProcess(host), parent: cfg.parent,
         name: NAMED_EVENTS.has(event) ? sessionName(host, msg, env) : "", model: msg.model,
+        requireRunCode: env[REQUIRE_RUN_CODE_ENV] === "1",
         ...(typed ? { operatorPromptAt: Date.now() } : {}),
       }).catch(() => {});
       if (event && !activityOnly) output = await deliver(cfg, host, event, msg, key);

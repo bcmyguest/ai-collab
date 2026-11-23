@@ -523,7 +523,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     if (checked.error) return ": " + checked.error;
     if (Date.now() - lastStartAt < START_GAP_MS) return ": wait 10 seconds between starts";
     lastStartAt = Date.now();
-    const result = await start(cfg, { ...options, prompt: checked.text, env, place: "folder" });
+    const taggedStart = { ...options, prompt: checked.text, env, place: "folder" };
+    const result = launch === startSession
+      ? await startSession(cfg, { ...taggedStart, requireRunCode: true })
+      : await start(cfg, taggedStart);
     return result.status === "failed" ? " start failed: " + result.detail : " starting a new session";
   }
 

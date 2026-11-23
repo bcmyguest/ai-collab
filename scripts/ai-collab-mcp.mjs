@@ -20,7 +20,7 @@ const INSTRUCTIONS = "AI Collab connects this session to the human operator over
   + "Reads (list_agents, list_sessions, channel_history, task_list, team_status, pattern_list, pattern_status) go through run_code: batch them in one program.";
 
 const host = process.argv[2] || "";
-// defaults.json "readsThroughRunCode": true refuses direct read calls while run_code can run (OpenShell on PATH).
+// Tag launches and machine defaults can require reads through run_code.
 const runCodeFirst = readsThroughRunCode();
 const client = toolClient({ host });
 const active = new Map();
@@ -56,7 +56,7 @@ async function handle(request) {
     const args = params?.arguments ?? {};
     if (runCodeFirst && READ_TOOLS.includes(name)) {
       const text = `Call ${name} through run_code (ai-collab-code server), batching the other reads you need in one program: `
-        + `{ "code": "return await ai.${name}(${JSON.stringify(args)});", "session": "<your session label>" }. Direct reads are off on this machine (defaults.json readsThroughRunCode).`;
+        + `{ "code": "return await ai.${name}(${JSON.stringify(args)});", "session": "<your session label>" }. Direct reads are disabled for this session.`;
       send({ id, result: { isError: true, content: [{ type: "text", text }] } });
       return;
     }

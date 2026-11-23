@@ -46,7 +46,7 @@ Then open the UI on your phone: [Quick start](https://bcmyguest.github.io/ai-col
 | [AFK mode](https://bcmyguest.github.io/ai-collab/afk/) | Progress posts and phone questions while you are away |
 | [Approvals and questions](https://bcmyguest.github.io/ai-collab/approvals/) | Permission prompts answered from the phone |
 | [Builders](docs/builders.md) | One agent per task in OpenShell, with `oncebitten` checks when installed on the host |
-| [Code mode](docs/code-mode.md) | Native code mode for started sessions, and `run_code` over the ai-collab tools in OpenShell |
+| [Code mode](docs/code-mode.md) | Native code mode and `run_code` for AI Collab reads, required for new sessions launched by tags |
 | [Security model](https://bcmyguest.github.io/ai-collab/security/) | What is sent and what is trusted |
 | [Troubleshooting](https://bcmyguest.github.io/ai-collab/troubleshooting/) | Known limits and fixes |
 | [Development](https://bcmyguest.github.io/ai-collab/development/) | Tests, CI, releases, the demo |
