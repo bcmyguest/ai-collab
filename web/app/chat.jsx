@@ -43,10 +43,10 @@ import { quoteText } from "@/lib/quote";
 import { CompactionMap } from "./compactions";
 import { activityRows, groupSubagents } from "@/lib/activity-rows";
 import { conversationKey, drafts, views } from "@/lib/view-memory";
+import { streamViews } from "@/lib/stream-views";
 import { toast } from "sonner";
 
 const initial = { projects: [], harnesses: [], agents: [], messages: [] };
-const ACTIVITY_MAX = 500;
 const PULL_THRESHOLD_PX = 70;
 const PULL_MAX_PX = 110;
 const HARNESS_COLORS = {
@@ -726,16 +726,19 @@ async function signOut() {
 
 function Console({ account }) {
   const [selected, setSelected] = useState(selection);
-  const [data, setData] = useState(initial);
-  const [activity, setActivity] = useState([]);
+  // A screen switched back to renders its cached view, and its stream then revalidates it.
+  const [cached] = useState(() => streamViews.restore(streamOf(selected).requested));
+  const [data, setData] = useState(cached?.data || initial);
+  const [activity, setActivity] = useState(cached?.activity || []);
   // A2UI surfaces by id, from the stream's ACTIVITY_SNAPSHOT frames.
-  const [surfaces, setSurfaces] = useState({});
+  const [surfaces, setSurfaces] = useState(cached?.surfaces || {});
   const [pull, setPull] = useState(0);
   const pullFrom = useRef(null);
   const pullRef = useRef(0);
   const [pullSide, setPullSide] = useState("top");
   const stick = useRef(null);
-  const [ready, setReady] = useState(false);
+  // A restored view is already complete, so its screen renders at once instead of waiting for the new state frame.
+  const [ready, setReady] = useState(Boolean(cached));
   const [navOpen, setNavOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -801,7 +804,12 @@ function Console({ account }) {
       route.current = nextStream;
       setSelected(next);
       if (same) return;
-      setActivity([]); setReady(false); setLoadError(""); setNotice(""); setQuestion(""); setReplyTo(null); setNavOpen(false);
+      // A screen still in the cache is shown at once; the reconnected stream revalidates it. An uncached one keeps the
+      // old snapshot's project list beside it until its own state frame arrives, so the sidebar never empties.
+      const view = streamViews.restore(nextStream);
+      if (view) { setData(view.data); setActivity(view.activity); setSurfaces(view.surfaces); }
+      else setActivity([]);
+      setReady(Boolean(view)); setLoadError(""); setNotice(""); setQuestion(""); setReplyTo(null); setNavOpen(false);
     };
     window.addEventListener("hashchange", change);
     return () => window.removeEventListener("hashchange", change);
@@ -842,28 +850,30 @@ function Console({ account }) {
     function open() {
       controller = new AbortController();
       let checked = false;
+      // Every frame of this stream also builds the cached view, so a switch back shows the newest one.
+      const view = streamViews.connect(requested);
       subscription = subscribeUiEvents(() => fetch("/api/events?" + requested, {
         headers: { Accept: "text/event-stream" }, signal: controller.signal,
       }), {
         next({ event, data }) {
           if (requested !== route.current) return;
-          if (event === "state") {
-            if (!checked) { checked = true; checkBuild(); }
-            clearTimeout(bannerTimer); bannerTimer = 0;
-            setData(data); setReady(true); setLoadError(""); setNow(Date.now());
-            toast.dismiss(CONNECTION_TOAST);
-            retrying.current = false; shown.current = false; autoRetry.current = true;
-          } else if (event === "surface") {
-            setSurfaces(map => ({ ...map, [data.id]: data.operations }));
-          } else if (event === "activity") {
-            const { reset, items } = data;
-            setActivity(list => (reset ? items : [...list, ...items]).slice(-ACTIVITY_MAX));
-          } else if (event === "problem") {
+          if (event === "problem") {
             closed = true;
             controller.abort();
             subscription.unsubscribe();
-            fail(data.error);
+            return fail(data.error);
           }
+          const next = view(event, data);
+          if (!next) return;
+          if (event === "state") {
+            if (!checked) { checked = true; checkBuild(); }
+            clearTimeout(bannerTimer); bannerTimer = 0;
+            setReady(true); setLoadError(""); setNow(Date.now());
+            toast.dismiss(CONNECTION_TOAST);
+            retrying.current = false; shown.current = false; autoRetry.current = true;
+          }
+          // The cached view is the one source for all three, so a reconnect keeps a surface that did not change.
+          setData(next.data); setActivity(next.activity); setSurfaces(next.surfaces);
         },
         error: disconnected,
         complete: disconnected,

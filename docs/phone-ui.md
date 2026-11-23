@@ -46,6 +46,8 @@ On a phone, drag the list down from its top, or up from its bottom, past 70 px t
 
 After a deploy, an open page shows an "Update available" toast when it reconnects; tap Reload to load the new build. The page compares its build id with `GET /api/version`.
 
+**Switching screens is instant.** The console keeps the last view it saw of each of the newest six `/api/events` streams — the state snapshot, the activity rows and the A2UI surfaces (`web/lib/stream-views.js`) — and remembers them for as long as the tab is open. Switching back to a project, a session timeline, Subagents, Raw activity or Home renders that view at once, then the reconnected stream replaces it with the current state; the newest state always wins. Reading a view makes it the most recent, so a screen the operator keeps returning to is never the one dropped. A screen that was never loaded still waits for its first state frame, with the previous project list beside it so the sidebar never empties.
+
 ## Home
 
 **Home** (`#home`, the landing page, the header's house button, or the sidebar logo) shows one card per session across every project: avatar, human name, `harness#label`, project, state, last action (tool and summary), last active, "started by …", and running subagents nested under the card. A child session whose registry `parent` is listed nests under its parent. Cards group by state; Offline starts collapsed:
@@ -386,3 +388,5 @@ The UI uses [shadcn/ui](https://ui.shadcn.com/docs) components with Tailwind CSS
 2. Type a draft in Chat and pick a status filter in Tasks. Switch to Patterns, then return to Chat and Tasks to confirm both values are restored. Scroll the task board and the patterns list. Confirm the bar stays visible and the chat composer remains usable above it.
 3. Repeat on desktop with the sidebar visible. Open a task detail or a pattern from its view, reload, then use browser Back and Forward. Confirm the project and highlighted view match the URL.
 4. Open Home and a session. Confirm Home still lists projects and the session still offers its timeline and subagent views.
+5. Switch between a project chat and a session timeline twice. The second switch to each shows its rows and cards without a "Loading…" pause, and new messages that arrived while away appear once the stream reconnects.
+
