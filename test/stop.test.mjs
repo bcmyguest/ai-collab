@@ -136,6 +136,20 @@ test("afk on: a plain ask_question arms the wait and its answer continues the ag
   assert.equal(waitRequestedAt(cfg), 0);
 });
 
+test("off mode: Stop delivers a board answer once without waiting", async (t) => {
+  const { fake, cfg, clock, deps } = await setup(t);
+  const q = await askQuestion(cfg, "Which region?", { seconds: 0 });
+  fake.inject(ALL, "reply " + q.id + " west");
+  const stop = () => decideStop(cfg, { host: "claude", ...deps });
+  const result = await stop();
+  assert.equal(result.why, "answer");
+  assert.match(result.text, /answer="west"/);
+  assert.deepEqual(openQuestions(cfg), []);
+  assert.equal(waitRequestedAt(cfg), 0);
+  assert.deepEqual(await stop(), { action: "stop" });
+  assert.equal(clock.waits, 0);
+});
+
 test("afk on: an important question holds the session past the AFK wait until it is answered", async (t) => {
   const { fake, cfg, clock, deps } = await setup(t, { AI_COLLAB_AFK_WAIT_S: "60" });
   await setMode(fake, cfg, "on");

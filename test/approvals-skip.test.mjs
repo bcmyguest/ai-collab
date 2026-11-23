@@ -72,3 +72,20 @@ test("a skip from an agent, or for another id, does not end the wait", async (t)
   assert.deepEqual(await pending, {});
   assert.deepEqual(envelopes(fake, "approval-end").map((m) => m.reason), ["timeout"], "the wait ran to its deadline");
 });
+
+test("an answered AskUserQuestion supplies the answer and bypasses the terminal dialog", async (t) => {
+  const { fake, cfg } = await setup(t);
+  setMode(fake, "on");
+  const input = { tool_name: "AskUserQuestion", tool_use_id: "tu-1", tool_input: { questions: QUESTIONS } };
+  const pending = decideQuestion(cfg, { input });
+  const { id } = await published(fake);
+  fake.inject(ALL, `reply ${id} ${JSON.stringify({ "Which framework?": "Vue" })}`);
+  assert.deepEqual(await pending, {
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "allow",
+      updatedInput: { questions: QUESTIONS, answers: { "Which framework?": "Vue" } },
+    },
+  });
+  assert.deepEqual(envelopes(fake, "approval-end").map(({ id, reason }) => ({ id, reason })), [{ id, reason: "answered" }]);
+});
