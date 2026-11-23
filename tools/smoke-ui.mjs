@@ -46,13 +46,13 @@ async function phoneFixture({ homeSessions = false, inactive = false } = {}) {
   const sessions = [];
   const { processStart } = await import("../lib/process.mjs");
   if (homeSessions) {
-    for (const [index, name] of ["Trace reconnect", "", ""].entries()) {
+    for (const [index, name] of ["Trace reconnect", "", "Review notes"].entries()) {
       const sessionId = "jev-debugger-fixture-" + index;
       const id = "claude#" + sessionLabel(sessionId);
       const cwd = index === 2 ? join(projectsConfig[0].root, "repro") : projectsConfig[0].root;
       mkdirSync(cwd, { recursive: true });
       writeState(join(cfg.stateDir, cfg.project, "registry", id + ".json"), {
-        id, sessionId, cwd, name, harness: "claude", seenAt: Date.now() - 120_000,
+        id, sessionId, cwd, name, ...(index === 0 ? { identityName: "Debugger" } : {}), harness: "claude", seenAt: Date.now() - 120_000,
         pid: process.pid, pidStart: processStart(process.pid),
       });
       sessions.push({ id, title: name || id.slice(0, 15), metadata: index === 2 ? "jev-debugger · repro" : "jev-debugger" });
@@ -198,6 +198,21 @@ async function checkHomeSessions(page, fixture) {
   assert.equal(page.url(), home);
   await card.getByRole("button", { name: "Open " + title }).tap();
   await page.waitForURL(url => new URLSearchParams(url.hash.slice(1)).get("session") === id);
+  const header = page.locator("main > header");
+  const heading = header.getByRole("heading", { name: "Debugger", exact: true });
+  await heading.waitFor();
+  const state = header.getByText("Idle", { exact: true });
+  await state.waitFor();
+  const [nameBox, stateBox, themeBox] = await Promise.all([heading.boundingBox(), state.boundingBox(),
+    header.getByRole("button", { name: "Theme" }).boundingBox()]);
+  assert.ok(Math.max(nameBox.y + nameBox.height, stateBox.y + stateBox.height) <= themeBox.y);
+  await header.getByText("jev-debugger · session · " + title, { exact: true }).waitFor();
+
+  for (const session of fixture.sessions.slice(1)) {
+    await page.goto(fixture.url + "/#" + new URLSearchParams({ project: fixture.project, level: "session", harness: "claude", session: session.id }));
+    await header.getByRole("heading", { name: session.title, exact: true }).waitFor();
+    await state.waitFor();
+  }
 }
 
 async function checkInactive(page, fixture) {
