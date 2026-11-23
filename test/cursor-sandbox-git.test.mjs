@@ -22,6 +22,8 @@ function lab() {
   const version = path.join(home, "cursor-agent", "versions", "2026.11.22-fake");
   for (const dir of [root, version]) mkdirSync(dir, { recursive: true });
   execFileSync("git", ["init", "--quiet", "--template=", "-b", "main", root]);
+  git(root, "config", "user.name", "Test");
+  git(root, "config", "user.email", "test@example.invalid");
   writeFileSync(path.join(root, "host.txt"), "host\n");
   git(root, "add", "host.txt");
   git(root, "commit", "--quiet", "-m", "init");
