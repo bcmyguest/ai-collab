@@ -28,13 +28,17 @@ test("the UI state snapshot carries the task board and persists operator status 
 
   const ui = createUi({ projects: loadProjects(env, { host: "operator" }), env });
   t.after(() => ui.close());
-  const post = (id, status) => ui.handle(new Request(`${base}/api/move-task`, {
+  const post = (action, fields) => ui.handle(new Request(`${base}/api/${action}`, {
     method: "POST", headers: { Origin: base, "Content-Type": "application/json" },
-    body: JSON.stringify({ project: "demo", id, status }),
-  }), "move-task");
-  assert.equal((await post("first", "ready")).status, 400);
-  assert.equal((await post("missing", "done")).status, 400);
-  assert.equal((await post("first", "done")).status, 200);
+    body: JSON.stringify({ project: "demo", ...fields }),
+  }), action);
+  assert.equal((await post("move-task", { id: "first", status: "ready" })).status, 400);
+  assert.equal((await post("move-task", { id: "missing", status: "done" })).status, 400);
+  assert.equal((await post("move-task", { id: "first", status: "done" })).status, 200);
+  const response = await post("request-outcome", { outcome: "Improve signup", check: "Sign up on a phone" });
+  assert.equal(response.status, 201);
+  const { outcome } = await response.json();
+  assert.equal((await post("approve-outcome", { id: outcome.id })).status, 409);
   const [stored] = readStore(taskStoreFile("demo", env)).tasks;
   assert.equal(stored.status, "done");
   assert.equal(stored.title, "First task");
@@ -43,6 +47,7 @@ test("the UI state snapshot carries the task board and persists operator status 
   try {
     const state = await firstUpdate(ui.events(new Request(`${base}/api/events?project=demo`, { signal: ctrl.signal })), "state");
     assert.equal(state.tasks.error, undefined);
+    assert.deepEqual(state.tasks.outcomes, [outcome]);
     assert.equal(state.tasks.tasks.length, 1);
     assert.deepEqual([state.tasks.tasks[0].id, state.tasks.tasks[0].status, state.tasks.tasks[0].owner, state.tasks.tasks[0].ownerOnline], ["first", "done", OWNER, false]);
   } finally {
