@@ -8,11 +8,17 @@ Each harness also needs a server to talk to: write `defaults.json` or `projects.
 
 ## Claude Code
 
-Install from the checkout as a marketplace (what `setup` runs):
+`setup` copies only the package files (`package.json` `files`, at most 50 MB; `lib/plugin-copy.mjs`) to `~/.local/share/ai-collab/claude-plugin` and adds that folder as the marketplace. Never add the checkout itself: Claude copies the whole marketplace folder into `~/.claude/plugins/cache`, and a checkout with agent worktrees once made a 42 GB cache.
 
 ```sh
-claude plugin marketplace add /path/to/ai-collab
+claude plugin marketplace add ~/.local/share/ai-collab/claude-plugin
 claude plugin install ai-collab@ai-collab
+```
+
+To ship a change from the checkout, refresh the copy; new sessions and `/reload-plugins` read it:
+
+```sh
+node -e 'import("./lib/plugin-copy.mjs").then(m => m.packPluginCopy(process.cwd(), process.env.HOME + "/.local/share/ai-collab/claude-plugin"))'
 ```
 
 Or load the directory as a plugin, for example during development:
@@ -30,7 +36,7 @@ codex plugin marketplace add https://github.com/bcmyguest/ai-collab
 codex plugin add ai-collab@ai-collab
 ```
 
-Update with `codex plugin marketplace upgrade`. Codex copies the marketplace folder and hashes all of it before every hook, so a local checkout with `node_modules` or worktrees makes each hook time out. The Git source clones only tracked files. For a local checkout, install a clean copy: `npm pack`, then extract it into its own folder and add that folder as the marketplace.
+Update with `codex plugin marketplace upgrade`. Codex copies the marketplace folder and hashes all of it before every hook, so a local checkout with `node_modules` or worktrees makes each hook time out. The Git source clones only tracked files. For a local checkout, `setup` installs the same clean copy into `~/.local/share/ai-collab/codex-plugin`; after refreshing it, run `codex plugin add ai-collab@ai-collab` again. Cursor's `--copy` install uses the same copy, without `hooks/`.
 
 Restart Codex and check `/hooks` to trust the enabled plugin hooks; trust again after each update. The manifest is `.codex-plugin/plugin.json` and points to `hooks/codex-hooks.json`.
 

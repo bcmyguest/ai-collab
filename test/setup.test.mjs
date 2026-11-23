@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { setup } from "../lib/setup.mjs";
+import { PLUGIN_COPY_MAX_BYTES, packPluginCopy, setup } from "../lib/setup.mjs";
 
 const TOKEN = `tk_${"a1".repeat(14)}b`;
 
@@ -75,4 +75,25 @@ test("run from the npx cache, setup copies itself to a stable folder and reruns 
   assert.ok(existsSync(path.join(app, "package.json")));
   assert.ok(!existsSync(path.join(app, "node_modules")), "dependencies are installed fresh, not copied");
   assert.deepEqual(h.calls.map(c => c.replace(process.execPath, "node")), ["npm install --omit=dev --no-audit --no-fund", `node ${path.join(app, "scripts", "ai-collab.mjs")} setup --agent cursor`]);
+});
+
+test("setup adds a clean plugin copy as the Claude and Codex marketplace, never the checkout itself", async () => {
+  const h = harness(["docker", "claude", "codex"]);
+  assert.equal(await setup(["--no-ui"], h.opts), 0);
+  const share = path.join(h.home, ".local", "share", "ai-collab");
+  assert.ok(h.calls.includes(`claude plugin marketplace add ${path.join(share, "claude-plugin")}`));
+  assert.ok(h.calls.includes(`codex plugin marketplace add ${path.join(share, "codex-plugin")}`));
+  const root = path.resolve(new URL("..", import.meta.url).pathname);
+  assert.ok(!h.calls.some(c => c.endsWith(`marketplace add ${root}`)), "the checkout, with its worktrees, is never the marketplace");
+});
+
+test("packPluginCopy copies only the package files list: no node_modules, worktrees or build output", () => {
+  const root = path.resolve(new URL("..", import.meta.url).pathname);
+  const dest = path.join(mkdtempSync(path.join(os.tmpdir(), "ai-collab-pack-")), "claude-plugin");
+  const { bytes } = packPluginCopy(root, dest);
+  for (const file of [".claude-plugin/plugin.json", ".mcp.json", "package.json", "scripts/ai-collab-code-mcp.mjs", "hooks/hooks.json"]) {
+    assert.ok(existsSync(path.join(dest, file)), file);
+  }
+  for (const gone of ["node_modules", ".claude", ".git", "web/.next", "test"]) assert.ok(!existsSync(path.join(dest, gone)), gone);
+  assert.ok(bytes < PLUGIN_COPY_MAX_BYTES);
 });

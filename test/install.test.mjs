@@ -44,3 +44,11 @@ test("cursor install writes our hooks into ~/.cursor/hooks.json, keeps other too
   assert.equal(ours("stop")[0].timeout, 660);
   fs.rmSync(home, { recursive: true, force: true });
 });
+
+test("cursor install copies only the package files: no node_modules, test or web build output", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ai-collab-home-"));
+  const r = installCursorPlugin({ home, importMetaUrl: import.meta.url, copy: true });
+  assert.equal(r.ok, true, r.message);
+  for (const gone of ["node_modules", "test", "web/.next", "web/node_modules"]) assert.equal(fs.existsSync(path.join(r.dest, gone)), false, `${gone} is not copied`);
+  fs.rmSync(home, { recursive: true, force: true });
+});
