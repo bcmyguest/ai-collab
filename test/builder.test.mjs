@@ -496,6 +496,25 @@ test("Codex builder uses the standalone unit when the control socket is absent",
   assert.equal(task(l).owner, undefined);
 });
 
+test("a Cursor usage limit is visible on the task and stops later dispatches for that model", async () => {
+  const l = lab({ FAKE_BUILDER_MODE: "cursor-limit" });
+  await withTask(l);
+  const first = await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief);
+  assert.equal(first.code, 0, first.err);
+  assert.equal(task(l).status, "blocked");
+  assert.match(task(l).detail, /reached its usage limit.*2099-12-19/);
+  assert.equal((await l.cli("task", "add", "Second task")).code, 0);
+  const retry = await l.cli("builder", "start", "--task", "second-task", "--harness", "cursor", "--brief", l.brief);
+  assert.equal(retry.code, 1);
+  assert.match(retry.err, /reached its usage limit/);
+  assert.equal(existsSync(builderPaths("second-task", l.env).worktree), false);
+  assert.equal(readJsonLines(l.env.FAKE_BUILDER_LOG).length, 1);
+  l.env.FAKE_BUILDER_MODE = "dirty";
+  const other = await l.cli("builder", "start", "--task", "second-task", "--harness", "cursor", "--model", "other-model", "--brief", l.brief);
+  assert.equal(other.code, 0, other.err);
+  assert.equal(readJsonLines(l.env.FAKE_BUILDER_LOG).length, 2);
+});
+
 test("standalone Codex retries a usage limit with Cursor and carries uncommitted edits forward", async () => {
   const l = lab();
   l.env.AI_COLLAB_RUNNER_SOCKET = path.join(l.home, "missing.sock");

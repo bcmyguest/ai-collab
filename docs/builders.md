@@ -39,6 +39,8 @@ When `--harness` is omitted, the first supported entry in `defaults.json`'s `bui
 
 Both Codex launch paths retry a subscription usage limit once with `defaults.json`'s `limitFallback` (`harness:model`), else Cursor `deepseek-v41-flash-1017-high`. The supervisor copies the Git worktree and recorded task calls and hooks into a fresh OpenShell sandbox, then sends the brief again. The normal collection and oncebitten check run after the retry.
 
+When Cursor reports a model usage limit, the task records the cause and retry time. Starts, recoveries, and Codex fallbacks on the same host skip that model until the end of the reported reset date in UTC, or for five hours when Cursor gives no usable date. Other approved models remain available.
+
 ## Runner-owned Codex builders
 
 The runner starts a dedicated Codex app-server inside the staged OpenShell sandbox and sends the brief as its first turn. It sets the task to `building` and records the session address as the task owner before sending the brief. The phone shows the session activity and the task card opens it. Pass `--run ID` to attach the task to a team run. An existing run association is retained when the flag is omitted.

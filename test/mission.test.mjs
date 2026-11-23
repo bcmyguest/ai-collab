@@ -25,6 +25,11 @@ Second paragraph.
 - Do not edit a test assertion without approval.
 `;
 
+test("the repository mission can be loaded by scheduled PM ticks", () => {
+  const mission = new URL(`../${MISSION_FILE}`, import.meta.url);
+  assert.doesNotThrow(() => parseMission(readFileSync(mission, "utf8")));
+});
+
 function project() {
   const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-mission-"));
   const root = path.join(home, "repo");
