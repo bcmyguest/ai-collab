@@ -2,6 +2,7 @@
 import { spawn } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { configDir, listProjects, stateDir } from "../lib/config.mjs";
 import { withMission } from "../lib/mission.mjs";
 import { withReview } from "../lib/pm-review.mjs";
@@ -10,7 +11,7 @@ import { harnessOfCommand, projectOfFolder, sessionOfCommand } from "../lib/sche
 import { childEnv } from "../lib/start.mjs";
 import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.mjs";
 import { scopeLaunch } from "../lib/scope.mjs";
-import { hostAgentRefusal } from "../lib/agent-guard.mjs";
+import { agentHarness, hostAgentRefusal } from "../lib/agent-guard.mjs";
 
 export const DEFAULT_TIMEOUT_SEC = 900;
 export const TAIL_CHARS = 2000;
@@ -18,7 +19,11 @@ export const KILL_GRACE_MS = 5000;
 export const TICK_STEP = "command";
 const MAX_EVERY_MINUTES = 525_600;
 const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
-const KEYS = ["name", "everyMinutes", "cwd", "command", "timeoutSec", "wakeOnTasks"];
+const KEYS = ["name", "everyMinutes", "cwd", "command", "timeoutSec", "wakeOnTasks", "sandbox"];
+// Runs a "sandbox": true entry's agent command inside a fresh OpenShell sandbox (runner/sandbox-run.mjs).
+export const SANDBOX_RUN = fileURLToPath(new URL("./sandbox-run.mjs", import.meta.url));
+// Settings the sandbox runner needs from the runner's own environment; childEnv drops every other AI_COLLAB_* one.
+const SANDBOX_RUN_KEYS = ["AI_COLLAB_OPENSHELL_BIN", "AI_COLLAB_STATE_DIR"];
 
 /** The schedules file: AI_COLLAB_SCHEDULES, else <config dir>/schedules.json. */
 export const schedulesPath = (env = process.env) => env.AI_COLLAB_SCHEDULES || join(configDir(env), "schedules.json");
@@ -47,7 +52,9 @@ function checkEntry(entry, index) {
   if (timeoutSec >= entry.everyMinutes * 60) invalid(index, "timeoutSec must be shorter than everyMinutes");
   // wakeOnTasks names a project whose finished tasks start this schedule early.
   if (entry.wakeOnTasks !== undefined && (typeof entry.wakeOnTasks !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(entry.wakeOnTasks))) invalid(index, "wakeOnTasks must be a project name");
-  return { name: entry.name, everyMs: entry.everyMinutes * 60_000, cwd: entry.cwd, command: entry.command, timeoutMs: timeoutSec * 1000, ...(entry.wakeOnTasks ? { wakeOnTasks: entry.wakeOnTasks } : {}) };
+  if (entry.sandbox !== undefined && typeof entry.sandbox !== "boolean") invalid(index, "sandbox must be true or false");
+  if (entry.sandbox && !agentHarness(entry.command)) invalid(index, "sandbox: true needs a command that runs claude, codex, cursor-agent or opencode");
+  return { name: entry.name, everyMs: entry.everyMinutes * 60_000, cwd: entry.cwd, command: entry.command, timeoutMs: timeoutSec * 1000, ...(entry.wakeOnTasks ? { wakeOnTasks: entry.wakeOnTasks } : {}), ...(entry.sandbox ? { sandbox: true } : {}) };
 }
 
 /**
@@ -155,6 +162,11 @@ export function runCommand(command, { cwd, env = process.env, timeoutMs, signal,
   });
 }
 
+/** The argv a sandboxed entry's tick runs: the sandbox runner, then the agent command after "--". */
+export function sandboxRunCommand(entry, command, project = "") {
+  return [process.execPath, SANDBOX_RUN, "--name", entry.name, "--cwd", entry.cwd, ...(project ? ["--project", project] : []), "--", ...command];
+}
+
 /** The workflow body for one entry: one checkpointed command step, not re-run after a cut. */
 export function tickFn(entry, { env = process.env, log = () => {}, graceMs, projects } = {}) {
   return async (scheduledTime, actualTime, wf) => {
@@ -169,9 +181,11 @@ export function tickFn(entry, { env = process.env, log = () => {}, graceMs, proj
       if (project && harnessOfCommand(entry.command) && !sessionOfCommand(entry.command) && isProjectPaused({ project, stateDir: stateDir(env) })) {
         return { ok: false, exitCode: null, signal: null, timedOut: false, durationMs: 0, tail: PROJECT_PAUSED };
       }
-      const refusal = hostAgentRefusal(command, { env });
+      const refusal = hostAgentRefusal(command, { sandboxed: Boolean(entry.sandbox), env });
       if (refusal) return { ok: false, exitCode: null, signal: null, timedOut: false, durationMs: 0, tail: refusal };
-      return runCommand(command, { cwd: entry.cwd, env: { ...childEnv(env), [SYSTEM_PROMPT_ENV]: "1" }, timeoutMs: entry.timeoutMs, signal: wf.signal, graceMs, scope: { env, label: entry.name, description: `AI Collab schedule ${entry.name}` } });
+      const run = entry.sandbox ? sandboxRunCommand(entry, command, project) : command;
+      const pass = entry.sandbox ? Object.fromEntries(SANDBOX_RUN_KEYS.filter((key) => env[key]).map((key) => [key, env[key]])) : {};
+      return runCommand(run, { cwd: entry.cwd, env: { ...childEnv(env), ...pass, [SYSTEM_PROMPT_ENV]: "1" }, timeoutMs: entry.timeoutMs, signal: wf.signal, graceMs, scope: { env, label: entry.name, description: `AI Collab schedule ${entry.name}` } });
     }, {
       onCut: () => ({ ok: false, exitCode: null, signal: null, timedOut: false, durationMs: 0, tail: "", cut: "runner restarted during the run; not re-run" }),
     });
