@@ -43,6 +43,9 @@ export function DecisionQueue({ decisions = [], inbox, now, disabled, action, se
               act={payload => action("approve", { project, ...payload }, "Sent")}/>
               : <LegacyQuestionCard body={item.body} disabled={disabled}
                 onAnswer={body => action("reply", { project, question: item.question, body }, "Reply sent")}/>}
+          {/* Skip closes the card unanswered; a suspended run has no prompt to fall back on, so it is resumed or left waiting. */}
+          {item.kind !== "Suspension" && !item.approval?.owned && <Button variant="ghost" size="sm" className="w-fit rounded-full text-muted-foreground" disabled={disabled}
+            onClick={() => action("skip", { project, id: item.key }, "Skipped")}>Skip</Button>}
         </div>)}
       </section>;
     })}

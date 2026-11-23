@@ -1,12 +1,12 @@
 "use client";
 import { useState } from "react";
-import { Check, CircleHelp, ShieldQuestion, SquareTerminal, X } from "lucide-react";
+import { Check, CircleHelp, ShieldQuestion, SkipForward, SquareTerminal, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MessageContent } from "@/components/ui/message";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { IN_TERMINAL, approvalOutcome, approvalSurfaceId, questionSurfaceId, terminalHint } from "@/lib/a2ui";
+import { IN_TERMINAL, SKIPPED, approvalOutcome, approvalSurfaceId, questionSurfaceId, terminalHint } from "@/lib/a2ui";
 import { CARD, Surface } from "@/components/a2ui/surface";
 import { ConfirmButton } from "./pattern-graph";
 
@@ -58,10 +58,20 @@ export function ChoiceCard({ questions, answers, onSubmit, disabled, title }) {
   </div>;
 }
 
-/** A permission request or choice an agent waits on: the A2UI surface when the stream sent one, else the card below. */
-export function ApprovalCard(props) {
+/** Dismisses an open decision without answering it; a waiting hook then leaves the harness's own prompt in charge. */
+export function SkipButton({ disabled, onSkip }) {
+  return <Button size="sm" variant="ghost" className="self-start rounded-full text-muted-foreground" disabled={disabled} onClick={onSkip}><SkipForward/>Skip</Button>;
+}
+
+/** A permission request or choice an agent waits on: the A2UI surface when the stream sent one, else the card below; Skip while open. */
+export function ApprovalCard({ skip, ...props }) {
   const open = !approvalOutcome(props.approval, props.now);
-  return <Surface id={approvalSurfaceId(props.approval.id)} head={props.head} kind="Approval" open={open} fallback={<LegacyApprovalCard {...props}/>}/>;
+  // A view-only card closes in the terminal, and a runner session has no terminal prompt to fall back on.
+  const skippable = skip && open && !props.approval.terminal && !props.approval.owned;
+  return <>
+    <Surface id={approvalSurfaceId(props.approval.id)} head={props.head} kind="Approval" open={open} fallback={<LegacyApprovalCard {...props}/>}/>
+    {skippable && <SkipButton disabled={props.disabled} onSkip={() => skip({ id: props.approval.id })}/>}
+  </>;
 }
 
 /** A permission request or choice an agent waits on: Allow / Deny (or the choice card) until it closes, then the outcome. */
@@ -90,18 +100,23 @@ export function LegacyApprovalCard({ approval, now, disabled, act }) {
   </div>;
 }
 
-/** An ask_question post: the A2UI surface when the stream sent one, else the card below. */
-export function QuestionCard(props) {
-  return <Surface id={questionSurfaceId(props.question)} head={props.head} kind="Question" open={!props.answer} fallback={<LegacyQuestionCard {...props}/>}/>;
+/** An ask_question post: the A2UI surface when the stream sent one, else the card below; Skip while open. */
+export function QuestionCard({ skip, ...props }) {
+  const open = !props.answer && !props.skipped;
+  return <>
+    <Surface id={questionSurfaceId(props.question)} head={props.head} kind="Question" open={open} fallback={<LegacyQuestionCard {...props}/>}/>
+    {skip && open && <SkipButton disabled={props.disabled} onSkip={() => skip({ id: props.question })}/>}
+  </>;
 }
 
-/** An ask_question post: the question, then its answer or an answer field. */
-export function LegacyQuestionCard({ body, answer, by, disabled, onAnswer, taskLinks }) {
+/** An ask_question post: the question, then its answer, Skipped, or an answer field. */
+export function LegacyQuestionCard({ body, answer, by, skipped, disabled, onAnswer, taskLinks }) {
   const [draft, setDraft] = useState("");
-  return <div className={cn(CARD, "flex flex-col gap-2", !answer && "border-amber-500/50")} data-card="question">
+  return <div className={cn(CARD, "flex flex-col gap-2", !answer && !skipped && "border-amber-500/50")} data-card="question">
     <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><CircleHelp className="size-3.5"/>Question</p>
     <MessageContent markdown taskLinks={taskLinks} className="bubble max-w-full bg-transparent p-0 text-[15px] leading-relaxed">{body}</MessageContent>
     {answer ? <p className="text-xs text-muted-foreground">Answered: <span className="font-medium text-foreground">{answer}</span>{by && " · " + by}</p>
+      : skipped ? <p className="text-xs text-muted-foreground" data-outcome="skipped">{SKIPPED}</p>
       : <div className="flex flex-col gap-2">
         <Textarea aria-label="Answer" placeholder="Your answer…" value={draft} disabled={disabled} onChange={event => setDraft(event.target.value)} className="min-h-9 text-sm"/>
         <Button size="sm" className="self-start rounded-full" disabled={disabled || !draft.trim()} onClick={async () => { if (await onAnswer(draft.trim())) setDraft(""); }}>Submit</Button>

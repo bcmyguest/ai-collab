@@ -405,7 +405,7 @@ function QueueRow({ message, disabled, change }) {
   </li>;
 }
 
-function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, answer, disabled, detail, taskLinks }) {
+function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, answer, skip, disabled, detail, taskLinks }) {
   const sender = message.from || message.sender || "ntfy";
   const outgoing = sender === operator;
   // A signed-in family member's message names them; the viewer's own stays "You".
@@ -439,8 +439,8 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
         {openable && sender.includes("#") && <GoToAgent onClick={go} className="size-6"/>}
       </div>
       {message.quote && <Quote quote={message.quote} label={short(message.quote.sender)}/>}
-      {message.kind === "Approval" ? <ApprovalCard approval={message.approval} now={now} disabled={disabled} act={act} head={cardHead}/>
-        : message.kind === "Question" && message.question ? <QuestionCard question={message.question} body={withMentions(message.body)} taskLinks={taskLinks} answer={message.answer} by={message.answeredBy} disabled={disabled} onAnswer={body => answer(message.question, body)} head={cardHead}/>
+      {message.kind === "Approval" ? <ApprovalCard approval={message.approval} now={now} disabled={disabled} act={act} skip={skip} head={cardHead}/>
+        : message.kind === "Question" && message.question ? <QuestionCard question={message.question} body={withMentions(message.body)} taskLinks={taskLinks} answer={message.answer} by={message.answeredBy} skipped={message.skipped} disabled={disabled} onAnswer={body => answer(message.question, body)} skip={skip} head={cardHead}/>
         : <MessageContent markdown taskLinks={taskLinks} className={cn("bubble max-w-full rounded-2xl px-3.5 py-2 text-[15px] leading-relaxed shadow-xs [overflow-wrap:anywhere]",
         outgoing ? "rounded-tr-md border border-primary/25 bg-primary/10 text-foreground" : "rounded-tl-md border bg-card text-card-foreground",
         message.kind === "Question" && "border-amber-500/50")}>{withMentions(message.body)}</MessageContent>}
@@ -1142,6 +1142,7 @@ function Console({ account }) {
         recover={(id, harness) => action("recover-builder", { id, harness }, "Builder started")}
         decide={(id, answer) => action("decide", { id, answer }, "Decided")}
         review={(id, decision, note, packet) => action("review", { id, decision, note, ...packet }, decision === "accept" ? "Build accepted" : "Build returned")}
+        skip={taskId => action("skip", { taskId }, "Skipped")}
         open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatContainerRoot key={inbox ? "inbox" : home ? "home" : "conversation"} initial={home ? false : "instant"} contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
         <ChatContainerContent key={requested} className="mx-auto w-full max-w-3xl gap-5 px-3 py-4">
           {!ready && (home || listing || subagents || compactions) && !loadError && <p className="py-16 text-center text-sm text-muted-foreground">Loading sessions…</p>}
@@ -1160,7 +1161,8 @@ function Console({ account }) {
               openAddress={(address, at) => navigate({ project: at, level: "session", harness: peerOf(address), session: address })}
               empty={home ? "No sessions in any project yet." : "No sessions in " + project + " yet."}
               dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}
-              act={payload => action("approve", payload, "Sent")} answer={(at, id, body) => action("reply", { project: at, question: id, body }, "Reply sent")}/>}
+              act={payload => action("approve", payload, "Sent")} answer={(at, id, body) => action("reply", { project: at, question: id, body }, "Reply sent")}
+              skip={payload => action("skip", payload, "Skipped")}/>}
           </>}
           {ready && compactions && <CompactionMap agents={data.agents || []} now={now}/>}
           {ready && subagents && <SubagentList rows={rows} session={selected.session} run={selected.run} when={at => ago(at, now)} now={now}
@@ -1175,6 +1177,7 @@ function Console({ account }) {
             : <ChatMessage key={message.id} message={message} operator={data.operator} me={account.user?.login} now={now} open={openAddress} disabled={!ready || working} taskLinks={taskLinks}
               detail={agentDetail(data.agents.find(agent => agent.id === message.from))}
               act={payload => action("approve", payload, "Sent")} answer={(id, body) => action("reply", { question: id, body }, "Reply sent")}
+              skip={payload => action("skip", payload, "Skipped")}
               reply={id => { setQuestion(id); setNotice(""); document.getElementById("composer")?.focus(); }}
               replyFrom={target => setReplyTo(target)}/>)}
           {ready && watching && live.map(row => <LiveRow key={row.id} row={row} open={openAddress}/>)}

@@ -245,11 +245,27 @@ Context alerts post one context alert to the broadcast topic each time a session
 | Cursor | `preCompact` hook `context_tokens` (sampled only before compaction) |
 | OpenCode 2 | last `session.step.ended` event's `tokens`: `input + cache.read + cache.write`, passed as `context_tokens` |
 
+## Decisions
+
+Home's **Operator decisions** list and the decision inbox (`#inbox`, **Waiting on you**) hold every open decision across projects (`projectDecisions` in `web/server/ui.mjs`): open approval and choice cards, unanswered `ask_question` questions, and usage-limit cards from each broadcast topic, plus suspended pattern runs. Task questions (`task ask`) wait on the task board under **Needs your decision**.
+
+**Skip** dismisses a decision without answering it. It sits on every decision row, on open approval and question cards in chat and on Home, and beside **Decide** on a task question. `POST /api/skip` takes `{project, id}` for a card or `{project, taskId}` for a task question:
+
+| Decision | What Skip does |
+|---|---|
+| Permission approval or `AskUserQuestion` choice | Publishes `approval-end` with reason `skipped` from `operator` and no reply. The waiting hook returns no decision, as on `afk-off`, so the harness shows its own terminal prompt; nothing is allowed or denied. |
+| `ask_question` question or choice | The same `approval-end`; the card leaves the queue. The asking agent gets no answer and keeps its own wait. |
+| Usage-limit card | The same `approval-end`, and the stored card is marked skipped, so no pick is accepted. The next report of that window opens a fresh card. |
+| Task question | Clears the question (as `task_update clear_question`) and adds the progress line `Skipped by operator`. Nothing goes to the channel. |
+| Suspended pattern run | Not offered: the run has no prompt to fall back on. Resume it, or leave it waiting. |
+
+A closed card shows **Skipped**. A second Skip, or an answer after a Skip, returns 409. A runner-owned approval offers no Skip and the route answers 409, because the runner session has no terminal prompt to take over.
+
 ## Usage-limit cards
 
 When a session hits a subscription or usage limit, the phone gets one choice card per limit window. The card names the agent and its `harness:model`, the limit with its window when known, and the reset time when known: `Limit reached · claude:claude-opus-5-5 · 5-hour · resets 18:00`. A plain HTTP 429 with no window, reset or limit wording reads `Rate limited`. Nothing switches on its own.
 
-Sessions that hit the same typed window (harness, window and reset time) share one card. The newer card lists every session on a `Sessions:` line and closes the older one (`approval-end`, reason `cancelled`). A Claude overage that is allowed or in use is not a limit.
+Sessions of one harness that hit the same window share one card, whatever reset each report knows. Reports with no window share the harness's one unknown-window card (index key `<harness>|unknown` in `limit-windows.json`), so a burst of limited builders yields one `Limit reached · codex · reset time unknown` card, not one per session. The newer card lists every session on a `Sessions:` line and closes the older one (`approval-end`, reason `cancelled`). A Claude overage that is allowed or in use is not a limit.
 
 The card offers up to four replacements, then **Wait for reset**:
 
@@ -259,7 +275,8 @@ The card offers up to four replacements, then **Wait for reset**:
 - Text typed in **Other** picks a replacement not listed: `harness:model`, or a name matched case-insensitively against each other available harness's listed models (first match in the order claude, codex, cursor, opencode), so `deepseek` starts Cursor `deepseek-v41-flash-1017-high`. The limited harness is never picked. Text that matches nothing is refused with the reason.
 - A replacement starts a new session for each session on the card, in the folder that session ran in. A folder that is gone is refused with its path. The handoff prompt quotes the session title and last activity as data, not instructions. The original sessions keep running. Each session's timeline gets a row that links to its replacement.
 - A pick closes the card on every phone (`approval-end`, reason `answered`), so no second pick is offered; a second pick returns 409.
-- An untyped alert (the Claude `StopFailure` hook) and a typed one (the runner's `rate_limit_event`) make one card. The project keeps one card per harness and window, whatever reset each report knows: a later report of the same window joins that card and keeps the newer known reset. A known reset time closes the card at that time; an unknown reset keeps it open for 5 hours.
+- **Skip** closes the card with no pick (`approval-end`, reason `skipped`); see [Decisions](#decisions).
+- An untyped alert (the Claude `StopFailure` hook) and a typed one (the runner's `rate_limit_event`) make one card. A typed report from a session on the shared unknown-window card upgrades that card, keeping every session on it; later unknown-window reports join the upgraded card. The project keeps one card per harness and window, whatever reset each report knows: a later report of the same window joins that card and keeps the newer known reset. A known reset time closes the card at that time; an unknown reset keeps it open for 5 hours.
 - The alert never starts a harness CLI to list models. It reads the model cache only.
 
 Detection (`lib/limits.mjs`). "Typed" means the pattern appears in a type definition; "UNVERIFIED" means no type or source in this repo names it, and the code comment says so.

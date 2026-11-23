@@ -186,7 +186,7 @@ function BuilderRecovery({ task, recover }) {
   </section>;
 }
 
-function Decision({ task, decide, compose, fullId }) {
+function Decision({ task, decide, skip, compose, fullId }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const send = async answer => {
@@ -212,6 +212,8 @@ function Decision({ task, decide, compose, fullId }) {
         placeholder={q.options?.length ? "Or type your own answer" : "Your decision"} enterKeyHint="send"
         className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"/>
       <Button type="submit" size="sm" className="h-9" disabled={busy || !text.trim()}>Decide</Button>
+      {skip && <Button type="button" size="sm" variant="ghost" className="h-9 text-muted-foreground" disabled={busy}
+        onClick={async () => { setBusy(true); await skip(task.id); setBusy(false); }}>Skip</Button>}
     </form>
   </li>;
 }
@@ -237,7 +239,7 @@ const Column = memo(function Column({ status, list, now, compose, open, fullId, 
   </section>;
 });
 
-export function TaskBoard({ project, board, now, open, compose, decide, review: decideReview, taskId, back, continuation, recover, inspect, move }) {
+export function TaskBoard({ project, board, now, open, compose, decide, skip, review: decideReview, taskId, back, continuation, recover, inspect, move }) {
   const filterKey = "task filter " + project;
   const [filter, setFilter] = useState(() => views.get(filterKey, "all"));
   const [view, setView] = useState("board");
@@ -324,7 +326,7 @@ export function TaskBoard({ project, board, now, open, compose, decide, review: 
     {board?.error && <p role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">Task store is invalid: {board.error}</p>}
     {taskId ? <>
       <Button type="button" size="sm" variant="outline" className="self-start" onClick={back}>Back to board</Button>
-      {task?.question && !task.question.answer && decide && <ul><Decision task={task} decide={decide} compose={message} fullId/></ul>}
+      {task?.question && !task.question.answer && decide && <ul><Decision task={task} decide={decide} skip={skip} compose={message} fullId/></ul>}
       {task?.review && decideReview && <ul><ReviewTask task={task} review={task.review} decide={decideReview}/></ul>}
       {task ? <Column status={task.status} list={[task]} fullId now={clock} compose={message} open={openOwner} continuation={continuation} recover={recover && recoverTask}/>
         : board && !board.error && <p role="status">Task #{taskId} was not found.</p>}
@@ -333,7 +335,7 @@ export function TaskBoard({ project, board, now, open, compose, decide, review: 
         <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-amber-600 dark:text-amber-400">
           <span aria-hidden className="inline-block size-2 rounded-full bg-amber-500"/>Needs you · {waiting.length}
         </h2>
-        <ul className="flex flex-col gap-2 md:grid md:grid-cols-2">{waiting.map(item => <Decision key={item.id} task={item} decide={decide} compose={message}/>)}</ul>
+        <ul className="flex flex-col gap-2 md:grid md:grid-cols-2">{waiting.map(item => <Decision key={item.id} task={item} decide={decide} skip={skip} compose={message}/>)}</ul>
       </section>}
       <div role="group" aria-label="View" className="flex gap-2">
         {VIEWS.map(([id, name]) => <Button key={id} type="button" size="sm" variant={view === id ? "default" : "outline"}

@@ -7,7 +7,9 @@ const ENDED = {
   allowed: "Allowed from the phone", denied: "Denied from the phone", answered: "Answered from the phone",
   timeout: "Timed out: the terminal prompt took over", "afk-off": "AFK turned off: the terminal prompt took over",
   cancelled: "Closed: answered in the terminal or the agent stopped", terminal: "Answered in the terminal",
+  skipped: "Skipped",
 };
+export const SKIPPED = ENDED.skipped;
 export const IN_TERMINAL = "Answer in the terminal";
 // Why a view-only card has no buttons, and how to get them next time.
 export const IN_TERMINAL_HINT = "AFK is off, so the terminal holds this prompt. Turn AFK on to answer approvals here.";
@@ -152,11 +154,14 @@ export function approvalOperations(approval, now) {
   return approval.questions ? choiceOps(approval, open, outcome, terminal) : permissionOps(approval, open, outcome, terminal);
 }
 
-/** Operations for an ask_question post: its body, then an answer field, or the answer once given. */
-export function questionOperations(question, body, answer, by) {
+/** Operations for an ask_question post: its body, then an answer field, or the answer once given, or Skipped. */
+export function questionOperations(question, body, answer, by, skipped = false) {
   const components = [column("root", []), text("body", body)];
   const children = ["body"];
-  if (answer) {
+  if (skipped && !answer) {
+    components.push(text("status", SKIPPED));
+    children.push("status");
+  } else if (answer) {
     components.push(text("status", "Answered: " + answer + (by ? " · " + by : "")));
     children.push("status");
   } else {
@@ -174,7 +179,7 @@ export function surfaceOf(entry, now = Date.now()) {
     return { id: approvalSurfaceId(entry.approval.id), operations: approvalOperations(entry.approval, now) };
   }
   if (entry?.kind === "Question" && HEX12.test(entry.question || "")) {
-    return { id: questionSurfaceId(entry.question), operations: questionOperations(entry.question, String(entry.body ?? ""), entry.answer, entry.answeredBy) };
+    return { id: questionSurfaceId(entry.question), operations: questionOperations(entry.question, String(entry.body ?? ""), entry.answer, entry.answeredBy, entry.skipped === true) };
   }
   return null;
 }

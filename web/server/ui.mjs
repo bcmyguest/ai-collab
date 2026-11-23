@@ -2,7 +2,7 @@ import { isProjectPaused, PROJECT_PAUSED, setProjectPaused } from "../../lib/pro
 import { terminalHasDraft } from "../../lib/terminal-draft.mjs";
 import { EventType } from "@ag-ui/core";
 import { operatorPrompt, publishMode as publishModeAll } from "../../lib/mode.mjs";
-import { buildEvent, envelopeToEvent, projectEvent, readWireRecord } from "../../lib/agui.mjs";
+import { buildEvent, encodeEnvelope, envelopeToEvent, projectEvent, readWireRecord } from "../../lib/agui.mjs";
 import { ACTIVITY_BATCH, STREAM_ERROR } from "../lib/ui-events.js";
 import { execFile } from "node:child_process";
 import { mkdirSync, watch } from "node:fs";
@@ -30,7 +30,7 @@ import { availableHarnesses, availablePlaces, defaultStartPlace, openshellHarnes
 import { codeModeDefault } from "../../lib/code-mode.mjs";
 import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
-import { LIMIT_TOOL, chooseLimit, limitEndMessage } from "../../lib/limit-alert.mjs";
+import { LIMIT_TOOL, chooseLimit, limitEndMessage, skipLimit } from "../../lib/limit-alert.mjs";
 import { closedProjectNames, createTeam, deleteTeam, listTeams, readProjectsFile, removeProject, setProjectClosed, teamTask } from "../../lib/teams.mjs";
 import { clearFields, modelFields, sessionHistory } from "../../lib/session-events.mjs";
 import { compactionFields } from "../../lib/compaction.mjs";
@@ -63,8 +63,8 @@ import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a
 export { mentionedNames, mentionedTeams, startOnlyMentions };
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "move-task", "continue-builder", "recover-builder", "project-pause", "review"];
-const HOSTED_ACTIONS = new Set(["history", "messages", "send", "reply", "afk", "approve", "a2ui"]);
+const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "move-task", "continue-builder", "recover-builder", "project-pause", "review", "skip"];
+const HOSTED_ACTIONS = new Set(["history", "messages", "send", "reply", "afk", "approve", "a2ui", "skip"]);
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
 const PARENT = /^[a-z0-9-]{1,24}#[a-f0-9]{16}$/;
@@ -80,6 +80,7 @@ const SCHEDULE_NAME = /^[a-z0-9-]{1,40}$/;
 // Characters of the replied message sent with a reply; the browser shows the first 80.
 const QUOTE_MAX = 200;
 const IMPORTANT = /^IMPORTANT, the agent waits for this answer: /;
+const SKIPPED_PROGRESS = "Skipped by operator";
 // The hub keeps the newest 500 events per topic; 3 MB of cached history covers 500 full 4 KB activity envelopes.
 const ACTIVITY_TAIL_BYTES = 3 * 1024 * 1024;
 const ACTIVITY_TEXT_MAX = 8192;
@@ -211,7 +212,7 @@ function approvalEntry({ id, time }, e) {
   const approval = {
     id: e.id, harness: cleanText(e.harness, 10) || "other", tool: cleanText(e.tool, ACTIVITY_NAME_MAX) || "tool",
     summary: cleanText(e.summary, 300) || "", expiresAt: Number.isSafeInteger(e.expiresAt) ? e.expiresAt : 0,
-    ...(questions ? { questions } : {}), ...(e.kind === "approval-view" ? { terminal: true } : {}),
+    ...(questions ? { questions } : {}), ...(e.kind === "approval-view" ? { terminal: true } : {}), ...(e.owned === true ? { owned: true } : {}),
   };
   return { id, time, kind: "Approval", sender, from: sender, body: approval.summary, approval };
 }
@@ -638,7 +639,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (approval.state !== "pending" || (approval.expiresAt && approval.expiresAt < Date.now())) continue;
         // A view-only terminal approval is answered in the terminal, so it does not wait on the operator.
         add(item.from, { ...item, project: project.cfg.project, approval, blocking: approval.terminal !== true, expiresAt: approval.expiresAt });
-      } else if (item.question && !replies.has(item.question) && (persistent || online.has(item.from) || Date.now() - item.time * 1000 < ONLINE_MS)) {
+      } else if (item.question && !replies.has(item.question) && !ends.has(item.question) && (persistent || online.has(item.from) || Date.now() - item.time * 1000 < ONLINE_MS)) {
         add(item.from, { ...item, project: project.cfg.project, blocking: IMPORTANT.test(item.body) });
       }
     }
@@ -838,6 +839,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           const by = senders.get(item.question)[0];
           return { ...item, answer: replies.get(item.question)[0], ...(by ? { answeredBy: by } : {}) };
         }
+        if (item.kind === "Question" && ends.get(item.question) === "skipped") return { ...item, skipped: true };
         const stated = item.from === "operator" && item.kind === "Message" && item.to && !item.terminal && !item.replyTo ? { ...item, receipt: receiptOf(project, item, agentList, reads) } : item;
         return quoted(stated);
       });
@@ -910,6 +912,45 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     await publish(project.cfg, project.topic, limitEndMessage(project.cfg, approval.id, "answered")).catch(() => {});
     if (result.status === "waiting") return { sent: true, status: "Waiting for reset" };
     return { sent: true, status: `Started ${result.session}`, session: result.session, detail: result.detail };
+  }
+
+  /**
+   * Skip: closes an open decision without answering it. An approval, choice, question or limit card gets an approval-end with reason
+   * "skipped" and no reply, so a waiting hook returns no decision and the harness's own prompt stays in charge. A task question is
+   * cleared with a progress line. A runner-owned approval has no terminal prompt to fall back on, so it cannot be skipped.
+   */
+  async function skipDecision(project, { id, taskId }, by) {
+    const who = by ? `operator:${by}` : "operator";
+    if (taskId !== undefined) {
+      if (hosted) reject(403, "Skip task questions on the agent machine");
+      if (!project.tasks || typeof taskId !== "string") reject(400, "Give the task id");
+      let task;
+      try { task = project.tasks.get(taskId); } catch (err) { reject(404, err.message); }
+      if (!task.question || task.question.answer) reject(409, "This task has no open question");
+      try { await project.tasks.update(taskId, { ask: null, progress: { by: who, text: SKIPPED_PROGRESS } }); }
+      catch (err) { reject(400, err.message); }
+      broadcast();
+      return { status: "Skipped", detail: taskId };
+    }
+    if (typeof id !== "string" || !APPROVAL_ID.test(id)) reject(400, "Invalid decision");
+    const events = project.hub.events(project.topic);
+    const items = events.map(entry);
+    if (items.some(e => e?.kind === "Approval" && e.approval.id === id)) {
+      const approval = findApproval(project, id);
+      if (approval.owned) reject(409, "A runner session has no terminal prompt; answer this request");
+      if (approval.tool === LIMIT_TOOL) {
+        if (hosted) reject(403, "Handle usage limits on the agent machine");
+        const result = await skipLimit(project.cfg, id);
+        if (result.status !== "skipped") reject(409, result.detail);
+      }
+    } else {
+      if (!items.some(e => e?.kind === "Question" && e.question === id)) reject(404, "Unknown decision");
+      const { ends, replies } = outcomes(events);
+      if (ends.has(id) || replies.has(id)) reject(409, "This question has closed");
+    }
+    const end = encodeEnvelope("approval-end", { from: "operator", id, reason: "skipped", ...(by ? { by } : {}), ts: new Date().toISOString() }, project.cfg.wire);
+    await publish(project.cfg, project.topic, end, { title: "ai-collab approval skipped", priority: 1, onPublished: project.hub.record });
+    return { status: "Skipped" };
   }
 
   async function publishDecision(project, id, reply, by, valid = Boolean) {
@@ -1300,7 +1341,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
       if (action === "history") return history(request, by, await payload(request));
-      const { project: name, paused, target, body, queueAction, question, mode, level: alertLevel, id, status: taskStatus, decision, answers, harness, prompt, place, worktree, openshell, urgent, sendAnyway, model, startMode, codeMode, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText, commit, submission, note: reviewNote } = await payload(request);
+      const { project: name, paused, target, body, queueAction, question, mode, level: alertLevel, id, status: taskStatus, decision, answers, harness, prompt, place, worktree, openshell, urgent, sendAnyway, model, startMode, codeMode, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText, commit, submission, note: reviewNote, taskId } = await payload(request);
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -1334,6 +1375,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }
       if (["start", "continue-builder", "recover-builder"].includes(action) && isProjectPaused(cfg)) reject(409, PROJECT_PAUSED);
       if (action === "approve") return json(201, await answerApproval(project, id, { decision, answers }, by));
+      if (action === "skip") return json(201, await skipDecision(project, { id, taskId }, by));
 
       if (action === "continue-builder") {
         if (!startable(project).includes(harness)) reject(400, "Select an available harness");

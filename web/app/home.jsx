@@ -56,7 +56,7 @@ export function SessionMenu({ node, disabled, dispose, raw, map, detailsAction, 
 }
 
 // One session: identity, state, last action, running subagents, pending cards or their compact count, and nested child sessions.
-function SessionCard({ node, now, open, openAddress, act, answer, dispose, raw, disabled, showProject, compact }) {
+function SessionCard({ node, now, open, openAddress, act, answer, skip, dispose, raw, disabled, showProject, compact }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const name = (!node.generatedName && node.name) || short(node.id);
   const folder = node.folder && node.folder !== node.project ? node.folder : "";
@@ -134,12 +134,14 @@ function SessionCard({ node, now, open, openAddress, act, answer, dispose, raw, 
         <CircleHelp className="size-3.5 shrink-0"/><span className="min-w-0 truncate">{pendingLabel(node.pending)}</span>
       </button>}
       {!compact && node.pending.map(item => <div key={item.id} className="min-w-0">
-        {item.kind === "Approval" ? <ApprovalCard approval={item.approval} now={now} disabled={disabled} act={payload => act({ ...payload, project: item.project })}/>
-          : <QuestionCard question={item.question} body={item.body} answer={item.answer} disabled={disabled} onAnswer={body => answer(item.project, item.question, body)}/>}
+        {item.kind === "Approval" ? <ApprovalCard approval={item.approval} now={now} disabled={disabled} act={payload => act({ ...payload, project: item.project })}
+          skip={skip && (payload => skip({ ...payload, project: item.project }))}/>
+          : <QuestionCard question={item.question} body={item.body} answer={item.answer} disabled={disabled} onAnswer={body => answer(item.project, item.question, body)}
+            skip={skip && (payload => skip({ ...payload, project: item.project }))}/>}
       </div>)}
     </div>
     {node.children.length > 0 && <ul aria-label={"Started by " + short(node.id)} className="ml-4 flex flex-col gap-2 border-l pl-3">
-      {node.children.map(child => <SessionCard key={child.project + child.id} node={child} now={now} open={open} openAddress={openAddress} act={act} answer={answer} dispose={dispose} raw={raw} disabled={disabled} showProject={showProject} compact={compact}/>)}
+      {node.children.map(child => <SessionCard key={child.project + child.id} node={child} now={now} open={open} openAddress={openAddress} act={act} answer={answer} skip={skip} dispose={dispose} raw={raw} disabled={disabled} showProject={showProject} compact={compact}/>)}
     </ul>}
   </li>;
 }
@@ -156,10 +158,10 @@ export function InactiveSessions({ count, open, onToggle, children }) {
 }
 
 /** Session cards grouped Waiting on you, AFK hold, Working, Idle, then Offline collapsed; Offline splits a Dead section (silent a day) behind one tap. */
-export function SessionList({ sessions, now, open, openAddress, act, answer, dispose, raw, disabled, showProject, compact, empty, inactiveOpen, onInactiveToggle, deadOpen, onDeadToggle }) {
+export function SessionList({ sessions, now, open, openAddress, act, answer, skip, dispose, raw, disabled, showProject, compact, empty, inactiveOpen, onInactiveToggle, deadOpen, onDeadToggle }) {
   const tree = sessionTree(sessions || [], now, { separateOffline: true });
   if (!tree.length) return <p className="py-16 text-center text-sm text-muted-foreground">{empty}</p>;
-  const card = node => <SessionCard key={node.project + node.id} node={node} now={now} open={open} openAddress={openAddress} act={act} answer={answer} dispose={dispose} raw={raw} disabled={disabled} showProject={showProject} compact={compact}/>;
+  const card = node => <SessionCard key={node.project + node.id} node={node} now={now} open={open} openAddress={openAddress} act={act} answer={answer} skip={skip} dispose={dispose} raw={raw} disabled={disabled} showProject={showProject} compact={compact}/>;
   const [offline, dead] = deadSplit(tree, now);
   const countNodes = nodes => nodes.reduce((total, node) => total + 1 + countNodes(node.children), 0);
   const inactiveCount = countNodes(offline) + countNodes(dead);
