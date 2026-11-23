@@ -243,7 +243,7 @@ test("merge start resolves mise's Node before isolating HOME when the caller has
   writeFileSync(npmCli, "");
   writeFileSync(join(root, "node-location"), installed + "\n");
   writeFileSync(join(tools, "mise"), '#!/bin/sh\ntest "$*" = "which node" && cat "$HOME/node-location"\n', { mode: 0o755 });
-  writeFileSync(installed, '#!/bin/sh\ntest ! -e "$HOME/node-location" || exit 1\nprintf "%s\\n" "$2" >> "$1"\n', { mode: 0o755 });
+  writeFileSync(installed, '#!/bin/sh\ntest ! -e "$HOME/node-location" && test -z "$AI_COLLAB_WAKE" || exit 1\nprintf "%s\\n" "$2" >> "$1"\n', { mode: 0o755 });
   git(host, "switch", "-q", "-c", "builder/quota");
   const tip = commit(host, "quota.txt", "quota\n");
   git(host, "switch", "-q", "main");
@@ -251,7 +251,7 @@ test("merge start resolves mise's Node before isolating HOME when the caller has
   const stream = { write: (message) => { output += message; } };
   const status = merge(["start", "builder/quota"], {
     env: {
-      HOME: root, PATH: `${tools}:/usr/bin:/bin`, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: join(root, "gitconfig"),
+      HOME: root, PATH: `${tools}:/usr/bin:/bin`, AI_COLLAB_WAKE: "1", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: join(root, "gitconfig"),
       GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@example.com", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@example.com",
     },
     hostCheckout: host, tempRoot: root, nodePath: runtime, out: stream, err: stream,
