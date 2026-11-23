@@ -23,6 +23,7 @@ import { withMentions } from "@/lib/mentions";
 import { chatThread } from "@/lib/chat-turns";
 import { NewAgentComposer } from "./new-session";
 import { PatternsPage } from "./patterns-page";
+import { LandReviews } from "./land-reviews";
 import { TaskBoard } from "./tasks";
 import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
 import { TABS, parseSelection, projectNavigation, selectionHash } from "@/lib/selection";
@@ -1134,7 +1135,7 @@ function Console({ account }) {
         {ready ? <PatternsPage data={data} project={project} selected={selected} navigate={navigate} call={patternCall} disabled={working}/>
           : <p className="py-16 text-center text-sm text-muted-foreground">Loading patterns…</p>}
       </div>}
-      {!patterns && !composing && (tasksView ? <TaskBoard key={project} project={project} board={ready ? data.tasks : null} now={now} taskId={selected.task}
+      {!patterns && !composing && (tasksView ? <TaskBoard key={project} project={project} board={ready ? data.tasks : null} now={now} taskId={selected.task} landControl={ready && <LandReviews landing={data.landing} disabled={working} onLand={() => action("land-reviews", {}, "Landing reviews")}/>}
         back={() => navigate({ project, level: "tasks" })} compose={id => navigate({ project, level: "project", composeTask: id })}
         continuation={{ harnesses: paused ? [] : data.startable || [], launch: (id, harness) => action("continue-builder", { id, harness }, "Replacement started") }}
         inspect={id => navigate({ project, level: "tasks", task: id })}
@@ -1153,6 +1154,7 @@ function Console({ account }) {
                 onClick={() => navigate({ project: item.id, level: "project" })}>
                 <span className="truncate">{item.id}</span><Badge variant="secondary">New work paused</Badge>
               </button>)}
+            {home && !inbox && <LandReviews landing={data.landing} disabled={working} onLand={() => action("land-reviews", { project: undefined }, "Landing reviews")}/>}
             {home && <DecisionQueue decisions={data.decisions} inbox={inbox} now={now} disabled={working} action={action}
               seen={seenDecisions} markSeen={markDecisionSeen} openInbox={() => navigate({ level: "inbox" })}/>}
             {!inbox && <SessionList sessions={data.sessions} now={now} open={openCard} raw={openRaw} disabled={working} showProject={home} compact={home}

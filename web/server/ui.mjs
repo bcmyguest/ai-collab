@@ -1,3 +1,5 @@
+import { HOST_CHECKOUT } from "../../lib/merge-cli.mjs";
+import { landReviews, mergeReview } from "./land-reviews.mjs";
 import { isProjectPaused, PROJECT_PAUSED, setProjectPaused } from "../../lib/project-pause.mjs";
 import { terminalHasDraft } from "../../lib/terminal-draft.mjs";
 import { EventType } from "@ag-ui/core";
@@ -63,7 +65,7 @@ import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a
 export { mentionedNames, mentionedTeams, startOnlyMentions };
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "move-task", "continue-builder", "recover-builder", "project-pause", "review", "skip"];
+const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "move-task", "continue-builder", "recover-builder", "project-pause", "land-reviews", "review", "skip"];
 const HOSTED_ACTIONS = new Set(["history", "messages", "send", "reply", "afk", "approve", "a2ui", "skip"]);
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
@@ -323,7 +325,7 @@ function originalOf(quote) {
   return { sender: typeof source.sender === "string" ? source.sender : "", body: typeof source.body === "string" ? source.body : "" };
 }
 
-export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start: launch = startSession, models = listModels, push: notifier = null, auth = null, runner = runnerClient, hasDraft = terminalHasDraft, hosted = false }) {
+export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start: launch = startSession, models = listModels, push: notifier = null, auth = null, runner = runnerClient, hasDraft = terminalHasDraft, hosted = false, landingCheckout = HOST_CHECKOUT, runMergeReview = mergeReview }) {
   if (!configs.length) throw new Error("No ai-collab project is configured");
   for (const item of configs) if (!item.enabled) throw new Error(item.reason);
   if (allowedOrigin && (!allowedOrigin.startsWith("https://") || new URL(allowedOrigin).origin !== allowedOrigin)) {
@@ -340,6 +342,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   let pushTimer = null;
   let lastStartAt = 0;
   let closed = false;
+  let landing = { running: false, receipts: [] };
 
   const start = launch === startSession ? startSession : async (cfg, options) =>
     isProjectPaused(cfg) ? { status: "failed", detail: PROJECT_PAUSED } : launch(cfg, options);
@@ -999,6 +1002,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     try { return projectRoot(project.cfg.project, env); } catch { return ""; }
   }
 
+  const canLand = project => !hosted && project.tasks && taskRoot(project) === landingCheckout;
+
   // The plain-text diff of one build, capped so a huge change cannot exhaust memory or the connection.
   async function diffRange(root, base, commit) {
     const { stdout } = await runFile("git", ["diff", "--no-ext-diff", "--no-textconv", base, commit, "--"],
@@ -1062,6 +1067,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         decisions: shown.flatMap(item => item.failed ? [] : projectDecisions(item,
           item === project ? runs : listRuns(item.cfg), item === project ? list : cards.filter(card => card.project === item.cfg.project))),
         unavailable: shown.filter(item => item.failed).map(item => item.cfg.project) } : {}),
+      ...((scope === "home" ? shown.some(canLand) : canLand(project)) ? { landing } : {}),
       ...(hosted ? { hosted: true } : {}),
       startable: startable(project),
       // The new-session default (defaults.json startDefault, else cursor on deepseek); the form prefills it when available.
@@ -1363,6 +1369,29 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         removeProject(env, name);
         removed.add(name);
         return json(200, { status: "Deleted", detail: name });
+      }
+      if (action === "land-reviews") {
+        if (landing.running) reject(409, "A review batch is already running");
+        const hidden = hiddenProjects();
+        const targets = [...projects].filter(([id, item]) =>
+          (name === undefined || id === name) && !hidden.has(id) && canLand(item))
+          .map(([name, item]) => ({ name, tasks: item.tasks }));
+        if (!targets.length) reject(403, "Select a project registered to the PM checkout");
+        landing = { running: true, receipts: [] };
+        broadcast();
+        landReviews(targets, {
+          by: by ? `operator:${by}` : "operator",
+          merge: review => runMergeReview(review, env),
+          onReceipt(result) {
+            landing.receipts.push(result);
+            broadcast();
+          },
+        }).catch(error => { landing.error = error.message; }).finally(() => {
+          landing.running = false;
+          landing.finished = true;
+          broadcast();
+        });
+        return json(202, { status: "Landing reviews" });
       }
       const project = projectFor(name);
       const { cfg, operator, topic } = project;
