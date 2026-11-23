@@ -228,3 +228,35 @@ test("one Home request lands authorized reviews in order and streams individual 
     await updates.return();
   }
 });
+
+test("merge start resolves mise's Node before isolating HOME when the caller has no npm", (t) => {
+  const { root, host, git, commit, remoteMain } = sandbox(t);
+  const runtime = join(root, "cursor", "node");
+  const installed = join(root, "installed", "bin", "node");
+  const npmCli = join(root, "installed", "lib", "node_modules", "npm", "bin", "npm-cli.js");
+  const tools = join(root, "tools");
+  for (const dir of [join(root, "cursor"), join(root, "installed", "bin"),
+    join(root, "installed", "lib", "node_modules", "npm", "bin"), tools]) {
+    mkdirSync(dir, { recursive: true });
+  }
+  writeFileSync(runtime, "");
+  writeFileSync(npmCli, "");
+  writeFileSync(join(root, "node-location"), installed + "\n");
+  writeFileSync(join(tools, "mise"), '#!/bin/sh\ntest "$*" = "which node" && cat "$HOME/node-location"\n', { mode: 0o755 });
+  writeFileSync(installed, '#!/bin/sh\ntest ! -e "$HOME/node-location" || exit 1\nprintf "%s\\n" "$2" >> "$1"\n', { mode: 0o755 });
+  git(host, "switch", "-q", "-c", "builder/quota");
+  const tip = commit(host, "quota.txt", "quota\n");
+  git(host, "switch", "-q", "main");
+  let output = "";
+  const stream = { write: (message) => { output += message; } };
+  const status = merge(["start", "builder/quota"], {
+    env: {
+      HOME: root, PATH: `${tools}:/usr/bin:/bin`, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: join(root, "gitconfig"),
+      GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@example.com", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@example.com",
+    },
+    hostCheckout: host, tempRoot: root, nodePath: runtime, out: stream, err: stream,
+  });
+  assert.equal(status, 0, output);
+  assert.equal(readFileSync(npmCli, "utf8"), "ci\ntest\n");
+  assert.equal(git(host, "merge-base", "--is-ancestor", tip, remoteMain()), "");
+});
