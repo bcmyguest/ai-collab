@@ -378,3 +378,10 @@ Notifications carry a link: ntfy's `click` field, built from `AI_COLLAB_UI_URL` 
 ## Look and feel
 
 The UI uses [shadcn/ui](https://ui.shadcn.com/docs) components with Tailwind CSS v4 and the [prompt-kit](https://www.prompt-kit.com/docs) chat components (`chat-container`, `message`, `prompt-input`, `scroll-button`), copied into `web/components/ui/` by the shadcn CLI. `web/app/shadcn.css` vendors the shadcn style's Tailwind variants. Code is highlighted with [shiki](https://shiki.style/guide/regex-engines#javascript-regexp-engine) through prompt-kit's `CodeBlockCode`: fenced blocks in chat Markdown, tool inputs (a shell command as bash, other input as JSON), and tool results whose language is clear (a diff, shell output, a read file by extension, JSON). Shiki loads on first use with its JavaScript regex engine, which needs no `'wasm-unsafe-eval'` in the CSP, and fetches each of its 12 languages (js, ts, jsx, tsx, json, bash, python, diff, markdown, yaml, css, html) on demand. Light and dark colours follow the theme. Only expanded blocks are highlighted, and blocks over 20 KB stay plain text. The theme defaults to dark; the header toggle switches to light or the system setting.
+
+## Project navigation deploy smoke
+
+1. At a 390 × 844 phone viewport, open a project. Tap **Chat**, **Tasks**, and **Patterns** in the bottom bar. Confirm each opens in the same project, only the current view is highlighted, and each link measures at least 44 × 44 CSS pixels.
+2. Type a draft in Chat and pick a status filter in Tasks. Switch to Patterns, then return to Chat and Tasks to confirm both values are restored. Scroll the task board and the patterns list. Confirm the bar stays visible and the chat composer remains usable above it.
+3. Repeat on desktop with the sidebar visible. Open a task detail or a pattern from its view, reload, then use browser Back and Forward. Confirm the project and highlighted view match the URL.
+4. Open Home and a session. Confirm Home still lists projects and the session still offers its timeline and subagent views.

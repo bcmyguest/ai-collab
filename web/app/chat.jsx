@@ -25,8 +25,8 @@ import { NewAgentComposer } from "./new-session";
 import { PatternsPage } from "./patterns-page";
 import { TaskBoard } from "./tasks";
 import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
-import { TABS, parseSelection, selectionHash } from "@/lib/selection";
-import { namedAgents, unnamedAgents } from "@/lib/sidebar";
+import { TABS, parseSelection, projectNavigation, selectionHash } from "@/lib/selection";
+import { agentName, namedAgents, unnamedAgents } from "@/lib/sidebar";
 import { sessionState } from "@/lib/session-state";
 import { subscribeUiEvents } from "@/lib/ui-events";
 import { ActivityRow, GoToAgent, Working } from "./activity";
@@ -34,7 +34,7 @@ import { ApprovalCard, QuestionCard } from "./cards";
 import { SurfaceContext } from "@/components/a2ui/surface";
 import { NotifyToggle } from "./notify";
 import { DecisionQueue } from "./decisions";
-import { InactiveSessions, SessionList, SessionMenu, SubagentList } from "./home";
+import { InactiveSessions, SessionList, SessionMenu, StateChip, SubagentList } from "./home";
 import { RunningCount, SubagentRuns } from "./subagent-runs";
 import { ClosedProjects, ProjectMenu } from "./project-menu";
 import { Quote } from "./quote";
@@ -314,7 +314,7 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
             <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground" title={data.projectCounts?.[project.id] ? data.projectCounts[project.id].running + " running · " + data.projectCounts[project.id].inactive + " inactive" : undefined}>{data.projectCounts?.[project.id] ? data.projectCounts[project.id].running + " ▶ · " + data.projectCounts[project.id].inactive + " off" : ""}</span>
           </button>
           <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label={"New session in " + project.id}
-            title="New session" onClick={() => newSession(project.id)}><Plus/></Button>
+            disabled={disabled || project.paused} title="New session" onClick={() => newSession(project.id)}><Plus/></Button>
           {!data.autoProjects?.includes(project.id) && <ProjectMenu project={project.id} act={projectAction}/>}
         </li>)}
       </ul>
@@ -929,13 +929,21 @@ function Console({ account }) {
   const composeTask = selected.composeTask || "";
   const taskLinks = useMemo(() => ({ project, ids: new Set(data.tasks?.tasks.map(task => task.id)) }), [project, data.tasks]);
   // The new-agent composer replaces the chat while it is open.
-  const composing = Boolean(creating) && creating === project && ready;
+<<<<<<< HEAD
+  const composing = level === "project" && Boolean(creating) && creating === project && ready;
+  const projectLinks = projectNavigation(project, level);
+=======
+  const paused = data.projects.some(item => item.id === project && item.paused);
+  const composing = Boolean(creating) && creating === project && ready && !paused;
+>>>>>>> builder/let-the-operator-pause-new-work-across-a
   const agent = level === "session" ? data.agents.find(item => item.id === selected.session) : undefined;
   const target = level === "session" ? selected.session : "all";
   const missing = level === "session" && !target;
   const patterns = level === "patterns";
   const inbox = level === "inbox";
-  const title = inbox ? "Decision inbox" : home ? "Home" : patterns ? "Patterns" : tasksView ? "Tasks" : level === "session" ? short(selected.session) || "Sessions" : project;
+  const identity = agentName(agent);
+  const sessionLabel = !agent?.generatedName ? agent?.name : "";
+  const title = inbox ? "Decision inbox" : home ? "Home" : patterns ? "Patterns" : tasksView ? "Tasks" : level === "session" ? identity || sessionLabel || short(selected.session) || "Sessions" : project;
   // A home or Sessions card opens its session, or one of its subagent runs.
   const openCard = (node, run = "") => navigate({ project: node.project, level: "session", harness: node.harness || peerOf(node.id), session: node.id, ...(run ? { tab: "subagents", run } : {}) });
   // The session's ⋯ menu opens its raw activity: every tool call, unfolded.
@@ -1020,6 +1028,13 @@ function Console({ account }) {
   const sidebar = <Sidebar inactiveOpen={inactiveOpen} onInactiveToggle={rememberInactive} data={data} selected={selected} now={now} navigate={navigate} newSession={newSession} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")} openRaw={openRaw} projectAction={projectAction}
     openHash={hash => { setNavOpen(false); location.hash = hash.slice(1); }}/>;
   const anyWaiting = data.projects.some(project => project.waiting > 0);
+  const projectNav = projectLinks.length > 0 && <nav aria-label="Project views">
+    <div className="mx-auto grid max-w-3xl grid-cols-3 gap-1">
+      {projectLinks.map(({ label, href, current }) => <a key={href} href={href} aria-current={current ? "page" : undefined}
+        className={cn("flex min-h-11 items-center justify-center rounded-lg px-2 text-sm font-medium focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+          current ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>{label}</a>)}
+    </div>
+  </nav>;
   return <SurfaceContext.Provider value={{ surfaces, submit: payload => action("a2ui", payload, "Sent"), disabled: !ready || working }}><div className="flex h-dvh w-full overflow-hidden">
     <aside className="hidden w-72 shrink-0 border-r bg-sidebar text-sidebar-foreground md:block">{sidebar}</aside>
     <Sheet open={navOpen} onOpenChange={setNavOpen}>
@@ -1031,7 +1046,7 @@ function Console({ account }) {
     </Sheet>
     <main className="flex min-w-0 flex-1 flex-col">
       <header className="sticky top-0 z-10 flex flex-col gap-2 border-b bg-background/85 px-3 py-2 backdrop-blur supports-backdrop-filter:bg-background/70">
-        <div className="flex items-center gap-2">
+        <div className={cn("flex items-center gap-2", level === "session" && "flex-wrap")}>
           <Button variant="ghost" size="icon" className="relative md:hidden" aria-label="Projects" aria-expanded={navOpen} onClick={() => setNavOpen(true)} title={anyWaiting ? "Sessions waiting on you" : undefined}>
             <Menu/>{anyWaiting && <span aria-hidden className="absolute right-1.5 top-1.5 size-2.5 rounded-full bg-amber-500 ring-2 ring-background"/>}
           </Button>
@@ -1040,24 +1055,39 @@ function Console({ account }) {
             onClick={() => navigate(level === "session" || patterns ? { project, level: "project" } : { level: "home" })}><ArrowLeft/></Button>}
           {level === "session" && selected.session && <Avatar address={selected.session} className="size-8 shrink-0"/>}
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xs text-muted-foreground">{home ? "All projects" : patterns ? "Project · " + project : tasksView ? "Project · " + project : level === "project" ? "Project" : raw ? "Raw activity · " + project : project + " · session"}</p>
-            <h1 className="truncate text-base font-semibold leading-tight" title={level === "session" ? selected.session : undefined}>{title}</h1>
-            {level === "session" && agent?.name && <p className="line-clamp-2 break-words text-xs text-muted-foreground" title={agent.name}>{agent.name}</p>}
+            {level === "session" ? <>
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <h1 className="min-w-0 truncate text-lg font-semibold leading-tight" title={title}>{title}</h1>
+                {agent && <StateChip state={sessionState(agent, now)}/>}
+                {agent && <RunningCount runs={agent.subagents} now={now}/>}
+              </div>
+              <p className="truncate text-xs text-muted-foreground" title={selected.session}>
+                {raw ? "Raw activity · " + project : project + " · session"}
+                {identity && sessionLabel && sessionLabel !== identity && " · " + sessionLabel}
+              </p>
+            </> : <>
+              <p className="truncate text-xs text-muted-foreground">{home ? "All projects" : patterns || tasksView ? "Project · " + project : "Project"}</p>
+              <h1 className="truncate text-base font-semibold leading-tight">{title}</h1>
+            </>}
             {level === "session" && agent?.parent && <button type="button" onClick={() => openAddress(agent.parent)} title={"Started by " + agent.parent}
               aria-label={"Back to parent " + agent.parent} className="flex max-w-full items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:underline">
               <CornerLeftUp className="size-3.5 shrink-0"/><span className="truncate">Back to parent {short(agent.parent)}</span></button>}
           </div>
-          {level === "session" && agent && <span className="flex items-center gap-1.5 text-xs text-muted-foreground" title={agent.online ? "online" : "offline"}>
-            <Dot online={agent.online}/><span className="hidden sm:inline">{agent.online ? "online" : "offline"}</span></span>}
-          {level === "session" && agent && <RunningCount runs={agent.subagents} now={now}/>}
-          <AfkToggle mode={data.mode || "off"} disabled={!ready || working} set={mode => action("afk", { mode }, "AFK " + mode)}/>
-          {/* No "all" fallback here: before the first state frame the bell shows this browser's last choice instead. */}
-          <NotifyToggle level={data.alerts} levelDisabled={!ready || working} setLevel={level => action("alerts", { level }, "Alerts set")}/>
-          <ThemeToggle/>
+          <div className={cn("flex shrink-0 items-center gap-2", level === "session" && "max-sm:w-full max-sm:justify-end")}>
+            <AfkToggle mode={data.mode || "off"} disabled={!ready || working} set={mode => action("afk", { mode }, "AFK " + mode)}/>
+            {/* Before the first state frame the bell shows this browser's last choice. */}
+            <NotifyToggle level={data.alerts} levelDisabled={!ready || working} setLevel={level => action("alerts", { level }, "Alerts set")}/>
+            <ThemeToggle/>
+          </div>
         </div>
         {account.user && <p className="-mt-1 truncate text-right text-[11px] text-muted-foreground" data-account={account.user.login}>
           signed in as <span className="font-medium text-foreground" title={account.user.name || undefined}>{account.user.login}</span>
           {" · "}<button type="button" className="underline-offset-2 hover:underline" onClick={signOut}>sign out</button></p>}
+        {level === "project" && ready && !data.hosted && !missing && <div className="flex items-center gap-2">
+          {paused && <Badge variant="secondary">New work paused</Badge>}
+          <Button variant="outline" size="sm" disabled={working}
+            onClick={() => action("project-pause", { paused: !paused }, paused ? "New work resumed" : "New work paused")}>{paused ? "Resume new work" : "Pause new work"}</Button>
+        </div>}
         {!home && !patterns && <ZoomControls data={data} selected={selected} now={now} navigate={navigate}
           compact={level === "session" && agent?.session && <span className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {agent.modelControl && modelsOf(models, "claude").length > 0 && <select
@@ -1077,6 +1107,7 @@ function Console({ account }) {
               onClick={() => action("compact", { target: selected.session }, "Compaction requested")}><Minimize2/>Compact</Button></span>}/>}
         {!home && !listing && !tasksView && !patterns && !subagents && !raw && !compactions && <ConversationHistory key={requested} requested={requested}/>}
       </header>
+      {projectNav && <div className="hidden shrink-0 border-b bg-background px-3 py-1 md:block">{projectNav}</div>}
       <div className={cn("flex flex-col gap-2 px-3 empty:hidden", composing && "min-h-0 flex-1 justify-center pb-[20vh]")}>
         {composing && <NewAgentComposer key={project + ":" + (data.startable || []).join(",")} project={project} startable={data.startable || []} places={data.startPlaces || ["folder"]}
           startDefault={data.startDefault} codeModeDefault={data.codeModeDefault !== false} agents={data.agents} models={models} disabled={!ready} start={startSession} close={() => setCreating("")} open={openAddress}/>}
@@ -1097,9 +1128,9 @@ function Console({ account }) {
         {ready ? <PatternsPage data={data} project={project} selected={selected} navigate={navigate} call={patternCall} disabled={working}/>
           : <p className="py-16 text-center text-sm text-muted-foreground">Loading patterns…</p>}
       </div>}
-      {!patterns && !composing && (tasksView ? <TaskBoard board={ready ? data.tasks : null} now={now} taskId={selected.task}
+      {!patterns && !composing && (tasksView ? <TaskBoard key={project} project={project} board={ready ? data.tasks : null} now={now} taskId={selected.task}
         back={() => navigate({ project, level: "tasks" })} compose={id => navigate({ project, level: "project", composeTask: id })}
-        continuation={{ harnesses: data.startable || [], launch: (id, harness) => action("continue-builder", { id, harness }, "Replacement started") }}
+        continuation={{ harnesses: paused ? [] : data.startable || [], launch: (id, harness) => action("continue-builder", { id, harness }, "Replacement started") }}
         recover={(id, harness) => action("recover-builder", { id, harness }, "Builder started")}
         decide={(id, answer) => action("decide", { id, answer }, "Decided")}
         open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatContainerRoot key={inbox ? "inbox" : home ? "home" : "conversation"} initial={home ? false : "instant"} contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
@@ -1107,6 +1138,11 @@ function Console({ account }) {
           {!ready && (home || listing || subagents || compactions) && !loadError && <p className="py-16 text-center text-sm text-muted-foreground">Loading sessions…</p>}
           {ready && (home || listing) && <>
             {home && data.unavailable?.length > 0 && <p role="alert" className="text-xs text-destructive">Unavailable: {data.unavailable.join(", ")}</p>}
+            {home && !inbox && data.projects.filter(item => item.paused).map(item =>
+              <button key={item.id} type="button" className="flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm"
+                onClick={() => navigate({ project: item.id, level: "project" })}>
+                <span className="truncate">{item.id}</span><Badge variant="secondary">New work paused</Badge>
+              </button>)}
             {home && <DecisionQueue decisions={data.decisions} inbox={inbox} now={now} disabled={working} action={action}
               seen={seenDecisions} markSeen={markDecisionSeen} openInbox={() => navigate({ level: "inbox" })}/>}
             {!inbox && <SessionList sessions={data.sessions} now={now} open={openCard} raw={openRaw} disabled={working} showProject={home} compact={home}
@@ -1167,6 +1203,7 @@ function Console({ account }) {
           }
           return sent;
         }}/>}
+      {projectNav && <div className="shrink-0 border-t bg-background px-3 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] md:hidden">{projectNav}</div>}
     </main>
   </div></SurfaceContext.Provider>;
 }

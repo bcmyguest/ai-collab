@@ -36,6 +36,18 @@ test("close hides a project from the state, reopen shows it, delete drops its re
   }
 
   assert.deepEqual((await snapshot()).projects.map(p => p.id), ["demo"]);
+  assert.equal((await post("project-pause", { project: "demo", paused: "true" })).status, 400);
+  assert.equal((await post("project-pause", { project: "missing", paused: true })).status, 400);
+  assert.equal((await post("project-pause", { project: "demo", paused: true })).status, 200);
+  assert.equal((await snapshot()).projects[0].paused, true);
+  for (const action of ["start", "continue-builder", "recover-builder"]) {
+    assert.equal((await post(action, { project: "demo" })).status, 409);
+  }
+  assert.equal((await post("history", { query: "" })).status, 200);
+  assert.equal((await post("send", { project: "demo", target: "all", body: "Keep reviewing the current work" })).status, 201);
+  assert.equal((await post("project-pause", { project: "demo", paused: false })).status, 200);
+  assert.equal(Boolean((await snapshot()).projects[0].paused), false);
+  assert.equal((await post("start", { project: "demo" })).status, 400);
   assert.equal((await post("close", { project: "demo" })).status, 200);
   const closed = await snapshot();
   assert.deepEqual(closed.projects, []);

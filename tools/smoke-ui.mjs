@@ -6,6 +6,7 @@ import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 
@@ -46,13 +47,13 @@ async function phoneFixture({ homeSessions = false, inactive = false } = {}) {
   const sessions = [];
   const { processStart } = await import("../lib/process.mjs");
   if (homeSessions) {
-    for (const [index, name] of ["Trace reconnect", "", ""].entries()) {
+    for (const [index, name] of ["Trace reconnect", "", "Review notes"].entries()) {
       const sessionId = "jev-debugger-fixture-" + index;
       const id = "claude#" + sessionLabel(sessionId);
       const cwd = index === 2 ? join(projectsConfig[0].root, "repro") : projectsConfig[0].root;
       mkdirSync(cwd, { recursive: true });
       writeState(join(cfg.stateDir, cfg.project, "registry", id + ".json"), {
-        id, sessionId, cwd, name, harness: "claude", seenAt: Date.now() - 120_000,
+        id, sessionId, cwd, name, ...(index === 0 ? { identityName: "Debugger" } : {}), harness: "claude", seenAt: Date.now() - 120_000,
         pid: process.pid, pidStart: processStart(process.pid),
       });
       sessions.push({ id, title: name || id.slice(0, 15), metadata: index === 2 ? "jev-debugger · repro" : "jev-debugger" });
@@ -198,6 +199,21 @@ async function checkHomeSessions(page, fixture) {
   assert.equal(page.url(), home);
   await card.getByRole("button", { name: "Open " + title }).tap();
   await page.waitForURL(url => new URLSearchParams(url.hash.slice(1)).get("session") === id);
+  const header = page.locator("main > header");
+  const heading = header.getByRole("heading", { name: "Debugger", exact: true });
+  await heading.waitFor();
+  const state = header.getByText("Idle", { exact: true });
+  await state.waitFor();
+  const [nameBox, stateBox, themeBox] = await Promise.all([heading.boundingBox(), state.boundingBox(),
+    header.getByRole("button", { name: "Theme" }).boundingBox()]);
+  assert.ok(Math.max(nameBox.y + nameBox.height, stateBox.y + stateBox.height) <= themeBox.y);
+  await header.getByText("jev-debugger · session · " + title, { exact: true }).waitFor();
+
+  for (const session of fixture.sessions.slice(1)) {
+    await page.goto(fixture.url + "/#" + new URLSearchParams({ project: fixture.project, level: "session", harness: "claude", session: session.id }));
+    await header.getByRole("heading", { name: session.title, exact: true }).waitFor();
+    await state.waitFor();
+  }
 }
 
 async function checkInactive(page, fixture) {
@@ -222,10 +238,20 @@ async function checkInactive(page, fixture) {
   await sidebar.getByRole("button", { name: "Show 2 inactive", exact: true }).waitFor();
 }
 
+async function checkOperatorWorkflow(page) {
+  const home = page.getByRole("region", { name: "Operator decisions" });
+  await home.getByRole("button", { name: "Open decision inbox" }).click();
+  const inbox = page.getByRole("region", { name: "Decision inbox" });
+  await inbox.getByRole("heading", { name: /^Waiting on you · \d+$/ }).waitFor();
+  await page.getByRole("button", { name: "Home", exact: true }).click();
+  await home.waitFor();
+}
+
 const deployedChrome = "/home/b/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome";
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || (existsSync(deployedChrome) ? deployedChrome : undefined) });
 let fixture;
 try {
+  const operatorWorkflow = process.argv.includes("--operator-workflow");
   const composer = process.argv.includes("--composer");
   const decisions = process.argv.includes("--decisions");
   const homeSessions = process.argv.includes("--home-sessions");
@@ -236,15 +262,27 @@ try {
   page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
   page.on("pageerror", error => errors.push("pageerror: " + error.message));
   page.on("response", response => { if (response.status() >= 400) errors.push(response.status() + " " + response.url()); });
-  await page.goto(fixture?.url || process.argv[2] || "http://127.0.0.1:8795/", { waitUntil: "domcontentloaded", timeout: 20000 });
+  const url = fixture?.url || process.argv.slice(2).find(arg => !arg.startsWith("--")) || "http://127.0.0.1:8795/";
+  const startupDeadline = Date.now() + 15_000;
+  for (;;) {
+    try {
+      const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20_000 });
+      assert.ok(response?.ok(), "UI page load returned HTTP " + response?.status());
+      break;
+    } catch (error) {
+      if (!operatorWorkflow || Date.now() >= startupDeadline || !/net::ERR_CONNECTION_REFUSED/.test(error.message)) throw error;
+      await delay(250);
+    }
+  }
   if (composer) await checkComposer(page, fixture);
   else if (decisions) await checkDecisions(page, fixture);
   else if (homeSessions) await checkHomeSessions(page, fixture);
   else if (inactive) await checkInactive(page, fixture);
+  else if (operatorWorkflow) await checkOperatorWorkflow(page);
   else await page.waitForTimeout(6000);
   console.log(errors.slice(0, 15).join("\n") || "no errors");
   console.log("text:", (await page.innerText("body")).slice(0, 300).replace(/\n+/g, " | "));
-  if (/pageerror|couldn.t load/.test(errors.join("\n"))) process.exitCode = 1;
+  if ((operatorWorkflow && errors.length) || /pageerror|couldn.t load/.test(errors.join("\n"))) process.exitCode = 1;
 } finally {
   await browser.close();
   await fixture?.close();

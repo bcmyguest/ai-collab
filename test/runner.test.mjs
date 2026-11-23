@@ -15,6 +15,7 @@ import { readOwned, standsDown } from "../lib/owned.mjs";
 import { listSessions } from "../lib/sessions.mjs";
 import { openTasks } from "../lib/tasks.mjs";
 import { builderPaths } from "../lib/builder.mjs";
+import { setProjectPaused } from "../lib/project-pause.mjs";
 import { settleReceipts } from "../lib/receipts.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
@@ -75,6 +76,10 @@ test("start opens a session, claims the registry, and publishes prompt, text and
     const input = { project: "demo", harness: "codex", prompt: "hello there", taskId: "handoff" };
     await assert.rejects(runner.start(input), { status: 400, message: "Unknown task in this project" });
     await openTasks("demo", ctx.env).add({ id: "handoff", title: "Handoff" });
+    setProjectPaused(ctx.cfg, true);
+    await assert.rejects(runner.start(input), { status: 409, message: "New work is paused for this project" });
+    await assert.rejects(runner.continueBuilder(input), { status: 409, message: "New work is paused for this project" });
+    setProjectPaused(ctx.cfg, false);
     const started = await runner.start(input);
     assert.equal(started.taskId, "handoff");
     assert.equal(runner.get(started.session).taskId, "handoff");

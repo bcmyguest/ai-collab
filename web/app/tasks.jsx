@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ageOf, boardClock, columnsOf, countsOf, FILTERS, statusLabel } from "@/lib/task-board";
 import { priorityOf, sortTasks } from "../../lib/task-order.mjs";
 import { cn } from "@/lib/utils";
+import { views } from "@/lib/view-memory";
 import { TaskGraph } from "./task-graph";
 
 const DOT = { open: "bg-muted-foreground", decided: "bg-sky-500", building: "bg-amber-500", blocked: "bg-destructive", done: "bg-emerald-500" };
@@ -143,8 +144,9 @@ const Column = memo(function Column({ status, list, now, compose, open, fullId, 
   </section>;
 });
 
-export function TaskBoard({ board, now, open, compose, decide, taskId, back, continuation, recover }) {
-  const [filter, setFilter] = useState("all");
+export function TaskBoard({ project, board, now, open, compose, decide, taskId, back, continuation, recover }) {
+  const filterKey = "task filter " + project;
+  const [filter, setFilter] = useState(() => views.get(filterKey, "all"));
   const [view, setView] = useState("board");
   const tasks = board?.tasks || [];
   const columns = useMemo(() => columnsOf(tasks, filter), [tasks, filter]);
@@ -180,7 +182,10 @@ export function TaskBoard({ board, now, open, compose, decide, taskId, back, con
       {view === "graph" ? <TaskGraph tasks={tasks} open={open}/> : <>
         <div role="group" aria-label="Filter by status" className="flex flex-wrap gap-2">
           {FILTERS.map(status => <Button key={status} type="button" size="sm" variant={filter === status ? "default" : "outline"}
-            aria-pressed={filter === status} className="h-8 rounded-full capitalize" onClick={() => setFilter(status)}>
+            aria-pressed={filter === status} className="h-8 rounded-full capitalize" onClick={() => {
+              views.set(filterKey, status === "all" ? "" : status);
+              setFilter(status);
+            }}>
             {status === "all" ? "All" : statusLabel(status)} · {status === "all" ? tasks.length : counts[status]}
           </Button>)}
         </div>
