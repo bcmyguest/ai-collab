@@ -389,4 +389,3 @@ The UI uses [shadcn/ui](https://ui.shadcn.com/docs) components with Tailwind CSS
 3. Repeat on desktop with the sidebar visible. Open a task detail or a pattern from its view, reload, then use browser Back and Forward. Confirm the project and highlighted view match the URL.
 4. Open Home and a session. Confirm Home still lists projects and the session still offers its timeline and subagent views.
 5. Switch between a project chat and a session timeline twice. The second switch to each shows its rows and cards without a "Loading…" pause, and new messages that arrived while away appear once the stream reconnects.
-

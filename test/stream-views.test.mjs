@@ -107,4 +107,3 @@ test("the console wires the cache: a stream builds it, a switch restores it, not
   assert.match(chat, /setData\(next\.data\); setActivity\(next\.activity\); setSurfaces\(next\.surfaces\);/);
   assert.doesNotMatch(chat, /ACTIVITY_MAX/, "activity trimming lives in stream-views, not the console");
 });
-
