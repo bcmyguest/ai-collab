@@ -7,6 +7,8 @@ import { createInterface } from "node:readline";
 if (!process.argv.includes("app-server") && !process.argv.includes("--version")) process.exit(0);
 
 const LOG = process.env.FAKE_CODEX_LOG;
+const ROLLOUT = process.env.FAKE_CODEX_ROLLOUT;
+const rawThreads = new Set();
 const log = (entry) => { if (LOG) appendFileSync(LOG, `${JSON.stringify(entry)}\n`); };
 const write = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 // A prompt containing "closing" meets a thread still closing for its first FAKE_CODEX_CLOSING_TIMES turn/start
@@ -35,6 +37,19 @@ function finishTurn(threadId, turnId, status, error) {
 function runTurn(threadId, text) {
   const turnId = `turn-${++turns}`;
   notify("turn/started", { threadId, turn: { id: turnId, items: [], status: "inProgress" } });
+  if (text === "compute with code mode") {
+    const items = [
+      { type: "custom_tool_call_output", call_id: "unrelated", output: "ignore" },
+      { type: "custom_tool_call", call_id: turnId, name: "exec", input: "text(17 * 19)" },
+      { type: "custom_tool_call_output", call_id: turnId, output: [{ type: "input_text", text: "323" }] },
+    ];
+    for (const item of items) {
+      if (rawThreads.has(threadId)) notify("rawResponseItem/completed", { threadId, turnId, item });
+      else if (ROLLOUT) appendFileSync(ROLLOUT, JSON.stringify({ type: "response_item", payload: item }) + "\n");
+    }
+    finishTurn(threadId, turnId, "completed");
+    return;
+  }
   const approve = /approve: (.+)/.exec(text);
   if (approve) {
     const id = ++serverIds;
@@ -79,10 +94,11 @@ function handle(message) {
       return;
     case "thread/start": {
       const threadId = `thr-${++threads}`;
+      if (params.experimentalRawEvents) rawThreads.add(threadId);
       return write({ id, result: { thread: { id: threadId }, cwd: params.cwd, model: params.model ?? "gpt-fake", modelProvider: "fake", approvalPolicy: params.approvalPolicy, approvalsReviewer: params.approvalsReviewer, sandbox: { type: "readOnly" } } });
     }
     case "thread/resume":
-      return write({ id, result: { thread: { id: params.threadId } } });
+      return write({ id, result: { thread: { id: params.threadId, path: ROLLOUT } } });
     case "turn/start": {
       const text = params.input[0].text;
       if (/closing/.test(text) && closingRefusals > 0) {

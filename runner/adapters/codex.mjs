@@ -1,6 +1,8 @@
 // Owned-session adapter for Codex: one `codex app-server` child per runner, frames routed by threadId.
 // Method and field names: `codex app-server generate-json-schema` at codex-cli 0.171.0 (see docs/owned-sessions-contract.md).
 import { spawn, execFile } from "node:child_process";
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { EventType } from "@ag-ui/core";
 import { sessionLabel } from "../../lib/config.mjs";
@@ -124,6 +126,7 @@ function onExit(server) {
     if (session.turnId) session.ctx.emit({ type: EventType.RUN_ERROR, message: "codex app-server exited during the run", metadata: { aiCollab: { runId: session.turnId } } });
     for (const interruptId of session.approvals.keys()) session.ctx.emit({ type: EventType.CUSTOM, name: APPROVAL_RESOLVED, value: { interruptId, status: "cancelled", reason: "cancelled" } });
     session.approvals.clear();
+    session.codeCalls.clear();
     session.turnId = null;
     session.server = null;
   }
@@ -162,8 +165,11 @@ function onNotification(server, { method, params }) {
   }
   switch (method) {
     case "turn/started": return turnStarted(session, params.turn);
-    case "turn/completed": return turnCompleted(session, params.turn);
+    case "turn/completed": return void completeTurn(session, params.turn);
     case "item/completed": return itemCompleted(session, params.item);
+    case "rawResponseItem/completed":
+      if (params.turnId === session.turnId) return codeItem(session, params.item);
+      return;
     case "thread/tokenUsage/updated": return tokenUsage(session, params.tokenUsage);
     case "serverRequest/resolved": return requestResolved(session, params.requestId);
     case "error": return codexError(session, params);
@@ -179,9 +185,40 @@ function turnStarted(session, turn) {
   });
 }
 
+async function completeTurn(session, turn) {
+  const server = session.server;
+  // Codex 0.171 only exposes experimentalRawEvents on thread/start. After
+  // resume, read the portion of the native rollout appended during this turn.
+  if (session.rolloutOffset !== null) {
+    const start = session.rolloutOffset;
+    session.rolloutOffset = null;
+    try {
+      const { size } = await stat(session.rolloutPath);
+      if (size > start) {
+        const input = createReadStream(session.rolloutPath, { start, end: size - 1 });
+        const lines = createInterface({ input, crlfDelay: Infinity });
+        try {
+          for await (const line of lines) {
+            if (session.server !== server) break;
+            let row;
+            try { row = JSON.parse(line); } catch { continue; }
+            if (row.type === "response_item") codeItem(session, row.payload);
+          }
+        } finally {
+          input.destroy();
+        }
+      }
+    } catch (error) {
+      session.ctx.log(`could not read Codex code calls: ${error.message}`);
+    }
+  }
+  if (server && session.server === server) turnCompleted(session, turn);
+}
+
 function turnCompleted(session, turn) {
   if (turn.status !== "completed" && turn.status !== "interrupted" && turn.status !== "failed") return;
   session.turnId = null;
+  session.codeCalls.clear();
   if (turn.status === "failed") {
     // codexErrorInfo is UNVERIFIED: the field name is not in the repo's schema snapshot; lib/limits.mjs reads it for plan limits.
     session.ctx.emit({ type: EventType.RUN_ERROR, message: turn.error?.message || "turn failed", metadata: { aiCollab: { runId: turn.id, codexErrorInfo: turn.error?.codexErrorInfo } } });
@@ -205,6 +242,21 @@ function itemCompleted(session, item) {
     case "contextCompaction":
       emit({ type: EventType.STEP_STARTED, stepName: "compact", metadata: { aiCollab: { compaction: { phase: "started" } } } });
       return emit({ type: EventType.STEP_FINISHED, stepName: "compact", metadata: { aiCollab: { compaction: { phase: "finished" } } } });
+  }
+}
+
+function codeItem(session, item) {
+  const id = item?.call_id;
+  if (!session.turnId || typeof id !== "string") return;
+  if (item.type === "custom_tool_call" && item.name === "exec" && typeof item.input === "string") {
+    if (session.codeCalls.has(id)) return;
+    session.codeCalls.set(id, false);
+    session.ctx.emit({ type: EventType.TOOL_CALL_CHUNK, toolCallId: id, toolCallName: "exec", delta: item.input });
+  } else if (item.type === "custom_tool_call_output" && session.codeCalls.get(id) === false) {
+    session.codeCalls.set(id, true);
+    const content = Array.isArray(item.output) ? item.output.map(block => text(block.text)).join("") : text(item.output);
+    session.ctx.emit({ type: EventType.TOOL_CALL_RESULT, toolCallId: id, messageId: `${id}:result`, role: "tool", content,
+      metadata: { aiCollab: { toolCallName: "exec" } } });
   }
 }
 
@@ -266,6 +318,9 @@ function makeHandle(session) {
       if (session.compactWait) throw new Error("a codex compaction is still running");
       await attach(session);
       session.prompt = input.text;
+      if (session.rolloutPath) {
+        session.rolloutOffset = await stat(session.rolloutPath).then(({ size }) => size, () => null);
+      }
       // A timed-out turn/start may still have started: the error says so, and the caller never resends.
       // An error response means the server refused the turn, so a retry cannot run it twice (see route()).
       const { turn } = await session.server.request("turn/start", {
@@ -358,10 +413,11 @@ async function attach(session) {
   if (session.server === server) return;
   server.sessions.set(session.nativeId, session);
   try {
-    await server.request("thread/resume", {
+    const { thread } = await server.request("thread/resume", {
       threadId: session.nativeId, excludeTurns: true, cwd: session.cwd, ...(session.model ? { model: session.model } : {}), ...threadPolicy(session.settings),
       ...threadConfig(session.codeMode),
     });
+    session.rolloutPath = thread?.path || null;
   } catch (error) {
     server.sessions.delete(session.nativeId);
     throw error;
@@ -370,7 +426,8 @@ async function attach(session) {
 }
 
 function newSession({ pool, ctx, env, cwd, place, mode, model, settings, codeMode }) {
-  return { pool, ctx, env, cwd, place, mode, model, settings, codeMode, nativeId: "", address: "", server: null, prompt: "", turnId: null, approvals: new Map(), usage: null, compactWait: null };
+  return { pool, ctx, env, cwd, place, mode, model, settings, codeMode, nativeId: "", address: "", server: null, prompt: "", turnId: null, approvals: new Map(), usage: null, compactWait: null,
+    codeCalls: new Map(), rolloutPath: null, rolloutOffset: null };
 }
 
 async function openThread(pool, options, ctx) {
@@ -378,7 +435,7 @@ async function openThread(pool, options, ctx) {
   const session = newSession({ pool, ctx, env: options.env, cwd: options.cwd, place: options.place, mode: options.permissionMode, model: options.model, settings: options.permission, codeMode: options.codeMode });
   const { thread } = await server.request("thread/start", {
     cwd: options.cwd, ephemeral: false, ...threadPolicy(options.permission), ...(options.model ? { model: options.model } : {}),
-    ...threadConfig(options.codeMode),
+    ...threadConfig(options.codeMode), experimentalRawEvents: true,
   });
   session.nativeId = thread.id;
   session.address = `codex#${sessionLabel(thread.id)}`;

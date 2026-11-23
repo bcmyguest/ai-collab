@@ -13,20 +13,20 @@ Default **on**. Precedence, highest first:
 
 | Where | How |
 |---|---|
-| One start (UI) | The `{} Code` pill in the new-session composer (Codex starts only, see below); the start request's `codeMode: true\|false` |
+| One start (UI) | The `{} Code` pill in the new-session composer for Claude Agent starts in folders or worktrees and for Codex starts. The start request accepts `codeMode: true\|false`. |
 | One start (runner control API) | `POST /v1/sessions` with `codeMode: true\|false` |
 | One role (team.dot) | `code_mode="on"` or `code_mode="off"` on the node ([Teams](teams.md)) |
 | Everything | `"codeMode": false` in `~/.config/ai-collab/defaults.json` ([Configuration](configuration.md)) |
 | Built in | on (`lib/code-mode.mjs` `CODE_MODE_DEFAULT`) |
 
-What each harness gets (checked on 2026-11-22 against the installed CLIs):
+What each harness gets:
 
 | Harness | Switch ai-collab sets | Status |
 |---|---|---|
 | Claude Code 2.1.330, runner-owned session (Agent SDK) | SDK `settings: { env: { CLAUDE_CODE_EXPERIMENTAL_CODE_MODE: "1" } }` (`"0"` for off) | Verified with `claude -p --settings`: the transcript shows `REPL` calls. A headless Claude reads the variable only from the flag-settings layer; the same variable in the shell env leaves code mode off. |
-| Claude Code, UI start (`claude --bg`) | nothing | Claude refuses code mode in background jobs ("for now it doesn't work in background jobs"), so the UI's Claude starts run with the ordinary tools. |
+| Claude Code, UI start | The UI sends Agent starts with code mode on to the owned runner. Claude Plan, OpenShell, and requests with code mode off or omitted use `claude --bg`. | The owned SDK adapter forwards `REPL` calls as transcript tool events. The builder's live SDK probe reached inference and returned “Not logged in”. |
 | Codex 0.171.0, UI start (`codex exec`) | `-c features.code_mode=true` (`false` for off) | Verified: Codex prints "Under-development features enabled: code_mode". |
-| Codex, runner-owned session (`codex app-server`) | `thread/start` and `thread/resume` `config: { "features.code_mode": true }` | Verified that the app-server parses the key (a non-boolean value is refused in `features.code_mode`); behaviour inside a thread UNVERIFIED. |
+| Codex, runner-owned session (`codex app-server`) | `thread/start` and `thread/resume` `config: { "features.code_mode": true }` | A live 0.171.0 run with gpt-6-luna recorded `exec` and output `323`. After restarting the app-server and resuming the thread, it recorded another `exec` and output `667`. New threads receive raw tool events. Resumed threads read code calls from the native rollout at turn completion. |
 | Cursor, OpenCode | nothing | No native code mode found. They use `run_code`. |
 
 A model can override the switch. Codex's model catalog marks gpt-6.2-sol `"tool_mode": "code_mode_only"`: it ran

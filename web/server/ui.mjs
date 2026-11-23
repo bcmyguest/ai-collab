@@ -1381,8 +1381,18 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         const chosenMode = startMode === undefined || startMode === null || startMode === "" ? "agent" : startMode;
         if (typeof chosenMode !== "string" || !startModes(harness).includes(chosenMode)) reject(400, "That mode is not available for this harness");
         if (codeMode !== undefined && codeMode !== null && typeof codeMode !== "boolean") reject(400, "codeMode must be true or false");
+        if (harness === "claude" && codeMode === true && (chosenMode !== "agent" || where === "openshell")) {
+          reject(400, "Claude code mode requires Agent mode in a folder or worktree");
+        }
         if (Date.now() - lastStartAt < START_GAP_MS) reject(429, "Wait 10 seconds between starts");
         lastStartAt = Date.now();
+        if (launch === startSession && harness === "claude" && codeMode === true) {
+          const result = await runner({ socket: runnerSocket(env), timeoutMs: 120_000 })
+            .start({ project: name, harness, prompt: checked.text, place: where || "folder", permissionMode: "supervised", codeMode: true, system: false, ...(chosen !== undefined ? { model: chosen } : {}) })
+            .catch(() => reject(503, "The session runner is unavailable"));
+          if (result.status !== 201) reject(result.status, result.body.error || "The runner refused the start");
+          return json(201, result.body);
+        }
         return json(201, await start(cfg, { harness, prompt: checked.text, env, place: where || "folder", mode: chosenMode, ...(chosen !== undefined ? { model: chosen } : {}), ...(typeof codeMode === "boolean" ? { codeMode } : {}) }));
       }
       // A queued message is already on ntfy: the urgent marker makes the recipient's next hook poll at once.

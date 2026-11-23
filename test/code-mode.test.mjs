@@ -65,7 +65,9 @@ test("each harness gets its own switch: Claude flag settings, Codex features.cod
 test("the new-session composer sends codeMode only for a harness whose start can use it", () => {
   assert.deepEqual(codeModeField("codex", true), { codeMode: true });
   assert.deepEqual(codeModeField("codex", false), { codeMode: false });
-  assert.deepEqual(codeModeField("claude", true), {});
+  assert.deepEqual(codeModeField("claude", true), { codeMode: true });
+  assert.deepEqual(codeModeField("claude", true, "plan"), {});
+  assert.deepEqual(codeModeField("claude", true, "agent", "openshell"), {});
   assert.deepEqual(codeModeField("cursor", true), {});
 });
 
@@ -89,15 +91,33 @@ test("the Codex adapter sends features.code_mode in thread/start and thread/resu
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const logFile = join(dir, "fake.log");
   const adapter = codexAdapter({ command: { file: process.execPath, args: [FAKE_CODEX, ...APP_SERVER_ARGS], version: [FAKE_CODEX, "--version"] } });
-  const env = { PATH: process.env.PATH, FAKE_CODEX_LOG: logFile };
+  const rollout = join(dir, "rollout.jsonl");
+  writeFileSync(rollout, JSON.stringify({ type: "response_item", payload: { type: "custom_tool_call", call_id: "old", name: "exec", input: "old call" } }) + "\n");
+  const env = { ...process.env, FAKE_CODEX_LOG: logFile, FAKE_CODEX_ROLLOUT: rollout };
   const requests = (method) => readFileSync(logFile, "utf8").trim().split("\n").map((l) => JSON.parse(l)).filter((e) => e.kind === "request" && e.method === method);
   try {
     const options = (codeMode) => ({ project: "p", cwd: "/tmp", place: "folder", permissionMode: "auto", permission: permissionSettings("codex", "auto", "folder").settings, env, ...(codeMode === undefined ? {} : { codeMode }) });
-    await adapter.open(options(true), ctxFor());
+    const run = async (open) => {
+      const events = [];
+      const finished = Promise.withResolvers();
+      const handle = await open({ ...ctxFor(), emit(event) {
+        events.push(event);
+        if (event.type === "RUN_FINISHED") finished.resolve();
+      } });
+      await handle.send({ text: "compute with code mode" });
+      await finished.promise;
+      assert.deepEqual(events.map(event => event.type), ["RUN_STARTED", "TOOL_CALL_CHUNK", "TOOL_CALL_RESULT", "RUN_FINISHED"]);
+      assert.equal(events[1].toolCallName, "exec");
+      assert.equal(events[1].delta, "text(17 * 19)");
+      assert.equal(events[2].toolCallId, events[1].toolCallId);
+      assert.equal(events[2].content, "323");
+    };
+    await run(ctx => adapter.open(options(true), ctx));
     await adapter.open(options(undefined), ctxFor());
-    await adapter.resume({ nativeId: "thr-9", address: `codex#${sessionLabel("thr-9")}`, cwd: "/tmp", place: "folder", permissionMode: "auto", codeMode: false }, ctxFor(), env);
+    await run(ctx => adapter.resume({ nativeId: "thr-9", address: `codex#${sessionLabel("thr-9")}`, cwd: "/tmp", place: "folder", permissionMode: "auto", codeMode: false }, ctx, env));
     const starts = requests("thread/start");
     assert.deepEqual(starts[0].params.config, { "features.code_mode": true });
+    assert.equal(starts[0].params.experimentalRawEvents, true);
     assert.equal(starts[1].params.config, undefined, "an unknown setting sends no override");
     assert.deepEqual(requests("thread/resume")[0].params.config, { "features.code_mode": false });
   } finally {
