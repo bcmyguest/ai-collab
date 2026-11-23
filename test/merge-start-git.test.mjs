@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -14,6 +14,7 @@ import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
 import { merge } from "../lib/merge-cli.mjs";
+import { findExecutable } from "../lib/start.mjs";
 
 // Real git against a temp bare origin; only npm is stubbed.
 function sandbox(t) {
@@ -238,6 +239,11 @@ test("merge start resolves mise's Node before isolating HOME when the caller has
   for (const dir of [join(root, "cursor"), join(root, "installed", "bin"),
     join(root, "installed", "lib", "node_modules", "npm", "bin"), tools]) {
     mkdirSync(dir, { recursive: true });
+  }
+  const gitExecutable = findExecutable("git", process.env.PATH);
+  symlinkSync(gitExecutable, join(tools, "git"));
+  for (const helper of ["git-upload-pack", "git-receive-pack"]) {
+    writeFileSync(join(tools, helper), `#!/bin/sh\nexec git ${helper.slice(4)} "$@"\n`, { mode: 0o755 });
   }
   writeFileSync(runtime, "");
   writeFileSync(npmCli, "");
