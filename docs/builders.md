@@ -4,6 +4,16 @@ A builder is one agent that implements one task on its own branch. `ai-collab bu
 
 Lib: `lib/builder.mjs`. OpenShell lifecycle: `runner/sandbox.mjs`. Tests: `test/builder.test.mjs` and `test/builder-claude.test.mjs` with fake `openshell`, `systemd-run`, `systemctl`, agent and `oncebitten` from `test/helpers/`.
 
+## What runs where
+
+| Agent | Where | How |
+|---|---|---|
+| Builder (`ai-collab builder start`) | its own sandbox `b-<id>-<hash>` | this page |
+| UI or runner start, Cursor | the project sandbox `ai-collab-<project>` | `startPlace` (default `openshell`); [Start a session](phone-ui.md#start-a-session-from-the-phone) |
+| UI or runner start, Claude, Codex, OpenCode | host folder, approvals on | no sandbox launcher in their runner adapters yet |
+| Schedule with `"sandbox": true` | a fresh sandbox `s-<name>-<hash>` per tick | [Scheduled workflows](owned-sessions-contract.md#scheduled-workflows) |
+| Schedule without it, `job run`, runner `full-access` outside OpenShell | host | refused when the argv turns approvals off, unless `AI_COLLAB_ALLOW_HOST_AGENT=1` ([Environment variables](configuration.md#environment-variables)) |
+
 ## Commands
 
 ```

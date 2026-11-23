@@ -146,6 +146,18 @@ The runner takes `runner.lock` beside `runner.db`; a second live runner on the s
 | `cwd` | absolute path to an existing directory | yes |
 | `command` | non-empty array of strings: argv, no shell | yes |
 | `timeoutSec` | positive integer, default 900, shorter than `everyMinutes` × 60 | no |
+| `sandbox` | boolean; `true` runs the command in a fresh OpenShell sandbox; the command must run `claude`, `codex`, `cursor-agent`/`agent` or `opencode` | no |
+
+**Sandboxed ticks.** With `"sandbox": true` the tick runs `node runner/sandbox-run.mjs --name <name> --cwd <cwd> [--project <p>] -- <command>` in its scope, and the host guard (`lib/agent-guard.mjs`) lets `--force` and the like through. Without it, a command whose argv turns the harness's approvals off is refused with a `tail` that names the flag, unless the runner has `AI_COLLAB_ALLOW_HOST_AGENT=1`. A plain script (`steward.sh`, `round.mjs`, `runner-reload.sh`) is never wrapped. `sandbox-run.mjs`:
+
+1. Refuses when `openshell sandbox list` shows `defaults.json` `maxSandboxes` (default 8) or more sandboxes, and when `cwd` is not a git work tree.
+2. Stages a clone of `cwd`'s checked-out branch, node and its libraries, git, oncebitten, `package.json`, `scripts/`, `lib/` and `web/lib/` for the ai-collab CLI and MCP server, the harness install, the project's `node_modules`, a snapshot of the project's task file, and a policy with the harness's API hosts and `host.openshell.internal:8794`. The sandbox home gets `defaults.json` and `projects.json` pointing at that ntfy URL, the ntfy token, the ai-collab MCP server (Cursor `~/.cursor/mcp.json`, Claude `~/.claude.json`), and the Cursor or OpenCode login. Claude and Codex logins are not copied.
+3. Creates sandbox `s-<first 8 of name>-<6 hex>`, uploads, and runs the command with the harness binary replaced by its launcher name on `/sandbox/tools/bin`; stdout and stderr go to the tick's `tail`.
+4. Downloads the clone, commits loose edits as `chore(sandbox): uncommitted work from schedule <name>`, and fetches new commits into `cwd`'s repo as branch `sandbox/<name>-<UTC stamp>`; the checked-out branch is not touched. A failed download keeps the sandbox and the staging and logs both.
+5. Replays recorded `ai-collab task set|progress` calls through the host CLI and drops other task writes with a log line. Inside, `ai-collab task list|show` read the snapshot, `builder` commands are refused, and other commands are the real CLI over ntfy.
+6. Deletes the sandbox, also after SIGTERM from a timeout.
+
+Live 2026-11-23 (throwaway entry `sbx-proof-tick`, Cursor DeepSeek, project in a temp repo): the tick wrote and committed a file, sent `sandboxed tick OK` to the project's `all` topic over ntfy, landed 2 commits on `sandbox/sbx-proof-tick-20261123T032955Z`, deleted its sandbox, and finished in 34 s. Ticks that use the MCP `task_update` tool write the sandbox's task file, which is dropped: only CLI `task set|progress` reach the host.
 
 Control socket only (operator): `GET /v1/schedules` returns `{schedules: [{name, everyMs, nextRun, last: {id, status, scheduledTime, output, error}, command, cwd, session?}], configError: [...]}`; `GET /v1/schedules/:name/runs` returns the recent runs newest first, each `{id, status, scheduledTime, startedAt, finishedAt, updatedAt, output, error, session?}`, where `session` is `{harness, session}` when the command resumes one; `POST /v1/schedules/:name/run?caller=<label>` runs a tick now. Neither route is on MCP or ntfy.
 
@@ -403,13 +415,13 @@ Modes: `supervised`, `accept-edits`, `auto`, `full-access`. The table is `PERMIS
 | `supervised` | `default` | `untrusted` / `user` / `readOnly` | nothing; every ask goes to the phone (**default**) | ACP `request_permission` goes to the phone (**default**) |
 | `accept-edits` | `acceptEdits` | `on-request` / `user` / `workspaceWrite` | edit asks | — |
 | `auto` | `auto` (**default**) | `on-request` / `auto_review` / `workspaceWrite` (**default**) | — | — |
-| `full-access` | `bypassPermissions` | granular (only MCP elicitations ask) / `user` / `dangerFullAccess` | every ask | `acp --force`; only with `place: "openshell"` (the runner refuses OpenShell starts until `placeCwd` in `runner/runner.mjs` is built) |
+| `full-access` | `bypassPermissions` | granular (only MCP elicitations ask) / `user` / `dangerFullAccess` | every ask | `acp --force`; only with `place: "openshell"` |
 
 Defaults: Claude `auto`, Codex `auto`, OpenCode `supervised`, Cursor `supervised` (`DEFAULT_PERMISSION`). With `place: "openshell"` the default is `full-access` for every harness (`defaultPermission(harness, place)`).
 
 The operator changes a running session's mode with `POST /v1/sessions/:harness/:label/mode` on the control socket (0600, the operator's user only). Neither ntfy nor the MCP server offers the operation, so an agent cannot raise its own mode; it can ask the operator. The runner validates the pair with `permissionSettings`, calls `handle.setPermissionMode`, updates the owned record and publishes a notice row.
 
-Cursor's `full-access` needs OpenShell. OpenCode replies are always `once`, never `always`, because an "always" grant covers the whole project. An adapter that cannot honour a mode leaves it out of `capabilities.permissionModes`, and the runner answers 400.
+Cursor's `full-access` needs OpenShell. For the other harnesses the runner refuses `full-access` outside OpenShell, at start and on a mode change, unless the runner has `AI_COLLAB_ALLOW_HOST_AGENT=1` (`lib/agent-guard.mjs`). OpenCode replies are always `once`, never `always`, because an "always" grant covers the whole project. An adapter that cannot honour a mode leaves it out of `capabilities.permissionModes`, and the runner answers 400.
 
 ## Cursor adapter
 
@@ -444,7 +456,7 @@ Cursor help, `agent 2026.11.22-e9042b2` (read locally; nothing run against an ac
 
 `openshell 0.1.9`, measured on this machine on 2026-11-22 against real sandboxes (`oslab-verify` and `ai-collab-osdbg*`, all deleted afterwards; `openshell sandbox list -o json` is empty). Tests inject `test/helpers/fake-openshell.mjs`; nothing in the suite creates a sandbox.
 
-Adapter flow for `place: "openshell"`: `sandbox list -o json`, then `sandbox create` when the project sandbox is missing, or `sandbox start` (or `resume`) when its state says stopped (or suspended). Then it uploads the worktree, the host CLI tree (once per sandbox) and the auth file, and `sandbox exec` runs `cursor-agent acp --force` with the owned marker, the session home and a PATH that has `/sandbox/bin`. The runner uses `ai-collab-<project slug>` when it fits the 19-character limit in OpenShell 0.1.9. For longer or empty slugs it uses `ai-collab-` followed by eight hex characters from a hash of the project name.
+Adapter flow for `place: "openshell"`: `sandbox list -o json`, then `sandbox create` when the project sandbox is missing (with `AI_COLLAB_OPENSHELL_POLICY`, else a generated policy for Cursor's API hosts and the host's ntfy, for the executables of the CLI tree), or `sandbox start` (or `resume`) when its state says stopped (or suspended). Then it uploads the worktree (a git work tree as a clone of its branch, with its own `.git`), the host CLI tree (once per sandbox) and the auth file, and `sandbox exec` runs `cursor-agent acp --force` with the owned marker, `CURSOR_AGENT_ALLOW_PROCESS_INSPECTION=1`, the session home and a PATH that has `/sandbox/bin`. On close it downloads the clone, commits loose edits, and fast-forwards the host worktree (`runner/adapters/cursor.mjs`). A start that names no place gets `defaults.json` `startPlace` (default `openshell`) when the adapter lists it and `openshell` is installed; Codex keeps the folder unless it is a builder. The runner uses `ai-collab-<project slug>` when it fits the 19-character limit in OpenShell 0.1.9. For longer or empty slugs it uses `ai-collab-` followed by eight hex characters from a hash of the project name.
 
 | Command | Used for | Verified |
 |---|---|---|
@@ -466,11 +478,13 @@ Measured facts that shaped the code:
 
 Still unsolved:
 
-- **A real prompt has never completed inside a sandbox.** The staged `agent` starts, speaks ACP, reports `isAuthenticated: true`, and `initialize` succeeds with `protocolVersion: 1`. `session/new` then answers `{"code":-32603,"message":"Internal error","data":{"message":"Failed to initialize session services"}}` with `cwd: "/sandbox/work/repo"`, and its own log shows why the same request cannot reach home: `privacy.refresh.error ConnectError: [unavailable] getaddrinfo EAI_AGAIN api2.cursor.sh`, then `analytics.flush.error ... fetch failed`. The CLI sandboxes *itself* (`sandbox.configureSuccess {.../cursorsandbox}`) and applies a Landlock network rule that denies its own egress about a second in; the sandbox's policy engine logs the connection as allowed, so the denial is inside the CLI process. Auth, staging and file sync are proven; the conversation is not.
+- **Solved 2026-11-23: a real prompt completes.** Through an isolated `runner/main.mjs`, `POST /v1/sessions {harness: "cursor", model: "deepseek-v41-flash-1017-high"}` with no place opened `ai-collab-sbx-proof` with the generated policy and `CURSOR_AGENT_ALLOW_PROCESS_INSPECTION=1`; the turn wrote and committed a file, replied `OK`, `ai-collab sessions` listed the session, and the close landed the commit on the host worktree and deleted the sandbox. The two bullets below describe the earlier failure.
+- **Earlier failure: a real prompt had never completed inside a sandbox.** The staged `agent` starts, speaks ACP, reports `isAuthenticated: true`, and `initialize` succeeds with `protocolVersion: 1`. `session/new` then answers `{"code":-32603,"message":"Internal error","data":{"message":"Failed to initialize session services"}}` with `cwd: "/sandbox/work/repo"`, and its own log shows why the same request cannot reach home: `privacy.refresh.error ConnectError: [unavailable] getaddrinfo EAI_AGAIN api2.cursor.sh`, then `analytics.flush.error ... fetch failed`. The CLI sandboxes *itself* (`sandbox.configureSuccess {.../cursorsandbox}`) and applies a Landlock network rule that denies its own egress about a second in; the sandbox's policy engine logs the connection as allowed, so the denial is inside the CLI process. Auth, staging and file sync are proven; the conversation is not.
 - **The fix to try next.** A Cursor CLI version whose nested sandbox detects that it is already sandboxed, a supported knob that turns the nested network policy off (the CLI's own `networkAccess` profile did not), or a policy change that exempts the `cursorsandbox` helper.
-- **ntfy access from inside.** A policy can allow `host.openshell.internal:8794` for the node binary (measured in `docs/research/owned-sessions.md`), but nothing in the sandbox runs `ai-collab`, so hooks do not run there. The adapter accepts `AI_COLLAB_OPENSHELL_POLICY` and passes `--policy`; no policy file is shipped.
+- **ntfy access from inside.** Owned sessions need none: the runner publishes their events. Sandboxed schedule ticks run the ai-collab CLI and MCP server inside and reach `host.openshell.internal:8794` (live 2026-11-23). Hooks still do not run in an owned session's sandbox.
 - **Idle cleanup.** A sandbox lives until its last session closes. A runner crash leaves it; there is no orphan sweep.
-- **The other harnesses.** Claude, Codex and OpenCode still cannot use `place: "openshell"`; `capabilities.places` names what each adapter allows, and only Cursor lists it.
+- **The other harnesses.** Claude and OpenCode still cannot use `place: "openshell"` as owned sessions, and Codex only as a builder; `capabilities.places` names what each adapter allows. A start of theirs with no place stays in the folder.
+- **Session lifetime.** An idle owned session keeps its project sandbox until the operator closes it; the commits reach the host only at close.
 
 ### Offline verification for Cursor Agent mode
 

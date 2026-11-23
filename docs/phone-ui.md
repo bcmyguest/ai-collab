@@ -142,7 +142,7 @@ The panel opens on `defaults.json`'s `startDefault` (built in: `cursor:deepseek-
 | Cursor | `--mode ask` | `--mode plan` |
 | OpenCode 2 | — | `--agent plan` |
 
-The place pill lists only the places the project's snapshot reports: the folder always, a new git worktree when the root is a git repo and `git` is installed, the OpenShell sandbox when `AI_COLLAB_OPENSHELL_SANDBOX` names one and `openshell` is installed. The server accepts only a project name from `projects.json` and one of `claude`, `codex`, `cursor`, `opencode` that is in the project's peers and on `PATH` (plus Node's directory and `~/.local/bin`). It never takes a path from the client. It spawns the harness detached, with `shell: false`, in the project's `root`, at most once every 10 seconds:
+The place pill lists only the places the project's snapshot reports: the folder always, a new git worktree when the root is a git repo and `git` is installed, and the OpenShell sandbox when `AI_COLLAB_OPENSHELL_SANDBOX` names one and `openshell` is installed, or when the root is a git repo, `openshell` is installed and the runner's control socket exists. The pill preselects `defaults.json`'s `startPlace` (default `openshell`) and offers OpenShell only to a harness that can run there; the panel always sends the chosen place. A start that names no place gets `startPlace` when the harness can use it, else the folder. The server accepts only a project name from `projects.json` and one of `claude`, `codex`, `cursor`, `opencode` that is in the project's peers and on `PATH` (plus Node's directory and `~/.local/bin`). It never takes a path from the client. It spawns the harness detached, with `shell: false`, in the project's `root`, at most once every 10 seconds:
 
 | Harness | argv |
 |---|---|
@@ -170,9 +170,19 @@ The prompt is one argv element, 1-4000 characters, and may not start with `-`. N
 |---|---|---|
 | In the project folder | always | as above |
 | In a new git worktree | `root/.git` exists and `git` is on `PATH` | Claude: `claude --bg --worktree ai-collab-claude-<UTC stamp> <prompt>` (Claude makes its own worktree). Codex, Cursor: `git -C <root> worktree add -b ai-collab/<harness>-<stamp> <root>/.claude/worktrees/ai-collab-<harness>-<stamp>`, then the harness argv with that folder as cwd (and Cursor's `--workspace`) |
-| In the openshell sandbox | `AI_COLLAB_OPENSHELL_SANDBOX` is a valid name and `openshell` is on `PATH` | `openshell sandbox exec --name <sandbox> --workdir <root> --no-tty --no-login-shell -- <harness argv>`, the wrapper wake uses (`lib/controls.mjs`) |
+| In the openshell sandbox (shared) | `AI_COLLAB_OPENSHELL_SANDBOX` is a valid name and `openshell` is on `PATH` | `openshell sandbox exec --name <sandbox> --workdir <root> --no-tty --no-login-shell -- <harness argv>`, the wrapper wake uses (`lib/controls.mjs`) |
+| In the openshell sandbox (runner) | no `AI_COLLAB_OPENSHELL_SANDBOX`, a git root, `openshell` on `PATH`, the runner socket present | `POST /v1/sessions` to the runner with `place: "openshell"`: a runner-owned session in the project sandbox `ai-collab-<project>` (see [OpenShell](owned-sessions-contract.md#openshell)) |
 
 The server validates the place against that list; a failed `git worktree add` starts nothing.
+
+**What each harness needs in the runner's sandbox.** The runner starts a new git worktree, uploads a clone of it, and on close fast-forwards the worktree to the commits made inside (loose edits become one `chore(openshell)` commit). A branch that moved on the host keeps the download in a temp directory and logs its path.
+
+| Harness | Runs there | Needs |
+|---|---|---|
+| Cursor | yes; live 2026-11-23: DeepSeek replied `OK`, committed a file, and the commit landed on the host worktree | the host CLI tree (uploaded once per sandbox, about 540 MB), `~/.config/cursor/auth.json`, `CURSOR_AGENT_ALLOW_PROCESS_INSPECTION=1` and a policy for Cursor's API hosts; the runner adds both when `AI_COLLAB_OPENSHELL_POLICY` is unset |
+| Claude | no: falls back to the folder | the runner's Claude adapter runs the Agent SDK in the runner process and has no sandbox launcher; it also needs `~/.claude/.credentials.json` copied in, which waits for an operator decision. Claude works in a sandbox as a [builder](builders.md) |
+| Codex | no: falls back to the folder | the adapter runs in OpenShell only as a tracked builder; a plain start would also need `$CODEX_HOME/auth.json` copied in |
+| OpenCode | no: falls back to the folder | no sandbox launcher in its adapter; OpenCode free hits `provider.free-limit` inside builders |
 
 **Unverified.** Only fake executables were run (`test/start-places.test.mjs`, and the 390 px browser check). Whether `claude --bg --worktree` works together, whether the sandbox has the project at the same path, and whether hooks inside the sandbox reach `projects.json` and ntfy were not checked. Whether `claude --bg` prints the session ID that its hooks report, and whether `cursor-agent -p` runs in a workspace it has not trusted, were not checked.
 
