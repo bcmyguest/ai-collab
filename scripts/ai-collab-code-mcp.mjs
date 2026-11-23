@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
 import { toolClient } from "../lib/tool-api.mjs";
-import { BOOTSTRAP, RUN_CODE, RUN_READ_CODE, TIMEOUT_DEFAULT_MS, TIMEOUT_MAX_MS, CODE_MAX_CHARS, codeSandbox, formatRun, hostCaller, prepareSandbox, programArgv, removeCodeSandbox, runCodeTool, runProgram } from "../lib/code-run.mjs";
+import { BOOTSTRAP, RUN_CODE, RUN_READ_CODE, TIMEOUT_DEFAULT_MS, TIMEOUT_MAX_MS, CODE_MAX_CHARS, codeSandbox, programSource, formatRun, hostCaller, prepareSandbox, programArgv, removeCodeSandbox, runCodeTool, runProgram } from "../lib/code-run.mjs";
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 const INSTRUCTIONS = "run_code runs one JavaScript program in an OpenShell sandbox with an `ai` client for the ai-collab tools; "
@@ -25,8 +25,8 @@ function send(message) {
 
 // One run_code call: checks its input, prepares the sandbox, runs the program, and returns the capped result text.
 async function runCode(args, signal, readOnly) {
-  const { code, session, timeout_ms: timeoutMs = TIMEOUT_DEFAULT_MS } = args;
-  if (typeof code !== "string" || !code.trim() || code.length > CODE_MAX_CHARS) throw new Error(`code must be 1-${CODE_MAX_CHARS} characters`);
+  const { session, timeout_ms: timeoutMs = TIMEOUT_DEFAULT_MS } = args;
+  const code = programSource(args, { cwd: builder ? workdir : process.cwd() });
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > TIMEOUT_MAX_MS) throw new Error(`timeout_ms must be 1000-${TIMEOUT_MAX_MS}`);
   if (builder) {
     signal.throwIfAborted();

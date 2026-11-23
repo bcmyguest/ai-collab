@@ -47,7 +47,8 @@ test("the description lists the allowed ai.* calls from the tool schemas and lea
   }
   assert.match(tool.description, /ai\.task_list\(args\?: \{ status\?: "open" \| "decided"/);
   assert.doesNotMatch(signature(toolClient().listTools().find((t) => t.name === "send")), /session\??:/);
-  assert.deepEqual(tool.inputSchema.required, ["code", "session"]);
+  assert.deepEqual(tool.inputSchema.required, ["session"]);
+  assert.ok(tool.inputSchema.properties.code && tool.inputSchema.properties.file, "a program comes inline or from a file");
 });
 
 test("schemaProblem checks types, patterns, enums, required and unknown keys", () => {
