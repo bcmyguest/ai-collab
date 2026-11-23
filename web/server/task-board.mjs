@@ -1,7 +1,26 @@
-// The task board for the UI snapshot: each task with its owner's presence and its last progress line.
+// The task board for the UI snapshot: each task with its owner's presence, its last progress line and its review packet.
+
+import { reviewIsCurrent } from "../../lib/build-review.mjs";
+
+// The board renders every card on each push; one branch-tip read per checkout per window is enough for a stale badge.
+const TIP_TTL_MS = 2000;
+
+/** The review packet a card and its review view read; `stale` and the diff link are derived, never stored. */
+function reviewOf(task, context) {
+  const packet = task.review;
+  if (!context || !packet) return undefined;
+  return {
+    submission: packet.submission, commit: packet.commit, base: packet.base, branch: packet.branch,
+    criteria: packet.criteria, check: packet.check, files: packet.files,
+    insertions: packet.insertions, deletions: packet.deletions, more: packet.more, at: packet.at,
+    ...(packet.decision ? { decision: packet.decision } : {}),
+    stale: !reviewIsCurrent(context.root, packet, { ttlMs: TIP_TTL_MS }),
+    diff: "/api/review-diff?" + new URLSearchParams({ project: context.project, id: task.id, submission: packet.submission }),
+  };
+}
 
 /** Tasks of a project backend; an unreadable store reports its error instead of tasks. */
-export function taskBoard(backend, agents = [], runs = [], sessions = [], previousBuilder = () => null, assignment) {
+export function taskBoard(backend, agents = [], runs = [], sessions = [], previousBuilder = () => null, assignment, reviewContext) {
   if (!backend) return { tasks: [] };
   let list;
   try {
@@ -23,6 +42,7 @@ export function taskBoard(backend, agents = [], runs = [], sessions = [], previo
       const previous = previousBuilder(task);
       const continuation = previous && !sessions.some(session => session.status !== "ended"
         && (session.cwd === previous.worktree || session.address === owner));
+      const review = reviewOf(task, reviewContext);
       return {
         ...(continuation ? { previousHarness: (owner || previous.address)?.split("#")[0] || previous.harness } : {}),
         id: task.id,
@@ -40,6 +60,7 @@ export function taskBoard(backend, agents = [], runs = [], sessions = [], previo
         ...(runOf.get(task.run) ? { runSession: runOf.get(task.run) } : {}),
         last: task.progress.at(-1) ?? null,
         ...(task.question ? { question: task.question } : {}),
+        ...(review ? { review } : {}),
         updated: task.updated,
         ...assignment?.(task, sessions),
       };

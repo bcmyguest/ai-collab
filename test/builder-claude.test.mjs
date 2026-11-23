@@ -41,7 +41,7 @@ function lab(extra = {}) {
   git("add", "-A");
   git("commit", "-q", "-m", "init");
   const env = {
-    PATH: `${bin}:${process.env.PATH}`, HOME: home, XDG_DATA_HOME: path.join(home, "data"), XDG_CONFIG_HOME: path.join(home, ".config"),
+    PATH: `${bin}:${process.env.PATH}`, GIT_EXEC_PATH: process.env.GIT_EXEC_PATH, LD_LIBRARY_PATH: process.env.LD_LIBRARY_PATH, HOME: home, XDG_DATA_HOME: path.join(home, "data"), XDG_CONFIG_HOME: path.join(home, ".config"),
     AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "claude", AI_COLLAB_STATE_DIR: path.join(home, "state"),
     AI_COLLAB_BUILDER_WORKTREES: home, AI_COLLAB_OPENSHELL_BIN: OPENSHELL, AI_COLLAB_CLAUDE_BIN: CLAUDE, AI_COLLAB_ONCEBITTEN_BIN: ONCEBITTEN,
     AI_COLLAB_BUILDER_NODE: "none", AI_COLLAB_BUILDER_NODE_MODULES: "none", AI_COLLAB_BUILDER_GIT: "none", AI_COLLAB_BUILDER_GIT_CORE: "none",
@@ -87,10 +87,11 @@ test("a Claude builder runs lean in its own sandbox and lands its commit", async
   assert.equal(agent.settings.disableArtifact, true);
   assert.equal(agent.settings.hooks.PostToolUse[0].hooks[0].command, "/sandbox/tools/bin/ob-capture claude");
   assert.deepEqual(agent.mcp, { mcpServers: {} });
-  // Commit on the host branch, task done, capture replayed as claude.
+  // Commit on the host branch, task waiting for review, capture replayed as claude.
   const wt = path.join(l.home, "ai-collab-wt-smoke-task");
   assert.match(execFileSync("git", ["-C", wt, "log", "--format=%s", "-1"], { encoding: "utf8" }), /^docs: claude line\n$/);
-  assert.equal(task(l).status, "done");
+  assert.equal(task(l).status, "review");
+  assert.equal(task(l).review.commit, execFileSync("git", ["-C", wt, "rev-parse", "HEAD"], { encoding: "utf8" }).trim());
   assert.deepEqual(jsonLines(l.env.FAKE_ONCEBITTEN_LOG)[0].args, ["capture", "--host", "claude"]);
   // Policy: Anthropic hosts for the uploaded binary only.
   const create = jsonLines(l.env.FAKE_OPENSHELL_LOG).find((a) => a[1] === "create");
