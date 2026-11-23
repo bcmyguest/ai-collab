@@ -1035,7 +1035,7 @@ function Console({ account }) {
   const sidebar = <Sidebar inactiveOpen={inactiveOpen} onInactiveToggle={rememberInactive} data={data} selected={selected} now={now} navigate={navigate} newSession={newSession} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")} openRaw={openRaw} projectAction={projectAction}
     openHash={hash => { setNavOpen(false); location.hash = hash.slice(1); }}/>;
   const anyWaiting = data.projects.some(project => project.waiting > 0);
-  const projectNav = projectLinks.length > 0 && <nav aria-label="Project views">
+  const projectNav = projectLinks.length > 0 && <nav aria-label="Project views" className="shrink-0 border-t bg-background px-3 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
     <div className="mx-auto grid max-w-3xl grid-cols-3 gap-1">
       {projectLinks.map(({ label, href, current }) => <a key={href} href={href} aria-current={current ? "page" : undefined}
         className={cn("flex min-h-11 items-center justify-center rounded-lg px-2 text-sm font-medium focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
@@ -1059,7 +1059,7 @@ function Console({ account }) {
           </Button>
           {/* Back one level: a session returns to its project chat, a project to Home. */}
           {(!home || inbox) && <Button variant="ghost" size="icon" aria-label={level === "session" ? "Back to " + project : "Home"} title={level === "session" ? "Back to the " + project + " chat" : "Home: every project's sessions"}
-            onClick={() => navigate(level === "session" || patterns ? { project, level: "project" } : { level: "home" })}><ArrowLeft/></Button>}
+            onClick={() => navigate(level === "session" ? { project, level: "project" } : { level: "home" })}><ArrowLeft/></Button>}
           {level === "session" && selected.session && <Avatar address={selected.session} className="size-8 shrink-0"/>}
           <div className="min-w-0 flex-1">
             {level === "session" ? <>
@@ -1095,7 +1095,7 @@ function Console({ account }) {
           <Button variant="outline" size="sm" disabled={working}
             onClick={() => action("project-pause", { paused: !paused }, paused ? "New work resumed" : "New work paused")}>{paused ? "Resume new work" : "Pause new work"}</Button>
         </div>}
-        {!home && !patterns && <ZoomControls data={data} selected={selected} now={now} navigate={navigate}
+        {level === "session" && selected.session && <ZoomControls data={data} selected={selected} now={now} navigate={navigate}
           compact={level === "session" && agent?.session && <span className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {agent.modelControl && modelsOf(models, "claude").length > 0 && <select
               aria-label="Claude model" className="h-9 w-28 truncate rounded-full border bg-background px-2 text-sm"
@@ -1114,7 +1114,6 @@ function Console({ account }) {
               onClick={() => action("compact", { target: selected.session }, "Compaction requested")}><Minimize2/>Compact</Button></span>}/>}
         {!home && !listing && !tasksView && !patterns && !subagents && !raw && !compactions && <ConversationHistory key={requested} requested={requested}/>}
       </header>
-      {projectNav && <div className="hidden shrink-0 border-b bg-background px-3 py-1 md:block">{projectNav}</div>}
       <div className={cn("flex flex-col gap-2 px-3 empty:hidden", composing && "min-h-0 flex-1 justify-center pb-[20vh]")}>
         {composing && <NewAgentComposer key={project + ":" + (data.startable || []).join(",")} project={project} startable={data.startable || []} places={data.startPlaces || ["folder"]} startPlace={data.startPlace || "folder"} sandboxHarnesses={data.openshellHarnesses || []}
           startDefault={data.startDefault} codeModeDefault={data.codeModeDefault !== false} agents={data.agents} models={models} disabled={!ready} start={startSession} close={() => setCreating("")} open={openAddress}/>}
@@ -1217,7 +1216,7 @@ function Console({ account }) {
           }
           return sent;
         }}/>}
-      {projectNav && <div className="shrink-0 border-t bg-background px-3 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] md:hidden">{projectNav}</div>}
+      {projectNav}
     </main>
   </div></SurfaceContext.Provider>;
 }
