@@ -26,7 +26,7 @@ import { PatternsPage } from "./patterns-page";
 import { TaskBoard } from "./tasks";
 import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
 import { TABS, parseSelection, selectionHash } from "@/lib/selection";
-import { namedAgents, unnamedAgents } from "@/lib/sidebar";
+import { agentName, namedAgents, unnamedAgents } from "@/lib/sidebar";
 import { sessionState } from "@/lib/session-state";
 import { subscribeUiEvents } from "@/lib/ui-events";
 import { ActivityRow, GoToAgent, Working } from "./activity";
@@ -34,7 +34,7 @@ import { ApprovalCard, QuestionCard } from "./cards";
 import { SurfaceContext } from "@/components/a2ui/surface";
 import { NotifyToggle } from "./notify";
 import { DecisionQueue } from "./decisions";
-import { InactiveSessions, SessionList, SessionMenu, SubagentList } from "./home";
+import { InactiveSessions, SessionList, SessionMenu, StateChip, SubagentList } from "./home";
 import { RunningCount, SubagentRuns } from "./subagent-runs";
 import { ClosedProjects, ProjectMenu } from "./project-menu";
 import { Quote } from "./quote";
@@ -935,7 +935,9 @@ function Console({ account }) {
   const missing = level === "session" && !target;
   const patterns = level === "patterns";
   const inbox = level === "inbox";
-  const title = inbox ? "Decision inbox" : home ? "Home" : patterns ? "Patterns" : tasksView ? "Tasks" : level === "session" ? short(selected.session) || "Sessions" : project;
+  const identity = agentName(agent);
+  const sessionLabel = !agent?.generatedName ? agent?.name : "";
+  const title = inbox ? "Decision inbox" : home ? "Home" : patterns ? "Patterns" : tasksView ? "Tasks" : level === "session" ? identity || sessionLabel || short(selected.session) || "Sessions" : project;
   // A home or Sessions card opens its session, or one of its subagent runs.
   const openCard = (node, run = "") => navigate({ project: node.project, level: "session", harness: node.harness || peerOf(node.id), session: node.id, ...(run ? { tab: "subagents", run } : {}) });
   // The session's ⋯ menu opens its raw activity: every tool call, unfolded.
@@ -1031,7 +1033,7 @@ function Console({ account }) {
     </Sheet>
     <main className="flex min-w-0 flex-1 flex-col">
       <header className="sticky top-0 z-10 flex flex-col gap-2 border-b bg-background/85 px-3 py-2 backdrop-blur supports-backdrop-filter:bg-background/70">
-        <div className="flex items-center gap-2">
+        <div className={cn("flex items-center gap-2", level === "session" && "flex-wrap")}>
           <Button variant="ghost" size="icon" className="relative md:hidden" aria-label="Projects" aria-expanded={navOpen} onClick={() => setNavOpen(true)} title={anyWaiting ? "Sessions waiting on you" : undefined}>
             <Menu/>{anyWaiting && <span aria-hidden className="absolute right-1.5 top-1.5 size-2.5 rounded-full bg-amber-500 ring-2 ring-background"/>}
           </Button>
@@ -1040,20 +1042,30 @@ function Console({ account }) {
             onClick={() => navigate(level === "session" || patterns ? { project, level: "project" } : { level: "home" })}><ArrowLeft/></Button>}
           {level === "session" && selected.session && <Avatar address={selected.session} className="size-8 shrink-0"/>}
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xs text-muted-foreground">{home ? "All projects" : patterns ? "Project · " + project : tasksView ? "Project · " + project : level === "project" ? "Project" : raw ? "Raw activity · " + project : project + " · session"}</p>
-            <h1 className="truncate text-base font-semibold leading-tight" title={level === "session" ? selected.session : undefined}>{title}</h1>
-            {level === "session" && agent?.name && <p className="line-clamp-2 break-words text-xs text-muted-foreground" title={agent.name}>{agent.name}</p>}
+            {level === "session" ? <>
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <h1 className="min-w-0 truncate text-lg font-semibold leading-tight" title={title}>{title}</h1>
+                {agent && <StateChip state={sessionState(agent, now)}/>}
+                {agent && <RunningCount runs={agent.subagents} now={now}/>}
+              </div>
+              <p className="truncate text-xs text-muted-foreground" title={selected.session}>
+                {raw ? "Raw activity · " + project : project + " · session"}
+                {identity && sessionLabel && sessionLabel !== identity && " · " + sessionLabel}
+              </p>
+            </> : <>
+              <p className="truncate text-xs text-muted-foreground">{home ? "All projects" : patterns || tasksView ? "Project · " + project : "Project"}</p>
+              <h1 className="truncate text-base font-semibold leading-tight">{title}</h1>
+            </>}
             {level === "session" && agent?.parent && <button type="button" onClick={() => openAddress(agent.parent)} title={"Started by " + agent.parent}
               aria-label={"Back to parent " + agent.parent} className="flex max-w-full items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:underline">
               <CornerLeftUp className="size-3.5 shrink-0"/><span className="truncate">Back to parent {short(agent.parent)}</span></button>}
           </div>
-          {level === "session" && agent && <span className="flex items-center gap-1.5 text-xs text-muted-foreground" title={agent.online ? "online" : "offline"}>
-            <Dot online={agent.online}/><span className="hidden sm:inline">{agent.online ? "online" : "offline"}</span></span>}
-          {level === "session" && agent && <RunningCount runs={agent.subagents} now={now}/>}
-          <AfkToggle mode={data.mode || "off"} disabled={!ready || working} set={mode => action("afk", { mode }, "AFK " + mode)}/>
-          {/* No "all" fallback here: before the first state frame the bell shows this browser's last choice instead. */}
-          <NotifyToggle level={data.alerts} levelDisabled={!ready || working} setLevel={level => action("alerts", { level }, "Alerts set")}/>
-          <ThemeToggle/>
+          <div className={cn("flex shrink-0 items-center gap-2", level === "session" && "max-sm:w-full max-sm:justify-end")}>
+            <AfkToggle mode={data.mode || "off"} disabled={!ready || working} set={mode => action("afk", { mode }, "AFK " + mode)}/>
+            {/* Before the first state frame the bell shows this browser's last choice. */}
+            <NotifyToggle level={data.alerts} levelDisabled={!ready || working} setLevel={level => action("alerts", { level }, "Alerts set")}/>
+            <ThemeToggle/>
+          </div>
         </div>
         {account.user && <p className="-mt-1 truncate text-right text-[11px] text-muted-foreground" data-account={account.user.login}>
           signed in as <span className="font-medium text-foreground" title={account.user.name || undefined}>{account.user.login}</span>
