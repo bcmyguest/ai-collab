@@ -258,3 +258,30 @@ test("the file backend reports store changes to its watcher and stops on request
   assert.ok(calls > 0, "the watcher fired after the write");
   stop();
 });
+
+test("outcome approval creates tasks once and closure requires the current passing result", async () => {
+  const backend = createFileBackend(tempFile());
+  const { id } = await backend.outcome("request", { outcome: "Make signup easier", check: "Complete signup on mobile" });
+  await backend.outcome("propose", { id, titles: ["Simplify signup"] });
+  assert.deepEqual(backend.list(), []);
+  const approvals = await Promise.allSettled([
+    backend.outcome("approve", { id }),
+    backend.outcome("approve", { id }),
+  ]);
+  assert.equal(approvals.filter(entry => entry.status === "fulfilled").length, 1);
+  const [linked] = backend.list();
+  assert.equal(backend.list().length, 1);
+  assert.equal(linked.status, "decided");
+  assert.match(linked.detail, /Complete signup on mobile/);
+
+  const report = (passed) => backend.outcome("report", { id, result: "Checked at 390px", passed, by: ADDRESS });
+  const accept = (revision) => backend.outcome("accept", { id, revision });
+  await assert.rejects(report(true), /Finish every linked task/);
+  await backend.update(linked.id, { status: "done" });
+  const failed = await report(false);
+  await assert.rejects(accept(failed.result.revision), /current passing/);
+  const previous = await report(true);
+  const current = await report(true);
+  await assert.rejects(accept(previous.result.revision), /current passing/);
+  assert.equal((await accept(current.result.revision)).state, "closed");
+});

@@ -63,7 +63,7 @@ import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a
 export { mentionedNames, mentionedTeams, startOnlyMentions };
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "move-task", "continue-builder", "recover-builder", "project-pause", "review", "skip"];
+const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "move-task", "continue-builder", "recover-builder", "project-pause", "review", "skip", "request-outcome", "approve-outcome", "accept-outcome"];
 const HOSTED_ACTIONS = new Set(["history", "messages", "send", "reply", "afk", "approve", "a2ui", "skip"]);
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
@@ -1341,7 +1341,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
       if (action === "history") return history(request, by, await payload(request));
-      const { project: name, paused, target, body, queueAction, question, mode, level: alertLevel, id, status: taskStatus, decision, answers, harness, prompt, place, worktree, openshell, urgent, sendAnyway, model, startMode, codeMode, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText, commit, submission, note: reviewNote, taskId } = await payload(request);
+      const input = await payload(request);
+      const { project: name, paused, target, body, queueAction, question, mode, level: alertLevel, id, status: taskStatus, decision, answers, harness, prompt, place, worktree, openshell, urgent, sendAnyway, model, startMode, codeMode, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText, commit, submission, note: reviewNote, taskId } = input;
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -1392,6 +1393,16 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         catch (err) { reject(409, err.message); }
         broadcast();
         return json(201, { status: "Builder started", detail: id });
+      }
+      if (["request-outcome", "approve-outcome", "accept-outcome"].includes(action)) {
+        if (!project.tasks) reject(400, "Select a project with a task store");
+        const step = action.split("-")[0];
+        if (step === "approve" && isProjectPaused(cfg)) reject(409, PROJECT_PAUSED);
+        let outcome;
+        try { outcome = await project.tasks.outcome(step, input); }
+        catch (err) { reject(step === "request" ? 400 : 409, err.message); }
+        broadcast();
+        return json(step === "request" ? 201 : 200, { outcome });
       }
       if (action === "move-task") {
         if (!project.tasks || typeof id !== "string" || !STATUSES.includes(taskStatus)) reject(400, "Give a task id and valid status");

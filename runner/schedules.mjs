@@ -175,16 +175,25 @@ export function tickFn(entry, { env = process.env, log = () => {}, graceMs, proj
     const project = projectOfFolder(entry.cwd, projects ?? listProjects(env));
     // The review comes last, after the mission, so it is the closing instruction of every run; a project with no
     // mission file still gets it, and the review says to write the file first.
-    const command = withReview(withMission(entry.command, { project, env, log }), { project });
+    const command = [...withMission(entry.command, { project, env, log })];
+    if (entry.name === "pm" && project && harnessOfCommand(command)) {
+      command[command.length - 1] += [
+        "",
+        "Review project outcomes with ai-collab task outcomes.",
+        'For a requested outcome, run ai-collab task propose-outcome <outcome-id> "<task title>" ["<task title>" ...] with one to three tasks. Wait for operator approval before working on them.',
+        'When every linked task is done, run the acceptance check and record evidence with ai-collab task report-outcome <outcome-id> pass|fail "<evidence>". Leave closure to the operator.',
+      ].join("\n");
+    }
+    const reviewedCommand = withReview(command, { project });
     // The command runs in its own scope, so a runner restart does not kill an agent a tick started; it also outlives
     // the tick's own timeout only if the scope cannot be made, where the group kill still applies.
     const result = await wf.step(TICK_STEP, () => {
       if (project && harnessOfCommand(entry.command) && !sessionOfCommand(entry.command) && isProjectPaused({ project, stateDir: stateDir(env) })) {
         return { ok: false, exitCode: null, signal: null, timedOut: false, durationMs: 0, tail: PROJECT_PAUSED };
       }
-      const refusal = hostAgentRefusal(command, { sandboxed: Boolean(entry.sandbox), env });
+      const refusal = hostAgentRefusal(reviewedCommand, { sandboxed: Boolean(entry.sandbox), env });
       if (refusal) return { ok: false, exitCode: null, signal: null, timedOut: false, durationMs: 0, tail: refusal };
-      const run = entry.sandbox ? sandboxRunCommand(entry, command, project) : command;
+      const run = entry.sandbox ? sandboxRunCommand(entry, reviewedCommand, project) : reviewedCommand;
       const pass = entry.sandbox ? Object.fromEntries(SANDBOX_RUN_KEYS.filter((key) => env[key]).map((key) => [key, env[key]])) : {};
       return runCommand(run, { cwd: entry.cwd, env: { ...childEnv(env), ...pass, [SYSTEM_PROMPT_ENV]: "1", [ROLE_ENV]: `schedule:${entry.name}` }, timeoutMs: entry.timeoutMs, signal: wf.signal, graceMs, scope: { env, label: entry.name, description: `AI Collab schedule ${entry.name}` } });
     }, {
