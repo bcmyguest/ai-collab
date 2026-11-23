@@ -34,7 +34,7 @@ its `exec` code tool with `features.code_mode=false` too. Measurements: `/dev/sh
 
 ## run_code
 
-**Reads go through run_code.** With `"readsThroughRunCode": true` in `~/.config/ai-collab/defaults.json` and `openshell` on PATH, the `ai-collab` MCP server refuses direct calls to the read tools (`list_agents`, `list_sessions`, `channel_history`, `task_list`, `team_status`, `pattern_list`, `pattern_status`) and answers with the `run_code` call to make instead. Writes and operator tools (`send`, `ask_question`, `reply_to_operator`, `wait`) stay direct. Without OpenShell, as inside a builder sandbox, reads stay direct.
+**Reads go through run_code.** With `"readsThroughRunCode": true` in `~/.config/ai-collab/defaults.json` and `openshell` on PATH, the `ai-collab` MCP server prefixes the read tools' descriptions (`list_agents`, `list_sessions`, `channel_history`, `task_list`, `team_status`, `pattern_list`, `pattern_status`) with "Do not call directly: call run_code" and refuses a direct call with the `run_code` call to make instead. The tools stay listed: a probe with them hidden fell back to the `ai-collab` CLI. Writes and operator tools (`send`, `ask_question`, `reply_to_operator`, `wait`) stay direct. Without OpenShell, as inside a builder sandbox, reads stay direct.
 
 `scripts/ai-collab-code-mcp.mjs` is a second MCP server, `ai-collab-code`, with the tools `run_code` and `run_read_code`. Call `run_code` like this:
 

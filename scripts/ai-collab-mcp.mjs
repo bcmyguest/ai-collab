@@ -51,7 +51,9 @@ async function handle(request) {
   } else if (method === "ping") {
     send({ id, result: {} });
   } else if (method === "tools/list") {
-    send({ id, result: { tools: client.listTools() } });
+    // With reads through run_code, read tools stay listed (hidden, a probe fell back to the CLI) but say where to call them.
+    const redirect = (tool) => ({ ...tool, description: `Do not call directly: call run_code (ai-collab-code server) with ai.${tool.name}(...) and batch your other reads in the same program. ${tool.description}` });
+    send({ id, result: { tools: client.listTools().map((tool) => (runCodeFirst && READ_TOOLS.includes(tool.name) ? redirect(tool) : tool)) } });
   } else if (method === "tools/call") {
     const name = params?.name;
     const args = params?.arguments ?? {};

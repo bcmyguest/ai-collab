@@ -30,7 +30,9 @@ async function server(t, { setting, openshell }) {
     return JSON.parse((await output.next()).value).result;
   };
   await request("initialize", { protocolVersion: "2025-11-25" });
-  return (name, args = {}) => request("tools/call", { name, arguments: args });
+  const call = (name, args = {}) => request("tools/call", { name, arguments: args });
+  call.list = async () => (await request("tools/list", {})).tools;
+  return call;
 }
 
 test("with readsThroughRunCode on and OpenShell present, a direct read tool answers with the run_code recipe", { timeout: 10000 }, async (t) => {
@@ -39,6 +41,10 @@ test("with readsThroughRunCode on and OpenShell present, a direct read tool answ
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /run_code/);
   assert.match(result.content[0].text, /ai\.channel_history\(/);
+  const listed = await call.list();
+  const describe = (name) => listed.find((tool) => tool.name === name)?.description ?? "";
+  assert.match(describe("task_list"), /^Do not call directly: call run_code .*ai\.task_list/, "read tools stay listed but point at run_code");
+  assert.doesNotMatch(describe("send"), /run_code/);
   const write = await call("set_identity", { activity: "x" });
   assert.doesNotMatch(write.content[0].text, /run_code/, "tools run_code cannot call stay direct");
 });
@@ -48,5 +54,6 @@ test("without the setting, or without OpenShell, read tools stay direct", { time
     const call = await server(t, opts);
     const result = await call("channel_history", { limit: 1 });
     assert.doesNotMatch(result.content[0].text, /run_code/, JSON.stringify(opts));
+    assert.doesNotMatch((await call.list()).find((tool) => tool.name === "task_list").description, /^Do not call directly/);
   }
 });
