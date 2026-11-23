@@ -624,11 +624,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   function pendingBySender(project, list, persistent = false) {
     const { ends, replies } = outcomes(project.hub.events(project.topic));
     const online = new Set(list.filter(agent => agent.online).map(agent => agent.id));
+    const liveMode = projectModeReader(project);
     const out = new Map();
     const add = (sender, item) => { if (!out.has(sender)) out.set(sender, []); out.get(sender).push(item); };
     for (const item of entries(project.hub.events, project.topic, e => e.kind === "Approval" || e.kind === "Question")) {
       if (item.kind === "Approval") {
-        const approval = approvalState(item.approval, ends, replies);
+        const approval = approvalState(liveMode, item.approval, ends, replies);
         if (approval.state !== "pending" || (approval.expiresAt && approval.expiresAt < Date.now())) continue;
         // A view-only terminal approval is answered in the terminal, so it does not wait on the operator.
         add(item.from, { ...item, project: project.cfg.project, approval, blocking: approval.terminal !== true, expiresAt: approval.expiresAt });
@@ -824,9 +825,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     };
     const sorted = list.sort((a, b) => a.time - b.time || a.id.localeCompare(b.id));
     const recent = new Set(sorted.slice(-MAX_MESSAGES));
+    const liveMode = projectModeReader(project);
     return sorted.filter(item => archived || recent.has(item) || (session && item.queued))
       .map(item => {
-        if (item.kind === "Approval") return { ...item, approval: approvalState(item.approval, ends, replies, senders) };
+        if (item.kind === "Approval") return { ...item, approval: approvalState(liveMode, item.approval, ends, replies, senders) };
         if (item.kind === "Question" && replies.has(item.question)) {
           const by = senders.get(item.question)[0];
           return { ...item, answer: replies.get(item.question)[0], ...(by ? { answeredBy: by } : {}) };
@@ -843,13 +845,24 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // pending, sent (answered, the hook has not read it yet), or the end reason; with the decision or answers that applied.
-  function approvalState(approval, ends, replies, senders = new Map()) {
+  // A terminal card also carries the live mode, so its hint never says AFK is off once the operator is back away.
+  function approvalState(projectMode, approval, ends, replies, senders = new Map()) {
     const decisions = (replies.get(approval.id) || []).map(answer => replyDecision(approval, answer));
     const at = decisions.findIndex(Boolean);
     const decision = decisions[at];
     const by = senders.get(approval.id)?.[at];
     const state = ends.get(approval.id) || (decision ? "sent" : "pending");
-    return { ...approval, state, ...(decision ? { decision: decision.behavior, ...(decision.answers ? { answers: decision.answers } : {}), ...(by ? { by } : {}) } : {}) };
+    return {
+      ...approval, state,
+      ...(approval.terminal ? { mode: projectMode() } : {}),
+      ...(decision ? { decision: decision.behavior, ...(decision.answers ? { answers: decision.answers } : {}), ...(by ? { by } : {}) } : {}),
+    };
+  }
+
+  // The project's latest operator mode, read once per snapshot and shared by every card that needs it.
+  function projectModeReader(project) {
+    let mode;
+    return () => (mode ??= latestMode(project.hub.events(project.topic)).mode);
   }
 
   function findApproval(project, id) {
