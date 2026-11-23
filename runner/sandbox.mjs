@@ -97,10 +97,15 @@ export function parseSandboxList(stdout) {
  * Lists sandboxes once, then creates the named one when it is missing, starts or resumes it when its
  * phase says so. Throws an Error whose message the operator can act on; never prints a secret.
  */
-export async function ensureSandbox({ openshell, env, name, policy }) {
+export async function ensureSandbox({ openshell, env, name, policy, recreateBroken = false }) {
   const list = await runTool(openshell, ["sandbox", "list", "-o", "json"], { env });
   if (list.code !== 0) throw new Error(`openshell sandbox list failed: ${list.stderr.trim() || `exit ${list.code}`}`);
-  const found = parseSandboxList(list.stdout).find((s) => s?.name === name);
+  let found = parseSandboxList(list.stdout).find((s) => s?.name === name);
+  // A sandbox in Error never becomes ready; a caller whose sandbox holds no work (run_code) replaces it.
+  if (found && recreateBroken && /error|fail/i.test(sandboxPhase(found))) {
+    await mustRun(openshell, ["sandbox", "delete", name], { env, timeoutMs: SYNC_TIMEOUT_MS }, "sandbox delete");
+    found = null;
+  }
   if (found) {
     const step = stateCommand(name, sandboxPhase(found));
     if (!step) return name;

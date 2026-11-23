@@ -93,6 +93,16 @@ test("ensureSandbox creates once, reuses a ready one, and starts a stopped one",
   assert.ok(!calls(t).some((c) => c[1] === "create"));
 });
 
+test("ensureSandbox recreates a sandbox in Error only when asked, and leaves it alone otherwise", async () => {
+  const t = env();
+  writeFileSync(t.env.FAKE_OPENSHELL_STATE, JSON.stringify({ sandboxes: [{ name: "ai-collab-code", phase: "Error" }] }));
+  await ensureSandbox({ openshell: OPENSHELL, env: t.env, name: "ai-collab-code" });
+  assert.ok(!calls(t).some((c) => c[1] === "delete" || c[1] === "create"), "without recreateBroken a broken sandbox is kept");
+  writeFileSync(t.env.FAKE_OPENSHELL_LOG, "");
+  assert.equal(await ensureSandbox({ openshell: OPENSHELL, env: t.env, name: "ai-collab-code", recreateBroken: true }), "ai-collab-code");
+  assert.deepEqual(calls(t).map((c) => c.slice(0, 2).join(" ")), ["sandbox list", "sandbox delete", "sandbox create"]);
+});
+
 test("ensureSandbox reports a failing openshell instead of throwing away its output", async () => {
   await assert.rejects(
     ensureSandbox({ openshell: "/nonexistent/openshell", env: { PATH: process.env.PATH }, name: "ai-collab-demo" }),
