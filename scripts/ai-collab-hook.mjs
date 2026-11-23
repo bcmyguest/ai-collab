@@ -15,6 +15,7 @@
  * In mode off a Claude or Codex prompt becomes a view-only card; PostToolUse(Failure), Stop, StopFailure, UserPromptSubmit
  * or SessionEnd of that session closes it.
  * Any failure prints {} and exits 0: the session continues unchanged. Transcripts are never read.
+ * Cursor events also feed the run's OTLP trace (lib/cursor-trace.mjs); its export waits at most 1.5 s after the output.
  * Every message handed to the agent gets a read receipt, published in the background like activity.
  */
 import path from "node:path";
@@ -38,6 +39,7 @@ import { closeTerminalCards, decideApproval, decideQuestion } from "../lib/appro
 import { standsDown } from "../lib/owned.mjs";
 import { classifyLimit } from "../lib/limits.mjs";
 import { alertLimit } from "../lib/limit-alert.mjs";
+import { hookTrace } from "../lib/cursor-trace.mjs";
 
 const HOSTS = new Set(["claude", "codex", "cursor", "opencode"]);
 const EVENTS = new Map([
@@ -166,6 +168,8 @@ async function rewake(cfg, host, msg) {
   process.stderr.write(`${result.text}\n`, () => process.exit(2));
 }
 
+let traced = null;
+
 async function main() {
   const argv = process.argv.slice(2);
   const host = hostArg(argv);
@@ -192,6 +196,8 @@ async function main() {
   const key = String(msg.hook_event_name || msg.hookEventName || msg.event_name || "")
     .toLowerCase()
     .replace(/[^a-z]/g, "");
+  // Every Cursor run, joined project or not, records its turn for the OTLP trace (lib/cursor-trace.mjs); never awaited before output.
+  traced = host === "cursor" ? hookTrace(msg, { env }).catch(() => null) : null;
   const cfg = loadConfig(env, { cwd, host, session });
   if (!cfg.enabled) return emit(neutral(host, key));
   // The runner drives an owned session and publishes everything itself (docs/owned-sessions-contract.md).
@@ -246,3 +252,4 @@ try {
 } catch {
   try { emit({}); } catch { /* stdout closed */ }
 }
+await traced;

@@ -12,6 +12,8 @@ Configuration lives in `${XDG_CONFIG_HOME:-~/.config}/ai-collab/`. Keep the toke
 
 `defaults.json` also takes `"codeMode": false` to turn native code mode off for every session ai-collab starts (default on; see [Code mode](code-mode.md)). `"limitFallback": "harness:model"` is the replacement for a usage limit: a builder whose Codex run hits its limit retries with it (default Cursor DeepSeek), and it is the first option on a limit card when the session's role names no fallback; `opencode:opencode/deepseek-v4.1-flash-free` is free. `"readsThroughRunCode": true` makes agents batch the ai-collab read tools through `run_code` instead of calling them one by one, and makes the CLI read commands exit 3 with the `run_code` program for an agent session; `AI_COLLAB_DIRECT_READS=1` keeps a CLI read direct (see [Code mode](code-mode.md#run_code)).
 
+`"otlpEndpoint"` is the OTLP/HTTP traces URL every Cursor run reports to (default `http://localhost:6006/v1/traces`, the local Phoenix); `"off"` or `false` turns the traces off. With no `defaults.json` nothing is exported. See [Cursor traces](code-mode.md#cursor-traces).
+
 A session in a git repo without a `projects.json` entry then joins under the repo's folder name: lowercase, other characters become hyphens, cut to 24 characters, and a linked worktree uses its main repo's name. An empty `.ai-collab-off` file in the repo root keeps that repo out. The first session records the repo in `$AI_COLLAB_STATE_DIR/auto-projects/`, and the UI adds it within 10 seconds. Two repos with the same folder name share one project.
 
 ## Per-workspace settings (projects.json)
@@ -63,6 +65,7 @@ Cursor shell commands use the conversation identity exported by Cursor, so `ai-c
 | `AI_COLLAB_ACTIVITY` | `on` (or `"activity": "off"` in `projects.json`) | `off`, `0`, `false`, or `no` stops hooks from publishing [activity](activity.md). The environment overrides `projects.json`. |
 | `AI_COLLAB_APPROVAL_S` | `540` | How long a permission hook waits for the phone in AFK mode (0-570; 0 turns [phone approvals](approvals.md#phone-approvals) off). The hooks are registered with a 600-second timeout. |
 | `AI_COLLAB_TEAM_AUTHOR_MODEL` | `cursor:deepseek-v41-flash-1017-high` | `harness[:model]` of the writing agent that drafts `team.dot` from a [describe-a-team](teams.md#describe-a-team-in-words) request in the UI. |
+| `AI_COLLAB_OTLP_ENDPOINT` | `defaults.json` `otlpEndpoint` | OTLP/HTTP traces URL for Cursor runs; `off` turns them off. Overrides `defaults.json`. |
 | `AI_COLLAB_PARENT` | unset | Address (`peer#label`) of the agent that started this one; see [Agents starting agents](messaging.md#agents-starting-agents). A session with it set takes its harness name as its peer and ignores an inherited `AI_COLLAB_SESSION`. |
 
 Invalid values disable the plugin and say why (`ai-collab peers` prints the reason).

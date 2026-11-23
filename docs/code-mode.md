@@ -106,6 +106,18 @@ ai-collab analyze run-code --agent pm --agent claude       # only Claude session
 - `--jsonl` writes one row per agent x model x role x period x week, each carrying `agent`, `harness`, `model` and `role`.
 - Phoenix: `--otlp-export http://localhost:6006/v1/traces` posts one span per turn as OTLP/HTTP protobuf (Phoenix rejects OTLP JSON with 415). Spans carry `session.id` (the agent address), `llm.model_name`, token counts and `ai_collab.*` attributes; `--phoenix-project` names the Phoenix project. A Phoenix source can join the analysis later by implementing `{name, load({since, until}) -> {turns}}` in `lib/analyze-sources.mjs`.
 
+### Cursor traces
+
+Every Cursor run sends one OTLP trace to `defaults.json` `"otlpEndpoint"` (default `http://localhost:6006/v1/traces`; `"off"` or `AI_COLLAB_OTLP_ENDPOINT=off` turns it off). The CLI's own OpenTelemetry exporter cannot be used: in 2026.11.22 it posts only to Cursor's backend with the login token, and `OTEL_EXPORTER_OTLP_*` does not redirect it (a run with those set sent nothing to a local receiver). `lib/cursor-trace.mjs` builds the spans instead.
+
+| Run | Source | Model | Tokens | Tool calls |
+|---|---|---|---|---|
+| Builder (`ai-collab builder`, code mode) | stream-json on the host | `--model` | yes, from the `result` event | yes |
+| Runner-owned session (ACP) | ACP `session/update` | `--model` or `session/new` | no: ACP's `session/prompt` returns only `stopReason` | yes |
+| Interactive, host `cursor-agent -p`, `ai-collab start`, schedules | Cursor hooks | hook `model` | no: hooks and transcripts carry none | yes |
+
+Each trace has an `AGENT` root (`cursor-agent run`), one `LLM` child (`llm.model_name`, `llm.token_count.prompt|completion|total`, `llm.token_count.prompt_details.cache_read|cache_write`; the prompt count includes cached tokens) and one `TOOL` child per tool call (`tool.name`, `input.value` cut to 1000 characters). Every span carries `session.id` (`cursor#<label>`) and `ai_collab.role` (`builder`, `runner`, `schedule:<name>` or `session`). A hook-traced turn runs from `sessionStart` or `beforeSubmitPrompt` to `stop` or `sessionEnd`; a `-p` run fires no `stop`, so it is one trace. Export is one POST with a 1.5 s timeout whose failure is ignored. A sandboxed builder or runner session is traced on the host from its output, so no sandbox needs a route to Phoenix; such processes carry `AI_COLLAB_CURSOR_TRACE=launcher` or `AI_COLLAB_OWNED`, and their hooks record nothing.
+
 ## Files
 
 | Path | Role |
@@ -113,6 +125,7 @@ ai-collab analyze run-code --agent pm --agent claude       # only Claude session
 | `lib/code-mode.mjs` | the setting and each harness's switch |
 | `lib/code-run.mjs` | run_code: description, schema check, sandbox staging, the in-sandbox bootstrap, limits |
 | `lib/analyze-run-code.mjs`, `lib/analyze-sources.mjs`, `lib/analyze-otlp.mjs` | `ai-collab analyze run-code`: aggregation and report, per-harness log readers, OTLP encoder |
+| `lib/cursor-trace.mjs` | Cursor run traces: stream-json, ACP and hook recorders, OTLP export |
 | `scripts/ai-collab-code-mcp.mjs` | the `ai-collab-code` MCP server |
 | `test/code-mode.test.mjs`, `test/code-mode-ui.test.mjs`, `test/code-run.test.mjs`, `test/code-mcp-register.test.mjs`, `test/analyze-run-code.test.mjs` | tests with fakes (fake openshell, fake Codex app-server, fake SDK query) |
 
