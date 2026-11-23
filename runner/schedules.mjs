@@ -23,8 +23,13 @@ const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const KEYS = ["name", "everyMinutes", "cwd", "command", "timeoutSec", "wakeOnTasks", "sandbox"];
 // Runs a "sandbox": true entry's agent command inside a fresh OpenShell sandbox (runner/sandbox-run.mjs).
 export const SANDBOX_RUN = fileURLToPath(new URL("./sandbox-run.mjs", import.meta.url));
-// Settings the sandbox runner needs from the runner's own environment; childEnv drops every other AI_COLLAB_* one.
-const SANDBOX_RUN_KEYS = ["AI_COLLAB_OPENSHELL_BIN", "AI_COLLAB_STATE_DIR"];
+// Host settings for the sandbox helper, which builds its own environment for the harness.
+const SANDBOX_RUN_KEYS = [
+  "AI_COLLAB_OPENSHELL_BIN", "AI_COLLAB_STATE_DIR",
+  "AI_COLLAB_CURSOR_TREE", "AI_COLLAB_CODEX_TREE", "AI_COLLAB_CLAUDE_BIN", "AI_COLLAB_OPENCODE_BIN",
+  "AI_COLLAB_BUILDER_NODE", "AI_COLLAB_BUILDER_NODE_MODULES", "AI_COLLAB_BUILDER_GIT",
+  "AI_COLLAB_BUILDER_GIT_CORE", "AI_COLLAB_BUILDER_ONCEBITTEN",
+];
 
 /** The schedules file: AI_COLLAB_SCHEDULES, else <config dir>/schedules.json. */
 export const schedulesPath = (env = process.env) => env.AI_COLLAB_SCHEDULES || join(configDir(env), "schedules.json");
