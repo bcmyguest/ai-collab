@@ -141,6 +141,11 @@ test("a session a UI-shaped unit starts is in another cgroup and outlives that u
     t.skip("systemd-run cannot make a scope here");
     return;
   }
+  // GitHub runners can make a scope but never run the transient service this test starts; it needs a real user session.
+  if (process.env.CI) {
+    t.skip("needs a real systemd user session; CI runners cannot run the transient service");
+    return;
+  }
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
   // The fake claude only: this test needs the real systemd-run for both the stand-in unit and the scope.
