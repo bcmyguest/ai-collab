@@ -74,6 +74,10 @@ if (args[0] === "sandbox" && args[1] === "upload") {
 }
 if (args[0] === "sandbox" && args[1] === "download") {
   const [, , sandbox, remote, dest] = args;
+  if (process.env.FAKE_FAIL_RETRY_DOWNLOAD && remote.startsWith("/sandbox/work/")) {
+    const calls = readFileSync(process.env.FAKE_OPENSHELL_LOG, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    if (calls.filter((call) => call[1] === "create").length === 2) process.exit(1);
+  }
   const from = inside(sandbox, remote);
   if (!existsSync(from)) {
     process.stderr.write(`download: ${remote} is not in sandbox ${sandbox}\n`);

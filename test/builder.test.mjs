@@ -539,28 +539,41 @@ test("a Cursor usage limit is visible on the task and stops later dispatches for
   assert.equal(readJsonLines(l.env.FAKE_BUILDER_LOG).length, 2);
 });
 
-test("standalone Codex retries a usage limit with Cursor and carries uncommitted edits forward", async () => {
-  const l = lab();
-  l.env.AI_COLLAB_RUNNER_SOCKET = path.join(l.home, "missing.sock");
-  const tree = path.join(l.home, "codex-release");
-  mkdirSync(path.join(tree, "bin"), { recursive: true });
-  const codex = path.join(tree, "bin", "codex");
-  writeFileSync(codex, '#!/bin/sh\necho "Codex partial edit" >> notes.md\necho "Usage limit reached" >&2\nexit 1\n', { mode: 0o755 });
-  symlinkSync(codex, path.join(l.home, "bin", "codex"));
-  l.env.AI_COLLAB_CODEX_TREE = tree;
-  writeFileSync(path.join(l.env.XDG_CONFIG_HOME, "ai-collab", "defaults.json"), JSON.stringify({ builderOrder: ["codex", "cursor"] }));
-  await withTask(l);
-  const res = await l.cli("builder", "start", "--task", "smoke-task", "--brief", l.brief);
-  assert.equal(res.code, 0, res.err);
-  assert.equal(task(l).status, "review");
-  assert.match(wtGit(l, "show", "HEAD:notes.md"), /Codex partial edit\na line from the builder/);
-  const [cursor] = readJsonLines(l.env.FAKE_BUILDER_LOG);
-  assert.equal(cursor.args[6], "deepseek-v41-flash-1017-high");
-  const calls = readJsonLines(l.env.FAKE_OPENSHELL_LOG);
-  assert.equal(calls.filter((row) => row[1] === "create").length, 2);
-  assert.equal(calls.filter((row) => row[1] === "delete").length, 2);
-  assert.ok(readJsonLines(l.env.FAKE_ONCEBITTEN_LOG).some((row) => row.args[0] === "check"));
-});
+for (const [label, stream, failDownload] of [
+  ["carries edits forward after a stderr limit", "stderr", false],
+  ["carries edits forward after a stdout limit", "stdout", false],
+  ["retains the retry sandbox when collection fails", "stdout", true],
+]) {
+  test("standalone Codex fallback " + label, async () => {
+    const l = lab(failDownload ? { FAKE_FAIL_RETRY_DOWNLOAD: "1" } : {});
+    l.env.AI_COLLAB_RUNNER_SOCKET = path.join(l.home, "missing.sock");
+    const tree = path.join(l.home, "codex-release");
+    mkdirSync(path.join(tree, "bin"), { recursive: true });
+    const codex = path.join(tree, "bin", "codex");
+    writeFileSync(codex, '#!/bin/sh\necho "Codex partial edit" >> notes.md\necho "ERROR: Usage limit reached"' + (stream === "stderr" ? " >&2" : "") + '\nexit 1\n', { mode: 0o755 });
+    symlinkSync(codex, path.join(l.home, "bin", "codex"));
+    l.env.AI_COLLAB_CODEX_TREE = tree;
+    writeFileSync(path.join(l.env.XDG_CONFIG_HOME, "ai-collab", "defaults.json"), JSON.stringify({ builderOrder: ["codex", "cursor"] }));
+    await withTask(l);
+    const res = await l.cli("builder", "start", "--task", "smoke-task", "--brief", l.brief);
+    assert.equal(res.code, 0, res.err);
+    const [cursor] = readJsonLines(l.env.FAKE_BUILDER_LOG);
+    assert.equal(cursor.args[6], "deepseek-v41-flash-1017-high");
+    const calls = readJsonLines(l.env.FAKE_OPENSHELL_LOG);
+    assert.equal(calls.filter((row) => row[1] === "create").length, 2);
+    assert.equal(calls.filter((row) => row[1] === "delete").length, failDownload ? 1 : 2);
+    if (failDownload) {
+      assert.equal(task(l).status, "blocked");
+      assert.match(task(l).detail, /sandbox download failed/);
+      const recovery = builderAssignment("demo", task(l), [], l.env)?.recovery;
+      assert.equal(recovery?.sandboxWorkspace, true);
+      return;
+    }
+    assert.equal(task(l).status, "review");
+    assert.match(wtGit(l, "show", "HEAD:notes.md"), /Codex partial edit\na line from the builder/);
+    assert.ok(readJsonLines(l.env.FAKE_ONCEBITTEN_LOG).some((row) => row.args[0] === "check"));
+  });
+}
 
 for (const harness of ["cursor", "opencode"]) {
   test(`${harness} stages a local code MCP server in the builder sandbox`, async () => {
