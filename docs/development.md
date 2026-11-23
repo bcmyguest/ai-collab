@@ -42,7 +42,16 @@ Run `./setup_prek.sh` once. It installs [prek](https://github.com/j178/prek) (th
 
 Rerun `scripts/install-git-hooks.sh` after the hook changes.
 
-The PM lands builder branches with `ai-collab merge start <branch>...`. It fetches origin, merges the branches onto `origin/main` (never local main) in a fresh worktree, runs `npm ci` and `npm test` there with a temporary `HOME`, `CODEX_HOME` and `TMPDIR`, pushes on green, confirms with `git ls-remote origin refs/heads/main` that origin holds the pushed commit, runs `git pull --ff-only` in /home/b/ai-collab and removes the worktree. Its last line is the result: `merge: merged <sha> (<branches>); host pulled`, `...; host pull skipped: <git error>` when local edits or a diverged main block the pull, or `merge: refused: <reason>` with nothing pushed on a conflict, red gate or unverified push. A refused run keeps its worktree for inspection.
+The PM lands builder branches with `ai-collab merge start <branch>...` on the host. The command fetches `origin/main`, merges the requested branches in order in a fresh worktree, and runs `npm ci` and `npm test` with isolated `HOME`, `CODEX_HOME`, and `TMPDIR`. After the gate passes, it pushes the tested commit, verifies the remote tip, attempts `git pull --ff-only` in `/home/b/ai-collab`, and cleans up the merge worktree. A refusal after worktree creation leaves the path in the command output for inspection.
+
+### Merge gate triage
+
+- **Branch moved past the submitted commit.** Review the current builder tip before submitting it for landing. The gate checks the expected tip before creating a worktree.
+- **Branch does not merge cleanly.** The gate attempts to abort the failed merge and retains the worktree with any earlier successful merges from the batch. Give the coordinator the worktree path and failed branch. After resolving the conflict, rerun the isolated host gate on the resulting commit before pushing.
+- **npm missing or install failed.** Check the PM service's Node installation and PATH. The gate prefers npm bundled with Node and can resolve mise's Node before replacing HOME. Read the `npm ci` output for registry, dependency, or lockfile errors. If temporary directory creation fails, check that the service can write to `/dev/shm`.
+- **Tests failed or modified tracked files.** Inspect the npm output and retained worktree. Fix the failing test or the step that changes tracked files, then rerun the host gate for the corrected commit. Builder tests serve as a preflight.
+- **Push or remote verification failed.** Fetch and inspect `origin/main` before retrying. A verification failure can follow a successful push if another update advances the remote. If the tested commit is already in the remote history, it has landed. Otherwise, rebuild and retest against the current remote tip.
+- **Host pull skipped.** The remote push has been verified. Use the reported Git error to diagnose the host checkout and preserve local edits while reconciling it.
 
 To land other work by hand, use a worktree:
 
