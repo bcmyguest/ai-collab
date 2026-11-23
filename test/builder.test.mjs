@@ -1,11 +1,12 @@
 // `ai-collab builder`: a sandboxed builder end to end against fake openshell, systemd-run, agent and oncebitten.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { createServer } from "node:http";
 import path from "node:path";
+import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { runCli } from "../lib/cli.mjs";
 import {
@@ -16,6 +17,8 @@ import { listOwned } from "../lib/owned.mjs";
 import { taskStoreFile } from "../lib/tasks.mjs";
 import { saveTeamText } from "../lib/patterns.mjs";
 import { loadConfig } from "../lib/config.mjs";
+import { toolClient } from "../lib/tool-api.mjs";
+import { hostCaller } from "../lib/code-run.mjs";
 import { setProjectPaused } from "../lib/project-pause.mjs";
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import { openDurable } from "../runner/durable.mjs";
@@ -95,6 +98,42 @@ test("builder start leaves a paused project’s task and worktree untouched", as
   assert.match(refused.err, /New work is paused/);
   assert.equal(task(l).status, "open");
   assert.equal(existsSync(builderPaths("smoke-task", l.env).worktree), false);
+});
+
+test("MCP builder_start runs the agent in its own sandbox and lands its commit on the host branch", { timeout: 15000 }, async (t) => {
+  const l = lab();
+  await withTask(l);
+  const session = "0123456789abcdef";
+  const client = toolClient({ env: l.env, cwd: l.root });
+  const args = { task: "smoke-task", brief: "Add one line to notes.md.", harness: "cursor", session };
+  assert.ok(client.listTools().some((tool) => tool.name === "builder_start"));
+  await assert.rejects(client.callTool("builder_start", { ...args, branch: "main" }), /not a known argument/);
+  await assert.rejects(client.callTool("builder_start", { ...args, model: "--force" }), /Invalid builder model/);
+  await assert.rejects(client.callTool("builder_start", { ...args, brief: "--config=value" }), /Start the builder brief/);
+  await assert.rejects(client.callTool("builder_start", { ...args, harness: "codex", brief: "a".repeat(4000) }), /brief and sandbox notes/);
+  await assert.rejects(hostCaller({ client, session })("builder_start", args), /not available in run_code/);
+  const sandbox = toolClient({ env: { ...l.env, AI_COLLAB_BUILDER: "parent" }, cwd: l.root });
+  assert.ok(!sandbox.listTools().some((tool) => tool.name === "builder_start"));
+  await assert.rejects(sandbox.callTool("builder_start", args), /Unknown tool/);
+  assert.equal(existsSync(builderPaths("smoke-task", l.env).worktree), false);
+
+  const script = fileURLToPath(new URL("../scripts/ai-collab-mcp.mjs", import.meta.url));
+  const child = spawn(process.execPath, [script, "claude"], { cwd: l.root, env: l.env, stdio: ["pipe", "pipe", "inherit"] });
+  t.after(() => child.kill());
+  const output = createInterface({ input: child.stdout })[Symbol.asyncIterator]();
+  child.stdin.write(JSON.stringify({
+    jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "builder_start", arguments: args },
+  }) + "\n");
+  const response = JSON.parse((await output.next()).value);
+  assert.equal(response.id, 1);
+  assert.ok(!response.result.isError, response.result.content[0].text);
+  const result = JSON.parse(response.result.content[0].text);
+  const paths = builderPaths("smoke-task", l.env);
+  assert.deepEqual(result, {
+    unit: paths.unit, task: "smoke-task", sandbox: SANDBOX, worktree: paths.worktree, branch: "builder/smoke-task",
+  });
+  assert.ok(readFileSync(paths.brief, "utf8").startsWith(args.brief + "\n"));
+  assert.match(wtGit(l, "log", "--format=%s", "-2"), /^docs: add a line\ninit\n$/);
 });
 
 test("builder start runs the agent in its own sandbox and lands its commit on the host branch", async () => {

@@ -32,6 +32,16 @@ Migrate the feature-request PM tick from the `ai-collab-pm.timer` systemd user t
 
 Rollback: remove the `pm` entry, then re-enable the timer with `systemctl --user enable --now ai-collab-pm.timer`.
 
+### Starting builders from the PM
+
+Allow the `builder_start` tool on the `ai-collab` MCP server in the host PM's tool guard. Call it with the task ID, an inline brief of up to 4,000 characters, and the session label from the hook. Start the brief with a heading or sentence. For Codex, the brief and the appended sandbox notes must fit within 4,000 characters.
+
+```json
+{"task":"fix-build","brief":"Fix the failing build and run the test suite.","session":"0123456789abcdef","harness":"codex","model":"gpt-6.2-sol"}
+```
+
+`harness` and `model` use the CLI defaults when omitted. The tool uses the PM's configured project and returns the task, sandbox, worktree, branch, and either the runner session or the systemd unit. It applies the same project pause and sandbox capacity checks as `ai-collab builder start`. The tool is available through direct host MCP calls. The code-mode allowlists exclude builder launches, and sandboxed builders and scheduled ticks have no direct `builder_start` tool.
+
 ## Git hooks
 
 Run `./setup_prek.sh` once. It installs [prek](https://github.com/j178/prek) (through `uv`), runs `npm ci`, and installs two git hooks from `.pre-commit-config.yaml`: whitespace and JSON/YAML checks on `pre-commit`, and [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) on `commit-msg` (`feat:`, `fix:`, `docs:`, `ci:`, `chore:` ...). Run `prek run --all-files` to check the whole repo as CI does.
