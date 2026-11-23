@@ -140,6 +140,8 @@ The host's capture hooks (`~/.cursor/hooks.json`, `~/.codex/hooks.json` calling 
 
 Every brief ends with the sandbox notes, which tell the agent to run `oncebitten check --base main` and fix what fires before it marks the task done. The `oncebitten` binary is uploaded for that. The host runs the same check on the landed branch as a backstop. `steer` hooks are not carried into the sandbox.
 
+The runner looks for `oncebitten` on its service `PATH`, then in `$CARGO_HOME/bin` or `~/.cargo/bin` when `CARGO_HOME` is unset.
+
 ## Lean Claude builders
 
 `--harness claude` uploads the host's native `claude` binary (one 364 MB file) to `/sandbox/claude/` and runs it headless with only what a builder needs. Every switch below is a documented Claude Code mechanism or a settings key the host's own `~/.claude/settings.json` uses; the sources are `claude --help` (2.1.330) and code.claude.com/docs ([cli-reference](https://code.claude.com/docs/en/cli-reference.md), [env-vars](https://code.claude.com/docs/en/env-vars.md), [settings-reference](https://code.claude.com/docs/en/settings-reference.md), [permissions](https://code.claude.com/docs/en/permissions.md)).

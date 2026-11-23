@@ -2,13 +2,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCli } from "../lib/cli.mjs";
 import {
-  briefNotes, builderPaths, builderAssignment, builderSandbox, builderPolicy, captureHooks, harnessCommand, hostCaptureEvents, parseRecordedCall, replayable, sharedLibs,
+  briefNotes, builderPaths, builderAssignment, builderSandbox, builderPolicy, captureHooks, harnessCommand, hostCaptureEvents, parseRecordedCall, replayable, sharedLibs, toolSources,
 } from "../lib/builder.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { listOwned } from "../lib/owned.mjs";
@@ -319,6 +319,21 @@ test("sharedLibs lists a binary's libraries without glibc's own", async () => {
   const libs = await sharedLibs(process.execPath);
   assert.ok(Array.isArray(libs));
   assert.ok(libs.every((p) => path.isAbsolute(p) && !/^(libc|libm|libdl|libpthread|librt|ld-linux)\./.test(path.basename(p))));
+});
+
+test("sandbox staging discovers oncebitten in Cargo's bin directory when the service PATH omits it", (t) => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-oncebitten-home-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const state = { harness: "codex", root: home };
+  const env = { HOME: home, PATH: "/usr/bin:/bin" };
+  for (const cargoHome of [path.join(home, ".cargo"), path.join(home, "custom-cargo")]) {
+    const bin = path.join(cargoHome, "bin");
+    mkdirSync(bin, { recursive: true });
+    symlinkSync(ONCEBITTEN, path.join(bin, "oncebitten"));
+  }
+  assert.equal(toolSources(state, env).oncebitten, ONCEBITTEN);
+  assert.equal(toolSources(state, { ...env, HOME: path.join(home, "other"), CARGO_HOME: path.join(home, "custom-cargo") }).oncebitten, ONCEBITTEN);
+  assert.equal(toolSources(state, { ...env, AI_COLLAB_BUILDER_ONCEBITTEN: "none" }).oncebitten, "");
 });
 
 test("a CODEX_HOME with no login falls back to the user's ~/.codex login", async () => {
