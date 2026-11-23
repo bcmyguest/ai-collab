@@ -32,6 +32,8 @@ The wait ends with no decision when `AI_COLLAB_APPROVAL_S` (540 s) passes, when 
 
 An answer from the UI cannot reach a terminal prompt that is already showing, so in mode `off` the card only mirrors it. The Claude Code or Codex `PermissionRequest` hook publishes the approval fields, cleaned and size-capped as in mode `on`, as a view-only card with `mode: "terminal"` (ntfy priority 2, no web push), records the card in the session's `.terminal.json` state file, and returns `{}` at once; the publish is capped at 1.5 s. The UI shows the question and options without answer buttons, labelled "Answer in the terminal", and `POST /api/approve` answers 409. A separate kind keeps readers that answer `approval` envelopes from offering buttons that nothing reads.
 
+Only a mode read as `off` publishes that card. A read that failed is not off: the hook asks the phone like it would in mode `on`, so a headless session whose mode fetch fails never tells the UI the operator is at the terminal while AFK is on. The card's hint follows the live mode from the broadcast history rather than the mode at publish time, so a card that outlives a change never says "AFK is off" while AFK is on (or the reverse for a hook whose read failed).
+
 A later hook event of the same session publishes `approval-end` with reason `terminal` ("Answered in the terminal"):
 
 | Event | Closes |

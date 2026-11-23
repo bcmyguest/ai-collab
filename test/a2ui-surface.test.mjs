@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { MessageProcessor } from "@a2ui/web_core/v0_9";
 import { aiCollabCatalog, OptionPickerApi } from "../web/lib/a2ui-catalog.js";
-import { A2UI_VERSION, IN_TERMINAL, approvalOperations, questionOperations, surfaceOf } from "../web/lib/a2ui.js";
+import { A2UI_VERSION, IN_TERMINAL, IN_TERMINAL_HINT, IN_TERMINAL_STALE, IN_TERMINAL_UNKNOWN, approvalOperations, questionOperations, surfaceOf } from "../web/lib/a2ui.js";
 
 const NOW = Date.parse("2026-11-21T10:00:00Z");
 const ID = "0123456789ab";
@@ -134,9 +134,22 @@ test("the processor rejects an option without a label", () => {
   assert.notDeepEqual(validate(broken), []);
 });
 
-test("an open view-only permission card says AFK is off and how to answer here", async () => {
-  const { approvalOperations, IN_TERMINAL_HINT } = await import("../web/lib/a2ui.js");
-  const ops = approvalOperations({ id: "aaaaaaaaaaaa", tool: "Bash", summary: "ls", terminal: true, deadline: Date.now() + 60000 }, Date.now());
-  const components = ops.find(op => op.updateComponents).updateComponents.components;
-  assert.equal(components.find(c => c.id === "hint")?.text, IN_TERMINAL_HINT);
+test("a view-only card's hint follows the live AFK mode, never a stale off", () => {
+  const view = { id: "aaaaaaaaaaaa", tool: "Bash", summary: "ls", terminal: true, expiresAt: NOW + 60_000 };
+  const hintOf = approval => components(approvalOperations(approval, NOW)).find(c => c.id === "hint")?.text;
+  assert.equal(hintOf({ ...view, mode: "off" }), IN_TERMINAL_HINT);
+  assert.equal(hintOf({ ...view, mode: "on" }), IN_TERMINAL_STALE);
+  assert.equal(hintOf({ ...view, mode: "quiet" }), IN_TERMINAL_STALE);
+  // A card whose hook could not read the mode claims neither state.
+  assert.equal(hintOf(view), IN_TERMINAL_UNKNOWN);
+  assert.equal(hintOf({ ...view, mode: "unknown" }), IN_TERMINAL_UNKNOWN);
+  // Every hint is a real sentence, and none of them says AFK is off while it is on.
+  for (const text of [IN_TERMINAL_HINT, IN_TERMINAL_STALE, IN_TERMINAL_UNKNOWN]) assert.ok(text.length > 20);
+  assert.doesNotMatch(IN_TERMINAL_STALE + IN_TERMINAL_UNKNOWN, /AFK is off/);
+});
+
+test("a view-only choice card carries the same mode-aware hint as a permission card", () => {
+  const hintOf = approval => components(approvalOperations(approval, NOW)).find(c => c.id === "hint")?.text;
+  assert.equal(hintOf({ ...choice, terminal: true, mode: "on" }), IN_TERMINAL_STALE);
+  assert.equal(hintOf({ ...choice, terminal: true }), IN_TERMINAL_UNKNOWN);
 });

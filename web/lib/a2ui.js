@@ -11,6 +11,17 @@ const ENDED = {
 export const IN_TERMINAL = "Answer in the terminal";
 // Why a view-only card has no buttons, and how to get them next time.
 export const IN_TERMINAL_HINT = "AFK is off, so the terminal holds this prompt. Turn AFK on to answer approvals here.";
+// The same card once AFK is back on: the showing prompt stays in the terminal, and the card must not claim AFK is off.
+export const IN_TERMINAL_STALE = "AFK is on again, so the next approval comes to the phone. This prompt is already in the terminal.";
+// The hook could not read the mode, so the card may not claim the operator is at the terminal either way.
+export const IN_TERMINAL_UNKNOWN = "This prompt is already in the terminal, so answer it there. New approvals follow the current AFK mode.";
+// Why a view-only card has no buttons, from the live mode: the hook saw AFK off, and the card must not outlive that
+// reading to claim the operator is present while AFK is on, or the reverse when the hook's own read failed.
+export function terminalHint(mode) {
+  if (mode === "off") return IN_TERMINAL_HINT;
+  if (mode === "on" || mode === "quiet") return IN_TERMINAL_STALE;
+  return IN_TERMINAL_UNKNOWN;
+}
 const HEX12 = /^[a-f0-9]{12}$/;
 
 /** Outcome line for an approval: its end reason, "sent", or expiry; "" while it waits for an answer. */
@@ -72,7 +83,7 @@ function permissionOps(approval, open, outcome, terminal) {
   } else {
     components.push(text("status", open ? IN_TERMINAL : withBy(outcome, approval.by)));
     children.push("status");
-    if (open) { components.push({ id: "hint", component: "Text", variant: "caption", text: IN_TERMINAL_HINT }); children.push("hint"); }
+    if (open) { components.push({ id: "hint", component: "Text", variant: "caption", text: terminalHint(approval.mode) }); children.push("hint"); }
   }
   components[0].children = children;
   return surfaceOps(approvalSurfaceId(approval.id), components, {});
@@ -126,6 +137,7 @@ function choiceOps(approval, open, outcome, terminal) {
   } else {
     components.push(text("status", open ? IN_TERMINAL : withBy(outcome, approval.by)));
     rootChildren.push("status");
+    if (open) { components.push({ id: "hint", component: "Text", variant: "caption", text: terminalHint(approval.mode) }); rootChildren.push("hint"); }
   }
   components[0].children = rootChildren;
   const model = { picks: approval.questions.map(() => []), other: approval.questions.map(() => "") };

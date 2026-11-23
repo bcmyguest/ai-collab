@@ -6,7 +6,9 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { NTFY_MESSAGE_MAX_BYTES, loadConfig, sessionLabel } from "../lib/config.mjs";
 import { closeTerminalCards, decideApproval } from "../lib/approvals.mjs";
+import { currentModeKnown } from "../lib/mode.mjs";
 import { createUi } from "../web/server/ui.mjs";
+import { IN_TERMINAL_STALE } from "../web/lib/a2ui.js";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
@@ -84,6 +86,34 @@ test("AFK off: Cursor, a session-less hook, and disabled approvals publish nothi
   assert.deepEqual(await decideApproval({ ...cfg, session: "" }, { host: "claude", key: "permissionrequest", input: BASH }), {});
   assert.deepEqual(await decideApproval({ ...cfg, approvalS: 0 }, { host: "claude", key: "permissionrequest", input: BASH }), {});
   assert.equal(envelopes(fake, "approval-view").length, 0);
+});
+
+test("an unreadable mode is not off: a headless session still asks the phone instead of publishing a terminal card", async (t) => {
+  const { fake, cfg } = await setup(t, { AI_COLLAB_APPROVAL_S: "1" });
+  setMode(fake, "on");
+  // The poll is rate-limited, and nothing on this machine has read the mode: the hook cannot tell, so it must not say off.
+  fake.state.limitNext = 50;
+  const started = Date.now();
+  assert.deepEqual(await decideApproval(cfg, { host: "claude", key: "permissionrequest", input: BASH }), {});
+  assert.ok(Date.now() - started >= 900, "it waited out the approval window rather than returning at once");
+  assert.equal(envelopes(fake, "approval-view").length, 0, "no view-only card claiming the terminal");
+  const [card] = envelopes(fake, "approval");
+  assert.equal(card.summary, "make deploy", "the phone got the answerable card");
+  assert.equal(envelopes(fake, "approval-end")[0].reason, "timeout");
+});
+
+test("a recorded mode survives a failed read, so AFK on stays on for a headless session", async (t) => {
+  const { fake, cfg } = await setup(t, { AI_COLLAB_APPROVAL_S: "1" });
+  setMode(fake, "on");
+  // One good read records the project's mode for sessions whose own read later fails.
+  assert.equal((await currentModeKnown(cfg)).mode, "on");
+  fake.state.limitNext = 50;
+  const offline = { ...cfg, session: "0102030405060708" };
+  const started = Date.now();
+  assert.deepEqual(await decideApproval(offline, { host: "claude", key: "permissionrequest", input: BASH }), {});
+  assert.ok(Date.now() - started >= 900, "AFK on waited for the phone, not the terminal");
+  assert.equal(envelopes(fake, "approval-view").length, 0);
+  assert.equal(envelopes(fake, "approval").length, 1);
 });
 
 test("the next tool result with the same tool and summary closes the card; Stop closes the rest", async (t) => {
@@ -181,4 +211,30 @@ test("the UI shows a view-only card without answers, refuses replies, and closes
   await delay(50);
   assert.equal(pushed.length, 0, "a view-only card sends no push");
   assert.ok(!fake.state.publishes.some(p => p.message.startsWith(`reply ${card.id}`)), "nothing answers a terminal card");
+});
+
+test("a terminal card never tells the UI AFK is off while the project is away", async (t) => {
+  const { fake, cfg } = await setup(t);
+  const ui = createUi({ cfg: loadConfig(peerEnv(fake, { peer: "operator", AI_COLLAB_PEERS: "claude,codex,cursor" })) });
+  const ctrl = new AbortController();
+  t.after(() => { ctrl.abort(); ui.close(); });
+  const base = "http://127.0.0.1:8795";
+  // The card was published by a hook that read AFK off; the operator turned AFK back on while it stayed open.
+  setMode(fake, "off");
+  await decideApproval(cfg, { host: "claude", key: "permissionrequest", input: BASH });
+  const [card] = envelopes(fake, "approval-view");
+  setMode(fake, "on");
+
+  const stream = sse(ui.events(new Request(`${base}/api/events?project=demo`, { signal: ctrl.signal })));
+  for await (const { event, data } of stream) {
+    if (event === "problem") throw new Error(data.error);
+    if (event !== "surface" || data.id !== "approval-" + card.id) continue;
+    const parts = data.operations.find(op => op.updateComponents).updateComponents.components;
+    const hint = parts.find(part => part.id === "hint")?.text;
+    if (hint === undefined) continue;
+    assert.equal(hint, IN_TERMINAL_STALE, "AFK is on again, so the hint must not say it is off");
+    assert.doesNotMatch(hint, /AFK is off/);
+    return;
+  }
+  throw new Error("no surface for the view-only card");
 });
