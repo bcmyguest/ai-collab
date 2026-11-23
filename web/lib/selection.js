@@ -27,6 +27,17 @@ export function selectionHash(next = {}) {
   return params.toString();
 }
 
+const PROJECT_VIEWS = [["project", "Chat"], ["tasks", "Tasks"], ["patterns", "Patterns"]];
+
+export function projectNavigation(project, level) {
+  if (!project || !PROJECT_VIEWS.some(([view]) => view === level)) return [];
+  return PROJECT_VIEWS.map(([view, label]) => ({
+    label,
+    href: "#" + selectionHash({ project, level: view }),
+    current: view === level,
+  }));
+}
+
 /** The selection named by a hash without its "#"; an empty hash, home, or level=home is the Home overview. */
 export function parseSelection(hash) {
   const params = new URLSearchParams(hash);

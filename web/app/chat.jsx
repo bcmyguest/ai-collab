@@ -25,7 +25,7 @@ import { NewAgentComposer } from "./new-session";
 import { PatternsPage } from "./patterns-page";
 import { TaskBoard } from "./tasks";
 import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
-import { TABS, parseSelection, selectionHash } from "@/lib/selection";
+import { TABS, parseSelection, projectNavigation, selectionHash } from "@/lib/selection";
 import { namedAgents, unnamedAgents } from "@/lib/sidebar";
 import { sessionState } from "@/lib/session-state";
 import { subscribeUiEvents } from "@/lib/ui-events";
@@ -929,7 +929,8 @@ function Console({ account }) {
   const composeTask = selected.composeTask || "";
   const taskLinks = useMemo(() => ({ project, ids: new Set(data.tasks?.tasks.map(task => task.id)) }), [project, data.tasks]);
   // The new-agent composer replaces the chat while it is open.
-  const composing = Boolean(creating) && creating === project && ready;
+  const composing = level === "project" && Boolean(creating) && creating === project && ready;
+  const projectLinks = projectNavigation(project, level);
   const agent = level === "session" ? data.agents.find(item => item.id === selected.session) : undefined;
   const target = level === "session" ? selected.session : "all";
   const missing = level === "session" && !target;
@@ -1020,6 +1021,13 @@ function Console({ account }) {
   const sidebar = <Sidebar inactiveOpen={inactiveOpen} onInactiveToggle={rememberInactive} data={data} selected={selected} now={now} navigate={navigate} newSession={newSession} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")} openRaw={openRaw} projectAction={projectAction}
     openHash={hash => { setNavOpen(false); location.hash = hash.slice(1); }}/>;
   const anyWaiting = data.projects.some(project => project.waiting > 0);
+  const projectNav = projectLinks.length > 0 && <nav aria-label="Project views">
+    <div className="mx-auto grid max-w-3xl grid-cols-3 gap-1">
+      {projectLinks.map(({ label, href, current }) => <a key={href} href={href} aria-current={current ? "page" : undefined}
+        className={cn("flex min-h-11 items-center justify-center rounded-lg px-2 text-sm font-medium focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+          current ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>{label}</a>)}
+    </div>
+  </nav>;
   return <SurfaceContext.Provider value={{ surfaces, submit: payload => action("a2ui", payload, "Sent"), disabled: !ready || working }}><div className="flex h-dvh w-full overflow-hidden">
     <aside className="hidden w-72 shrink-0 border-r bg-sidebar text-sidebar-foreground md:block">{sidebar}</aside>
     <Sheet open={navOpen} onOpenChange={setNavOpen}>
@@ -1077,6 +1085,7 @@ function Console({ account }) {
               onClick={() => action("compact", { target: selected.session }, "Compaction requested")}><Minimize2/>Compact</Button></span>}/>}
         {!home && !listing && !tasksView && !patterns && !subagents && !raw && !compactions && <ConversationHistory key={requested} requested={requested}/>}
       </header>
+      {projectNav && <div className="hidden shrink-0 border-b bg-background px-3 py-1 md:block">{projectNav}</div>}
       <div className={cn("flex flex-col gap-2 px-3 empty:hidden", composing && "min-h-0 flex-1 justify-center pb-[20vh]")}>
         {composing && <NewAgentComposer key={project + ":" + (data.startable || []).join(",")} project={project} startable={data.startable || []} places={data.startPlaces || ["folder"]}
           startDefault={data.startDefault} codeModeDefault={data.codeModeDefault !== false} agents={data.agents} models={models} disabled={!ready} start={startSession} close={() => setCreating("")} open={openAddress}/>}
@@ -1097,7 +1106,7 @@ function Console({ account }) {
         {ready ? <PatternsPage data={data} project={project} selected={selected} navigate={navigate} call={patternCall} disabled={working}/>
           : <p className="py-16 text-center text-sm text-muted-foreground">Loading patterns…</p>}
       </div>}
-      {!patterns && !composing && (tasksView ? <TaskBoard board={ready ? data.tasks : null} now={now} taskId={selected.task}
+      {!patterns && !composing && (tasksView ? <TaskBoard key={project} project={project} board={ready ? data.tasks : null} now={now} taskId={selected.task}
         back={() => navigate({ project, level: "tasks" })} compose={id => navigate({ project, level: "project", composeTask: id })}
         continuation={{ harnesses: data.startable || [], launch: (id, harness) => action("continue-builder", { id, harness }, "Replacement started") }}
         recover={(id, harness) => action("recover-builder", { id, harness }, "Builder started")}
@@ -1167,6 +1176,7 @@ function Console({ account }) {
           }
           return sent;
         }}/>}
+      {projectNav && <div className="shrink-0 border-t bg-background px-3 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] md:hidden">{projectNav}</div>}
     </main>
   </div></SurfaceContext.Provider>;
 }
