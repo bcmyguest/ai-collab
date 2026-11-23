@@ -22,7 +22,7 @@ import { claudeConfirmedSince, claudeSnapshot, claudeWindowMs } from "../lib/cla
 import { ackTracker, direct, MAX_ATTEMPTS, PUSHED, pushSession, readDispatchLedger, readySession, writeDispatchLedger } from "../lib/deliver-push.mjs";
 import { sessionIdleState } from "../lib/idle.mjs";
 import { opencodeRequest } from "../lib/opencode-api.mjs";
-import { BUILDER_START_TIMEOUT_MS, builderPaths, stoppedBuilder, ownedBuilder, stageOwnedBuilder, claimOwnedBuilder, finishOwnedBuilder } from "../lib/builder.mjs";
+import { BUILDER_START_TIMEOUT_MS, builderPaths, builderResumePrompt, stoppedBuilder, ownedBuilder, stageOwnedBuilder, claimOwnedBuilder, finishOwnedBuilder } from "../lib/builder.mjs";
 import { childEnv, checkPrompt, findExecutable, modelShape, projectRoot, worktreeNames } from "../lib/start.mjs";
 import { parseCodeMode, resolveCodeMode } from "../lib/code-mode.mjs";
 import { openTasks } from "../lib/tasks.mjs";
@@ -243,14 +243,14 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   }
 
   // The live handle, resuming the native session for the next input when this execution has none (after a restart).
-  async function liveHandle(s) {
+  async function liveHandle(s, staged) {
     if (s.live) return s.live;
     if (s.record.status === "ended") fail(409, "The owned session has ended");
-    if (s.record.builder) fail(409, "The builder sandbox session cannot resume");
+    if (s.record.builder && !staged) fail(409, "The builder sandbox session requires its staged launcher");
     const adapter = adapterOf(s.record.harness);
     if (adapter.capabilities.resume === "none") fail(409, `${s.record.harness} sessions cannot resume`);
     s.resuming ??= (async () => {
-      s.live = await adapter.resume(s.record, contextFor({ s }, s.record.harness, s.signal), ownedEnv());
+      s.live = await adapter.resume(s.record, contextFor({ s }, s.record.harness, s.signal), ownedEnv(), staged);
       save(s);
       return s.live;
     })().finally(() => { s.resuming = null; });
@@ -418,9 +418,13 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       }
       const turn = next;
       next = null;
+      const cut = async (runId, reason) => {
+        const result = await cutRun(s, runId, reason);
+        return builder ? { ...result, resumeBuilder: true } : result;
+      };
       const sent = await wf.step("run.send", async () => {
         try {
-          const handle = await liveHandle(s);
+          const handle = await liveHandle(s, staged);
           while (s.switchingModel) await s.switchingModel.catch(() => {});
           s.record.status = "running";
           save(s);
@@ -437,9 +441,15 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
           await enqueuePublish(s, () => publishEvent(s.cfg, harness, { type: EventType.CUSTOM, name: ERROR, value: `input not delivered: ${error.message}` }));
           return { error: error.message };
         }
-      }, { onCut: () => cutRun(s, null, "runner restarted before the harness accepted the input") });
+      }, { onCut: () => cut(null, "runner restarted before the harness accepted the input") });
       if (!sent.runId && !builder) continue;
-      const finished = sent.runId && await wf.step("run.wait", () => waitRun(s, sent.runId), { onCut: () => cutRun(s, sent.runId, "runner restarted") });
+      const interrupted = () => cut(sent.runId, "runner restarted");
+      const finished = sent.runId && await wf.step("run.wait",
+        () => builder && !s.live ? interrupted() : waitRun(s, sent.runId), { onCut: interrupted });
+      if (sent.resumeBuilder || finished?.resumeBuilder) {
+        next = { text: builderResumePrompt(input.prompt), messageIds: [], system: true };
+        continue;
+      }
       if (builder) {
         await wf.step("builder.finish", async () => {
           await s.live?.close().catch(() => {});
