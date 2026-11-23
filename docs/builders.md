@@ -22,7 +22,7 @@ Defaults: Cursor `deepseek-v41-flash-1017-high`, Codex `gpt-6.2-sol`, Claude `ha
 
 When `--harness` is omitted, the first supported entry in `defaults.json`'s `builderOrder` array selects the starting harness. For example, `"builderOrder": ["codex", "cursor"]` starts with Codex. Codex is the built-in starting harness.
 
-Both Codex launch paths retry a subscription usage limit once with Cursor `deepseek-v41-flash-1017-high`. The supervisor copies the Git worktree and recorded task calls and hooks into a fresh OpenShell sandbox, then sends the brief again. The normal collection and oncebitten check run after the retry.
+Both Codex launch paths retry a subscription usage limit once with `defaults.json`'s `limitFallback` (`harness:model`), else Cursor `deepseek-v41-flash-1017-high`. The supervisor copies the Git worktree and recorded task calls and hooks into a fresh OpenShell sandbox, then sends the brief again. The normal collection and oncebitten check run after the retry.
 
 ## Runner-owned Codex builders
 

@@ -495,3 +495,20 @@ for (const harness of ["cursor", "opencode"]) {
     assert.equal(task(l).status, "done");
   });
 }
+
+test("defaults.json limitFallback picks the harness a Codex usage limit retries with", async () => {
+  const l = lab({ AI_COLLAB_OPENCODE_BIN: AGENT, FAKE_SANDBOX_OPENCODE_BIN: AGENT });
+  l.env.AI_COLLAB_RUNNER_SOCKET = path.join(l.home, "missing.sock");
+  const tree = path.join(l.home, "codex-release");
+  mkdirSync(path.join(tree, "bin"), { recursive: true });
+  const codex = path.join(tree, "bin", "codex");
+  writeFileSync(codex, '#!/bin/sh\necho "Usage limit reached" >&2\nexit 1\n', { mode: 0o755 });
+  symlinkSync(codex, path.join(l.home, "bin", "codex"));
+  l.env.AI_COLLAB_CODEX_TREE = tree;
+  writeFileSync(path.join(l.env.XDG_CONFIG_HOME, "ai-collab", "defaults.json"), JSON.stringify({ builderOrder: ["codex"], limitFallback: "opencode:opencode/deepseek-v4.1-flash-free" }));
+  await withTask(l);
+  const res = await l.cli("builder", "start", "--task", "smoke-task", "--brief", l.brief);
+  assert.equal(res.code, 0, res.err);
+  const [retry] = readJsonLines(l.env.FAKE_BUILDER_LOG);
+  assert.ok(retry.args.includes("opencode/deepseek-v4.1-flash-free"), JSON.stringify(retry.args));
+});
