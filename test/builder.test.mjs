@@ -140,6 +140,15 @@ test("builder start runs the agent in its own sandbox and lands its commit on th
   assert.equal(state.sandboxDeleted, true);
 });
 
+test("a cursor builder runs with process inspection allowed so OpenShell can identify it", async () => {
+  const l = lab();
+  await withTask(l);
+  assert.equal((await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief)).code, 0);
+  const run = readJsonLines(l.env.FAKE_OPENSHELL_LOG).find((a) => a[1] === "exec" && a.includes("cursor-agent"));
+  assert.ok(run, "no exec of cursor-agent");
+  assert.equal(run[run.indexOf("CURSOR_AGENT_ALLOW_PROCESS_INSPECTION=1") - 1], "--env");
+});
+
 test("uncommitted work is committed on the host and the task is marked done", async () => {
   const l = lab({ FAKE_BUILDER_MODE: "dirty" });
   await withTask(l);
