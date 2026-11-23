@@ -64,6 +64,32 @@ test("an option that is not on the card, or an unknown card, starts nothing", as
   assert.equal((await chooseLimit(cfg, { id: "ffffffffffff", label: "codex:gpt-5", start: startOk([]) })).status, "failed");
 });
 
+test("typed text picks a replacement: a bare name matches another harness's listed model, harness:model names one", async (t) => {
+  const { sessionCfg, cfg } = await setup(t);
+  const models = { claude: ["sonnet"], codex: ["gpt-5"], cursor: ["auto", "deepseek-v41-flash-1017-high"], opencode: ["opencode/deepseek-v4.1-flash-free"] };
+  const opts = { listed: async () => models, available: () => ["claude", "codex", "cursor", "opencode"] };
+  const sent = await alertLimit(sessionCfg, { harness: "codex", limit: LIMIT, ...opts, send: async () => {} });
+  const calls = [];
+  const typed = await chooseLimit(cfg, { id: sent.id, typed: "DeepSeek", start: startOk(calls), ...opts });
+  assert.equal(typed.status, "started");
+  assert.deepEqual([calls[0].harness, calls[0].model], ["cursor", "deepseek-v41-flash-1017-high"]);
+  const other = await alertLimit(sessionCfg, { harness: "claude", limit: { ...LIMIT, window: "weekly", windowName: "weekly" }, ...opts, send: async () => {} });
+  assert.equal((await chooseLimit(cfg, { id: other.id, typed: "opencode:opencode/deepseek-v4.1-flash-free", start: startOk(calls), ...opts })).status, "started");
+  assert.deepEqual([calls[1].harness, calls[1].model], ["opencode", "opencode/deepseek-v4.1-flash-free"]);
+});
+
+test("typed text that names no listed model, or only the limited harness, starts nothing", async (t) => {
+  const { sessionCfg, cfg } = await setup(t);
+  const opts = { listed: async () => ({ ...LISTED, cursor: ["auto"] }), available: () => ["claude", "codex", "cursor"] };
+  const sent = await alertLimit(sessionCfg, { harness: "claude", limit: LIMIT, ...opts, send: async () => {} });
+  const calls = [];
+  const none = await chooseLimit(cfg, { id: sent.id, typed: "deepseek", start: startOk(calls), ...opts });
+  assert.equal(none.status, "failed");
+  assert.match(none.detail, /No listed model matches "deepseek"/);
+  assert.equal((await chooseLimit(cfg, { id: sent.id, typed: "sonnet", start: startOk(calls), ...opts })).status, "failed");
+  assert.equal(calls.length, 0);
+});
+
 test("the UI answers a limit card through the choice surface and starts the replacement", async (t) => {
   const { fake, sessionCfg, cfg } = await setup(t);
   const sent = await alertLimit(sessionCfg, { harness: "claude", limit: LIMIT, listed: async () => LISTED, available: () => ["codex"] });

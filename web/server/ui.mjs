@@ -883,7 +883,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   async function answerLimit(project, approval, answer) {
     if (hosted) reject(403, "Handle usage limits on the agent machine");
     const label = Object.values(parseChoice(approval.questions, answer) ?? {})[0];
-    const result = await chooseLimit(project.cfg, { id: approval.id, label, start, env });
+    // Text typed in Other, not a listed option, names a harness or model (lib/limit-alert.mjs typedReplacement).
+    const listedOption = (approval.questions?.[0]?.options ?? []).some(o => o.label === label);
+    const result = await chooseLimit(project.cfg, { id: approval.id, ...(listedOption ? { label } : { typed: label }), start, env });
     if (result.status === "duplicate") reject(409, result.detail);
     if (result.status === "failed") reject(400, result.detail);
     // The pick closes the card on every phone: no second pick, and the waiting dot clears.

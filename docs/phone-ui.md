@@ -244,6 +244,7 @@ The card offers up to four replacements, then **Wait for reset**:
 - The pattern role's `fallback` (`harness:model`) comes first, when the session's pattern role defines one.
 - Then the first listed model of each other available harness (`lib/models.mjs`).
 - **Wait for reset** only acknowledges. Nothing else changes.
+- Text typed in **Other** picks a replacement not listed: `harness:model`, or a name matched case-insensitively against each other available harness's listed models (first match in the order claude, codex, cursor, opencode), so `deepseek` starts Cursor `deepseek-v41-flash-1017-high`. The limited harness is never picked. Text that matches nothing is refused with the reason.
 - A replacement starts a new session for each session on the card, in the folder that session ran in. A folder that is gone is refused with its path. The handoff prompt quotes the session title and last activity as data, not instructions. The original sessions keep running. Each session's timeline gets a row that links to its replacement.
 - A pick closes the card on every phone (`approval-end`, reason `answered`), so no second pick is offered; a second pick returns 409.
 - An untyped alert (the Claude `StopFailure` hook) and a typed one (the runner's `rate_limit_event`) make one card. The project keeps one card per harness and window, whatever reset each report knows: a later report of the same window joins that card and keeps the newer known reset. A known reset time closes the card at that time; an unknown reset keeps it open for 5 hours.
