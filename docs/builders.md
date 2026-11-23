@@ -97,6 +97,10 @@ Each secret goes through a 0600 temp copy and a single-file upload; it never app
 
 The login shell of `sandbox exec` sets `SSL_CERT_FILE` to the CA OpenShell terminates TLS with, so the unit never overrides it.
 
+Cursor needs OpenShell's DNS broker and outbound TCP 443 to the Cursor hosts listed above. The broker must be able to resolve the running CLI's binary identity through `/proc/<pid>/exe`. The builder passes `CURSOR_AGENT_ALLOW_PROCESS_INSPECTION=1` to the CLI and lists the staged executables, including the bundled `node`, in the network policy. Keep the image's resolver configuration readable under `/etc`. The Cursor endpoints use `protocol: tcp` and `tls: skip`, so the OpenShell broker routes the connection and Cursor validates the origin certificate. This setup uses the standard OpenShell builder capabilities, with no additional Linux capabilities required.
+
+For the reachability gate, launch a throwaway Cursor builder from the OpenShell host using `ai-collab builder start --task <smoke-task> --harness cursor --brief <file>`. Give it a brief that asks it to edit a tracked file, commit, and run `oncebitten check --base main`. Verify a successful Cursor response in the builder unit log and confirm the commit landed on the host's builder branch. A DNS lookup alone cannot verify TLS or policy routing. The fake-endpoint regression in `test/builder.test.mjs` exercises the builder launch and commit round trip. Keep using Codex builders per [MISSION](../MISSION.md) until the live gate passes.
+
 The harness's own sandbox or permission prompts are off (`--sandbox disabled` for Cursor, `--dangerously-bypass-approvals-and-sandbox` for Codex, `--dangerously-skip-permissions` for Claude): OpenShell is the isolation. Codex also gets `--dangerously-bypass-hook-trust`, because a headless `codex exec` otherwise fires no hooks at all; it covers hooks from `$CODEX_HOME` and installed plugins, and hooks a repository ships in its own `.codex/` stay off in a sandbox project Codex has not marked trusted (see [Install](install.md#codex)).
 
 ## Continue a stopped builder

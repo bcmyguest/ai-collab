@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
+import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCli } from "../lib/cli.mjs";
@@ -149,13 +150,24 @@ test("builder start runs the agent in its own sandbox and lands its commit on th
   assert.equal(state.sandboxDeleted, true);
 });
 
-test("a cursor builder runs with process inspection allowed so OpenShell can identify it", async () => {
-  const l = lab();
+test("a Cursor builder reaches a fake API with process inspection enabled and lands its commit", async (t) => {
+  const requests = [];
+  const server = createServer((req, res) => {
+    requests.push([req.method, req.url, req.headers.host]);
+    res.end("cursor-ok");
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const l = lab({ FAKE_CURSOR_API_PORT: String(server.address().port) });
   await withTask(l);
-  assert.equal((await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief)).code, 0);
-  const run = readJsonLines(l.env.FAKE_OPENSHELL_LOG).find((a) => a[1] === "exec" && a.includes("cursor-agent"));
-  assert.ok(run, "no exec of cursor-agent");
-  assert.equal(run[run.indexOf("CURSOR_AGENT_ALLOW_PROCESS_INSPECTION=1") - 1], "--env");
+  const result = await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief);
+  assert.equal(result.code, 0, result.err);
+  assert.deepEqual(requests, [["GET", "/probe", "api2.cursor.sh"]]);
+  assert.equal(wtGit(l, "rev-list", "--count", "main..HEAD").trim(), "1");
+  assert.equal(task(l).status, "review");
 });
 
 test("uncommitted work is committed on the host and waits for review", async () => {
