@@ -2,10 +2,11 @@
 import { spawn } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
-import { configDir, listProjects } from "../lib/config.mjs";
+import { configDir, listProjects, stateDir } from "../lib/config.mjs";
 import { withMission } from "../lib/mission.mjs";
 import { withReview } from "../lib/pm-review.mjs";
-import { projectOfFolder } from "../lib/schedule-session.mjs";
+import { isProjectPaused, PROJECT_PAUSED } from "../lib/project-pause.mjs";
+import { harnessOfCommand, projectOfFolder, sessionOfCommand } from "../lib/schedule-session.mjs";
 import { childEnv } from "../lib/start.mjs";
 import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.mjs";
 import { scopeLaunch } from "../lib/scope.mjs";
@@ -163,7 +164,12 @@ export function tickFn(entry, { env = process.env, log = () => {}, graceMs, proj
     const command = withReview(withMission(entry.command, { project, env, log }), { project });
     // The command runs in its own scope, so a runner restart does not kill an agent a tick started; it also outlives
     // the tick's own timeout only if the scope cannot be made, where the group kill still applies.
-    const result = await wf.step(TICK_STEP, () => runCommand(command, { cwd: entry.cwd, env: { ...childEnv(env), [SYSTEM_PROMPT_ENV]: "1" }, timeoutMs: entry.timeoutMs, signal: wf.signal, graceMs, scope: { env, label: entry.name, description: `AI Collab schedule ${entry.name}` } }), {
+    const result = await wf.step(TICK_STEP, () => {
+      if (project && harnessOfCommand(entry.command) && !sessionOfCommand(entry.command) && isProjectPaused({ project, stateDir: stateDir(env) })) {
+        return { ok: false, exitCode: null, signal: null, timedOut: false, durationMs: 0, tail: PROJECT_PAUSED };
+      }
+      return runCommand(command, { cwd: entry.cwd, env: { ...childEnv(env), [SYSTEM_PROMPT_ENV]: "1" }, timeoutMs: entry.timeoutMs, signal: wf.signal, graceMs, scope: { env, label: entry.name, description: `AI Collab schedule ${entry.name}` } });
+    }, {
       onCut: () => ({ ok: false, exitCode: null, signal: null, timedOut: false, durationMs: 0, tail: "", cut: "runner restarted during the run; not re-run" }),
     });
     const how = result.timedOut ? " (timed out)" : result.signal ? ` (${result.signal})` : "";

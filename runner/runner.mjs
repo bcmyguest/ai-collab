@@ -1,4 +1,5 @@
 // Runner core: one durable "session" workflow per owned session; control calls and ntfy input become durable messages.
+import { isProjectPaused, PROJECT_PAUSED } from "../lib/project-pause.mjs";
 import { randomBytes, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
@@ -743,6 +744,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   /** Starts an owned session; resolves {status:"started", session, nativeId, workflowId, detail}. */
   async function start({ project, harness, prompt, model, place = "folder", permissionMode, codeMode, taskId, builder: builderId, system = true } = {}, patternRun, continuation) {
     if (!configs.has(project)) fail(400, "Unknown project");
+    if (isProjectPaused(configs.get(project))) fail(409, PROJECT_PAUSED);
     const adapter = adapterOf(harness);
     if (!PLACES.includes(place)) fail(400, "Unknown start place");
     // OpenShell is the boundary: every harness there runs with approvals off, whatever mode the caller named.
@@ -793,6 +795,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
 
   async function continueBuilder({ project, taskId, harness }) {
     if (!configs.has(project)) fail(400, "Unknown project");
+    if (isProjectPaused(configs.get(project))) fail(409, PROJECT_PAUSED);
     if (typeof taskId !== "string" || !taskId) fail(400, "Invalid task id");
     const task = openTasks(project, env).list().find(task => task.id === taskId);
     const previous = task && stoppedBuilder(project, task, env);
@@ -893,6 +896,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
 
   async function startPattern({ project, name, task } = {}) {
     const cfg = patternConfig(project);
+    if (isProjectPaused(cfg)) fail(409, PROJECT_PAUSED);
     let initial;
     try {
       const pattern = getPattern(cfg, name, env);

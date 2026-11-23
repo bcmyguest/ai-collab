@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { PROJECT_PAUSED, setProjectPaused } from "../lib/project-pause.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { listenControl, route } from "../runner/control.mjs";
 import { runnerRequest, runnerClient } from "../runner/client.mjs";
-import { loadSchedules, registerSchedules, runCommand, schedulesPath } from "../runner/schedules.mjs";
+import { loadSchedules, registerSchedules, runCommand, schedulesPath, tickFn } from "../runner/schedules.mjs";
 
 const tmp = () => mkdtempSync(path.join(os.tmpdir(), "ai-collab-sched-"));
 const dbFile = () => path.join(tmp(), "runner.db");
@@ -212,4 +213,22 @@ test("GET /v1/schedules lists schedules and POST run starts one over the control
 test("route rejects a GET on the run path", async () => {
   const runner = { schedules: () => [], runSchedule: () => ({}) };
   await assert.rejects(route(runner, "GET", new URL("http://runner.invalid/v1/schedules/pm/run"), {}), { status: 405 });
+});
+
+test("a paused project skips scheduled session starts and lets a scheduled resume run", async () => {
+  const cwd = tmp();
+  const stateDir = path.join(cwd, "state");
+  const codex = path.join(cwd, "codex");
+  writeFileSync(codex, "#!/bin/sh\necho ran\n", { mode: 0o700 });
+  const project = { project: "demo", root: cwd, stateDir };
+  const env = { AI_COLLAB_STATE_DIR: stateDir, AI_COLLAB_SCOPE: "off" };
+  setProjectPaused(project, true);
+  const tick = (command) => tickFn({ name: "beat", cwd, command, timeoutMs: 1000 }, { env, projects: [project] })(
+    new Date(0), new Date(0), { step: (_name, run) => run() },
+  );
+
+  assert.equal((await tick([codex, "exec", "do work"])).tail, PROJECT_PAUSED);
+  const resumed = await tick([codex, "exec", "resume", "existing-session", "continue work"]);
+  assert.equal(resumed.ok, true);
+  assert.match(resumed.tail, /ran/);
 });
