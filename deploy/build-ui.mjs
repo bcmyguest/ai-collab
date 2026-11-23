@@ -7,9 +7,13 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const web = path.join(root, "web");
 const next = path.join(root, "node_modules", "next", "dist", "bin", "next");
 
-const args = [next, "build", web, ...process.argv.slice(2)];
+// Use this option from the checkout served by the ai-collab-ui user unit.
+const options = process.argv.slice(2);
+const deployAndVerify = options.includes("--deploy-and-verify");
+const args = [next, "build", web, ...options.filter(arg => arg !== "--deploy-and-verify")];
 
 if (process.env.AI_COLLAB_NEXT_DIST) {
+  if (deployAndVerify) throw new Error("--deploy-and-verify requires publishing the default UI build");
   const build = spawnSync(process.execPath, args, { stdio: "inherit" });
   if (build.error) throw build.error;
   process.exit(build.status ?? 1);
@@ -36,4 +40,18 @@ try {
   }
 } finally {
   if (!published) rmSync(output, { recursive: true, force: true });
+}
+
+if (published && deployAndVerify) {
+  const restart = spawnSync("systemctl", ["--user", "restart", "ai-collab-ui.service"], {
+    stdio: "inherit",
+  });
+  if (restart.error) throw restart.error;
+  process.exitCode = restart.status ?? 1;
+  if (process.exitCode === 0) {
+    const verify = fileURLToPath(new URL("./verify-ui.mjs", import.meta.url));
+    const result = spawnSync(process.execPath, [verify], { stdio: "inherit" });
+    if (result.error) throw result.error;
+    process.exitCode = result.status ?? 1;
+  }
 }
