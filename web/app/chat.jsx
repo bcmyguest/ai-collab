@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { HarnessLogo, hasLogo } from "./logos";
-import { Activity, Square, ArrowLeft, ArrowUp, AtSign, Bot, Check, CheckCheck, CircleCheck, Coffee, CornerLeftUp, FolderGit2, ListChecks, LoaderCircle, Menu, Minimize2, Monitor, Moon, Plus, Reply, RotateCw, Sun, VolumeX, X, Zap } from "lucide-react";
+import { Activity, Square, ArrowLeft, ArrowUp, AtSign, Bot, Check, CheckCheck, CircleCheck, Coffee, CornerLeftUp, FolderGit2, LoaderCircle, Menu, Minimize2, Monitor, Moon, Plus, Reply, RotateCw, Sun, VolumeX, X, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatContainerContent, ChatContainerRoot, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
@@ -24,8 +24,9 @@ import { chatThread } from "@/lib/chat-turns";
 import { NewAgentComposer } from "./new-session";
 import { PatternsPage } from "./patterns-page";
 import { TaskBoard } from "./tasks";
+import { ProjectNav } from "./project-nav";
 import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
-import { TABS, parseSelection, projectNavigation, selectionHash } from "@/lib/selection";
+import { TABS, parseSelection, projectNavigation, projectViewCounts, selectionHash } from "@/lib/selection";
 import { agentName, namedAgents, unnamedAgents } from "@/lib/sidebar";
 import { sessionState } from "@/lib/session-state";
 import { subscribeUiEvents } from "@/lib/ui-events";
@@ -320,23 +321,7 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
       </ul>
       {data.closedProjects?.length > 0 && <div className="pt-4"><ClosedProjects names={data.closedProjects} act={projectAction}/></div>}
     </section>
-    {!home && <section className="px-2 pb-2">
-      {/* The task board has its own entry, beside Patterns and teams, rather than a link beside SESSIONS. */}
-      <button type="button" onClick={() => navigate({ project: current, level: "tasks" })} aria-current={selected.level === "tasks" ? "page" : undefined}
-        title="Every task in this project, on a status board"
-        className={cn("flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left text-sm transition-colors hover:bg-sidebar-accent", selected.level === "tasks" && "bg-sidebar-accent font-medium")}>
-        <ListChecks className="size-4 shrink-0 text-muted-foreground"/>
-        <span className="min-w-0 flex-1 truncate">Tasks</span>
-        {(() => { const waiting = (data.tasks?.tasks || []).filter(task => task.question && !task.question.answer).length;
-          return waiting > 0 && <span aria-label={`${waiting} waiting on your decision`} className="shrink-0 rounded-full bg-amber-500 px-1.5 text-xs font-medium text-white">{waiting} need you</span>; })()}
-        <span className="shrink-0 text-xs text-muted-foreground">{(data.tasks?.tasks || []).length}</span>
-      </button>
-      <button type="button" onClick={() => navigate({ project: current, level: "patterns" })} aria-current={selected.level === "patterns" ? "page" : undefined}
-        className={cn("flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left text-sm transition-colors hover:bg-sidebar-accent", selected.level === "patterns" && "bg-sidebar-accent font-medium")}>
-        <span className="min-w-0 flex-1 truncate">Patterns and teams</span>
-        <span className="shrink-0 text-xs text-muted-foreground">{(data.patterns || []).length}</span>
-      </button>
-    </section>}
+    {/* Chat, Tasks and Teams are a project's own views: they live in the project rail (the bottom bar on a phone). */}
     {/* Scheduled jobs are the runner's own entries, not agents: they stay in their own section below. */}
     <ScheduledJobs project={home ? "" : current} openRun={openHash}/>
     {/* Agents (sessions that set an identity name) sit apart from the plain session rows and from Scheduled jobs. */}
@@ -364,6 +349,9 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
 
 function ZoomControls({ data, selected, now, navigate, compact }) {
   const project = selected.project || data.project;
+  // A picked project's own views are the rail beside the sidebar (the bottom bar on a phone), so the header keeps only
+  // the session's views. A project has none, and an empty header row would only add a gap.
+  if (!(selected.level === "session" && selected.session) && !compact) return null;
   return <div className="flex flex-wrap items-center gap-2">
     {/* Projects and sessions live in the sidebar (the menu on a phone); the header keeps only the session views. */}
     {selected.level === "session" && selected.session && (selected.tab === "raw"
@@ -941,7 +929,7 @@ function Console({ account }) {
   // The new-agent composer replaces the chat while it is open.
   const paused = data.projects.some(item => item.id === project && item.paused);
   const composing = level === "project" && Boolean(creating) && creating === project && ready && !paused;
-  const projectLinks = projectNavigation(project, level);
+  const viewCounts = projectViewCounts(data);
   const agent = level === "session" ? data.agents.find(item => item.id === selected.session) : undefined;
   const target = level === "session" ? selected.session : "all";
   const missing = level === "session" && !target;
@@ -949,7 +937,11 @@ function Console({ account }) {
   const inbox = level === "inbox";
   const identity = agentName(agent);
   const sessionLabel = !agent?.generatedName ? agent?.name : "";
-  const title = inbox ? "Decision inbox" : home ? "Home" : patterns ? "Patterns" : tasksView ? "Tasks" : level === "session" ? identity || sessionLabel || short(selected.session) || "Sessions" : project;
+  // A picked project's own views read alike: the header's kicker names the project and its h1 the view. A session keeps
+  // its own name; Home and the inbox are not inside a project.
+  const projectView = level === "project" ? "Chat" : level === "tasks" ? "Tasks" : level === "patterns" ? "Teams" : "";
+  const title = inbox ? "Decision inbox" : home ? "Home" : level === "session" ? identity || sessionLabel || short(selected.session) || "Sessions"
+    : projectView || project;
   // A home or Sessions card opens its session, or one of its subagent runs.
   const openCard = (node, run = "") => navigate({ project: node.project, level: "session", harness: node.harness || peerOf(node.id), session: node.id, ...(run ? { tab: "subagents", run } : {}) });
   // The session's ⋯ menu opens its raw activity: every tool call, unfolded.
@@ -1034,15 +1026,11 @@ function Console({ account }) {
   const sidebar = <Sidebar inactiveOpen={inactiveOpen} onInactiveToggle={rememberInactive} data={data} selected={selected} now={now} navigate={navigate} newSession={newSession} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")} openRaw={openRaw} projectAction={projectAction}
     openHash={hash => { setNavOpen(false); location.hash = hash.slice(1); }}/>;
   const anyWaiting = data.projects.some(project => project.waiting > 0);
-  const projectNav = projectLinks.length > 0 && <nav aria-label="Project views">
-    <div className="mx-auto grid max-w-3xl grid-cols-3 gap-1">
-      {projectLinks.map(({ label, href, current }) => <a key={href} href={href} aria-current={current ? "page" : undefined}
-        className={cn("flex min-h-11 items-center justify-center rounded-lg px-2 text-sm font-medium focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
-          current ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>{label}</a>)}
-    </div>
-  </nav>;
+  // A picked project keeps its three views at every level inside it, so one list feeds the rail and the phone's bar.
+  const navLinks = projectNavigation(project, level, viewCounts);
   return <SurfaceContext.Provider value={{ surfaces, submit: payload => action("a2ui", payload, "Sent"), disabled: !ready || working }}><div className="flex h-dvh w-full overflow-hidden">
     <aside className="hidden w-72 shrink-0 border-r bg-sidebar text-sidebar-foreground md:block">{sidebar}</aside>
+    <ProjectNav links={navLinks} rail/>
     <Sheet open={navOpen} onOpenChange={setNavOpen}>
       <SheetContent side="left" className="w-[85vw] max-w-80 bg-sidebar p-0">
         <SheetTitle className="sr-only">Projects</SheetTitle>
@@ -1056,9 +1044,10 @@ function Console({ account }) {
           <Button variant="ghost" size="icon" className="relative md:hidden" aria-label="Projects" aria-expanded={navOpen} onClick={() => setNavOpen(true)} title={anyWaiting ? "Sessions waiting on you" : undefined}>
             <Menu/>{anyWaiting && <span aria-hidden className="absolute right-1.5 top-1.5 size-2.5 rounded-full bg-amber-500 ring-2 ring-background"/>}
           </Button>
-          {/* Back one level: a session returns to its project chat, a project to Home. */}
-          {(!home || inbox) && <Button variant="ghost" size="icon" aria-label={level === "session" ? "Back to " + project : "Home"} title={level === "session" ? "Back to the " + project + " chat" : "Home: every project's sessions"}
-            onClick={() => navigate(level === "session" || patterns ? { project, level: "project" } : { level: "home" })}><ArrowLeft/></Button>}
+          {/* Back one level, the same step on every view: a session (or its compactions) returns to its project's chat, and
+              a project view returns to Home. The rail's own links do the sideways moves between the project's views. */}
+          {(!home || inbox) && <Button variant="ghost" size="icon" aria-label={level === "session" || level === "compactions" ? "Back to " + project : "Home"} title={level === "session" || level === "compactions" ? "Back to the " + project + " chat" : "Home: every project's sessions"}
+            onClick={() => navigate(level === "session" || level === "compactions" ? { project, level: "project" } : { level: "home" })}><ArrowLeft/></Button>}
           {level === "session" && selected.session && <Avatar address={selected.session} className="size-8 shrink-0"/>}
           <div className="min-w-0 flex-1">
             {level === "session" ? <>
@@ -1072,7 +1061,7 @@ function Console({ account }) {
                 {identity && sessionLabel && sessionLabel !== identity && " · " + sessionLabel}
               </p>
             </> : <>
-              <p className="truncate text-xs text-muted-foreground">{home ? "All projects" : patterns || tasksView ? "Project · " + project : "Project"}</p>
+              <p className="truncate text-xs text-muted-foreground">{home ? "All projects" : project ? "Project · " + project : "Project"}</p>
               <h1 className="truncate text-base font-semibold leading-tight">{title}</h1>
             </>}
             {level === "session" && agent?.parent && <button type="button" onClick={() => openAddress(agent.parent)} title={"Started by " + agent.parent}
@@ -1113,7 +1102,6 @@ function Console({ account }) {
               onClick={() => action("compact", { target: selected.session }, "Compaction requested")}><Minimize2/>Compact</Button></span>}/>}
         {!home && !listing && !tasksView && !patterns && !subagents && !raw && !compactions && <ConversationHistory key={requested} requested={requested}/>}
       </header>
-      {projectNav && <div className="hidden shrink-0 border-b bg-background px-3 py-1 md:block">{projectNav}</div>}
       <div className={cn("flex flex-col gap-2 px-3 empty:hidden", composing && "min-h-0 flex-1 justify-center pb-[20vh]")}>
         {composing && <NewAgentComposer key={project + ":" + (data.startable || []).join(",")} project={project} startable={data.startable || []} places={data.startPlaces || ["folder"]} startPlace={data.startPlace || "folder"} sandboxHarnesses={data.openshellHarnesses || []}
           startDefault={data.startDefault} codeModeDefault={data.codeModeDefault !== false} agents={data.agents} models={models} disabled={!ready} start={startSession} close={() => setCreating("")} open={openAddress}/>}
@@ -1215,7 +1203,7 @@ function Console({ account }) {
           }
           return sent;
         }}/>}
-      {projectNav && <div className="shrink-0 border-t bg-background px-3 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] md:hidden">{projectNav}</div>}
+      <ProjectNav links={navLinks}/>
     </main>
   </div></SurfaceContext.Provider>;
 }

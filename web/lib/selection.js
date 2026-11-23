@@ -1,7 +1,7 @@
 import { isTaskId } from "./task-tags.js";
 
 // Location hash → console selection: the level, project, session, view tab and subagent run a URL names.
-export const LEVELS = [["project", "Project"], ["session", "Sessions"], ["tasks", "Tasks"], ["patterns", "Patterns and teams"], ["compactions", "Compactions"]];
+export const LEVELS = [["project", "Project"], ["session", "Sessions"], ["tasks", "Tasks"], ["patterns", "Teams"], ["compactions", "Compactions"]];
 // Views each level accepts in the hash: a session's timeline (activity), its subagents and raw activity; nothing else.
 export const TABS = { project: [], session: ["activity", "subagents", "raw"], tasks: [], patterns: [] };
 
@@ -27,15 +27,36 @@ export function selectionHash(next = {}) {
   return params.toString();
 }
 
-const PROJECT_VIEWS = [["project", "Chat"], ["tasks", "Tasks"], ["patterns", "Patterns"]];
+// A project's own views, in the order the left rail and the phone's bottom bar show them.
+const PROJECT_VIEWS = [["project", "Chat"], ["tasks", "Tasks"], ["patterns", "Teams"]];
 
-export function projectNavigation(project, level) {
-  if (!project || !PROJECT_VIEWS.some(([view]) => view === level)) return [];
+/**
+ * The links for a project's views: Chat, Tasks and Teams, scoped to that project.
+ * A picked project keeps all three at every level inside it — a project view, a session, its subagents, the compaction
+ * map — so the rail and the phone's bar never come and go. `level` marks the matching view current; inside a session none
+ * is, because a session is not one of them. Home, the inbox and no project have no project views.
+ * `counts` adds each view's badge: Tasks its task count with `waiting` tasks to decide, Teams its pattern count.
+ */
+export function projectNavigation(project, level, counts = {}) {
+  if (!project || level === "home" || level === "inbox") return [];
   return PROJECT_VIEWS.map(([view, label]) => ({
+    view,
     label,
     href: "#" + selectionHash({ project, level: view }),
     current: view === level,
+    count: Number(counts[view]) || 0,
+    waiting: view === "tasks" ? Number(counts.waiting) || 0 : 0,
   }));
+}
+
+/**
+ * The badge counts a project's views show: every task and how many of them wait on the operator's decision, and the
+ * number of patterns and teams.
+ */
+export function projectViewCounts(data = {}) {
+  const tasks = data.tasks?.tasks || [];
+  const waiting = tasks.filter(task => task.question && !task.question.answer).length;
+  return { tasks: tasks.length, waiting, patterns: (data.patterns || []).length };
 }
 
 /** The selection named by a hash without its "#"; an empty hash, home, or level=home is the Home overview. */

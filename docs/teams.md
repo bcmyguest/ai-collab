@@ -109,7 +109,7 @@ The runner stores run state in `<stateDir>/runner/pattern-runs/<project>/<run>.j
 - CLI: `ai-collab pattern list|show|create|delete|start|runs|status|advance`. `pattern start` is for the operator's shell.
 - MCP: `pattern_list` and `pattern_status` read; `pattern_advance` acts for the calling session; `pattern_start` returns an error to agents (operator-only).
 - Chat: `@<pattern> <task>` starts a run; the text after the tag is the task.
-- Web, Patterns page (sidebar "Patterns and teams"):
+- Web, Patterns page (the project's **Teams** view in the rail or the phone's bottom bar):
   - The list has a "New team" button. It opens the editor on the shipped template, renamed to the team name you type.
   - A pattern's page shows its roles, graph, handoffs and runs. "Raw" shows its DOT text. "Edit" opens the editor (project patterns only; built-in and global patterns are read-only, use "Copy to project").
   - The editor shows the DOT text and a graph that re-draws about 300 ms after each edit. A parse or check error shows its line and that source line; the graph keeps the last valid one. Save is enabled only when the text checks. Save writes `team.dot` in the project.
@@ -138,4 +138,4 @@ A writing agent turns a plain-language request into one `team.dot`; the operator
 
 ## Legacy team roster in the UI
 
-Open a legacy team in **Patterns and teams** to see its member roster. For a project team, **Edit roster** lets you save one harness or harness:model per line. Global rosters are read-only in the UI. Teams also work through `ai-collab team create|list|delete|start|status`, the MCP `team_*` tools, and `@team` chats. Create new coordination as a pattern.
+Open a legacy team in the project's **Teams** view to see its member roster. For a project team, **Edit roster** lets you save one harness or harness:model per line. Global rosters are read-only in the UI. Teams also work through `ai-collab team create|list|delete|start|status`, the MCP `team_*` tools, and `@team` chats. Create new coordination as a pattern.

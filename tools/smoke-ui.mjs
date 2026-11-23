@@ -1,4 +1,4 @@
-// Loads the UI at phone width. Pass --decisions, --composer, --home-sessions, --inactive, or --kanban.
+// Loads the UI at phone width. Pass --decisions, --composer, --home-sessions, --inactive, --kanban or --project-nav.
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -246,6 +246,43 @@ async function checkOperatorWorkflow(page) {
   await inbox.getByRole("heading", { name: /^Waiting on you · \d+$/ }).waitFor();
   await page.getByRole("button", { name: "Home", exact: true }).click();
   await home.waitFor();
+  await checkDeployedProjectNav(page);
+}
+
+// The live deployment's project views: the rail beside the sidebar on a computer, the bar under the composer on a phone.
+async function checkDeployedProjectNav(page) {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(page.url().replace(/#.*$/, "#home"));
+  await page.getByRole("navigation", { name: "Projects" }).waitFor();
+  const start = page.getByRole("button", { name: /^New session in / }).first();
+  if (!(await start.count())) return; // A deployment with no project has no project views to check.
+  const project = (await start.getAttribute("aria-label")).replace(/^New session in /, "");
+  const views = page.getByRole("navigation", { name: "Project views" });
+  const visible = async () => {
+    for (let index = 0; index < await views.count(); index += 1) {
+      const box = await views.nth(index).boundingBox();
+      if (box && box.width > 0 && box.height > 0) return views.nth(index);
+    }
+    return null;
+  };
+  for (const [level, label] of [["project", "Chat"], ["tasks", "Tasks"], ["patterns", "Teams"]]) {
+    await page.goto(page.url().replace(/#.*$/, "#") + new URLSearchParams({ project, level }));
+    const nav = await visible();
+    await nav.getByRole("link").first().waitFor();
+    const current = nav.getByRole("link").locator('[aria-current="page"]');
+    assert.equal(await current.count(), 1, level + " highlights one view");
+    assert.equal((await current.innerText()).trim(), label);
+  }
+  const rail = await visible();
+  const railBox = await rail.boundingBox();
+  const sidebarBox = await page.getByRole("navigation", { name: "Projects" }).boundingBox();
+  assert.ok(railBox.x >= sidebarBox.x + sidebarBox.width - 1, "the rail sits right of the projects sidebar");
+  await page.setViewportSize({ width: 390, height: 844 });
+  const bar = await visible();
+  const barBox = await bar.boundingBox();
+  assert.ok(barBox.y + barBox.height >= 700, "the phone's bar sits at the bottom of the screen");
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390);
+  await page.goto(page.url().replace(/#.*$/, "#home"));
 }
 
 async function checkKanban(page, fixture) {
@@ -292,6 +329,58 @@ async function checkKanban(page, fixture) {
   assert.equal(await done.getByText("Archived task").count(), 0);
 }
 
+async function checkProjectNav(page, fixture) {
+  const project = fixture.project;
+  const nav = () => page.getByRole("navigation", { name: "Project views" });
+  const visibleNav = async () => {
+    const navs = nav();
+    for (let index = 0; index < await navs.count(); index += 1) {
+      const box = await navs.nth(index).boundingBox();
+      if (box && box.width > 0 && box.height > 0) return navs.nth(index);
+    }
+    return null;
+  };
+  async function open(level, label) {
+    await page.goto(fixture.url + "/#" + new URLSearchParams({ project, level }));
+    const bar = await visibleNav();
+    await bar.getByRole("link").first().waitFor();
+    // Exactly one view is current, and it is the one the URL names.
+    const current = bar.getByRole("link").locator('[aria-current="page"]');
+    assert.equal(await current.count(), 1);
+    assert.equal((await current.innerText()).trim(), label);
+    for (const box of await bar.getByRole("link").evaluateAll(nodes => nodes.map(node => {
+      const rect = node.getBoundingClientRect();
+      return { width: rect.width, height: rect.height };
+    }))) assert.ok(box.width >= 44 && box.height >= 44, "a nav target is at least 44 × 44: " + JSON.stringify(box));
+  }
+  // A phone: Chat, Tasks and Teams are one bar at the bottom, and each view opens in the same project.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open("project", "Chat");
+  await open("tasks", "Tasks");
+  await open("patterns", "Teams");
+  const phoneBar = await visibleNav();
+  const barBox = await phoneBar.boundingBox();
+  assert.ok(barBox.y + barBox.height >= 700, "the phone's nav sits at the bottom of the screen");
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390, "no horizontal overflow");
+  // A computer: the same three links are a vertical rail beside the projects sidebar.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(fixture.url + "/#" + new URLSearchParams({ project, level: "tasks" }));
+  const rail = await visibleNav();
+  await rail.getByRole("link").first().waitFor();
+  assert.equal(await rail.getByRole("link").count(), 3);
+  const railBox = await rail.boundingBox();
+  const sidebarBox = await page.getByRole("navigation", { name: "Projects" }).boundingBox();
+  assert.ok(railBox.x >= sidebarBox.x + sidebarBox.width - 1, "the rail sits right of the projects sidebar");
+  const railLinks = await rail.getByRole("link").evaluateAll(nodes => nodes.map(node => {
+    const rect = node.getBoundingClientRect();
+    return { x: Math.round(rect.x), y: Math.round(rect.y) };
+  }));
+  assert.equal(new Set(railLinks.map(link => link.x)).size, 1, "the rail stacks its links in a column");
+  assert.deepEqual([...railLinks].sort((a, b) => a.y - b.y).map(link => link.y), railLinks.map(link => link.y), "top to bottom in order");
+  assert.equal(await page.getByRole("navigation", { name: "Projects" }).isVisible(), true, "desktop keeps the projects sidebar");
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+}
+
 const deployedChrome = "/home/b/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome";
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || (existsSync(deployedChrome) ? deployedChrome : undefined) });
 let fixture;
@@ -302,8 +391,9 @@ try {
   const homeSessions = process.argv.includes("--home-sessions");
   const inactive = process.argv.includes("--inactive");
   const kanban = process.argv.includes("--kanban");
-  if (composer || decisions || homeSessions || inactive || kanban) fixture = await phoneFixture({ homeSessions, inactive, kanban });
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, ...(composer || homeSessions || inactive || kanban ? { isMobile: true, hasTouch: true } : {}) });
+  const projectNav = process.argv.includes("--project-nav");
+  if (composer || decisions || homeSessions || inactive || kanban || projectNav) fixture = await phoneFixture({ homeSessions, inactive, kanban });
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, ...(composer || homeSessions || inactive || kanban || projectNav ? { isMobile: true, hasTouch: true } : {}) });
   const errors = [];
   page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
   page.on("pageerror", error => errors.push("pageerror: " + error.message));
@@ -323,13 +413,14 @@ try {
   if (composer) await checkComposer(page, fixture);
   else if (decisions) await checkDecisions(page, fixture);
   else if (kanban) await checkKanban(page, fixture);
+  else if (projectNav) await checkProjectNav(page, fixture);
   else if (homeSessions) await checkHomeSessions(page, fixture);
   else if (inactive) await checkInactive(page, fixture);
   else if (operatorWorkflow) await checkOperatorWorkflow(page);
   else await page.waitForTimeout(6000);
   console.log(errors.slice(0, 15).join("\n") || "no errors");
   console.log("text:", (await page.innerText("body")).slice(0, 300).replace(/\n+/g, " | "));
-  if (((operatorWorkflow || kanban) && errors.length) || /pageerror|couldn.t load/.test(errors.join("\n"))) process.exitCode = 1;
+  if (((operatorWorkflow || kanban || projectNav) && errors.length) || /pageerror|couldn.t load/.test(errors.join("\n"))) process.exitCode = 1;
 } finally {
   await browser.close();
   await fixture?.close();

@@ -122,7 +122,7 @@ The mention picker lists configured teams. Post `@light-team <task>` in the proj
 
 ## Patterns
 
-The Patterns page (sidebar **Patterns and teams**) lists patterns, teams and recent runs. Open a pattern to see its roles, graph, handoffs and runs; **Raw** shows its `team.dot` text. **Edit** opens the DOT editor for a project pattern: a graph above the text on a phone (390 px), side by side on desktop. The graph redraws about 300 ms after each edit; a parse error shows its line and that source line. **New team** starts from the shipped template. Details: [Teams and patterns](teams.md).
+The Patterns page (the project's **Teams** view, in the rail on a computer and the bottom bar on a phone) lists patterns, teams and recent runs. Open a pattern to see its roles, graph, handoffs and runs; **Raw** shows its `team.dot` text. **Edit** opens the DOT editor for a project pattern: a graph above the text on a phone (390 px), side by side on desktop. The graph redraws about 300 ms after each edit; a parse error shows its line and that source line. **New team** starts from the shipped template. Details: [Teams and patterns](teams.md).
 
 **Send now** adds `urgent: true` to the send request, and a message whose envelope has `urgent: true` shows ⚡. See [Urgent messages](messaging.md#urgent-messages-send-now).
 When a direct phone message targets a Claude or Codex session with a visible draft in a local tmux pane, the composer holds the message before publishing. Tap **Send anyway** to publish it immediately, or use **Send** again after clearing or submitting the terminal draft. The check is best effort and uses the terminal cursor row.
@@ -312,11 +312,13 @@ The session header shows a model picker for runner-owned Claude sessions. While 
 
 ## Task board
 
-**Tasks** is its own entry in the left sidebar, under the project, beside **Patterns and teams** — not a link tucked in
-the SESSIONS header. It opens `#project=<name>&level=tasks` and lists every task in the project's store as a status board
+**Tasks** is one of the project's three views, beside **Chat** and **Teams**, in the left rail on a computer and the
+bottom bar on a phone (see [Project views](#project-views-the-rail-and-the-phones-bar)) — not a link tucked in the
+SESSIONS header. It opens `#project=<name>&level=tasks` and lists every task in the project's store as a status board
 (open, decided, building, review, blocked, done) with a Board / Graph switch and a status filter. An old
-`#project=<name>&level=project&tab=tasks` link still opens it. The entry shows the task count, and its board reads the
-same project stream as the chat, so the store's own file watch keeps it current.
+`#project=<name>&level=project&tab=tasks` link still opens it. The link's badge shows the tasks waiting on your decision,
+amber, or the project's whole task count when none wait, and its board reads the same project stream as the chat, so the
+store's own file watch keeps it current.
 
 The board scrolls in its own container rather than growing the page, so it never makes the body jump as cards resize. A
 long list stays smooth on a phone because of three things: each card is `content-visibility: auto` (the browser skips
@@ -415,10 +417,38 @@ Notifications carry a link: ntfy's `click` field, built from `AI_COLLAB_UI_URL` 
 
 The UI uses [shadcn/ui](https://ui.shadcn.com/docs) components with Tailwind CSS v4 and the [prompt-kit](https://www.prompt-kit.com/docs) chat components (`chat-container`, `message`, `prompt-input`, `scroll-button`), copied into `web/components/ui/` by the shadcn CLI. `web/app/shadcn.css` vendors the shadcn style's Tailwind variants. Code is highlighted with [shiki](https://shiki.style/guide/regex-engines#javascript-regexp-engine) through prompt-kit's `CodeBlockCode`: fenced blocks in chat Markdown, tool inputs (a shell command as bash, other input as JSON), and tool results whose language is clear (a diff, shell output, a read file by extension, JSON). Shiki loads on first use with its JavaScript regex engine, which needs no `'wasm-unsafe-eval'` in the CSP, and fetches each of its 12 languages (js, ts, jsx, tsx, json, bash, python, diff, markdown, yaml, css, html) on demand. Light and dark colours follow the theme. Only expanded blocks are highlighted, and blocks over 20 KB stay plain text. The theme defaults to dark; the header toggle switches to light or the system setting.
 
+## Project views: the rail and the phone's bar
+
+Picking a project gives it exactly one navigation for its three views — **Chat**, **Tasks** and **Teams** — and the same
+three links on every screen size, from `projectNavigation` in `web/lib/selection.js` and the `ProjectNav` component
+(`web/app/project-nav.jsx`):
+
+| Screen | Where the three views sit |
+|---|---|
+| Computer (from `md`, 768 px) | A vertical rail down the left edge, right of the projects sidebar: an icon over a label per view. |
+| Phone | A tab bar under the composer, above the home indicator's safe area. |
+
+Both show the same links, icons, order and highlight, so the operator never has to look somewhere else for them. Each
+link is at least 44 × 44 CSS pixels. Each link's badge is the view's own count: **Tasks** shows the tasks waiting on your
+decision in amber, falling back to the project's whole task count when none wait, and **Teams** shows the patterns and
+teams.
+
+The three views are one level deeper than the projects sidebar, which no longer repeats them: a project's sessions,
+scheduled jobs and agents stay in the sidebar, and the rail beside it picks which view the main column shows. Once a
+project is picked, both the rail and the phone's bar keep the same three links at every level inside it — a project view,
+a session, its subagents, the compaction map — so the navigation never comes and goes. Inside a session none of the three
+is highlighted, because a session is not one of them; the header's back arrow, the same step on every view, returns to
+the project's Chat from a session and to Home from a project view. **Home** and the **Decision inbox** are not a project's
+views and have no rail.
+
+Switching views keeps each view's state: a chat draft, a task filter, a pattern scroll position. Each view is its own
+hash (`level=project|tasks|patterns`), so Back, Forward and a reload all land on the same view, and only the current view
+is highlighted.
+
 ## Project navigation deploy smoke
 
-1. At a 390 × 844 phone viewport, open a project. Tap **Chat**, **Tasks**, and **Patterns** in the bottom bar. Confirm each opens in the same project, only the current view is highlighted, and each link measures at least 44 × 44 CSS pixels.
-2. Type a draft in Chat and pick a status filter in Tasks. Switch to Patterns, then return to Chat and Tasks to confirm both values are restored. Scroll the task board and the patterns list. Confirm the bar stays visible and the chat composer remains usable above it.
+1. At a 390 × 844 phone viewport, open a project. Tap **Chat**, **Tasks**, and **Teams** in the bottom bar. Confirm each opens in the same project, only the current view is highlighted, and each link measures at least 44 × 44 CSS pixels.
+2. Type a draft in Chat and pick a status filter in Tasks. Switch to Teams, then return to Chat and Tasks to confirm both values are restored. Scroll the task board and the patterns list. Confirm the bar stays visible and the chat composer remains usable above it.
 3. Repeat on desktop with the sidebar visible. Open a task detail or a pattern from its view, reload, then use browser Back and Forward. Confirm the project and highlighted view match the URL.
 4. Open Home and a session. Confirm Home still lists projects and the session still offers its timeline and subagent views.
 5. Switch between a project chat and a session timeline twice. The second switch to each shows its rows and cards without a "Loading…" pause, and new messages that arrived while away appear once the stream reconnects.
