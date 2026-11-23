@@ -843,7 +843,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     ].filter(Boolean).join("\n").slice(0, 4000);
     continuing.add(key);
     try {
-      return await start({ project, taskId, harness, prompt }, undefined, { worktree: key });
+      return await start({ project, taskId, harness, prompt, place: "folder" }, undefined, { worktree: key });
     } finally {
       continuing.delete(key);
     }
