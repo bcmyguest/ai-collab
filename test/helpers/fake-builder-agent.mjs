@@ -34,6 +34,10 @@ if (process.env.FAKE_CURSOR_API_PORT) {
   });
 }
 if (mode === "fail") process.exit(3);
+if (mode === "cursor-limit") {
+  console.error("ActionRequiredError: You've hit your usage limit. Your usage limits will reset when your monthly cycle ends on 12/18/2099.");
+  process.exit(1);
+}
 if (mode !== "empty") appendFileSync(join(process.cwd(), "notes.md"), "a line from the builder\n");
 if (mode === "commit") {
   execFileSync("git", ["add", "-A"]);
