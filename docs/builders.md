@@ -49,6 +49,8 @@ When the turn ends, the runner collects the branch and task calls, runs the norm
 
 ## What the standalone unit does
 
+The task moves to `building` after the sandbox workspace is uploaded and before the unit runs the agent.
+
 ```mermaid
 flowchart TD
   A[stage: clone of the branch with its own .git, tools, home, policy] --> B[sandbox create --policy]
