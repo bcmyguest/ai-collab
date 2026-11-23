@@ -26,6 +26,7 @@ import { PatternsPage } from "./patterns-page";
 import { LandReviews } from "./land-reviews";
 import { OutcomeRequest } from "./outcomes";
 import { TaskBoard } from "./tasks";
+import { Shipped } from "./shipped";
 import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
 import { TABS, parseSelection, projectNavigation, selectionHash } from "@/lib/selection";
 import { agentName, namedAgents, unnamedAgents } from "@/lib/sidebar";
@@ -1177,6 +1178,8 @@ function Console({ account }) {
             {home && !inbox && <LandReviews landing={data.landing} disabled={working} onLand={() => action("land-reviews", { project: undefined }, "Landing reviews")}/>}
             {home && <DecisionQueue decisions={data.decisions} inbox={inbox} now={now} disabled={working} action={action}
               seen={seenDecisions} markSeen={markDecisionSeen} openInbox={() => navigate({ level: "inbox" })}/>}
+            {home && !inbox && data.shipped?.length > 0 && <Shipped items={data.shipped}
+              open={item => navigate({ project: item.project, level: "tasks", task: item.id })}/>}
             {!inbox && <SessionList sessions={data.sessions} now={now} open={openCard} raw={openRaw} disabled={working} showProject={home} compact={home}
               inactiveOpen={inactiveOpen} onInactiveToggle={rememberInactive}
               deadOpen={Boolean(views.get(memoryKey, {}).dead)} onDeadToggle={rememberDead}
