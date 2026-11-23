@@ -10,6 +10,7 @@ import { harnessOfCommand, projectOfFolder, sessionOfCommand } from "../lib/sche
 import { childEnv } from "../lib/start.mjs";
 import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.mjs";
 import { scopeLaunch } from "../lib/scope.mjs";
+import { hostAgentRefusal } from "../lib/agent-guard.mjs";
 
 export const DEFAULT_TIMEOUT_SEC = 900;
 export const TAIL_CHARS = 2000;
@@ -168,6 +169,8 @@ export function tickFn(entry, { env = process.env, log = () => {}, graceMs, proj
       if (project && harnessOfCommand(entry.command) && !sessionOfCommand(entry.command) && isProjectPaused({ project, stateDir: stateDir(env) })) {
         return { ok: false, exitCode: null, signal: null, timedOut: false, durationMs: 0, tail: PROJECT_PAUSED };
       }
+      const refusal = hostAgentRefusal(command, { env });
+      if (refusal) return { ok: false, exitCode: null, signal: null, timedOut: false, durationMs: 0, tail: refusal };
       return runCommand(command, { cwd: entry.cwd, env: { ...childEnv(env), [SYSTEM_PROMPT_ENV]: "1" }, timeoutMs: entry.timeoutMs, signal: wf.signal, graceMs, scope: { env, label: entry.name, description: `AI Collab schedule ${entry.name}` } });
     }, {
       onCut: () => ({ ok: false, exitCode: null, signal: null, timedOut: false, durationMs: 0, tail: "", cut: "runner restarted during the run; not re-run" }),

@@ -32,6 +32,7 @@ import { limitFromRunError } from "../lib/limits.mjs";
 import { alertLimit } from "../lib/limit-alert.mjs";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, LIMIT, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, OPENSHELL_PERMISSION, permissionSettings } from "./contract.mjs";
 import { sessionOfCommand } from "../lib/schedule-session.mjs";
+import { ALLOW_HOST_AGENT_ENV } from "../lib/agent-guard.mjs";
 import { DELIVERY, deliveryWorkflow } from "./delivery.mjs";
 import { publishApproval, publishApprovalEnd, publishEnded, publishEvent, publishReceipts } from "./publish.mjs";
 
@@ -64,6 +65,9 @@ const TEXT_MAX = 4000;
 const MODEL = /^[a-zA-Z0-9][a-zA-Z0-9._:/[\]-]{0,119}$/;
 
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
+// Approvals off outside OpenShell is an unguarded agent on the host (lib/agent-guard.mjs); only the operator's env lifts it.
+const hostFullAccess = (mode, place, env) => mode === "full-access" && place !== "openshell" && env[ALLOW_HOST_AGENT_ENV] !== "1"
+  ? `full-access runs only in openshell; set ${ALLOW_HOST_AGENT_ENV}=1 on the runner to allow it on the host` : "";
 
 // This process as {pid, start}, the shape lib/process.mjs isRunning checks.
 function selfProcess() {
@@ -752,6 +756,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     if (!PERMISSION_MODES.includes(mode) || !adapter.capabilities.permissionModes.includes(mode)) fail(400, `${harness} does not support permission mode ${mode}`);
     const permission = permissionSettings(harness, mode, place);
     if (permission.error) fail(400, permission.error);
+    if (hostFullAccess(mode, place, env)) fail(400, hostFullAccess(mode, place, env));
     const checked = checkPrompt(prompt);
     if (checked.error) fail(400, checked.error);
     if (model !== undefined && (typeof model !== "string" || !MODEL.test(model))) fail(400, "Invalid model name");
@@ -1011,6 +1016,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     if (!PERMISSION_MODES.includes(mode) || !adapterOf(r.harness).capabilities.permissionModes.includes(mode)) fail(400, `${r.harness} does not support permission mode ${mode}`);
     const permission = permissionSettings(r.harness, mode, r.place);
     if (permission.error) fail(400, permission.error);
+    if (hostFullAccess(mode, r.place, env)) fail(400, hostFullAccess(mode, r.place, env));
     const handle = await liveHandle(s);
     if (!handle.setPermissionMode) fail(409, `${r.harness} cannot change its permission mode while open`);
     await handle.setPermissionMode(mode);
