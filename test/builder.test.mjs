@@ -165,6 +165,10 @@ test("a Cursor builder reaches a fake API with process inspection enabled and la
   await withTask(l);
   const result = await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief);
   assert.equal(result.code, 0, result.err);
+  const run = readJsonLines(l.env.FAKE_OPENSHELL_LOG).find((a) => a[1] === "exec" && a.includes("cursor-agent"));
+  assert.ok(run, "no exec of cursor-agent");
+  assert.equal(run[run.indexOf("CURSOR_AGENT_ALLOW_PROCESS_INSPECTION=1") - 1], "--env");
+  assert.equal(run[run.indexOf("AI_COLLAB_PROJECT=demo") - 1], "--env");
   assert.deepEqual(requests, [["GET", "/probe", "api2.cursor.sh"]]);
   assert.equal(wtGit(l, "rev-list", "--count", "main..HEAD").trim(), "1");
   assert.equal(task(l).status, "review");
