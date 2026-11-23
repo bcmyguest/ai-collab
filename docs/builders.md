@@ -12,6 +12,11 @@ Lib: `lib/builder.mjs`. OpenShell lifecycle: `runner/sandbox.mjs`. Tests: `test/
 | UI or runner start, Cursor | the project sandbox `ai-collab-<project>` | `startPlace` (default `openshell`); [Start a session](phone-ui.md#start-a-session-from-the-phone) |
 | UI or runner start, Claude, Codex, OpenCode | host folder, approvals on | no sandbox launcher in their runner adapters yet |
 | Schedule with `"sandbox": true` | a fresh sandbox `s-<name>-<hash>` per tick | [Scheduled workflows](owned-sessions-contract.md#scheduled-workflows) |
+| PM schedule (`pm`) | host, with `AI_COLLAB_ALLOW_HOST_AGENT=1` on the runner unit | operator decision 2026-11-23: it starts builders and writes tasks, which a sandbox cannot yet |
+| `stakeholders`, `rule-steward` | host | plain scripts; their agents run read-only (Codex `-s read-only`, Cursor `--mode ask`) or with a Claude tool allowlist |
+| `run_code`, `run_read_code` | `ai-collab-code`, `aic-ro-*` | [Code mode](code-mode.md#run_code) |
+
+Builders, runner sessions and sandboxed ticks share one cap, `defaults.json` `maxSandboxes` (default 6); `run_code`'s sandboxes do not count. `builder start` over the cap is refused with an error naming the running sandboxes, before it creates a worktree. Runner sessions and ticks get the same Claude and Codex login files as builders (see [Credentials and network](#credentials-and-network)); long-lived session tokens may replace these copies later.
 | Schedule without it, `job run`, runner `full-access` outside OpenShell | host | refused when the argv turns approvals off, unless `AI_COLLAB_ALLOW_HOST_AGENT=1` ([Environment variables](configuration.md#environment-variables)) |
 
 ## Commands

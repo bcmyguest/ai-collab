@@ -11,7 +11,7 @@ import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, permissionSettings } from "../co
 import { builderPolicy } from "../../lib/builder.mjs";
 import {
   destroySandbox, downloadTree, ensureSandbox as ensureSandboxIn, execArgv as sandboxExecArgv, runTool,
-  sandboxName as sandboxNameFor, teamSandboxName, uploadFile, uploadTree,
+  sandboxName as sandboxNameFor, teamSandboxName, uploadFile, uploadLogins, uploadTree,
 } from "../sandbox.mjs";
 
 // ACP protocolVersion 1 and the method names come from the ACP spec; `agent acp` answered `initialize`
@@ -214,6 +214,8 @@ export async function prepareSandbox({ openshell, env, sandbox, cwd, home = home
   } else {
     log("cursor: no host auth.json found; the sandbox CLI will ask to log in");
   }
+  // Claude and Codex logins too, as builders get them (operator decision 2026-11-23).
+  await uploadLogins({ openshell, env, sandbox, home, remoteHome: SANDBOX_HOME, log });
   return { workdir, env: execEnv };
 }
 
@@ -361,7 +363,7 @@ export default function cursorAdapter(config = {}) {
         claim(sandbox, spec.cwd);
         session.sandbox = sandbox;
         const prepared = await prepareSandbox({
-          openshell: openshellBin, env, sandbox, cwd: spec.cwd, home: spec.home, cursorTree,
+          openshell: openshellBin, env, sandbox, cwd: spec.cwd, home: spec.home ?? spec.env?.HOME, cursorTree,
           staged: stagedTrees, reuseWorktree: Boolean(spec.patternRun), log: (l) => ctx.log(l),
         });
         argv = execArgv({ openshell: openshellBin, sandbox, args: cursorArgs, workdir: prepared.workdir, env: { ...prepared.env, ...SANDBOX_CURSOR_ENV } });

@@ -16,7 +16,7 @@ import { agentHarness } from "../lib/agent-guard.mjs";
 import { autoDefaults, listProjects, stateDir } from "../lib/config.mjs";
 import { builderPolicy, replayable, parseRecordedCall, sharedLibs, toolSources } from "../lib/builder.mjs";
 import { projectOfFolder } from "../lib/schedule-session.mjs";
-import { destroySandbox, execArgv, runTool, sandboxCapRefusal, uploadFile } from "./sandbox.mjs";
+import { destroySandbox, execArgv, runTool, sandboxCapRefusal, uploadFile, uploadLogins } from "./sandbox.mjs";
 
 const APP_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const CLI = join(APP_ROOT, "scripts", "ai-collab.mjs");
@@ -33,8 +33,6 @@ const SANDBOX_PATH = `${TOOLS}/bin:${TOOLS}/node/bin:/usr/local/sbin:/usr/local/
 const NTFY = "http://host.openshell.internal:8794";
 const SYNC_TIMEOUT_MS = 900_000;
 const NAME_PREFIX_MAX = 8;
-// Harnesses whose host login this runner copies in; Claude and Codex credentials wait for an operator decision (docs/builders.md).
-export const CREDENTIAL_HARNESSES = ["cursor", "opencode"];
 // Per harness: where its install goes, the launcher inside it, and where its login lives in the sandbox home.
 const LAYOUTS = {
   cursor: { dir: "/sandbox/agent", launcher: "/cursor-agent", name: "cursor-agent", authDir: `${HOME_IN}/.config/cursor`, tree: (src) => src.cursorTree, auth: (src) => src.cursorAuth },
@@ -187,8 +185,10 @@ async function upload(openshell, env, sandbox, staged, harness, log) {
   if (layout.file) await uploadFile({ openshell, env, sandbox, local: staged.tree, remoteDir: layout.dir });
   else await uploadAll(openshell, env, sandbox, staged.tree, layout.dir);
   const auth = layout.auth(src);
-  if (auth && CREDENTIAL_HARNESSES.includes(harness)) await uploadSecret(openshell, env, sandbox, auth, layout.authDir);
-  else log(`no ${harness} login copied into the sandbox; the harness will ask to log in`);
+  if (auth) await uploadSecret(openshell, env, sandbox, auth, layout.authDir);
+  else log(`no host ${harness} login found; the harness will ask to log in`);
+  // Claude and Codex logins for any harness, as builders get them (operator decision 2026-11-23).
+  await uploadLogins({ openshell, env, sandbox, home: env.HOME, remoteHome: HOME_IN, log });
   if (staged.token) await uploadSecret(openshell, env, sandbox, staged.token, dirname(TOKEN_IN), basename(TOKEN_IN));
   if (src.nodeModules) {
     await uploadAll(openshell, env, sandbox, src.nodeModules, `${SANDBOX}/deps`);

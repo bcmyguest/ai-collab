@@ -180,8 +180,8 @@ The server validates the place against that list; a failed `git worktree add` st
 | Harness | Runs there | Needs |
 |---|---|---|
 | Cursor | yes; live 2026-11-23: DeepSeek replied `OK`, committed a file, and the commit landed on the host worktree | the host CLI tree (uploaded once per sandbox, about 540 MB), `~/.config/cursor/auth.json`, `CURSOR_AGENT_ALLOW_PROCESS_INSPECTION=1` and a policy for Cursor's API hosts; the runner adds both when `AI_COLLAB_OPENSHELL_POLICY` is unset |
-| Claude | no: falls back to the folder | the runner's Claude adapter runs the Agent SDK in the runner process and has no sandbox launcher; it also needs `~/.claude/.credentials.json` copied in, which waits for an operator decision. Claude works in a sandbox as a [builder](builders.md) |
-| Codex | no: falls back to the folder | the adapter runs in OpenShell only as a tracked builder; a plain start would also need `$CODEX_HOME/auth.json` copied in |
+| Claude | no: falls back to the folder | the runner's Claude adapter runs the Agent SDK in the runner process and has no sandbox launcher yet. The runner already copies `~/.claude/.credentials.json` into every session sandbox. Claude works in a sandbox as a [builder](builders.md) |
+| Codex | no: falls back to the folder | the adapter runs in OpenShell only as a tracked builder; `$CODEX_HOME/auth.json` is already copied into every session sandbox |
 | OpenCode | no: falls back to the folder | no sandbox launcher in its adapter; OpenCode free hits `provider.free-limit` inside builders |
 
 **Unverified.** Only fake executables were run (`test/start-places.test.mjs`, and the 390 px browser check). Whether `claude --bg --worktree` works together, whether the sandbox has the project at the same path, and whether hooks inside the sandbox reach `projects.json` and ntfy were not checked. Whether `claude --bg` prints the session ID that its hooks report, and whether `cursor-agent -p` runs in a workspace it has not trusted, were not checked.

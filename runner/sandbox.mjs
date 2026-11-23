@@ -23,6 +23,9 @@
 //     from the uploaded CLI tree.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { autoDefaults } from "../lib/config.mjs";
 
 const SETUP_TIMEOUT_MS = 60_000;
@@ -194,4 +197,42 @@ export async function sandboxCapRefusal({ openshell, env, name = "" }) {
   const counted = countedSandboxes(names);
   const cap = maxSandboxes(env);
   return counted.length >= cap ? `${counted.length} OpenShell sandboxes are running (${counted.join(", ")}); the cap is ${cap} (defaults.json maxSandboxes)` : "";
+}
+
+/**
+ * The Claude and Codex login files a sandbox gets, found as lib/builder.mjs finds them: Claude's
+ * `$CLAUDE_CONFIG_DIR/.credentials.json` (default ~/.claude), Codex's `$CODEX_HOME/auth.json`, else ~/.codex/auth.json.
+ */
+export function harnessLogins(env = process.env, home = env.HOME || homedir(), remoteHome = "/sandbox/home") {
+  const claude = join(env.CLAUDE_CONFIG_DIR || join(home, ".claude"), ".credentials.json");
+  const codex = [join(env.CODEX_HOME || join(home, ".codex"), "auth.json"), join(home, ".codex", "auth.json")].find((file) => existsSync(file));
+  return [
+    ...(existsSync(claude) ? [{ harness: "claude", file: claude, remoteDir: `${remoteHome}/.claude` }] : []),
+    ...(codex ? [{ harness: "codex", file: codex, remoteDir: `${remoteHome}/.codex` }] : []),
+  ];
+}
+
+/** Copies one secret in through a 0600 temp file, so it never appears in argv, env or a log. */
+export async function uploadSecret({ openshell, env, sandbox, file, remoteDir, name = basename(file) }) {
+  const dir = mkdtempSync(join(tmpdir(), "ai-collab-sandbox-secret-"));
+  try {
+    writeFileSync(join(dir, name), readFileSync(file), { mode: 0o600 });
+    return await uploadFile({ openshell, env, sandbox, local: join(dir, name), remoteDir });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Copies the host's Claude and Codex logins into a sandbox home; a failed copy is logged, never fatal. Returns the harnesses copied. */
+export async function uploadLogins({ openshell, env, sandbox, home, remoteHome, log = () => {} }) {
+  const copied = [];
+  for (const login of harnessLogins(env, home, remoteHome)) {
+    try {
+      await uploadSecret({ openshell, env, sandbox, file: login.file, remoteDir: login.remoteDir });
+      copied.push(login.harness);
+    } catch (error) {
+      log(`could not copy the ${login.harness} login into ${sandbox}: ${error.message.split("\n")[0]}`);
+    }
+  }
+  return copied;
 }
