@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import test from "node:test";
 import { merge } from "../lib/merge-cli.mjs";
 import { runCli } from "../lib/cli.mjs";
@@ -22,7 +22,10 @@ for (const failure of [null, "checkout", "merge", "ci", "test", "changed HEAD", 
     t.after(() => rmSync(root, { recursive: true, force: true }));
     const hostCheckout = join(root, "ai-collab");
     mkdirSync(hostCheckout);
-    const env = { HOME: "/host-home", PATH: "/host-bin", GIT_DIR: "/elsewhere" };
+    const node = realpathSync(process.execPath);
+    const npmCli = join(dirname(node), "..", "lib", "node_modules", "npm", "bin", "npm-cli.js");
+    const bundledNpm = existsSync(npmCli);
+    const env = { HOME: "/host-home", PATH: bundledNpm ? "/host-bin" : process.env.PATH, GIT_DIR: "/elsewhere" };
     const calls = [];
     const gateHomes = [];
     let output = "";
@@ -35,14 +38,19 @@ for (const failure of [null, "checkout", "merge", "ci", "test", "changed HEAD", 
       err: { write: (message) => { errors += message; } },
       run(file, argv, options) {
         calls.push([file, argv]);
-        if (file === "npm") {
+        if (file !== "git") {
+          assert.ok(isAbsolute(file));
+          if (bundledNpm) {
+            assert.equal(file, node);
+            assert.equal(argv[0], npmCli);
+          }
           assert.equal(options.cwd, worktree);
           assert.ok(existsSync(options.env.HOME));
           assert.ok(existsSync(options.env.TMPDIR));
           assert.equal(options.env.CODEX_HOME, join(options.env.HOME, ".codex"));
           assert.notEqual(options.env.HOME, env.HOME);
           gateHomes.push(options.env.HOME);
-          return { status: Number(failure === argv[0]) };
+          return { status: Number(failure === argv.at(-1)) };
         }
         assert.equal(options.cwd, hostCheckout);
         const args = argv.join(" ");
@@ -77,7 +85,7 @@ for (const failure of [null, "checkout", "merge", "ci", "test", "changed HEAD", 
     });
     assert.equal(status, failure ? 1 : 0, errors);
     for (const home of gateHomes) assert.equal(existsSync(home), false);
-    const steps = calls.flatMap(([file, argv]) => file === "npm" ? argv : argv.slice(2, 3));
+    const steps = calls.flatMap(([file, argv]) => file !== "git" ? argv.slice(-1) : argv.slice(2, 3));
     const pushed = steps.includes("push");
     assert.equal(pushed, failure === null || failure === "push");
     if (pushed) assert.deepEqual(steps.filter((step) => ["ci", "test", "push"].includes(step)), ["ci", "test", "push"]);

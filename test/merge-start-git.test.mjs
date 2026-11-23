@@ -46,9 +46,9 @@ function sandbox(t) {
       out: { write: (message) => { output += message; } },
       err: { write: (message) => { errors += message; } },
       run(file, argv, options) {
-        if (file === "npm") {
-          npm.push(argv[0]);
-          return { status: argv[0] === "test" ? gate : 0, stdout: "" };
+        if (file !== "git") {
+          npm.push(argv.at(-1));
+          return { status: argv.at(-1) === "test" ? gate : 0, stdout: "" };
         }
         return (run ?? spawnSync)(file, argv, options);
       },
