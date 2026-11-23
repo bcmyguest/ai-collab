@@ -55,6 +55,10 @@ for (const failure of [null, "checkout", "merge", "ci", "test", "changed HEAD", 
         }
         if (args.includes("refs/heads/builder/topic^{commit}")) return { status: 0, stdout: "builder-sha" };
         if (args.includes("refs/remotes/origin/main^{commit}")) return { status: 0, stdout: "base-sha" };
+        if (argv[0] === "worktree" && argv[1] === "remove") {
+          assert.deepEqual(argv.slice(2), ["--force", worktree]);
+          return { status: 0, stdout: "" };
+        }
         if (argv[0] === "worktree") {
           assert.deepEqual(argv.slice(0, 3), ["worktree", "add", "-b"]);
           assert.match(argv[3], /^merge\//);
@@ -66,6 +70,7 @@ for (const failure of [null, "checkout", "merge", "ci", "test", "changed HEAD", 
           headReads++;
           return { status: 0, stdout: failure === "changed HEAD" && headReads === 2 ? "other" : "merged-sha" };
         }
+        if (argv[2] === "ls-remote") return { status: 0, stdout: "merged-sha\trefs/heads/main" };
         if (argv[2] === "push") assert.deepEqual(argv.slice(3), ["origin", "merged-sha:refs/heads/main"]);
         return { status: Number(Boolean(failure && argv[2] === failure)), stdout: "" };
       },
@@ -76,7 +81,7 @@ for (const failure of [null, "checkout", "merge", "ci", "test", "changed HEAD", 
     const pushed = steps.includes("push");
     assert.equal(pushed, failure === null || failure === "push");
     if (pushed) assert.deepEqual(steps.filter((step) => ["ci", "test", "push"].includes(step)), ["ci", "test", "push"]);
-    assert.equal(output.includes("git pull --ff-only"), failure === null);
+    assert.equal(output.includes("merge: merged merged-sha"), failure === null);
     if (!failure) assert.match(output, /node tools\/smoke-ui\.mjs/);
   });
 }

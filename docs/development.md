@@ -40,7 +40,11 @@ Run `./setup_prek.sh` once. It installs [prek](https://github.com/j178/prek) (th
 
 `./setup_prek.sh` also runs `scripts/install-git-hooks.sh`, which prek cannot do. It copies `scripts/git-hooks/reference-transaction` into the repository's hooks directory (`.git/hooks/`, shared by every worktree) and sets `pull.rebase=false` and `pull.ff=only` in the repository config. The hook aborts any update of `refs/heads/main` whose new commit does not descend from the current one, and any delete of it, so `git update-ref`, `git reset`, `git commit --amend` and a rebase cannot move main backward or drop unpushed commits. Commits on top of main, `git pull --ff-only`, `git pack-refs` and `git gc` still work, and other branches are not checked. Without the pull settings, a global `pull.rebase=true` would turn a plain `git pull` into a rebase that the hook refuses halfway, leaving HEAD detached.
 
-Rerun `scripts/install-git-hooks.sh` after the hook changes. To land work, use a worktree:
+Rerun `scripts/install-git-hooks.sh` after the hook changes.
+
+The PM lands builder branches with `ai-collab merge start <branch>...`. It fetches origin, merges the branches onto `origin/main` (never local main) in a fresh worktree, runs `npm ci` and `npm test` there with a temporary `HOME`, `CODEX_HOME` and `TMPDIR`, pushes on green, confirms with `git ls-remote origin refs/heads/main` that origin holds the pushed commit, runs `git pull --ff-only` in /home/b/ai-collab and removes the worktree. Its last line is the result: `merge: merged <sha> (<branches>); host pulled`, `...; host pull skipped: <git error>` when local edits or a diverged main block the pull, or `merge: refused: <reason>` with nothing pushed on a conflict, red gate or unverified push. A refused run keeps its worktree for inspection.
+
+To land other work by hand, use a worktree:
 
 ```sh
 git worktree add -b fix/<name> ~/ai-collab-wt-<name> origin/main
