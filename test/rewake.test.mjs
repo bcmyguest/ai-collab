@@ -101,3 +101,24 @@ test("hook --rewake does nothing for a subagent", { timeout: 15000 }, async (t) 
   });
   assert.deepEqual([r.code, r.out, r.err], [0, "", ""]);
 });
+
+// Runs the rewake hook under a parent whose argv is `claude <args>`, as harnessProcess finds it in /proc.
+function runRewakeUnderClaude(env, input, args) {
+  const wrapper = `const { spawn } = require("node:child_process"); const c = spawn(process.execPath, [${JSON.stringify(HOOK)}, "--rewake", "--host", "claude"], { stdio: ["pipe", "inherit", "inherit"] }); c.stdin.end(${JSON.stringify(JSON.stringify(input))}); c.on("close", (code) => process.exit(code));`;
+  return new Promise((resolve) => {
+    const child = spawn("bash", ["-c", `exec -a claude "${process.execPath}" -e '${wrapper.replace(/'/g, "'\\''")}' -- "$@"`, "bash", ...args], { env, stdio: ["ignore", "pipe", "pipe"] });
+    let err = "";
+    child.stderr.on("data", (d) => { err += d; });
+    child.on("close", (code) => resolve({ code, err }));
+  });
+}
+
+test("rewake stands down in a headless claude -p run, where an exit 2 would block the prompt", async (t) => {
+  const { env, bob } = await setup(t);
+  await sendMessage(bob, `alice#${LABEL}`, "ping");
+  const input = { session_id: SESSION_ID, hook_event_name: "UserPromptSubmit", cwd: process.cwd() };
+  const headless = await runRewakeUnderClaude(env, input, ["-p", "do it"]);
+  assert.equal(headless.code, 0, headless.err);
+  const interactive = await runRewakeUnderClaude(env, input, []);
+  assert.equal(interactive.code, 2, "an interactive session is still woken");
+});

@@ -147,10 +147,12 @@ async function deliver(cfg, host, event, msg, key) {
 // Claude asyncRewake registration: waits for a peer message and exits 2 with it, which wakes an idle session.
 async function rewake(cfg, host, msg) {
   if (host !== "claude" || !cfg.session || (typeof msg.agent_id === "string" && msg.agent_id)) return;
+  const harness = harnessProcess(host);
+  // A headless run is never idle, and an exit 2 at UserPromptSubmit blocks its prompt; its own hooks deliver messages.
+  if (harness?.headless) return;
   const release = await takeWaiterSlot(cfg);
   const ctrl = new AbortController();
   for (const name of ["SIGTERM", "SIGINT", "SIGHUP"]) process.once(name, () => ctrl.abort());
-  const harness = harnessProcess(host);
   let result = { code: 0 };
   try {
     result = await runWaiter(cfg, {
