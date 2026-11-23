@@ -19,6 +19,69 @@ const VIEWS = [["board", "Board"], ["graph", "Graph"]];
 const CARD = "flex w-full min-w-0 flex-col gap-1.5 rounded-xl border bg-card p-3 text-left text-sm";
 const LAZY = "[content-visibility:auto] [contain-intrinsic-size:auto_7rem]";
 
+const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
+
+/**
+ * A review card's one-line packet: the submitted commit, how much it changed, and whether the branch has moved.
+ * The detail view (ReviewTask) is where the verdict is given.
+ */
+function ReviewLine({ review }) {
+  const decision = review.decision;
+  const changed = [review.insertions ? `+${review.insertions}` : "", review.deletions ? `−${review.deletions}` : ""].filter(Boolean).join(" ");
+  return <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+    <span className="font-mono">{String(review.commit).slice(0, 7)}</span>
+    {changed && <span className="font-mono">{changed}</span>}
+    <span>{plural(review.files?.length ?? 0, "file")}{review.more > 0 && ` +${review.more}`}</span>
+    {review.check?.code !== 0 && <span className="text-destructive">check failed</span>}
+    {decision ? <span>{decision.action === "accept" ? "accepted" : "returned"}</span>
+      : review.stale ? <span className="text-amber-600 dark:text-amber-400">branch moved</span>
+        : <span className="text-violet-600 dark:text-violet-400">waiting for you</span>}
+  </p>;
+}
+
+/**
+ * The verdict on a completed build, shown for a task in review: what it was asked to do, the host check, the diff
+ * link and the two decisions. Return needs a one-line note so the next build knows what to change.
+ */
+function ReviewTask({ task, review, decide }) {
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const decided = review.decision;
+  const send = async (decision, text) => {
+    if (busy) return;
+    setBusy(true);
+    try { if (await decide(task.id, decision, text, { commit: review.commit, submission: review.submission })) setNote(""); }
+    finally { setBusy(false); }
+  };
+  return <li className="flex min-w-0 flex-col gap-2 rounded-xl border border-violet-500/50 bg-violet-500/5 p-3 text-sm">
+    <TaskMetadata task={task} fullId/>
+    <p className="font-medium leading-snug wrap-break-word">{task.title}</p>
+    {review.criteria && <p className="text-xs text-muted-foreground break-words">Asked for: {review.criteria}</p>}
+    <ReviewLine review={review}/>
+    <p className="text-xs text-muted-foreground">
+      <span className="font-mono">{String(review.commit).slice(0, 12)}</span> on <span className="font-mono">{review.branch}</span>
+      {" · "}<a className="underline" href={review.diff} target="_blank" rel="noreferrer">View the diff</a>
+    </p>
+    {review.check?.text && <p className="rounded border bg-background/60 p-2 font-mono text-xs break-words">{review.check.text}</p>}
+    {decided ? <p className="text-xs">
+      <span className="text-muted-foreground">{decided.action === "accept" ? "Accepted" : "Returned"} by </span>
+      <span className="font-mono">{decided.by}</span>
+      {decided.note && <span className="text-muted-foreground"> — {decided.note}</span>}
+    </p> : review.stale ? <p className="text-xs text-amber-600 dark:text-amber-400">
+      The branch moved past this commit, so this packet can no longer be decided. Queue the task for a fresh build.
+    </p> : <>
+      <form className="flex gap-2" onSubmit={event => { event.preventDefault(); send("return", note); }}>
+        <input value={note} onChange={event => setNote(event.target.value)} maxLength={500} aria-label={`Return note for ${task.title}`}
+          placeholder="What should change?" enterKeyHint="send" disabled={busy}
+          className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"/>
+        <Button type="submit" size="sm" variant="outline" className="h-9" disabled={busy || !note.trim()}>Return</Button>
+      </form>
+      <Button type="button" size="sm" className="h-9 self-start" disabled={busy} onClick={() => send("accept")}>Accept build</Button>
+    </>}
+  </li>;
+}
+
+
 function TaskMetadata({ task, fullId }) {
   const priority = priorityOf(task);
   return <div className="flex w-full min-w-0 items-start gap-2">
@@ -174,7 +237,7 @@ const Column = memo(function Column({ status, list, now, compose, open, fullId, 
   </section>;
 });
 
-export function TaskBoard({ project, board, now, open, compose, decide, taskId, back, continuation, recover, inspect, move }) {
+export function TaskBoard({ project, board, now, open, compose, decide, review: decideReview, taskId, back, continuation, recover, inspect, move }) {
   const filterKey = "task filter " + project;
   const [filter, setFilter] = useState(() => views.get(filterKey, "all"));
   const [view, setView] = useState("board");
@@ -262,6 +325,7 @@ export function TaskBoard({ project, board, now, open, compose, decide, taskId, 
     {taskId ? <>
       <Button type="button" size="sm" variant="outline" className="self-start" onClick={back}>Back to board</Button>
       {task?.question && !task.question.answer && decide && <ul><Decision task={task} decide={decide} compose={message} fullId/></ul>}
+      {task?.review && decideReview && <ul><ReviewTask task={task} review={task.review} decide={decideReview}/></ul>}
       {task ? <Column status={task.status} list={[task]} fullId now={clock} compose={message} open={openOwner} continuation={continuation} recover={recover && recoverTask}/>
         : board && !board.error && <p role="status">Task #{taskId} was not found.</p>}
     </> : <>

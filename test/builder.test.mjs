@@ -108,7 +108,16 @@ test("builder start runs the agent in its own sandbox and lands its commit on th
   // The commit made inside the sandbox is on the host branch, and the worktree is clean.
   assert.match(wtGit(l, "log", "--format=%s", "-2"), /^docs: add a line\ninit\n$/);
   assert.equal(wtGit(l, "status", "--porcelain").replace(/^\?\? node_modules\n?/m, ""), "");
-  assert.equal(task(l).status, "done");
+  // A landed build waits for the operator's verdict, with a phone-sized packet to judge it by.
+  assert.equal(task(l).status, "review");
+  const packet = task(l).review;
+  assert.equal(task(l).progress.at(-1).text, "builder builder-smoke-task: exit 0, 1 commit(s) on builder/smoke-task, 1 oncebitten capture(s)");
+  assert.equal(packet.commit, wtGit(l, "rev-parse", "HEAD").trim());
+  assert.equal(packet.branch, "builder/smoke-task");
+  assert.equal(packet.criteria, "Add one line to notes.md.");
+  assert.deepEqual(packet.check, { code: 0, text: "" });
+  assert.deepEqual([packet.files, packet.insertions, packet.deletions], [[{ path: "notes.md", insertions: 1, deletions: 0 }], 1, 0]);
+  assert.equal(packet.decision, undefined);
   assert.ok(task(l).progress.some((p) => p.text === "half way"));
   assert.ok(task(l).progress.some((p) => /builder builder-smoke-task: exit 0, 1 commit\(s\)/.test(p.text)));
   // The agent ran with the brief, the sandbox notes and Cursor's own sandbox off.
@@ -149,13 +158,13 @@ test("a cursor builder runs with process inspection allowed so OpenShell can ide
   assert.equal(run[run.indexOf("CURSOR_AGENT_ALLOW_PROCESS_INSPECTION=1") - 1], "--env");
 });
 
-test("uncommitted work is committed on the host and the task is marked done", async () => {
+test("uncommitted work is committed on the host and waits for review", async () => {
   const l = lab({ FAKE_BUILDER_MODE: "dirty" });
   await withTask(l);
   assert.equal((await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief)).code, 0);
   assert.match(wtGit(l, "log", "--format=%s", "-1"), /^chore\(builder\): uncommitted work from smoke-task\n$/);
   assert.match(wtGit(l, "log", "--format=%b", "-1"), /Assisted-by: Cursor:deepseek-v41-flash-1017-high/);
-  assert.equal(task(l).status, "done");
+  assert.equal(task(l).status, "review");
 });
 
 test("an agent that fails with no work leaves the task blocked and the sandbox deleted", async () => {
@@ -376,7 +385,7 @@ async function ownedBuilderTest(t, prompt) {
       await new Promise(resolve => setTimeout(resolve, 20));
     }
     assert.equal(runner.get(address).status, "ended");
-    assert.equal(task(l).status, "done");
+    assert.equal(task(l).status, "review");
     assert.match(wtGit(l, "show", "HEAD:notes.md"), /a line from the builder/);
     assert.equal(readJsonLines(l.env.FAKE_BUILDER_LOG).length, 1);
     assert.deepEqual(JSON.parse(readFileSync(l.env.FAKE_OPENSHELL_STATE, "utf8")).sandboxes, []);
@@ -442,7 +451,7 @@ test("Codex builder uses the standalone unit when the control socket is absent",
   assert.equal(res.code, 0, res.err);
   assert.match(res.out, /^builder-smoke-task\t/);
   assert.ok(readJsonLines(l.env.FAKE_SYSTEMD_LOG).some(row => row[0] === "systemd-run"));
-  assert.equal(task(l).status, "done");
+  assert.equal(task(l).status, "review");
   assert.equal(task(l).owner, undefined);
 });
 
@@ -459,7 +468,7 @@ test("standalone Codex retries a usage limit with Cursor and carries uncommitted
   await withTask(l);
   const res = await l.cli("builder", "start", "--task", "smoke-task", "--brief", l.brief);
   assert.equal(res.code, 0, res.err);
-  assert.equal(task(l).status, "done");
+  assert.equal(task(l).status, "review");
   assert.match(wtGit(l, "show", "HEAD:notes.md"), /Codex partial edit\na line from the builder/);
   const [cursor] = readJsonLines(l.env.FAKE_BUILDER_LOG);
   assert.equal(cursor.args[6], "deepseek-v41-flash-1017-high");
@@ -492,7 +501,7 @@ for (const harness of ["cursor", "opencode"]) {
       assert.equal(server.codemode, false);
       assert.deepEqual(agent.args.slice(0, 5), ["run", "--standalone", "--auto", "--format", "json"]);
     }
-    assert.equal(task(l).status, "done");
+    assert.equal(task(l).status, "review");
   });
 }
 

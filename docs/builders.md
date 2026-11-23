@@ -96,13 +96,28 @@ The task store is a host file, so `ai-collab` inside the sandbox is a shim: `tas
 
 | Case | Final status |
 |---|---|
-| Commits landed, the agent exited successfully, and policy checks passed | `done`, or `blocked` if the agent requested it |
+| Commits landed, the agent exited successfully, and policy checks passed | `review`, or `blocked` if the agent requested it |
 | The policy check reports a finding or cannot run | `blocked`, with the reason |
 | The agent requested `done` without landed commits or exited unsuccessfully | `blocked`, with the exit code and commit count |
 | The fast-forward failed | `blocked`, with the kept clone's path |
 | Setup or collection failed | `blocked`, with the error |
 
 The runner saves the verdict before publishing it. The final status and completion progress are written together, so a restarted runner can recognize a verdict it already published. The terminal transition wakes the PM through `wakeOnTasks`.
+
+### Review
+
+A landed build settles to `review`, not `done`: the operator gives the verdict, not the builder. The task carries a review packet with the submitted commit, the branch, the criteria the build was judged against (the task's detail, else the brief's first paragraph), the host `oncebitten` check, and per-file line counts (at most 12 files, with the rest counted). The board shows one line per card — the short commit, the net change, the file count, and whether it waits for the operator or has already been decided — and the task view offers the diff and the two decisions:
+
+- **Accept** moves the task to `done` for that commit.
+- **Return** moves it back to `decided` with a one-line note, so the next build knows what to change.
+
+A decision is refused when the packet is stale: a re-run replaces the packet's `submission`, and a branch that has moved past the submitted commit no longer reads as current, so a build cannot be accepted after later work landed on top of it.
+
+```
+ai-collab task set <id> status=review   # a person can queue a review by hand too
+```
+
+The packet rides in the same store write that moves the task to `review`, so a card never shows a review status with no packet. `/api/review-diff?project=<p>&id=<task>&submission=<s>` serves the `base..commit` diff as plain text, capped at 4 MiB; the commit and base come from the stored packet, never the request, so a URL cannot ask for an arbitrary diff.
 
 ## oncebitten
 

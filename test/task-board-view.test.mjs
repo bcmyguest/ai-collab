@@ -7,7 +7,7 @@ test("columns follow the status order and a filter keeps one column", () => {
     { id: "a", status: "done" }, { id: "b", status: "open" }, { id: "c", status: "open" }, { id: "d", status: "blocked" },
   ];
   assert.deepEqual(columnsOf(tasks).map(([status]) => status), COLUMNS);
-  assert.deepEqual(columnsOf(tasks).map(([, list]) => list.map(task => task.id)), [["b", "c"], [], [], ["d"], ["a"]]);
+  assert.deepEqual(columnsOf(tasks).map(([, list]) => list.map(task => task.id)), [["b", "c"], [], [], [], ["d"], ["a"]]);
   assert.deepEqual(columnsOf(tasks, "open"), [["open", [tasks[1], tasks[2]]]]);
   assert.deepEqual(FILTERS, ["all", ...COLUMNS]);
 });
@@ -25,7 +25,7 @@ test("countsOf counts every status once, without rescanning the list per filter"
   const tasks = [
     { id: "a", status: "open" }, { id: "b", status: "open" }, { id: "c", status: "done" }, { id: "d", status: "blocked" }, { id: "e", status: "bogus" },
   ];
-  assert.deepEqual(countsOf(tasks), { open: 2, decided: 0, building: 0, blocked: 1, done: 1 });
+  assert.deepEqual(countsOf(tasks), { open: 2, decided: 0, building: 0, review: 0, blocked: 1, done: 1 });
   assert.deepEqual(countsOf([]), Object.fromEntries(COLUMNS.map((status) => [status, 0])));
 });
 

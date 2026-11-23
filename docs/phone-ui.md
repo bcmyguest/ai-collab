@@ -285,7 +285,7 @@ The session header shows a model picker for runner-owned Claude sessions. While 
 
 **Tasks** is its own entry in the left sidebar, under the project, beside **Patterns and teams** — not a link tucked in
 the SESSIONS header. It opens `#project=<name>&level=tasks` and lists every task in the project's store as a status board
-(open, decided, building, blocked, done) with a Board / Graph switch and a status filter. An old
+(open, decided, building, review, blocked, done) with a Board / Graph switch and a status filter. An old
 `#project=<name>&level=project&tab=tasks` link still opens it. The entry shows the task count, and its board reads the
 same project stream as the chat, so the store's own file watch keeps it current.
 
@@ -294,6 +294,12 @@ long list stays smooth on a phone because of three things: each card is `content
 layout and paint for the cards off screen), each card is memoized on the age string it prints rather than the raw clock,
 and the board renders ages at a coarse clock — the finest unit any card prints (seconds, minutes, hours, days) — so a
 per-second tick rarely re-renders a column at all.
+
+A **review** column holds builds that landed and wait for the operator's verdict (see [Builders](builders.md#review)).
+Its card carries the packet as one line — short commit, `+n −m`, file count, and *waiting for you* or *branch moved* —
+and opening the task shows what the build was asked for, the host check, a link to the plain-text diff, and **Accept** or
+**Return** with a one-line note. A packet whose branch has moved past the submitted commit offers no buttons: the store
+refuses the decision, so the UI does not pretend otherwise.
 
 ## Slash commands and context
 
