@@ -59,6 +59,11 @@ if (args[0] === "sandbox" && args[1] === "delete") {
   process.exit(0);
 }
 if (args[0] === "sandbox" && args[1] === "upload") {
+  const taskSnapshot = process.env.FAKE_OPENSHELL_UPLOAD_TASKS;
+  if (taskSnapshot) {
+    const snapshot = JSON.parse(readFileSync(taskSnapshot, "utf8"));
+    appendFileSync(taskSnapshot + ".uploads", JSON.stringify(snapshot) + "\n");
+  }
   const [, , sandbox, local, dest] = args;
   const target = inside(sandbox, dest || ".");
   // A trailing slash on DEST means "put the basename inside it", which is what openshell 0.1.9 does.
