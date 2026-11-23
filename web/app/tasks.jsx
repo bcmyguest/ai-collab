@@ -239,7 +239,7 @@ const Column = memo(function Column({ status, list, now, compose, open, fullId, 
   </section>;
 });
 
-export function TaskBoard({ project, board, now, open, compose, decide, skip, review: decideReview, taskId, back, continuation, recover, inspect, move }) {
+export function TaskBoard({ project, board, now, open, compose, decide, skip, review: decideReview, taskId, back, continuation, recover, inspect, move, landControl }) {
   const filterKey = "task filter " + project;
   const [filter, setFilter] = useState(() => views.get(filterKey, "all"));
   const [view, setView] = useState("board");
@@ -331,6 +331,7 @@ export function TaskBoard({ project, board, now, open, compose, decide, skip, re
       {task ? <Column status={task.status} list={[task]} fullId now={clock} compose={message} open={openOwner} continuation={continuation} recover={recover && recoverTask}/>
         : board && !board.error && <p role="status">Task #{taskId} was not found.</p>}
     </> : <>
+      {landControl}
       {waiting.length > 0 && decide && <section aria-label="Needs your decision" className="flex flex-col gap-2">
         <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-amber-600 dark:text-amber-400">
           <span aria-hidden className="inline-block size-2 rounded-full bg-amber-500"/>Needs you · {waiting.length}
