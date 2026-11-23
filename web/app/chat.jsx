@@ -24,6 +24,7 @@ import { chatThread } from "@/lib/chat-turns";
 import { NewAgentComposer } from "./new-session";
 import { PatternsPage } from "./patterns-page";
 import { LandReviews } from "./land-reviews";
+import { OutcomeRequest } from "./outcomes";
 import { TaskBoard } from "./tasks";
 import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
 import { TABS, parseSelection, projectNavigation, selectionHash } from "@/lib/selection";
@@ -740,6 +741,8 @@ function Console({ account }) {
   const stick = useRef(null);
   // A restored view is already complete, so its screen renders at once instead of waiting for the new state frame.
   const [ready, setReady] = useState(Boolean(cached));
+  const [outcomeProject, setOutcomeProject] = useState("");
+  const [outcomeError, setOutcomeError] = useState("");
   const [navOpen, setNavOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -1028,6 +1031,12 @@ function Console({ account }) {
   }
   // Close, reopen and delete a project; Delete asks first and leaves the repo, worktrees and ntfy history alone.
   async function projectAction(path, name) {
+    if (path === "request-outcome") {
+      setNavOpen(false);
+      setOutcomeError("");
+      setOutcomeProject(name);
+      return;
+    }
     if (path === "delete" && !window.confirm("Delete " + name + " from the project registry? Its repo, worktrees and ntfy history stay. Live sessions in its repo will re-home under the folder name.")) return;
     const done = await action(path, { project: name }, path === "close" ? "Closed" : path === "reopen" ? "Reopened" : "Deleted");
     if (done && path !== "reopen" && name === (selected.project || data.project)) navigate({ level: "home" });
@@ -1051,6 +1060,17 @@ function Console({ account }) {
         {sidebar}
       </SheetContent>
     </Sheet>
+    <OutcomeRequest project={outcomeProject} close={() => setOutcomeProject("")} disabled={working} error={outcomeError}
+      submit={async fields => {
+        setWorking(true);
+        setOutcomeError("");
+        try {
+          await api("request-outcome", { project: outcomeProject, ...fields });
+          setOutcomeProject("");
+          navigate({ project: outcomeProject, level: "tasks" });
+        } catch (err) { setOutcomeError(err.message); }
+        finally { setWorking(false); }
+      }}/>
     <main className="flex min-w-0 flex-1 flex-col">
       <header className="sticky top-0 z-10 flex flex-col gap-2 border-b bg-background/85 px-3 py-2 backdrop-blur supports-backdrop-filter:bg-background/70">
         <div className={cn("flex items-center gap-2", level === "session" && "flex-wrap")}>
@@ -1136,6 +1156,7 @@ function Console({ account }) {
           : <p className="py-16 text-center text-sm text-muted-foreground">Loading patterns…</p>}
       </div>}
       {!patterns && !composing && (tasksView ? <TaskBoard key={project} project={project} board={ready ? data.tasks : null} now={now} taskId={selected.task} landControl={ready && <LandReviews landing={data.landing} disabled={working} onLand={() => action("land-reviews", {}, "Landing reviews")}/>}
+        outcomeControls={{ act: action, disabled: working, paused }}
         back={() => navigate({ project, level: "tasks" })} compose={id => navigate({ project, level: "project", composeTask: id })}
         continuation={{ harnesses: paused ? [] : data.startable || [], launch: (id, harness) => action("continue-builder", { id, harness }, "Replacement started") }}
         inspect={id => navigate({ project, level: "tasks", task: id })}
