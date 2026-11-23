@@ -6,7 +6,7 @@ export const GAP = { layer: 64, node: 24 };
 // Arc bulge in the list layout: base for the first lane, step per further lane.
 // The gutter never exceeds maxGutter: past a few lanes the lane spacing compresses to fit.
 export const ARC = { base: 16, step: 14, maxGutter: 72 };
-export const STATUS_FILL = { open: "#94a3b8", decided: "#38bdf8", building: "#f59e0b", blocked: "#ef4444", done: "#10b981" };
+export const STATUS_FILL = { open: "#94a3b8", decided: "#38bdf8", building: "#f59e0b", review: "#a855f7", blocked: "#ef4444", done: "#10b981" };
 
 /** The graph of tasks: done tasks go when showDone is false, and so do the edges from them. */
 export function taskGraph(tasks, { showDone = true } = {}) {

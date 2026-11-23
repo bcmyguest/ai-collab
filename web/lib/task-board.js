@@ -1,10 +1,10 @@
 // Task board view model: status columns, the status filter and relative ages.
 import { sortTasks } from "../../lib/task-order.mjs";
 
-export const COLUMNS = ["open", "decided", "building", "blocked", "done"];
+export const COLUMNS = ["open", "decided", "building", "review", "blocked", "done"];
 export const FILTERS = ["all", ...COLUMNS];
 // The stored status stays "decided"; the UI calls it Ready, the operator approved it and a builder has not started.
-export const STATUS_LABEL = { open: "open", decided: "Ready", building: "building", blocked: "blocked", done: "done" };
+export const STATUS_LABEL = { open: "open", decided: "Ready", building: "building", review: "Review", blocked: "blocked", done: "done" };
 
 /** [status, tasks] per column in column order, each sorted by priority; a filter other than "all" keeps one column. */
 export function columnsOf(tasks, filter = "all") {
