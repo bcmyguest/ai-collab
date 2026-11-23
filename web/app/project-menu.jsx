@@ -9,6 +9,7 @@ export function ProjectMenu({ project, act }) {
       <Button variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label={"Project actions for " + project}><MoreHorizontal/></Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end">
+      <DropdownMenuItem onSelect={() => act("request-outcome", project)}>Request an outcome</DropdownMenuItem>
       <DropdownMenuItem onSelect={() => act("close", project)}>Close</DropdownMenuItem>
       <DropdownMenuItem onSelect={() => act("delete", project)} className="text-destructive">Delete</DropdownMenuItem>
     </DropdownMenuContent>

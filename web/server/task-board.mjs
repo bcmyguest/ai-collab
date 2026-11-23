@@ -22,9 +22,9 @@ function reviewOf(task, context) {
 /** Tasks of a project backend; an unreadable store reports its error instead of tasks. */
 export function taskBoard(backend, agents = [], runs = [], sessions = [], previousBuilder = () => null, assignment, reviewContext) {
   if (!backend) return { tasks: [] };
-  let list;
+  let list, outcomes;
   try {
-    list = backend.list();
+    ({ tasks: list, outcomes } = backend.projectBoard ? backend.projectBoard() : { tasks: backend.list() });
   } catch (err) {
     return { tasks: [], error: err.message };
   }
@@ -37,6 +37,7 @@ export function taskBoard(backend, agents = [], runs = [], sessions = [], previo
     if (!previous || session.createdAt > previous.createdAt) sessionOf.set(session.taskId, session);
   }
   return {
+    ...(outcomes ? { outcomes } : {}),
     tasks: list.map(task => {
       const owner = task.owner || sessionOf.get(task.id)?.address;
       const previous = previousBuilder(task);
