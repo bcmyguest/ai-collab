@@ -1,0 +1,42 @@
+#!/bin/sh
+# Refuses any update of refs/heads/main that is not a fast-forward, and any delete of it.
+# Installed by scripts/install-git-hooks.sh; see docs/development.md "Protected main".
+
+[ "$1" = prepared ] || exit 0
+
+refuse() {
+  cat >&2 <<MSG
+ai-collab: refused to move refs/heads/main $1.
+main only moves forward here: other agents' unpushed commits and every agent's
+loaded code live in this checkout. Commit on top of main, update it with
+  git pull --ff-only
+and if local main is ahead of origin, push it: git push origin main.
+To merge, rebase or rewrite history, use a worktree:
+  git worktree add -b fix/<name> ~/ai-collab-wt-<name> origin/main
+  git -C ~/ai-collab-wt-<name> push origin HEAD:main
+  git pull --ff-only
+MSG
+  exit 1
+}
+
+# git pack-refs (also run by git gc) deletes the loose main after copying it into packed-refs.
+packing_refs() {
+  if [ -r "/proc/$PPID/cmdline" ]; then
+    parent=$(tr '\0' ' ' < "/proc/$PPID/cmdline")
+  else
+    parent=$(ps -o args= -p "$PPID" 2>/dev/null)
+  fi
+  case "$parent" in git\ pack-refs*|*/git\ pack-refs*) return 0 ;; esac
+  return 1
+}
+
+while read -r old new ref; do
+  [ "$ref" = refs/heads/main ] || continue
+  case "$new" in *[!0]*) ;; *) packing_refs || refuse "(delete)"; continue ;; esac
+  # The caller's old value is all zeros for an unconditional update, so read the ref itself.
+  current=$(git rev-parse -q --verify refs/heads/main) || continue
+  [ "$current" = "$new" ] && continue
+  git merge-base --is-ancestor "$current" "$new" 2>/dev/null ||
+    refuse "from $current to $new: not a fast-forward"
+done
+exit 0

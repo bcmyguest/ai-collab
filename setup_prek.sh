@@ -16,6 +16,7 @@ command -v prek >/dev/null 2>&1 || { echo "Error: prek is not on PATH" >&2; exit
 echo "prek: $(prek --version)"
 
 npm ci
+scripts/install-git-hooks.sh
 prek install --prepare-hooks --hook-type pre-commit --hook-type commit-msg -f
 
 if prek run --all-files; then

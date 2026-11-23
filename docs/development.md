@@ -36,6 +36,19 @@ Rollback: remove the `pm` entry, then re-enable the timer with `systemctl --user
 
 Run `./setup_prek.sh` once. It installs [prek](https://github.com/j178/prek) (through `uv`), runs `npm ci`, and installs two git hooks from `.pre-commit-config.yaml`: whitespace and JSON/YAML checks on `pre-commit`, and [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) on `commit-msg` (`feat:`, `fix:`, `docs:`, `ci:`, `chore:` ...). Run `prek run --all-files` to check the whole repo as CI does.
 
+### Protected main
+
+`./setup_prek.sh` also runs `scripts/install-git-hooks.sh`, which prek cannot do. It copies `scripts/git-hooks/reference-transaction` into the repository's hooks directory (`.git/hooks/`, shared by every worktree) and sets `pull.rebase=false` and `pull.ff=only` in the repository config. The hook aborts any update of `refs/heads/main` whose new commit does not descend from the current one, and any delete of it, so `git update-ref`, `git reset`, `git commit --amend` and a rebase cannot move main backward or drop unpushed commits. Commits on top of main, `git pull --ff-only`, `git pack-refs` and `git gc` still work, and other branches are not checked. Without the pull settings, a global `pull.rebase=true` would turn a plain `git pull` into a rebase that the hook refuses halfway, leaving HEAD detached.
+
+Rerun `scripts/install-git-hooks.sh` after the hook changes. To land work, use a worktree:
+
+```sh
+git worktree add -b fix/<name> ~/ai-collab-wt-<name> origin/main
+git -C ~/ai-collab-wt-<name> push origin HEAD:main
+git -C /home/b/ai-collab pull --ff-only
+git -C /home/b/ai-collab ls-remote origin refs/heads/main   # confirm the pushed sha
+```
+
 ## CI
 
 `.github/workflows/tests.yml` runs prek, `npm test` with an empty `HOME`, and `npm run build` on every push and pull request.
