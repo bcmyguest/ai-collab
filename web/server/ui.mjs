@@ -571,7 +571,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const [peer, session] = id.split("#");
       if (!session || !allowed(peer)) continue;
       const seenAt = Date.parse(state.ts) || 0;
-      found.set(id, { id, peer, session, seenAt, online: state.event === "start" && Date.now() - seenAt < ONLINE_MS, ...(state.parent ? { parent: state.parent } : {}) });
+      found.set(id, { id, peer, session, seenAt, online: (state.event === "start" || state.event === "hold") && Date.now() - seenAt < ONLINE_MS, ...(state.parent ? { parent: state.parent } : {}) });
     }
     // Hooks refresh seenAt on every event; minute resolution keeps snapshot pushes to one per agent per minute.
     let root = "";
@@ -701,13 +701,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return shown.map(agent => {
       const row = latest.get(agent.id);
       const lastAt = row ? Math.max(row.time, ...(row.rows || []).map(r => r.time)) * 1000 : 0;
-      const statusAt = Date.parse(statuses.get(agent.id)?.ts) || 0;
       const open = row && row.type === "tool_call" && !row.result;
       // Unfinished runs; the browser counts only those with a row in the last 2 min (runState).
       const subagents = (runs.get(agent.id) || []).map(run => ({ id: run.id, agent: run.agent, run: run.run, kind: run.kind, description: run.description, steps: run.steps, time: run.time, lastTime: run.lastTime, last: run.last, open: run.open }));
       return {
         ...agent, project: cfg.project, harness: peerOf(agent.id), lastActivityAt: lastAt, ...(open ? { openCallAt: lastAt } : {}),
-        afkHold: mode !== "off" && row?.type === "stop" && /^turn ended/.test(row.input || "") && statusAt < row.time * 1000,
+        // Only the Stop hook's own "hold" status marks a hold; an ordinary turn end publishes "stop".
+        afkHold: mode !== "off" && statuses.get(agent.id)?.event === "hold" && row?.type === "stop",
         ...(lastAction.has(agent.id) ? { lastAction: lastAction.get(agent.id) } : {}), subagents, pending: pending.get(agent.id) || [],
         ...cardContext(cfg, agent),
       };

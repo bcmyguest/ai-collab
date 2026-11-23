@@ -53,7 +53,7 @@ After a deploy, an open page shows an "Update available" toast when it reconnect
 | State | Rule (`web/lib/session-state.js`) |
 |---|---|
 | Waiting on you | an open approval or choice (not expired), or an unanswered important question |
-| AFK hold | online, AFK mode not `off`, the latest row is `turn ended`, and no `stop` status after it: the Stop hook is waiting |
+| AFK hold | online, AFK mode not `off`, the latest row is `turn ended`, and the latest status is `hold`, which the Stop hook publishes only when it waits for the operator (after `wait_for_operator` or an important question) |
 | Working | an open tool call or running subagent under 15 minutes old, or any activity in the last 60 seconds |
 | Idle / Offline | the registry PID check |
 | Dead | offline, and the card (or a session nested under it) was last active a day ago or more: kept, but behind one tap |

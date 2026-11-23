@@ -118,7 +118,7 @@ async function deliver(cfg, host, event, msg, key) {
   }
   if (event === "PreCompact") return {};
   if (event === "Stop") {
-    const decision = await decideStop(cfg, { host, input: msg });
+    const decision = await decideStop(cfg, { host, input: msg, onHold: () => publishStatus(cfg, { event: "hold", harness: host }) });
     if (decision.action === "continue") {
       const note = await takeModeNote(cfg);
       return stopOutput(host, [note, decision.text].filter(Boolean).join("\n"));

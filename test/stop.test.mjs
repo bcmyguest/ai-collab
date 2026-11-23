@@ -102,6 +102,18 @@ test("afk on: a Stop the agent did not ask to wait ends at once", async (t) => {
   assert.equal(clock.slept, 0);
 });
 
+test("afk on: onHold runs once when the Stop waits, and never for a Stop that ends at once", async (t) => {
+  const { fake, cfg, deps } = await setup(t, { AI_COLLAB_AFK_WAIT_S: "60" });
+  await setMode(fake, cfg, "on");
+  let holds = 0;
+  const onHold = () => { holds += 1; };
+  assert.deepEqual(await decideStop(cfg, { host: "claude", input: { stop_hook_active: false }, ...deps, onHold }), { action: "stop" });
+  assert.equal(holds, 0, "no wait was asked for");
+  await requestWait(cfg);
+  assert.deepEqual(await decideStop(cfg, { host: "claude", input: { stop_hook_active: false }, ...deps, onHold }), { action: "stop" });
+  assert.equal(holds, 1);
+});
+
 test("afk on: the stop consumes the wait request, so the next Stop ends at once", async (t) => {
   const { fake, cfg, clock, deps } = await setup(t, { AI_COLLAB_AFK_WAIT_S: "60" });
   await setMode(fake, cfg, "on");

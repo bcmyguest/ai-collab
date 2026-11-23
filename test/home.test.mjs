@@ -187,14 +187,32 @@ test("a direct message to an online session carries no wake note; urgent envelop
   assert.deepEqual((await res.json()).wake, { status: "online" });
 });
 
-test("AFK hold: the turn ended, its stop status has not arrived, and AFK mode is on", async (t) => {
+test("AFK hold: a turn end whose row lands after its stop status is not a hold", async (t) => {
+  const fake = await startFakeNtfy();
+  t.after(() => fake.close());
+  const stateDir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-afk-race-"));
+  const id = "22222222-0000-4000-8000-000000000002";
+  const claude = { ...loadConfig(peerEnv(fake, { peer: "claude", stateDir, AI_COLLAB_PEERS: "claude" })), session: sessionLabel(id) };
+  await recordSession(claude, { id, cwd: stateDir, harness: "claude", event: "Stop", proc: self() });
+  fake.inject(broadcastTopic("demo"), JSON.stringify({ v: 1, kind: "mode", from: "operator", mode: "on", ts: Date.now() }));
+  await publishStatus(claude, { event: "stop", harness: "claude" });
+  await new Promise(r => setTimeout(r, 1100));
+  await publishActivity(claude, "claude", [{ type: "stop", input: "turn ended" }]);
+  const ui = createUi({ cfg: loadConfig(peerEnv(fake, { peer: "operator", stateDir, AI_COLLAB_PEERS: "claude" })) });
+  const ctrl = new AbortController();
+  t.after(() => { ctrl.abort(); ui.close(); });
+  const data = await stateWhere(ui, "view=sessions", d => d.sessions?.length === 1 && d.sessions[0].lastActivityAt > 0, ctrl.signal);
+  assert.equal(data.sessions[0].afkHold, false);
+});
+
+test("AFK hold: the Stop hook published hold, the turn ended, and AFK mode is on", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
   const stateDir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-afk-"));
   const id = "22222222-0000-4000-8000-000000000001";
   const claude = { ...loadConfig(peerEnv(fake, { peer: "claude", stateDir, AI_COLLAB_PEERS: "claude" })), session: sessionLabel(id) };
   await recordSession(claude, { id, cwd: stateDir, harness: "claude", event: "Stop", proc: self() });
-  await publishStatus(claude, { event: "start", harness: "claude" });
+  await publishStatus(claude, { event: "hold", harness: "claude" });
   fake.inject(broadcastTopic("demo"), JSON.stringify({ v: 1, kind: "mode", from: "operator", mode: "on", ts: Date.now() }));
   await new Promise(r => setTimeout(r, 1100));
   await publishActivity(claude, "claude", [{ type: "stop", input: "turn ended" }]);
