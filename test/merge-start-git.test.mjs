@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { merge } from "../lib/merge-cli.mjs";
 
-// Real git against a temp bare origin; only npm is stubbed.
+// Real git against a temp bare origin.
 function sandbox(t) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "merge-start-")));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -37,17 +37,18 @@ function sandbox(t) {
   git(join(root, "seed"), "push", "-q", "origin", "main");
   const remoteMain = () => git(root, "ls-remote", join(root, "origin.git"), "refs/heads/main").split("\t")[0];
 
-  function start(branches, { gate = 0, run } = {}) {
+  function start(branches, { gate = 0, run, nodePath } = {}) {
     let output = "";
     let errors = "";
     const npm = [];
     const status = merge(["start", ...branches], {
-      env, hostCheckout: host, tempRoot: root,
+      env, hostCheckout: host, tempRoot: root, nodePath,
       out: { write: (message) => { output += message; } },
       err: { write: (message) => { errors += message; } },
       run(file, argv, options) {
         if (file === "npm") {
           npm.push(argv[0]);
+          if (nodePath) return spawnSync(file, argv, options);
           return { status: argv[0] === "test" ? gate : 0, stdout: "" };
         }
         return (run ?? spawnSync)(file, argv, options);
@@ -57,8 +58,35 @@ function sandbox(t) {
     return { status, output, errors, npm, result: lines.find((line) => line.startsWith("merge: ")) };
   }
   const worktrees = () => readdirSync(root).filter((name) => name.startsWith("ai-collab-wt-merge-"));
-  return { root, host, git, write, commit, originTip, remoteMain, start, worktrees };
+  return { root, host, env, git, write, commit, originTip, remoteMain, start, worktrees };
 }
+
+test("merge start isolates both npm steps from the host mise config and shims", (t) => {
+  const { root, host, env, git, commit, start } = sandbox(t);
+  const configDir = join(root, ".config", "mise");
+  const shims = join(root, "mise", "shims");
+  const nodeBin = join(root, "mise", "installs", "node", "fixture", "bin");
+  for (const dir of [configDir, shims, nodeBin]) mkdirSync(dir, { recursive: true });
+  writeFileSync(join(configDir, "config.toml"), "# untrusted fixture config\n");
+  env.XDG_CONFIG_HOME = join(root, ".config");
+  env.PATH = [shims, env.PATH].join(":");
+  writeFileSync(join(shims, "npm"), '#!/bin/sh\ncat "$XDG_CONFIG_HOME/mise/config.toml" >&2\nexit 1\n',
+    { mode: 0o755 });
+  writeFileSync(join(nodeBin, "npm"), `#!/bin/sh
+case ":$PATH:" in
+  *"/mise/shims:"*) exit 1 ;;
+esac
+test -z "$XDG_CONFIG_HOME" && test ! -e "$HOME/.config/mise/config.toml" &&
+  test -d "$TMPDIR" && test "$CODEX_HOME" = "$HOME/.codex"
+`, { mode: 0o755 });
+
+  git(host, "switch", "-q", "-c", "builder/isolated");
+  commit(host, "isolated.txt", "fixture\n");
+  git(host, "switch", "-q", "main");
+  const run = start(["builder/isolated"], { nodePath: join(nodeBin, "node") });
+  assert.equal(run.status, 0, run.errors + run.output);
+  assert.deepEqual(run.npm, ["ci", "test"]);
+});
 
 test("merge start lands a branch on origin/main, verifies the push, pulls the host and cleans up", (t) => {
   const { host, git, commit, originTip, remoteMain, start, worktrees } = sandbox(t);
