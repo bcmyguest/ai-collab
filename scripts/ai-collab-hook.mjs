@@ -217,7 +217,7 @@ async function main() {
   const closing = closeTerminalCards(cfg, { host, key, input: msg }).catch(() => []);
   // Claude's StopFailure with error rate_limit: a limit card for this session, one per window (lib/limit-alert.mjs).
   const limit = key === "stopfailure" && host === "claude" && !(typeof msg.agent_id === "string" && msg.agent_id) ? classifyLimit("claude", { kind: "stop_failure", ...msg }) : null;
-  const limited = limit ? alertLimit(cfg, { harness: "claude", limit }).catch(() => ({})) : Promise.resolve({});
+  const limited = limit ? alertLimit(cfg, { harness: "claude", limit, auto: true }).catch(() => ({})) : Promise.resolve({});
   const event = EVENTS.get(key);
   let output = neutral(host, key);
   // A prompt the operator typed (not a wake run, agent hand-back or ai-collab's own text); recorded, AFK unchanged.

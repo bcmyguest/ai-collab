@@ -618,3 +618,27 @@ test("defaults.json limitFallback picks the harness a Codex usage limit retries 
   const [retry] = readJsonLines(l.env.FAKE_BUILDER_LOG);
   assert.ok(retry.args.includes("opencode/deepseek-v4.1-flash-free"), JSON.stringify(retry.args));
 });
+
+test("a Codex usage limit skips a Cursor model that is already limited and retries with OpenCode", async () => {
+  const l = lab({ AI_COLLAB_OPENCODE_BIN: AGENT, FAKE_SANDBOX_OPENCODE_BIN: AGENT, FAKE_BUILDER_MODE: "cursor-limit" });
+  l.env.AI_COLLAB_RUNNER_SOCKET = path.join(l.home, "missing.sock");
+  writeFileSync(path.join(l.env.XDG_CONFIG_HOME, "ai-collab", "defaults.json"), JSON.stringify({ builderOrder: ["codex"], limitFallback: "cursor:deepseek-v41-flash-1017-high" }));
+  await withTask(l);
+  const blocked = await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief);
+  assert.equal(blocked.code, 0, blocked.err);
+  assert.match(task(l).detail, /reached its usage limit/);
+  const tree = path.join(l.home, "codex-release");
+  mkdirSync(path.join(tree, "bin"), { recursive: true });
+  const codex = path.join(tree, "bin", "codex");
+  writeFileSync(codex, '#!/bin/sh\necho "Usage limit reached" >&2\nexit 1\n', { mode: 0o755 });
+  symlinkSync(codex, path.join(l.home, "bin", "codex"));
+  l.env.AI_COLLAB_CODEX_TREE = tree;
+  l.env.FAKE_BUILDER_MODE = "commit";
+  l.env.FAKE_BUILDER_TASK = "second-task";
+  assert.equal((await l.cli("task", "add", "Second task")).code, 0);
+  const res = await l.cli("builder", "start", "--task", "second-task", "--brief", l.brief);
+  assert.equal(res.code, 0, res.err);
+  const launches = readJsonLines(l.env.FAKE_BUILDER_LOG);
+  assert.ok(launches.at(-1).args.includes("opencode/deepseek-v4.1-flash-free"), JSON.stringify(launches.at(-1).args));
+  assert.equal(launches.filter((row) => row.args.includes("deepseek-v41-flash-1017-high")).length, 1);
+});

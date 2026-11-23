@@ -201,8 +201,9 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       if (card) closeApproval(s, card.id, e.value.reason);
       return;
     }
-    // A harness limit (an adapter event or a run error): one limit card per session and window.
-    if (limit) enqueuePublish(s, () => alertLimit(s.cfg, { harness: r.harness, limit }).catch((error) => log(`limit alert failed: ${error.message}`)));
+    // A harness limit. A builder is retried by its supervisor, so it does not also raise a choice card.
+    // Any other session starts the configured fallback (Cursor DeepSeek unless defaults say otherwise) and does not ask.
+    if (limit && !r.builder) enqueuePublish(s, () => alertLimit(s.cfg, { harness: r.harness, limit, auto: true }).catch((error) => log(`limit alert failed: ${error.message}`)));
     const system = e.type === EventType.RUN_STARTED && s.systemPrompt === true;
     if (e.type === EventType.RUN_STARTED) delete s.systemPrompt;
     enqueuePublish(s, () => publishEvent(s.cfg, r.harness, e, { system }));
