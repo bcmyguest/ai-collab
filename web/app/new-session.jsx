@@ -6,7 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Textarea } from "@/components/ui/textarea";
 import { HarnessLogo } from "./logos";
 import { cn } from "@/lib/utils";
-import { CODE_MODE_START_HARNESSES, activeModel, codeModeField, flatModels, modeChoice, modeOptions, modelGroups, modelLabel, moveActive, placeOptions } from "@/lib/new-session";
+import { activeModel, codeModeField, flatModels, modeChoice, modeOptions, modelGroups, modelLabel, moveActive, placeOptions } from "@/lib/new-session";
 import { initialChoice } from "@/lib/start-default";
 
 export const PROMPT_PLACEHOLDER = "Plan, search, build anything";
@@ -133,8 +133,8 @@ function ModelPill({ choice, startable, models, set }) {
 }
 
 /** Native code mode on or off for this start; shown only for a harness whose start can use it. */
-function CodeModePill({ harness, on, set }) {
-  if (!CODE_MODE_START_HARNESSES.includes(harness)) return null;
+function CodeModePill({ harness, mode, place, on, set }) {
+  if (codeModeField(harness, on, mode, place).codeMode === undefined) return null;
   const label = "Code mode: " + (on ? "on" : "off");
   return <button type="button" aria-label={label} title={label} aria-pressed={on} onClick={() => set(!on)}
     className={cn("flex h-7 shrink-0 items-center gap-1 rounded-full px-1.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
@@ -219,7 +219,7 @@ export function NewAgentComposer({ project, agents = [], startable = [], places 
     setPosting(true);
     setResult(null);
     try {
-      const payload = { harness: choice.harness, prompt, startMode: mode, ...(place !== "folder" ? { place } : {}), ...(choice.model ? { model: choice.model } : {}), ...codeModeField(choice.harness, codeMode) };
+      const payload = { harness: choice.harness, prompt, startMode: mode, ...(place !== "folder" ? { place } : {}), ...(choice.model ? { model: choice.model } : {}), ...codeModeField(choice.harness, codeMode, mode, place) };
       const next = await start(payload);
       setResult(next);
       if (next?.status === "started") setDraft("");
@@ -253,7 +253,7 @@ export function NewAgentComposer({ project, agents = [], startable = [], places 
             <ModePill mode={mode} harness={choice.harness} set={setMode}/>
             <ModelPill choice={choice} startable={startable} models={models} set={item => { picked.current = true; setChoice(item); }}/>
             <PlacePill place={place} places={places} set={setPlace}/>
-            <CodeModePill harness={choice.harness} on={codeMode} set={setCodeMode}/>
+            <CodeModePill place={place} mode={mode} harness={choice.harness} on={codeMode} set={setCodeMode}/>
             <Button type="button" size="icon" aria-label="Start session" disabled={!canSend} onClick={submit}
               className="ml-auto size-8 shrink-0 rounded-full"><ArrowUp/></Button>
           </div>

@@ -16,7 +16,7 @@ require("node:fs").writeFileSync(process.env.FAKE_RECORD + "/codex-" + Date.now(
 console.log(JSON.stringify({ type: "thread.started", thread_id: "${ID}" }));
 `;
 
-async function setup(t, defaults) {
+async function setup(t, defaults, runner) {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
   const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-code-mode-ui-"));
@@ -25,11 +25,12 @@ async function setup(t, defaults) {
   for (const dir of [bin, root, record, conf]) mkdirSync(dir, { recursive: true });
   writeFileSync(path.join(bin, "codex"), FAKE);
   chmodSync(path.join(bin, "codex"), 0o755);
-  writeFileSync(path.join(conf, "projects.json"), JSON.stringify([{ root, project: "demo", url: fake.url, peers: "codex" }]));
+  writeFileSync(path.join(bin, "claude"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+  writeFileSync(path.join(conf, "projects.json"), JSON.stringify([{ root, project: "demo", url: fake.url, peers: "codex,claude" }]));
   if (defaults) writeFileSync(path.join(conf, "defaults.json"), JSON.stringify(defaults));
-  const env = { HOME: home, PATH: bin + path.delimiter + process.env.PATH, FAKE_RECORD: record, CODEX_HOME: path.join(home, ".codex"),
+  const env = { LD_LIBRARY_PATH: process.env.LD_LIBRARY_PATH, HOME: home, PATH: bin + path.delimiter + process.env.PATH, FAKE_RECORD: record, CODEX_HOME: path.join(home, ".codex"),
     AI_COLLAB_STATE_DIR: path.join(home, "state"), AI_COLLAB_SESSION: "aaaaaaaaaaaaaaaa", AI_COLLAB_PEER: "codex", AI_COLLAB_UI_ORIGIN: "x" };
-  const ui = createUi({ projects: loadProjects(env, { host: "operator" }), env, models: async () => ({ codex: ["gpt-5"] }) });
+  const ui = createUi({ projects: loadProjects(env, { host: "operator" }), env, runner, models: async () => ({ codex: ["gpt-5"], claude: ["haiku"] }) });
   t.after(() => ui.close());
   const post = (body) => ui.handle(new Request(`${base}/api/start`, {
     method: "POST", headers: { Origin: base, "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -57,4 +58,19 @@ test("defaults.json codeMode=false turns code mode off for a start that names no
   const { post, argv } = await setup(t, { codeMode: false });
   assert.equal((await post({ project: "demo", harness: "codex", prompt: "go" })).status, 201);
   assert.deepEqual(await argv(), ["exec", "--json", "--dangerously-bypass-hook-trust", "-c", "features.code_mode=false", "go"]);
+});
+
+test("the Claude composer routes code-mode Agent starts to the owned runner", async (t) => {
+  const starts = [];
+  const result = { status: "started", session: "claude#abc" };
+  const { post } = await setup(t, { codeMode: false }, () => ({
+    async start(input) {
+      starts.push(input);
+      return { status: 201, body: result };
+    },
+  }));
+  const response = await post({ project: "demo", harness: "claude", model: "haiku", prompt: "go", codeMode: true });
+  assert.equal(response.status, 201);
+  assert.deepEqual(await response.json(), result);
+  assert.deepEqual(starts, [{ project: "demo", harness: "claude", model: "haiku", prompt: "go", place: "folder", permissionMode: "supervised", codeMode: true, system: false }]);
 });

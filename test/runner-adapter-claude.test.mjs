@@ -111,6 +111,32 @@ const isApproval = (e) => e.type === EventType.CUSTOM && e.name === APPROVAL_REQ
 const isResolved = (e) => e.type === EventType.CUSTOM && e.name === APPROVAL_RESOLVED;
 const finished = (e) => e.type === EventType.RUN_FINISHED;
 
+test("Claude code-mode REPL calls and results reach the owned transcript", async (t) => {
+  const { adapter, ctx, events } = harness(fakeSdk({
+    onUser(_message, api) {
+      api.emit({ type: "assistant", uuid: "assistant", message: { content: [
+        { type: "tool_use", id: "repl-1", name: "REPL", input: { code: "console.log(17 * 19)" } },
+      ] } });
+      api.emit({ type: "user", message: { content: [
+        { type: "tool_result", tool_use_id: "repl-1", content: "323" },
+      ] } });
+      api.result();
+    },
+  }));
+  const handle = await adapter.open({ ...OPTIONS, codeMode: true }, ctx);
+  t.after(() => handle.close());
+  await handle.send({ text: "Compute 17*19 using the REPL" });
+  await waitFor(() => events.find(finished));
+  const call = events.find(e => e.type === EventType.TOOL_CALL_CHUNK);
+  const result = events.find(e => e.type === EventType.TOOL_CALL_RESULT);
+  assert.equal(call.toolCallName, "REPL");
+  assert.equal(JSON.parse(call.delta).code, "console.log(17 * 19)");
+  assert.equal(result.toolCallId, call.toolCallId);
+  assert.equal(result.content, "323");
+  assert.equal(eventProblem(call), null);
+  assert.equal(eventProblem(result), null);
+});
+
 test("open chooses the native id, marks the child, and sends no prompt", async () => {
   const { adapter, sdk, events, ctx } = harness();
   const handle = await adapter.open(OPTIONS, ctx);
