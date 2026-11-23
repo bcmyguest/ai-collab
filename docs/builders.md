@@ -43,7 +43,7 @@ Both Codex launch paths retry a subscription usage limit once with `defaults.jso
 
 The runner starts a dedicated Codex app-server inside the staged OpenShell sandbox and sends the brief as its first turn. It sets the task to `building` and records the session address as the task owner before sending the brief. The phone shows the session activity and the task card opens it. Pass `--run ID` to attach the task to a team run. An existing run association is retained when the flag is omitted.
 
-When the turn ends, the runner collects the branch and task calls, runs the normal landing checks, and deletes the sandbox. A restart cuts the active turn and the runner attempts collection on recovery. The ended session remains linked from the task for its timeline. If the runner responds with a start error, the CLI reports that error. The standalone path is used when the control socket is absent or refuses the connection.
+When the turn ends, the runner collects the branch and task calls, runs the normal landing checks, and deletes the sandbox. After a restart, the runner opens the same Codex thread in its existing sandbox and starts a continuation turn. If resuming fails, the runner attempts to collect the workspace. The ended session remains linked from the task for its timeline. If the runner responds with a start error, the CLI reports that error. The standalone path is used when the control socket is absent or refuses the connection.
 
 ## What the standalone unit does
 
