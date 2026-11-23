@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { loadProjects, stateDir } from "../lib/config.mjs";
 import { HARNESSES } from "./contract.mjs";
-import { openDurable } from "./durable.mjs";
+import { openDurable } from "../lib/durable.mjs";
 import { createRunner } from "./runner.mjs";
 import { listenControl, runnerSocket } from "./control.mjs";
 import { loadSchedules, registerSchedules } from "./schedules.mjs";

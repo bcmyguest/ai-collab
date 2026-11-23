@@ -194,6 +194,27 @@ test("builder start runs the agent in its own sandbox and lands its commit on th
   assert.equal(state.sandboxDeleted, true);
 });
 
+test("an interrupted standalone agent is collected without launching it again", async () => {
+  const l = lab({ FAKE_BUILDER_CUT_AFTER_AGENT: "1" });
+  await withTask(l);
+  const started = await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief);
+  assert.equal(started.code, 0, started.err);
+  assert.equal(task(l).status, "building");
+  assert.equal(readJsonLines(l.env.FAKE_BUILDER_LOG).length, 1);
+
+  delete l.env.FAKE_BUILDER_CUT_AFTER_AGENT;
+  const cli = path.join(HERE, "../scripts/ai-collab.mjs");
+  execFileSync(process.execPath, [cli, "builder", "run", "smoke-task"], { env: l.env });
+  execFileSync(process.execPath, [cli, "builder", "run", "smoke-task"], { env: l.env });
+  assert.match(wtGit(l, "log", "-1", "--format=%s"), /docs: add a line/);
+  assert.equal(readJsonLines(l.env.FAKE_BUILDER_LOG).length, 1);
+  const calls = readJsonLines(l.env.FAKE_OPENSHELL_LOG);
+  assert.equal(calls.filter((call) => call[1] === "create").length, 1);
+  assert.equal(calls.filter((call) => call[1] === "delete").length, 1);
+  assert.equal(task(l).status, "blocked");
+  assert.equal(task(l).progress.filter((p) => p.text === "half way").length, 1);
+});
+
 test("a Cursor builder reaches a fake API with process inspection enabled and lands its commit", async (t) => {
   const requests = [];
   const server = createServer((req, res) => {
