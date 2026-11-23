@@ -6,7 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Textarea } from "@/components/ui/textarea";
 import { HarnessLogo } from "./logos";
 import { cn } from "@/lib/utils";
-import { activeModel, codeModeField, flatModels, modeChoice, modeOptions, modelGroups, modelLabel, moveActive, placeOptions } from "@/lib/new-session";
+import { activeModel, codeModeField, flatModels, modeChoice, modeOptions, modelGroups, modelLabel, moveActive, harnessPlaces, placeChoice, placeOptions } from "@/lib/new-session";
 import { initialChoice } from "@/lib/start-default";
 
 export const PROMPT_PLACEHOLDER = "Plan, search, build anything";
@@ -178,11 +178,14 @@ function PlacePill({ place, places, set }) {
  * The new-agent dialogue, shaped like Cursor's composer: the prompt first, then one pill row (mode, model, place) with
  * a round send button at its end. The harness comes from the chosen model, never from text typed into the prompt.
  */
-export function NewAgentComposer({ project, agents = [], startable = [], places = ["folder"], models = {}, startDefault, codeModeDefault = true, disabled, start, close, open }) {
+export function NewAgentComposer({ project, agents = [], startable = [], places: offered = ["folder"], startPlace = "folder", sandboxHarnesses = [], models = {}, startDefault, codeModeDefault = true, disabled, start, close, open }) {
   const [choice, setChoice] = useState(() => initialChoice({ startable, models, setting: startDefault }));
   const [codeMode, setCodeMode] = useState(codeModeDefault !== false);
   const [mode, setMode] = useState(() => modeChoice("agent", choice.harness));
-  const [place, setPlace] = useState(() => (places.includes("folder") ? "folder" : places[0] || "folder"));
+  const [place, setPlace] = useState(() => placeChoice("", harnessPlaces(offered, choice.harness, sandboxHarnesses), startPlace));
+  // A place picked on the pill outranks the configured one while the harness can still use it.
+  const placePicked = useRef(false);
+  const places = harnessPlaces(offered, choice.harness, sandboxHarnesses);
   const [result, setResult] = useState(null);
   const [posting, setPosting] = useState(false);
   const [draft, setDraft] = useState("");
@@ -208,7 +211,7 @@ export function NewAgentComposer({ project, agents = [], startable = [], places 
   // A harness change keeps the mode when it still supports it, else takes its first.
   useEffect(() => { setMode(current => modeChoice(current, choice.harness)); }, [choice.harness]);
   // A place can vanish when the project's snapshot changes (a sandbox stopped, a worktree no longer possible).
-  useEffect(() => { setPlace(current => (places.includes(current) ? current : places[0] || "folder")); }, [places.join(",")]);
+  useEffect(() => { setPlace(current => placeChoice(placePicked.current ? current : "", places, startPlace)); }, [places.join(","), startPlace]);
 
   const canSend = !busy && Boolean(draft.trim()) && Boolean(choice.harness);
   const failure = result && result.status !== "started" ? [result.status, result.detail].filter(Boolean).join(" · ") : "";
@@ -219,7 +222,7 @@ export function NewAgentComposer({ project, agents = [], startable = [], places 
     setPosting(true);
     setResult(null);
     try {
-      const payload = { harness: choice.harness, prompt, startMode: mode, ...(place !== "folder" ? { place } : {}), ...(choice.model ? { model: choice.model } : {}), ...codeModeField(choice.harness, codeMode, mode, place) };
+      const payload = { harness: choice.harness, prompt, startMode: mode, place, ...(choice.model ? { model: choice.model } : {}), ...codeModeField(choice.harness, codeMode, mode, place) };
       const next = await start(payload);
       setResult(next);
       if (next?.status === "started") setDraft("");
@@ -252,7 +255,7 @@ export function NewAgentComposer({ project, agents = [], startable = [], places 
           <div className="flex items-center gap-1 px-0.5 pt-1">
             <ModePill mode={mode} harness={choice.harness} set={setMode}/>
             <ModelPill choice={choice} startable={startable} models={models} set={item => { picked.current = true; setChoice(item); }}/>
-            <PlacePill place={place} places={places} set={setPlace}/>
+            <PlacePill place={place} places={places} set={(next) => { placePicked.current = true; setPlace(next); }}/>
             <CodeModePill place={place} mode={mode} harness={choice.harness} on={codeMode} set={setCodeMode}/>
             <Button type="button" size="icon" aria-label="Start session" disabled={!canSend} onClick={submit}
               className="ml-auto size-8 shrink-0 rounded-full"><ArrowUp/></Button>

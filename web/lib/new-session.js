@@ -39,6 +39,18 @@ export function placeOptions(places = []) {
   return places.map(id => ({ id, label: PLACE_LABELS[id] || id, name: PLACE_NAMES[id] || id }));
 }
 
+/** The places this harness may start in: OpenShell only for a harness the server lists as able to run there. */
+export function harnessPlaces(places = [], harness = "", sandboxHarnesses = []) {
+  return places.filter(id => id !== "openshell" || sandboxHarnesses.includes(harness));
+}
+
+/** The place pill's choice: the current one while still offered, else the configured start place, else Folder, else the first. */
+export function placeChoice(current, places = [], preferred = "folder") {
+  if (current && places.includes(current)) return current;
+  if (places.includes(preferred)) return preferred;
+  return places.includes("folder") ? "folder" : places[0] || "folder";
+}
+
 /** What the model pill shows: the model, or its harness name while no model has loaded. */
 export function modelLabel(choice) {
   return choice?.model || HARNESS_LABELS[choice?.harness] || "Model";

@@ -7,7 +7,7 @@ import { ACTIVITY_BATCH, STREAM_ERROR } from "../lib/ui-events.js";
 import { mkdirSync, watch } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
 import { buzzes, readAlertLevel, writeAlertLevel } from "../../lib/alerts.mjs";
-import { loadConfig, loadProjects, activityTopic, startDefaultSetting, broadcastTopic, configDir, stateDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.mjs";
+import { loadConfig, loadProjects, activityTopic, startDefaultSetting, startPlaceSetting, broadcastTopic, configDir, stateDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.mjs";
 import { ACTIVITY_TYPES } from "../../lib/activity.mjs";
 import { stripControl } from "../../lib/format.mjs";
 import { NTFY_MESSAGE_MAX_BYTES, latestStatuses, changeQueuedMessage, queuedMessage, markUrgent, parseEnvelope, sendMessage } from "../../lib/inbox.mjs";
@@ -24,7 +24,7 @@ import { readContext } from "../../lib/usage.mjs";
 import { parseCommand } from "../lib/slash-commands.js";
 import { startModes } from "../lib/start-mode.js";
 import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } from "../../lib/approvals.mjs";
-import { availableHarnesses, availablePlaces, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
+import { availableHarnesses, availablePlaces, defaultStartPlace, openshellHarnesses, openshellRunner, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
 import { codeModeDefault } from "../../lib/code-mode.mjs";
 import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
@@ -1011,6 +1011,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       // Native code mode for new starts (defaults.json codeMode, default on); the composer prefills its toggle.
       codeModeDefault: codeModeDefault(env),
       startPlaces: startPlaces(project),
+      // The configured start place (defaults.json startPlace) and the harnesses OpenShell can take; the composer preselects from both.
+      startPlace: startPlaces(project).includes(startPlaceSetting(env)) ? startPlaceSetting(env) : "folder",
+      openshellHarnesses: startPlaces(project).includes("openshell") ? openshellHarnesses(env) : [],
       teams: Object.entries(hosted ? {} : listTeams(project.cfg, env)).map(([id, members]) => ({ id, members })),
       patterns: hosted ? [] : patternRows(project.cfg, env),
       templates: teamTemplates(),
@@ -1392,8 +1395,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (!startable(project).includes(harness)) reject(400, "That harness is not available for this project");
         // The UI sends worktree / openshell booleans; place is the same choice by name.
         if (worktree === true && openshell === true) reject(400, "Pick a worktree or openshell, not both");
-        const where = place ?? (worktree === true ? "worktree" : openshell === true ? "openshell" : undefined);
-        if (where !== undefined && !startPlaces(project).includes(where)) reject(400, "That start place is not available for this project");
+        const named = place ?? (worktree === true ? "worktree" : openshell === true ? "openshell" : undefined);
+        if (named !== undefined && !startPlaces(project).includes(named)) reject(400, "That start place is not available for this project");
+        const where = named ?? defaultStartPlace(startPlaces(project), harness, env);
+        if (where === "openshell" && !openshellHarnesses(env).includes(harness)) reject(400, `${harness} cannot start in OpenShell yet; pick Folder or Worktree`);
         const checked = checkPrompt(prompt);
         if (checked.error) reject(400, checked.error);
         const chosen = model === undefined || model === null || model === "" ? undefined : model;
@@ -1409,14 +1414,22 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         }
         if (Date.now() - lastStartAt < START_GAP_MS) reject(429, "Wait 10 seconds between starts");
         lastStartAt = Date.now();
-        if (launch === startSession && harness === "claude" && codeMode === true) {
-          const result = await runner({ socket: runnerSocket(env), timeoutMs: 120_000 })
-            .start({ project: name, harness, prompt: checked.text, place: where || "folder", permissionMode: "supervised", codeMode: true, system: false, ...(chosen !== undefined ? { model: chosen } : {}) })
+        // Without a configured shared sandbox, OpenShell starts are runner-owned: one sandbox per project, commits landed on close.
+        if (launch === startSession && where === "openshell" && !openshellRunner(env)) {
+          const result = await runner({ socket: runnerSocket(env), timeoutMs: 300_000 })
+            .start({ project: name, harness, prompt: checked.text, place: "openshell", system: false, ...(chosen !== undefined ? { model: chosen } : {}) })
             .catch(() => reject(503, "The session runner is unavailable"));
           if (result.status !== 201) reject(result.status, result.body.error || "The runner refused the start");
           return json(201, result.body);
         }
-        return json(201, await start(cfg, { harness, prompt: checked.text, env, place: where || "folder", mode: chosenMode, ...(chosen !== undefined ? { model: chosen } : {}), ...(typeof codeMode === "boolean" ? { codeMode } : {}) }));
+        if (launch === startSession && harness === "claude" && codeMode === true) {
+          const result = await runner({ socket: runnerSocket(env), timeoutMs: 120_000 })
+            .start({ project: name, harness, prompt: checked.text, place: where, permissionMode: "supervised", codeMode: true, system: false, ...(chosen !== undefined ? { model: chosen } : {}) })
+            .catch(() => reject(503, "The session runner is unavailable"));
+          if (result.status !== 201) reject(result.status, result.body.error || "The runner refused the start");
+          return json(201, result.body);
+        }
+        return json(201, await start(cfg, { harness, prompt: checked.text, env, place: where, mode: chosenMode, ...(chosen !== undefined ? { model: chosen } : {}), ...(typeof codeMode === "boolean" ? { codeMode } : {}) }));
       }
       // A queued message is already on ntfy: the urgent marker makes the recipient's next hook poll at once.
       if (action === "nudge") {
