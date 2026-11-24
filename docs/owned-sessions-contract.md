@@ -127,6 +127,8 @@ The command runs with `spawn` (argv, no shell) in its own process group, stdin c
 
 **Prompt blocks.** A harness command's prompt is the schedule's own prompt, then the project's [mission file](mission.md) (`withMission`, `lib/mission.mjs`), then the [run review](mission.md#the-run-review) (`withReview`, `lib/pm-review.mjs`). Both are appended at run time, so a tick always reads the current files, and a plain script is left exactly as `schedules.json` wrote it.
 
+**PM workspace.** A `pm` entry may set `workspace` to an absolute path. That path is a separate clone of the `cwd` repo's origin, not a linked worktree. At the start of the tick the runner clones it when the directory is missing, and when the clone is clean it runs `git fetch` and `git pull --ff-only` there. A dirty clone is left as it is and the reason is logged. The tick never resets or checks out `cwd`. An existing clone is not reset, even when it has local commits. The command runs in the workspace and the mission is read from there; `projectOfFolder` still uses `cwd`, so the run stays on the registered project. Builder start and merge start keep using that project. Omitting `workspace` leaves the tick in `cwd`.
+
 Config: `$XDG_CONFIG_HOME/ai-collab/schedules.json` (default `~/.config/ai-collab/schedules.json`), or the path in `AI_COLLAB_SCHEDULES`. A JSON array. An invalid entry, unreadable file or bad JSON is reported in `configError` and skipped; the runner keeps serving. A missing file means no schedules. Code: `runner/schedules.mjs`.
 
 The runner takes `runner.lock` beside `runner.db`; a second live runner on the same state directory refuses to start. The control socket binds before any tick starts, so a runner that cannot bind starts no command.
@@ -147,6 +149,7 @@ The runner takes `runner.lock` beside `runner.db`; a second live runner on the s
 | `command` | non-empty array of strings: argv, no shell | yes |
 | `timeoutSec` | positive integer, default 900, shorter than `everyMinutes` × 60 | no |
 | `sandbox` | boolean; `true` runs the command in a fresh OpenShell sandbox; the command must run `claude`, `codex`, `cursor-agent`/`agent` or `opencode` | no |
+| `workspace` | absolute path; for `pm`, the clone the tick runs in and reads `MISSION.md` from. The directory may be missing until the tick clones it. `cwd` stays the registered project | no |
 
 **Sandboxed ticks.** With `"sandbox": true` the tick runs `node runner/sandbox-run.mjs --name <name> --cwd <cwd> [--project <p>] -- <command>` in its scope, and the host guard (`lib/agent-guard.mjs`) lets `--force` and the like through. Without it, a command whose argv turns the harness's approvals off is refused with a `tail` that names the flag, unless the runner has `AI_COLLAB_ALLOW_HOST_AGENT=1`. A plain script (`steward.sh`, `round.mjs`, `runner-reload.sh`) is never wrapped. `sandbox-run.mjs`:
 
