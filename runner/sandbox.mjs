@@ -155,7 +155,7 @@ export async function uploadTree({ openshell, env, sandbox, local, remote, gitIg
 /** Uploads one host file into a sandbox directory; a trailing slash on the directory keeps the file's own name. */
 export async function uploadFile({ openshell, env, sandbox, local, remoteDir }) {
   const dest = `${remoteDir.replace(/\/+$/, "")}/`;
-  return mustRun(openshell, ["sandbox", "upload", sandbox, local, dest], { env, timeoutMs: SYNC_TIMEOUT_MS }, "sandbox upload");
+  return mustRun(openshell, ["sandbox", "upload", sandbox, local, dest, "--no-git-ignore"], { env, timeoutMs: SYNC_TIMEOUT_MS }, "sandbox upload");
 }
 
 /** Downloads a sandbox path to a host path. */

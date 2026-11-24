@@ -206,7 +206,7 @@ export async function prepareSandbox({ openshell, env, sandbox, cwd, home = home
       mkdirSync(join(dir, "bin"));
       symlinkSync(join(SANDBOX_ROOT, "agent", basename(cursorTree), launcher), join(dir, "bin", SANDBOX_LAUNCHER));
       // Its own directory (/sandbox/bin), so a second session's upload never lands on the first's.
-      await uploadTree({ openshell, env, sandbox, local: join(dir, "bin"), remote: SANDBOX_ROOT });
+      await uploadTree({ openshell, env, sandbox, local: join(dir, "bin"), remote: SANDBOX_ROOT, gitIgnore: false });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -245,7 +245,7 @@ async function stageNtfy({ openshell, env, sandbox, project, workdir, log }) {
     writeFileSync(join(config, "defaults.json"), `${JSON.stringify({ ...ntfy, peers: "claude,codex,cursor,opencode" }, null, 2)}\n`, { mode: 0o600 });
     if (project && workdir) writeFileSync(join(config, "projects.json"), `${JSON.stringify([{ root: workdir, project, ...ntfy }], null, 2)}\n`, { mode: 0o600 });
     // The directory upload replaces ai-collab/, so the token file goes in after it and is not wiped.
-    await uploadTree({ openshell, env, sandbox, local: config, remote: dirname(dirname(TOKEN_IN)) });
+    await uploadTree({ openshell, env, sandbox, local: config, remote: dirname(dirname(TOKEN_IN)), gitIgnore: false });
     await uploadSecret({ openshell, env, sandbox, file: token, remoteDir: dirname(TOKEN_IN), name: basename(TOKEN_IN) });
   } catch (error) {
     log(`cursor: could not stage the ntfy token; sends from the sandbox will be refused (${error.message.split("\n")[0]})`);
