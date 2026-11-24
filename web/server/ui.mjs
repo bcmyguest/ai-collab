@@ -35,6 +35,7 @@ import { codeModeDefault } from "../../lib/code-mode.mjs";
 import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
 import { LIMIT_TOOL, chooseLimit, limitEndMessage, skipLimit } from "../../lib/limit-alert.mjs";
+import { limitEndNotice } from "../../lib/start-limit.mjs";
 import { closedProjectNames, createTeam, deleteTeam, listTeams, readProjectsFile, removeProject, setProjectClosed, teamTask } from "../../lib/teams.mjs";
 import { clearFields, modelFields, sessionHistory } from "../../lib/session-events.mjs";
 import { compactionFields } from "../../lib/compaction.mjs";
@@ -514,8 +515,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const orch = formatTeamOrchestrator(name, members, task);
       const mentionedIn = target === "all" ? "all" : target;
       if (target === "all") {
-        if (!startable(project).includes("claude")) notes.push(`@${name} claude not available here`);
-        else notes.push(`@${name}${await startFor(cfg, orch, { harness: "claude", system: true })}`);
+        if (!startable(project).includes("claude")) {
+          notes.push(`@${name} claude not available here`);
+          await refuseStart(project, target, "@" + name, "claude is not available here");
+        } else notes.push(`@${name}${await startFor(cfg, orch, { harness: "claude", system: true }, { project, target, tag: "@" + name })}`);
         continue;
       }
       if (target.includes("#")) {
@@ -540,9 +543,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       if (name.includes(":")) {
         if (attachment) { notes.push("@" + name + " needs a text-only message to start"); continue; }
         const [harness, model] = [name.slice(0, name.indexOf(":")), name.slice(name.indexOf(":") + 1)];
-        if (!startable(project).includes(harness)) notes.push("@" + name + " not available here");
-        else if (!(await models(cfg.stateDir, env, { peers: cfg.peers }))[harness]?.includes(model)) notes.push("@" + name + " unknown model");
-        else notes.push("@" + name + await startFor(cfg, body, { harness, model }));
+        if (!startable(project).includes(harness)) {
+          notes.push("@" + name + " not available here");
+          await refuseStart(project, target, "@" + name, `${harness} is not available here`);
+        } else if (!(await models(cfg.stateDir, env, { peers: cfg.peers }))[harness]?.includes(model)) {
+          notes.push("@" + name + " unknown model");
+          await refuseStart(project, target, "@" + name, `${harness} lists no model named ${model}`);
+        } else notes.push("@" + name + await startFor(cfg, body, { harness, model }, { project, target, tag: "@" + name }));
         continue;
       }
       if (name.includes("#")) {
@@ -564,24 +571,59 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         continue;
       }
       if (sessions.some(item => item.peer === name && sentTo.has(item.id))) continue;
-      if (!startable(project).includes(name)) { notes.push("@" + name + " not available here"); continue; }
-      notes.push("@" + name + (attachment ? " needs a text-only message to start" : await startFor(cfg, body, { harness: name })));
+      if (!startable(project).includes(name)) {
+        notes.push("@" + name + " not available here");
+        await refuseStart(project, target, "@" + name, `${name} is not available here`);
+        continue;
+      }
+      notes.push("@" + name + (attachment ? " needs a text-only message to start" : await startFor(cfg, body, { harness: name }, { project, target, tag: "@" + name })));
     }
     return notes;
   }
 
+  // Posts ai-collab's own system message in the chat the operator wrote in, so a refused tag start is visible there and not only
+  // in the small per-message note. It rides the operator address as a system message (the same as a pattern-run failure notice).
+  // In the project chat it is startOnly, so no running agent is woken by it. Best effort: a failed post leaves the note.
+  async function refuseStart(project, target, tag, reason) {
+    const text = `${tag} did not start: ${reason}${/[.!]$/.test(reason) ? "" : "."}`;
+    await postSystem(project, target, text, true);
+  }
+
+  async function postSystem(project, target, text, startOnly = false) {
+    const direct = typeof target === "string" && target.includes("#");
+    const to = direct ? target : "all";
+    await sendMessage(project.operator, to, text, { system: true, onPublished: project.hub.record, ...(direct ? { operatorThread: true } : startOnly ? { startOnly: true } : {}) }).catch(() => {});
+  }
+
   // Starts a mention's session in the project folder, one start per START_GAP_MS; returns the note after the tag.
-  async function startFor(cfg, body, options) {
-    if (isProjectPaused(cfg)) return ": " + PROJECT_PAUSED;
+  // A refusal also posts a system message in the operator's chat (see refuseStart); so does a start that later ends on a usage limit.
+  async function startFor(cfg, body, options, report) {
+    const refuse = async (note, reason = note.replace(/^: /, "")) => {
+      if (report) await refuseStart(report.project, report.target, report.tag, reason);
+      return note;
+    };
+    if (isProjectPaused(cfg)) return refuse(": " + PROJECT_PAUSED, PROJECT_PAUSED + ". Resume new work to start it.");
     const checked = checkPrompt(body);
-    if (checked.error) return ": " + checked.error;
-    if (Date.now() - lastStartAt < START_GAP_MS) return ": wait 10 seconds between starts";
+    if (checked.error) return refuse(": " + checked.error);
+    if (Date.now() - lastStartAt < START_GAP_MS) return refuse(": wait 10 seconds between starts", "wait 10 seconds between starts");
     lastStartAt = Date.now();
     const taggedStart = { ...options, prompt: checked.text, env, place: "folder" };
+    // Only the real launcher reports how its process ended; a replacement launcher keeps the options it always got.
+    const watching = launch === startSession && Boolean(report);
+    let finish;
+    const exited = new Promise(resolve => { finish = resolve; });
+    if (watching) taggedStart.onEnd = ({ log }) => finish(log);
     const result = launch === startSession
       ? await startSession(cfg, { ...taggedStart, requireRunCode: true })
       : await start(cfg, taggedStart);
-    return result.status === "failed" ? " start failed: " + result.detail : " starting a new session";
+    if (result.status === "failed") return refuse(" start failed: " + result.detail, "start failed: " + result.detail);
+    if (watching) {
+      void exited.then(log => {
+        const notice = limitEndNotice({ tag: report.tag, harness: options.harness, model: options.model, log });
+        return notice ? postSystem(report.project, report.target, notice, true) : undefined;
+      });
+    }
+    return " starting a new session";
   }
 
   function inboxOf(project, peer) {
