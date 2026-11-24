@@ -1,8 +1,8 @@
 # A team file is already a durable workflow
 
-Read from `origin/main` at `29889ad9`. No runner code was changed.
+Read from `origin/main` at `9a297275`. No runner code was changed.
 
-The pasted class is the Cloudflare Agents SDK. It programs three durable operations by hand: write state to SQLite, start a multi-step workflow, and arm an alarm that still fires after a restart. A team `.dot` file already names those three things. The build is one interpreter that reads the file. A new team does not get a new class.
+The pasted class is the Cloudflare Agents SDK. It programs three durable operations by hand: write state to SQLite, start a multi-step workflow, and arm an alarm that still fires after a restart. A team `.dot` file already names those three things. The build is one compiler that reads the file and emits the workflow. A new team does not get a new class, and the agent is not the thing under test.
 
 ```ts
 import { Agent, callable } from "agents";
@@ -83,6 +83,23 @@ This does not require the Cloudflare Agents SDK, a Cloudflare account, or celld.
 
 The existing decision still stands for the runner itself: the SQLite layer keeps the DBOS names, and Postgres is not added for a single-user machine (`docs/owned-sessions-contract.md`, `docs/orchestration-migration-spike.md`). The task `migrate-builder-and-runner-orchestration` is that engine choice. This note is the authoring model on top of whichever engine keeps those step rules. Builders stay capped at two. Compiling a DOT file does not start a builder.
 
+## The compiler is the part that can be proved
+
+The agent stays outside the proof. Lean, or any checker with the same shape, takes the graph and a list of outcomes and returns the step log. An outcome is an edge label a role emitted: `in vision`, `built`, `changes`, `reported`, `task closed`. The checker does not see the prompt, the patch, or the model.
+
+A good trace for the product team is `in vision`, `built`, `reported`, `task closed`. The log enters engineer, then review, then pm, then done. A bad trace opens with `task closed`: `decide` refuses, because `in vision`, `built`, and `reported` have not fired. Another bad trace emits `changes` four times from the same review instance: the fourth hits the cap. Those traces are the tests. The agent does not write them, and no test code runs inside the agent.
+
+The properties are a pure function of the graph and the trace, which is why a proof assistant can take them:
+
+- A required edge that has not fired blocks `done`.
+- A capped edge does not fire once more than its cap, including when the log is replayed.
+- An event the live role does not have is refused, and the live role stays put.
+- Replaying a finished `leave` returns the same next role and does not append a second handoff.
+
+Whether the engineer's change is the one the task asked for, and whether the review's screen-state result is honest, stay outside the proof. Those are the outcomes the role emits. The compiler decides whether that outcome was allowed and which role is next.
+
+The trace tests can land before any Lean development. They run `decide` on the product DOT and the lists above. They do not start a harness.
+
 ## What this is not
 
 - A second graph language. The phone already edits the DOT.
@@ -95,6 +112,7 @@ The existing decision still stands for the runner itself: the SQLite layer keeps
 1. One workflow registration, `pattern`, input `{ name, task, definition }`.
 2. `enter` / `event` / `leave` as steps, calling `launchPatternRun`, the wait for the edge, and `decide`.
 3. The watchdog as one scheduled wake on that workflow id, cleared when `event` completes.
-4. A test that kills the process after `leave` has recorded `built` and before `review` is launched, then recovers: `review` starts once, and `built` is not applied again.
+4. Trace tests on the product DOT, with no harness and no test written for an agent. The good trace `in vision`, `built`, `reported`, `task closed` ends at done. An opening `task closed` is refused. A fourth `changes` from the same review instance is refused.
+5. A recovery test that kills the process after `leave` has recorded `built` and before `review` is launched: `review` starts once, and `built` is not applied again.
 
-No new team file is required for that test. The product DOT is the fixture.
+No new team file is required. The product DOT is the fixture. The trace tests are the ones Lean can later take as theorems. The recovery test checks the step log around the process.
