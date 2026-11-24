@@ -515,6 +515,22 @@ The opt-in test starts `runner/main.mjs` with an isolated project, database, and
 
 The OpenShell builder returned `ENOENT` for `openshell --version` at the live test's preflight. Cursor Agent was also absent from its PATH. The test skips by default. The earlier live probe described above reached ACP `initialize` and failed at `session/new` with Cursor logging `EAI_AGAIN api2.cursor.sh`.
 
+### Live verification of scheduled sandbox bootstrap
+
+On the runner host, install Claude, Codex, Cursor Agent and OpenCode under the
+runner account and make sure OpenShell has a free sandbox slot. The test uses the
+same host install overrides and login staging as a scheduled sandbox run.
+
+```sh
+export TMPDIR="$(mktemp -d -p /tmp)"
+AI_COLLAB_LIVE_SANDBOX_BOOTSTRAP=1 node --test test/live-sandbox-bootstrap.test.mjs
+```
+
+Each row uses a fresh Git fixture and sandbox. It checks that the staged launcher
+prints a version, the checkout returns with no new commits, and OpenShell removes
+the sandbox. The version probes require no model requests. The matrix skips by
+default and reports missing prerequisites as failures when explicitly enabled.
+
 ## Files
 
 | Path | Role |
