@@ -15,6 +15,7 @@ import { loadConfig, loadProjects, activityTopic, startDefaultSetting, startPlac
 import { ACTIVITY_TYPES } from "../../lib/activity.mjs";
 import { stripControl } from "../../lib/format.mjs";
 import { NTFY_MESSAGE_MAX_BYTES, latestStatuses, changeQueuedMessage, queuedMessage, markUrgent, parseEnvelope, sendMessage } from "../../lib/inbox.mjs";
+import { ATTACHMENT_MAX_BYTES, imageAttachment } from "../../lib/attachment.mjs";
 import { IMAGE_FILE, TEXT_FILE, attachmentOf, ensureAttachment, cachedAttachment, readAttachmentFile } from "../../lib/attachment-cache.mjs";
 import { publish } from "../../lib/ntfy.mjs";
 import { parsePhoneReply, parseQuestionText } from "../../lib/questions.mjs";
@@ -254,20 +255,44 @@ function failure(err) {
   return { status, message };
 }
 
-async function payload(request) {
-  if (!request.body) reject(400, "Expected a JSON object");
+async function readBody(request, limit) {
+  if (!request.body) reject(400, "Expected a request body");
   const chunks = [];
   let size = 0;
   for await (const part of request.body) {
     size += part.length;
-    if (size > MAX_REQUEST_BYTES) reject(413, "Message too large");
+    if (size > limit) reject(413, "Message too large");
     chunks.push(part);
   }
+  return Buffer.concat(chunks);
+}
+
+function jsonPayload(text) {
   try {
-    const value = JSON.parse(Buffer.concat(chunks).toString());
+    const value = JSON.parse(text);
     if (value && typeof value === "object" && !Array.isArray(value)) return value;
   } catch {}
   reject(400, "Expected a JSON object");
+}
+
+async function payload(request) {
+  if (!request.body) reject(400, "Expected a JSON object");
+  return jsonPayload((await readBody(request, MAX_REQUEST_BYTES)).toString());
+}
+
+async function imagePayload(request) {
+  const bytes = await readBody(request, ATTACHMENT_MAX_BYTES + MAX_REQUEST_BYTES);
+  let form;
+  try { form = await new Response(bytes, { headers: { "content-type": request.headers.get("content-type") } }).formData(); }
+  catch { reject(400, "Invalid image upload"); }
+  const metadata = form.get("message");
+  const file = form.get("image");
+  if (form.getAll("message").length !== 1 || typeof metadata !== "string" || Buffer.byteLength(metadata) > MAX_REQUEST_BYTES
+      || form.getAll("image").length !== 1 || !(file instanceof File)) reject(400, "Expected one image and its message");
+  if (file.size > ATTACHMENT_MAX_BYTES) reject(413, "Image is over 15 MB");
+  const input = jsonPayload(metadata);
+  try { return { input, attachment: imageAttachment(file.name, Buffer.from(await file.arrayBuffer())) }; }
+  catch (error) { reject(400, error.message); }
 }
 
 // A Home card's context meter: the harness's last token count and window, only when a token count is recorded.
@@ -480,15 +505,18 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // An @session gets the post in its direct chat; an @harness reaches its running sessions, or starts one with the post as prompt.
-  async function routeMentions(project, body, target, by, sentTo) {
+  async function routeMentions(project, body, target, by, sentTo, attachment) {
     const { cfg, operator } = project;
     const teamNames = [...Object.keys(listTeams(cfg, env)), ...Object.keys(listPatterns(cfg, env))];
     const sessions = listSessions(cfg);
-    const direct = (to, forSubagent) => sendMessage(operator, to, body, { operatorThread: true, mentionedIn: target, ...(by ? { by } : {}), ...(forSubagent ? { forSubagent } : {}) });
-    const notes = [...(await routeTeamMentions(project, body, target, by)), ...(await routePatternMentions(project, body))];
+    const direct = (to, forSubagent) => sendMessage(operator, to, body, { operatorThread: true, mentionedIn: target, attachment, ...(by ? { by } : {}), ...(forSubagent ? { forSubagent } : {}) });
+    const notes = attachment
+      ? mentionedTeams(body, teamNames).map(name => "@" + name + " needs a text-only message to start")
+      : [...(await routeTeamMentions(project, body, target, by)), ...(await routePatternMentions(project, body))];
     for (const name of mentionedNames(body, cfg.peers, teamNames)) {
       if (name === target) continue;
       if (name.includes(":")) {
+        if (attachment) { notes.push("@" + name + " needs a text-only message to start"); continue; }
         const [harness, model] = [name.slice(0, name.indexOf(":")), name.slice(name.indexOf(":") + 1)];
         if (!startable(project).includes(harness)) notes.push("@" + name + " not available here");
         else if (!(await models(cfg.stateDir, env, { peers: cfg.peers }))[harness]?.includes(model)) notes.push("@" + name + " unknown model");
@@ -515,7 +543,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }
       if (sessions.some(item => item.peer === name && sentTo.has(item.id))) continue;
       if (!startable(project).includes(name)) { notes.push("@" + name + " not available here"); continue; }
-      notes.push("@" + name + await startFor(cfg, body, { harness: name }));
+      notes.push("@" + name + (attachment ? " needs a text-only message to start" : await startFor(cfg, body, { harness: name })));
     }
     return notes;
   }
@@ -1376,9 +1404,11 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const by = caller(request)?.login;
       if (hosted && !HOSTED_ACTIONS.has(action)) reject(403, "This action is unavailable in hosted mode");
       assertSameOrigin(request, allowedOrigin);
-      if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
+      const contentType = request.headers.get("content-type")?.split(";")[0].trim();
+      const upload = action === "send" && contentType === "multipart/form-data";
+      if (!upload && contentType !== "application/json") reject(415, "JSON required");
       if (action === "history") return history(request, by, await payload(request));
-      const input = await payload(request);
+      const { input, attachment } = upload ? await imagePayload(request) : { input: await payload(request) };
       const { project: name, paused, target, body, queueAction, question, mode, level: alertLevel, id, status: taskStatus, decision, answers, harness, prompt, place, worktree, openshell, urgent, sendAnyway, model, startMode, codeMode, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText, commit, submission, note: reviewNote, taskId } = input;
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
@@ -1692,8 +1722,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         // The runner owns the harness trigger for a session it started; a terminal session falls back to controls.
         return json(200, (await runnerCompact(target, runner, env)) ?? await control("compact", session, { cfg }));
       }
-      if (typeof body !== "string" || !body.trim() || body.length > 4000) reject(400, "Enter 1–4000 characters");
+      if (typeof body !== "string" || (!body.trim() && !attachment) || body.length > 4000) reject(400, "Enter 1–4000 characters");
       if (action === "reply" || question !== undefined) {
+        if (attachment) reject(400, "Question replies require text");
         if (typeof question !== "string" || !/^[a-f0-9]{12}$/.test(question) || (target && target !== "all")) reject(400, "Invalid question");
         const reply = `reply ${question} ${body.trim()}`;
         if (body.trim().length > 2000 || Buffer.byteLength(reply) > NTFY_MESSAGE_MAX_BYTES) reject(400, "Reply exceeds the size limit");
@@ -1707,7 +1738,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         action === "send" && project.tasks ? () => project.tasks.list() : null);
       const [primary] = destinations;
       // A post tagged only @harness:model starts sessions; it names nobody running, so no running session takes it.
-      const startOnly = !hosted && action === "send" && !reply?.quoted && destinations.size === 1 && primary === "all"
+      const startOnly = !attachment && !hosted && action === "send" && !reply?.quoted && destinations.size === 1 && primary === "all"
         && startOnlyMentions(text, cfg.peers, [...Object.keys(listTeams(cfg, env)), ...Object.keys(listPatterns(cfg, env))]);
       const notes = [];
       let wake;
@@ -1729,7 +1760,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           const direct = action === "send" && to.includes("#");
           const envelopeReply = reply?.replyTo && (to === target || destinations.size === 1) ? { replyTo: reply.replyTo }
             : (!reply?.quoted && replyTo !== undefined && replyTo !== null && replyTo !== "" && to === target ? { replyTo } : {});
-          await sendMessage(sender, to, text, { onPublished: project.hub.record, operatorThread: direct, urgent: urgent === true, ...(startOnly && to === primary ? { startOnly: true } : {}), ...envelopeReply, ...(by && sender.peer === "operator" ? { by } : {}) });
+          await sendMessage(sender, to, text, { onPublished: project.hub.record, operatorThread: direct, attachment, urgent: urgent === true, ...(startOnly && to === primary ? { startOnly: true } : {}), ...envelopeReply, ...(by && sender.peer === "operator" ? { by } : {}) });
           if (direct) {
             const result = wakeAgent(project, to, listSessions(cfg).find(item => item.id === to));
             if (destinations.size === 1) wake = result;
@@ -1740,7 +1771,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (err.message.includes("-byte limit")) reject(400, `Message exceeds ${NTFY_MESSAGE_MAX_BYTES} encoded bytes`);
         throw err;
       }
-      if (!hosted && action === "send") notes.push(...await routeMentions(project, text, primary, by, destinations));
+      if (!hosted && action === "send") notes.push(...await routeMentions(project, text, primary, by, destinations, attachment));
       const detail = notes.length ? { status: "Sent", detail: notes.join(" · ") } : {};
       const quoted = reply?.quoted ? { quoted: true } : {};
       return json(201, { sent: true, ...detail, ...quoted, ...(wake ? { wake } : {}) });

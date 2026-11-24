@@ -1,7 +1,7 @@
 // Loads the UI at phone width. Pass --decisions, --composer, --home-sessions, --inactive, --kanban, --project-nav, or --ui-sdk.
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -45,7 +45,7 @@ export async function phoneFixture({ homeSessions = false, inactive = false, kan
   fake.inject(broadcastTopic(names[1]), JSON.stringify({ v: 1, kind: "approval", from: "claude", harness: "claude",
     id: ids[1], tool: "Review", summary: "Publish the draft for #decision-second", expiresAt: Date.now() + 120_000 }));
   const { writeState } = await import("../lib/state.mjs");
-  const { parseEnvelope } = await import("../lib/inbox.mjs");
+  const { claimInbox, parseEnvelope, replyToOperator } = await import("../lib/inbox.mjs");
   const cfg = projects.find(item => item.project === names[0]);
   const sessionId = "composer-fixture";
   const label = sessionLabel(sessionId);
@@ -96,6 +96,16 @@ export async function phoneFixture({ homeSessions = false, inactive = false, kan
       const message = parseEnvelope(post.message);
       return message?.kind === "msg" && message.body === body && Boolean(message.urgent) === urgent ? [[post.topic, message.toSession]] : [];
     }),
+    async replyWithImage(bytes) {
+      const agent = { ...cfg, peer: "claude", session: label };
+      const [message] = await claimInbox(agent, { strict: true });
+      assert.ok(message?.attachment?.local_path, "the agent got a cached image");
+      assert.deepEqual(readFileSync(message.attachment.local_path), bytes);
+      assert.equal(message.body, "");
+      const path = join(dir, "agent.png");
+      writeFileSync(path, bytes);
+      await replyToOperator(agent, message.id, "Here’s the result.", { attachment: path });
+    },
     broadcast: [broadcastTopic(cfg.project), undefined],
     direct: [inboxTopic(cfg.project, "claude"), label],
     published: () => fake.state.publishes.filter(item => item.message.startsWith("reply ")).map(item => [item.topic, item.message]),

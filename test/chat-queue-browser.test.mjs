@@ -4,7 +4,7 @@ import { chromium } from "playwright-core";
 import { phoneFixture } from "../tools/smoke-ui.mjs";
 
 
-test("a phone operator can edit and cancel a queued message after switching conversations", {
+test("phone chat routes mentions and urgent messages, preserves drafts, and edits or cancels queued sends", {
   skip: process.env.AI_COLLAB_BROWSER_TEST !== "1",
   timeout: 60_000,
 }, async (t) => {
@@ -40,8 +40,21 @@ test("a phone operator can edit and cancel a queued message after switching conv
   await edited.getByRole("button", { name: "Cancel", exact: true }).click();
   await queue.waitFor({ state: "hidden" });
 
+  const urgent = "Please review now";
+  await composer.fill(urgent);
+  const urgentSent = page.waitForResponse(response => response.url().endsWith("/api/send") && response.status() === 201);
+  await page.getByRole("button", { name: "Send now", exact: true }).click();
+  await urgentSent;
+  assert.deepEqual(fixture.messageDeliveries(urgent, true), [fixture.direct]);
+
   await page.goto(projectUrl);
   await composer.waitFor();
   assert.equal(await composer.inputValue(), "Project draft");
+  const mention = `Review @${fixture.address}`;
+  await composer.fill(mention);
+  const mentioned = page.waitForResponse(response => response.url().endsWith("/api/send") && response.status() === 201);
+  await page.getByRole("button", { name: "Send · Everyone in " + fixture.project + " · " + direct, exact: true }).click();
+  await mentioned;
+  assert.deepEqual(fixture.messageDeliveries(mention), [fixture.broadcast, fixture.direct]);
   assert.deepEqual(fixture.messageDeliveries("Review the first revision"), [fixture.direct]);
 });

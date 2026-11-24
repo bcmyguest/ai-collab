@@ -85,13 +85,15 @@ A session that holds a live role shows that team and role on the card, in the si
 
 Each session card shows **where it runs** after its address: `folder` (the project root), `worktree <name>` (under `<root>/.claude/worktrees/` or any other `worktrees/<name>` path), `sandbox` (a registry entry with a `sandbox` field; no hook writes one yet), else the cwd with `~` for home (`sessionPlace` in `lib/sessions.mjs`). A **⋯** menu on each card has **Dispose**, enabled only for an offline session with a registry file. It posts `/api/dispose`; the server checks the address (`peer#16-hex`), that the session belongs to the project and that its recorded process is not running, then deletes `<stateDir>/<project>/registry/<address>.json` (`disposeSession`). A session that still has messages in ntfy history can reappear as an offline card without a registry entry.
 
-A **Go to agent** button sits on every Home card, its "started by" parent, each subagent run (in threads, the overview and on cards), each overview row's agent, and each agent's message. A session started by another shows **Back to parent** under its title; a subagent run's view has **Back to parent** to its session's thread.
+A **Go to agent** button sits on every Home card, its "started by" parent, each subagent run (in threads, the overview and on cards), and each overview row's agent. In chat, tap the agent's name to open its session. A session started by another shows **Back to parent** under its title; a subagent run's view has **Back to parent** to its session's thread.
 
 ## Chat and activity views
 
 A session's **Timeline** interleaves its direct thread and broadcast posts with its activity rows by time: each finished turn folds into one **Working on … · N steps** row, and its final reply shows as a bubble. Live tool calls show while a turn runs. The composer sits below. The project chat shows the broadcast topic, with a **finished** row per completed session turn (its first line of the final reply) and a **working on** row per busy session; tool calls stay out of it. **Raw activity** (the session's ⋯ menu) lists every tool call unfolded.
 
 Rows render by type: prompts as user bubbles, assistant text as Markdown, tool calls as an icon, the tool name, and a one-line summary (tap to see the input), results as a collapsed preview (tap to expand; **Full output** opens the attachment), and errors in red. A call and its result share a row when the harness supplies a call ID. A `compact` row marks a context compaction. **Working…** shows while an agent's latest event is a tool call without a result (for at most 15 minutes). The view follows the newest row like the chat and keeps the last 500 rows.
+
+Use **Attach image** in the chat composer to preview and send a PNG, JPEG, GIF, or WebP image up to 15 MB, with an optional caption. Chat displays images inline in both directions. Tap a filename to open the full image. Use a text message to start a new agent or team with a tag.
 
 `/api/file/<name>` serves a `text/plain` file only when an activity event in memory references it; chat topics still serve images only. Each file is downloaded into a local cache once and then read from disk, so reloads and extra devices cost no ntfy bandwidth ([one download per attachment](messaging.md#one-download-per-attachment)).
 

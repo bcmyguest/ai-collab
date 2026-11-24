@@ -21,6 +21,7 @@ import { composerDestination } from "@/lib/message-routing";
 import { quotedReply, usableReplyId } from "@/lib/reply-quote";
 import { patternMentionTargets, withMentions } from "@/lib/mentions";
 import { chatThread } from "@/lib/chat-turns";
+import { AttachImageButton, ChatImage, ImageDraft, ImagePicker } from "./chat-image";
 import { NewAgentComposer } from "./new-session";
 import { PatternsPage } from "./patterns-page";
 import { LandReviews } from "./land-reviews";
@@ -33,7 +34,7 @@ import { TABS, parseSelection, projectNavigation, projectViewCounts, selectionHa
 import { agentName, namedAgents, unnamedAgents } from "@/lib/sidebar";
 import { isLive, sessionState } from "@/lib/session-state";
 import { subscribeUiEvents } from "@/lib/ui-events";
-import { ActivityRow, GoToAgent, Working } from "./activity";
+import { ActivityRow, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
 import { SurfaceContext } from "@/components/a2ui/surface";
 import { NotifyToggle } from "./notify";
@@ -101,10 +102,16 @@ function streamOf(selected) {
   return { home, watching, subagents, inline, raw, listing, tasks, compactions, requested: stream.toString() };
 }
 
-async function api(path, payload) {
-  const response = await fetch("/api/" + path, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-  });
+async function api(path, payload, image) {
+  if (image) {
+    const form = new FormData();
+    form.set("message", JSON.stringify(payload));
+    form.set("image", image);
+    payload = form;
+  }
+  const response = await fetch("/api/" + path, image
+    ? { method: "POST", body: payload }
+    : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
   if (response.status === 401) window.dispatchEvent(new Event(AUTH_CHECK));
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "Request failed");
@@ -340,7 +347,10 @@ function QueueRow({ message, disabled, change }) {
   const [draft, setDraft] = useState(null);
   return <li className="flex flex-wrap items-center gap-2 border-t px-3 py-2 text-sm">
     {draft === null ? <>
-      <p className="min-w-0 flex-1 truncate" title={message.body}>{message.body}</p>
+      <div className="min-w-0 flex-1">
+        {message.body && <p className="truncate" title={message.body}>{message.body}</p>}
+        {message.attachment && <ChatImage attachment={message.attachment} compact/>}
+      </div>
       <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => setDraft(message.body)}>Edit</Button>
       <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => change(message, "cancel")}>Cancel</Button>
       <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => change(message, "steer")}>Retry delivery</Button>
@@ -384,21 +394,17 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
         {at > 0 && <time dateTime={new Date(at).toISOString()} title={clock.format(at)}>{ago(at, now)}</time>}
         {replyFrom && message.kind !== "Approval" && <button type="button" aria-label={"Reply to " + sender} title="Reply" onClick={() => replyFrom({ id: message.id, sender, prefill, body: message.body })}
           className="rounded-full p-0.5 hover:bg-muted hover:text-foreground"><Reply className="size-3.5"/></button>}
-        {message.scope === "all" && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">to all</Badge>}        {message.urgent && !message.cancelled && <span role="img" aria-label="Sent now" title="Sent now: delivered at the agent's next tool call" data-urgent className="text-amber-500"><Zap className="size-3.5"/></span>}
+        {message.scope === "all" && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">to all</Badge>}
+        {message.urgent && !message.cancelled && <span role="img" aria-label="Sent now" title="Sent now: delivered at the agent's next tool call" data-urgent className="text-amber-500"><Zap className="size-3.5"/></span>}
         {outgoing && (message.queueStatus ? <span>{message.queueStatus}</span> : <Ticks state={message.receipt}/>)}
-        {openable && sender.includes("#") && <GoToAgent onClick={go} className="size-6"/>}
       </div>
       {message.quote && <Quote quote={message.quote} label={short(message.quote.sender)}/>}
       {message.kind === "Approval" ? <ApprovalCard approval={message.approval} now={now} disabled={disabled} act={act} skip={skip} head={cardHead}/>
         : message.kind === "Question" && message.question ? <QuestionCard question={message.question} body={withMentions(message.body)} taskLinks={taskLinks} answer={message.answer} by={message.answeredBy} skipped={message.skipped} disabled={disabled} onAnswer={body => answer(message.question, body)} skip={skip} head={cardHead}/>
-        : <MessageContent markdown taskLinks={taskLinks} className={cn("bubble max-w-full rounded-2xl px-3.5 py-2 text-[15px] leading-relaxed shadow-xs [overflow-wrap:anywhere]",
+        : (message.body || !message.attachment) && <MessageContent markdown taskLinks={taskLinks} className={cn("bubble max-w-full rounded-2xl px-3.5 py-2 text-[15px] leading-relaxed shadow-xs [overflow-wrap:anywhere]",
         outgoing ? "rounded-tr-md border border-primary/25 bg-primary/10 text-foreground" : "rounded-tl-md border bg-card text-card-foreground",
         message.kind === "Question" && "border-amber-500/50")}>{withMentions(message.body)}</MessageContent>}
-      {message.attachment && <a href={"/api/file/" + encodeURIComponent(message.attachment.file)} target="_blank" rel="noreferrer" className="block max-w-full overflow-hidden rounded-2xl border bg-card">
-        <img src={"/api/file/" + encodeURIComponent(message.attachment.file)} alt="" loading="lazy" onError={event => { event.currentTarget.hidden = true; }}
-          className="max-h-96 w-auto max-w-full object-contain"/>
-        <span className="block break-all px-3 py-1.5 text-sm underline">{message.attachment.name}</span>
-      </a>}
+      {message.attachment && <ChatImage attachment={message.attachment}/>}
       {message.kind === "Question" && message.question && !message.answer && <Button variant="ghost" size="sm" className="rounded-full text-xs" onClick={() => reply(message.question)}>Reply from the composer</Button>}
     </div>
   </Message>;
@@ -428,6 +434,8 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
   const [commandsOpen, setCommandsOpen] = useState(false);
   const [posting, setPosting] = useState(false);
   const [held, setHeld] = useState(null);
+  const [images, setImages] = useState([]);
+  const [imageError, setImageError] = useState("");
   // Command names the picker inserted in this draft; only these and known commands make the message a command.
   const picked = useRef(new Set());
   const pending = useRef(false);
@@ -454,7 +462,9 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
   const busy = disabled || posting;
   const text = draft.trim();
   const quoted = Boolean(replying?.id && !usableReplyId(replying.id));
-  const command = routing.session && commandFor(text, picked.current) !== null;
+  const image = question ? undefined : images[0];
+  const canSend = Boolean(text || image);
+  const command = !image && routing.session && commandFor(text, picked.current) !== null;
   const destination = question ? "Reply to question " + question
     : command ? "Command for " + short(routing.target)
     : composerDestination({ ...routing, agents, teams, startable, models, quoted,
@@ -465,6 +475,7 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
   // Every edit is kept per conversation, so a tab or view switch that remounts the composer restores it.
   function setDraft(next) { setHeld(null); drafts.set(conversation, next); setDraftState(next); }
   function focus() { document.getElementById("composer")?.focus(); }
+  function selectImages(next) { setHeld(null); setImageError(""); setImages(next); }
   useEffect(() => {
     if (!initialDraft || disabled || prefillFocused.current) return;
     const input = document.getElementById("composer");
@@ -497,16 +508,17 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
     focus();
   }
   async function send(sendAnyway = false, sendNow = urgent) {
-    if (pending.current || busy || !draft.trim()) return;
+    if (pending.current || busy || !canSend) return;
     pending.current = true;
     setPosting(true);
     const text = draft.trim();
     try {
       // onSend returns true only when the message was sent (or a command ran or was requested); otherwise the draft stays.
-      const result = await onSend(text, urgentable && sendNow, commandFor(text, picked.current) !== null, sendAnyway);
+      const result = await onSend(text, urgentable && sendNow, command, sendAnyway, image);
       if (result === "draftHeld") setHeld({ text, replying, question, sendNow });
       if (result === true) {
         setDraft(""); setShowPicker(false); setUrgent(false); picked.current.clear();
+        if (image) selectImages([]);
       }
     }
     finally { pending.current = false; setPosting(false); focus(); }
@@ -567,27 +579,34 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
       else return;
       event.preventDefault(); event.stopPropagation();
     }}>
-      <PromptInput value={draft} onValueChange={change} onSubmit={() => send()} disabled={busy} className="rounded-3xl bg-card shadow-sm">
-        <div id="composer-destination" aria-live="polite" className="max-h-[20dvh] overflow-y-auto break-words px-3 pt-1 text-xs font-medium text-muted-foreground">
-          {destination}
-        </div>
-        <PromptInputTextarea id="composer" aria-label="Message" aria-describedby="composer-destination" placeholder={placeholder} className="text-[15px]"/>
-        <PromptInputActions className="justify-between px-1 pt-1">
-          <PromptInputAction tooltip="Mention an agent">
-            <Button type="button" variant="ghost" size="sm" className="rounded-full" aria-expanded={picking} disabled={busy}
-              onClick={() => { setShowPicker(!showPicker); setActiveIndex(0); focus(); }}><AtSign/>Mention</Button>
-          </PromptInputAction>
-          <div className="flex items-center gap-1">
-            {urgentable && !command && <PromptInputAction tooltip="Deliver at the agent's next tool call instead of its next turn">
-              <Button type="button" variant={urgent ? "secondary" : "ghost"} size="sm" className={cn("rounded-full", urgent && "text-amber-500")} aria-pressed={routing.session ? undefined : urgent} disabled={busy || (routing.session && !text)}
-                onClick={() => routing.session ? send(false, true) : setUrgent(!urgent)}><Zap/>Send now</Button>
-            </PromptInputAction>}
-            <PromptInputAction tooltip={sendName}>
-              <Button type="button" size="icon" className="rounded-full" aria-label={sendName} disabled={busy || !draft.trim()} onClick={() => send()}><ArrowUp/></Button>
-            </PromptInputAction>
+      <ImagePicker files={images} onChange={selectImages} onError={setImageError} disabled={busy || Boolean(question)}>
+        <PromptInput value={draft} onValueChange={change} onSubmit={() => send()} disabled={busy} className="rounded-3xl bg-card shadow-sm">
+          {image && <ImageDraft file={image} disabled={busy} remove={() => { selectImages([]); focus(); }}/>}
+          {!question && imageError && <p role="alert" className="px-3 text-sm text-destructive">{imageError}</p>}
+          <div id="composer-destination" aria-live="polite" className="max-h-[20dvh] overflow-y-auto break-words px-3 pt-1 text-xs font-medium text-muted-foreground">
+            {destination}
           </div>
-        </PromptInputActions>
-      </PromptInput>
+          <PromptInputTextarea id="composer" aria-label="Message" aria-describedby="composer-destination" placeholder={placeholder} className="text-[15px]"/>
+          <PromptInputActions className="justify-between px-1 pt-1">
+            <div className="flex items-center gap-1">
+              {!question && <AttachImageButton replacing={Boolean(image)}/>}
+              <PromptInputAction tooltip="Mention an agent">
+                <Button type="button" variant="ghost" size="sm" className="rounded-full" aria-expanded={picking} disabled={busy}
+                  onClick={() => { setShowPicker(!showPicker); setActiveIndex(0); focus(); }}><AtSign/>Mention</Button>
+              </PromptInputAction>
+            </div>
+            <div className="flex items-center gap-1">
+              {urgentable && !command && <PromptInputAction tooltip="Deliver at the agent's next tool call instead of its next turn">
+                <Button type="button" variant={urgent ? "secondary" : "ghost"} size="sm" className={cn("rounded-full", urgent && "text-amber-500")} aria-pressed={routing.session ? undefined : urgent} disabled={busy || (routing.session && !canSend)}
+                  onClick={() => routing.session ? send(false, true) : setUrgent(!urgent)}><Zap/>Send now</Button>
+              </PromptInputAction>}
+              <PromptInputAction tooltip={sendName}>
+                <Button type="button" size="icon" className="rounded-full" aria-label={sendName} disabled={busy || !canSend} onClick={() => send()}><ArrowUp/></Button>
+              </PromptInputAction>
+            </div>
+          </PromptInputActions>
+        </PromptInput>
+      </ImagePicker>
     </div>
   </div>;
 }
@@ -926,11 +945,11 @@ function Console({ account }) {
     } catch (err) { if (at === route.current) setNotice(err.message); return false; }
     finally { setWorking(false); }
   }
-  async function action(path, payload, fallback) {
+  async function action(path, payload, fallback, image) {
     const at = requested;
     setWorking(true);
     try {
-      const result = await api(path, { project, ...payload });
+      const result = await api(path, { project, ...payload }, image);
       if (result.draftHeld) return "draftHeld";
       if (at === route.current) {
         // A running session needs no wake note; its message's ticks tell the rest.
@@ -1179,12 +1198,12 @@ function Console({ account }) {
       </section>}
       {!home && !listing && !patterns && !tasksView && !composing && <Composer key={requested + ":" + composeTask} conversation={conversationKey(project, composeTask ? "#" + composeTask : level === "session" ? selected.session : "")} initialDraft={composeTask ? `#${composeTask} ` : ""} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
         placeholder={placeholder} routing={routing} question={question} cancel={() => setQuestion("")} urgentable={!question} replying={replyTo} cancelReply={() => setReplyTo(null)}
-        onSend={async (body, urgent, command, sendAnyway) => {
+        onSend={async (body, urgent, command, sendAnyway, image) => {
           // Project chat never runs commands: a leading / there is ordinary chat.
           if (command && !question && level === "session" && selected.session) return runCommand(body);
           const composeHash = composeTask && location.hash;
           const sent = question ? await action("reply", { question, body }, "Reply sent")
-            : await action("send", { target, body, ...(sendAnyway ? { sendAnyway: true } : {}), ...(urgent ? { urgent: true } : {}), ...(replyTo ? { replyTo: replyTo.id, quote: { sender: replyTo.sender, body: replyTo.body } } : {}) }, "Sent");
+            : await action("send", { target, body, ...(sendAnyway ? { sendAnyway: true } : {}), ...(urgent ? { urgent: true } : {}), ...(replyTo ? { replyTo: replyTo.id, quote: { sender: replyTo.sender, body: replyTo.body } } : {}) }, "Sent", image);
           if (sent === true) {
             setQuestion(""); setReplyTo(null); stick.current?.scrollToBottom();
             if (composeHash && location.hash === composeHash) navigate({ project, level: "project" });
