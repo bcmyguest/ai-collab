@@ -42,7 +42,7 @@ Then open the UI on your phone: [Quick start](https://bcmyguest.github.io/ai-col
 |---|---|
 | [Install](https://bcmyguest.github.io/ai-collab/install/) | Per-harness install by hand |
 | [Configuration](https://bcmyguest.github.io/ai-collab/configuration/) | `defaults.json`, `projects.json`, environment variables |
-| [Phone UI](https://bcmyguest.github.io/ai-collab/phone-ui/) | Home, chat, task tags, activity, starting sessions, push |
+| [Phone UI](https://bcmyguest.github.io/ai-collab/phone-ui/) | Home, deployed build, chat, task tags, activity, starting sessions, push |
 | [AFK mode](https://bcmyguest.github.io/ai-collab/afk/) | Progress posts and phone questions while you are away |
 | [Approvals and questions](https://bcmyguest.github.io/ai-collab/approvals/) | Permission prompts answered from the phone |
 | [Builders](docs/builders.md) | One agent per task in OpenShell, with `oncebitten` checks when installed on the host |
