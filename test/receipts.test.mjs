@@ -47,11 +47,11 @@ test("a hook delivery publishes one read receipt for the delivered ids", async (
   const env = peerEnv(fake, { peer: "alice" });
   const bob = loadConfig(peerEnv(fake, { peer: "bob" }));
   await sendMessage(bob, "alice", "one");
-  await sendMessage(bob, "all", "two");
+  await sendMessage(bob, "all", "@alice two");
   const ids = fake.state.publishes.map((_, i) => `m${String(i + 1).padStart(8, "0")}`);
   const r = await runHook({ hook_event_name: "SessionStart", session_id: "s-1", cwd: "/tmp" }, env);
   assert.equal(r.code, 0);
-  assert.match(JSON.parse(r.out).hookSpecificOutput.additionalContext, /body="two"/);
+  assert.match(JSON.parse(r.out).hookSpecificOutput.additionalContext, /body="@alice two"/);
   const [receipt, ...more] = receipts(fake);
   assert.equal(more.length, 0);
   assert.deepEqual({ ...receipt, ts: "" }, { v: 1, kind: "receipt", from: "alice", session: sessionLabel("s-1"), ids, state: "read", ts: "" });
@@ -124,12 +124,13 @@ test("UI ticks: a direct message goes sent then read; a broadcast sent, delivere
   await deliver(carol);
   await states(direct, "dm", "read");
 
-  assert.equal((await post({ target: "all", body: "everyone" })).status, 201);
-  await states(all, "everyone", "sent");
+  const broadcast = "@bob @carol everyone";
+  assert.equal((await post({ target: "all", body: broadcast })).status, 201);
+  await states(all, broadcast, "sent");
   await deliver(bob);
   await new Promise((resolve) => setTimeout(resolve, 200));
   const fresh = (await sse(ui.events(new Request(`${base}/api/events`, { signal: ctrl.signal }))).next()).value;
-  assert.equal(fresh.data.messages.find((m) => m.body === "everyone").receipt, "delivered");
+  assert.equal(fresh.data.messages.find((m) => m.body === broadcast).receipt, "delivered");
   await deliver(carol);
-  await states(all, "everyone", "read");
+  await states(all, broadcast, "read");
 });

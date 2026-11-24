@@ -167,7 +167,7 @@ test("configured hooks deliver phone posts to each session and identify outbound
     { root: cwd, project: "fixture", url: fake.url, tokenFile },
   ]));
   const env = { XDG_CONFIG_HOME: root, XDG_STATE_HOME: root, AI_COLLAB_POLL_INTERVAL_MS: "0" };
-  fake.inject("ai-collab-fixture--to--all", "Please post a status update");
+  fake.inject("ai-collab-fixture--to--all", "@cursor @codex @claude Please post a status update");
 
   const sessions = [
     ["cursor", "postToolUse", { conversation_id: "raw-cursor-1" }],
@@ -193,7 +193,7 @@ test("configured hooks deliver phone posts to each session and identify outbound
   assert.deepEqual(JSON.parse((await runHook(["--host", "codex"], outside, env)).out), {});
 
   const firstCursor = loadConfig({ ...env, AI_COLLAB_PEER: "cursor", AI_COLLAB_SESSION: labels[0] }, { cwd });
-  await sendMessage(firstCursor, "all", "Here is my status");
+  await sendMessage(firstCursor, "all", "@cursor Here is my status");
   assert.match(fake.state.publishes.at(-1).title, new RegExp(`cursor#${labels[0]}`));
   const secondCursor = JSON.parse((await runHook(["--host", "cursor"], {
     cwd, hook_event_name: "postToolUse", conversation_id: "raw-cursor-2",

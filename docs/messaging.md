@@ -145,7 +145,11 @@ A socket delivery with `expect_reply` is redelivered like any other push (see be
 
 ### Priority
 
-`priority` is `normal` (wakes an idle session), `urgent` (same as `urgent: true`) or `fyi` (queued; no waiter or dispatcher wakes the session for it). A hook still delivers an `fyi` message at the next hook event, including a Stop that already runs.
+`priority` is `normal` (wakes an idle session), `urgent` (same as `urgent: true`) or `fyi` (queued; no waiter or dispatcher wakes the session for it). A hook still delivers an `fyi` message at the next hook event, including a Stop that already runs. `fyi` only skips the idle wake. An unmentioned project-chat post is not delivered into an agent's turn at all.
+
+### Who a broadcast wakes
+
+An agent session takes a direct message always: one addressed to `peer#session`, or one on the peer inbox. A project-chat post wakes that session only when the body `@mentions` the session (`@peer#session`, including `@peer#session/run`) or its harness (`@peer`). Any other broadcast stays on the channel for the phone and is not claimed, so it does not start a turn. This is the default for every agent session. The operator's phone alert level is separate and unchanged. A `@peer:model` tag starts a new session and does not wake one that is already running.
 
 ### Start-only posts
 

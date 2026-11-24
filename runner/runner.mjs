@@ -11,7 +11,7 @@ import { getPattern } from "../lib/patterns.mjs";
 import { applyPatternAdvance, cutPatternRun, launchPatternRun, NOTE_MAX, preparePatternRun, RUN_ID, runStatus } from "../lib/pattern-runs.mjs";
 import { statePath } from "../lib/state.mjs";
 import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, receiptsTopic, sessionLabel, startPlaceSetting } from "../lib/config.mjs";
-import { RESERVE_MS, ATTACHMENT_BUDGET_MS, claimInbox, markDelivered, parseEnvelope, releaseOwned, reserveOwned, reservedMessage } from "../lib/inbox.mjs";
+import { RESERVE_MS, ATTACHMENT_BUDGET_MS, claimInbox, markDelivered, mentionsAgent, parseEnvelope, releaseOwned, reserveOwned, reservedMessage } from "../lib/inbox.mjs";
 import { parsePhoneReply, parseQuestionText } from "../lib/questions.mjs";
 import { replyDecision, APPROVAL_ID } from "../lib/approvals.mjs";
 import { formatInbox, identityLine } from "../lib/format.mjs";
@@ -1148,18 +1148,23 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       const s = sessions.get(`${m.to}#${m.toSession}`);
       if (s) await deliver(cfg, s, item(s), m.urgent === true, m.from, sender, true);
     } else if (broadcast && m.to === "all") {
-      // A project-chat broadcast reaches every owned session of the project, except a start-only post.
+      // A project-chat post reaches an owned session only when it @mentions that session or its harness.
+      // A start-only post addresses the session its tag starts. A direct message is handled above and always wakes.
       if (m.from === "operator" && m.startOnly === true) return;
-      for (const s of sessions.values()) await deliver(cfg, s, item(s), m.urgent === true, m.from, sender);
+      for (const s of sessions.values()) {
+        if (!mentionsAgent(m.body, { peer: s.record.harness, session: s.record.label })) continue;
+        await deliver(cfg, s, item(s), m.urgent === true, m.from, sender, true);
+      }
     }
   }
 
-  // Raw text the operator typed in the project chat (not a phone reply, not a question) reaches every owned session.
+  // Raw project-chat text reaches an owned session only when it @mentions that session or its harness.
   async function deliverPlain(cfg, ev) {
     const text = (ev.message || "").trim();
     if (!text || parseQuestionText(text)) return;
     for (const s of sessions.values()) {
-      await deliver(cfg, s, { id: ev.id, from: "ntfy", to: "all", ts: "", body: text.slice(0, TEXT_MAX), operatorBroadcast: true }, false, "ntfy", "");
+      if (!mentionsAgent(text, { peer: s.record.harness, session: s.record.label })) continue;
+      await deliver(cfg, s, { id: ev.id, from: "ntfy", to: "all", ts: "", body: text.slice(0, TEXT_MAX), operatorBroadcast: true }, false, "ntfy", "", true);
     }
   }
 
