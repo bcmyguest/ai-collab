@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
-import { readOwned, standsDown } from "../lib/owned.mjs";
+import { readOwned, standsDown, writeOwned } from "../lib/owned.mjs";
 import { listSessions } from "../lib/sessions.mjs";
 import { openTasks } from "../lib/tasks.mjs";
 import { builderPaths } from "../lib/builder.mjs";
@@ -65,6 +65,39 @@ async function until(check, what, ms = 4000) {
 
 const envelopes = (fake, topic) => fake.state.publishes.filter((p) => p.topic === topic).map((p) => parseWireEnvelope(p.message)).filter(Boolean);
 const rows = (fake) => fake.state.publishes.filter((p) => p.topic === ACTIVITY).map((p) => parseWireEnvelope(p.message));
+
+test("boot releases the slot of an owned builder whose workflow failed", async () => {
+  const fake = await startFakeNtfy();
+  const ctx = setup(fake);
+  const label = "0123456789abcdef";
+  const address = `codex#${label}`;
+  const id = "interrupted-build";
+  const workflowId = "session-failed-builder";
+  const paths = builderPaths(id, ctx.env);
+  mkdirSync(paths.dir, { recursive: true });
+  writeFileSync(paths.state, JSON.stringify({ id, project: "demo", harness: "codex", owned: true, address, phase: "staging", sandboxCreated: true }));
+  writeOwned(ctx.cfg, {
+    project: "demo", harness: "codex", label, address, nativeId: "builder-native-id", cwd: ctx.root,
+    workflowId, builder: id, status: "idle", approvals: [],
+  });
+  const durable = openDurable(ctx.db);
+  durable.register("session", async () => { throw new Error("ENOSPC: no space left on device, write"); });
+  await assert.rejects(durable.startWorkflow("session", workflowId, {}), /ENOSPC/);
+  await durable.close();
+  const runner = makeRunner(ctx, createFakeAdapter({ harness: "codex" }));
+  try {
+    await runner.boot();
+    const state = JSON.parse(readFileSync(paths.state, "utf8"));
+    assert.equal(state.phase, "failed");
+    assert.match(state.error, /ENOSPC/);
+    assert.equal(state.sandboxCreated, true);
+    assert.equal(readOwned(ctx.cfg, label).status, "ended");
+  } finally {
+    await runner.stop();
+    await fake.close();
+    rmSync(ctx.home, { recursive: true, force: true });
+  }
+});
 
 test("start opens a session, claims the registry, and publishes prompt, text and stop rows", async () => {
   const fake = await startFakeNtfy();

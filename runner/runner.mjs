@@ -23,11 +23,11 @@ import { claudeConfirmedSince, claudeSnapshot, claudeWindowMs } from "../lib/cla
 import { ackTracker, direct, MAX_ATTEMPTS, PUSHED, pushSession, readDispatchLedger, readySession, writeDispatchLedger } from "../lib/deliver-push.mjs";
 import { sessionIdleState } from "../lib/idle.mjs";
 import { opencodeRequest } from "../lib/opencode-api.mjs";
-import { BUILDER_START_TIMEOUT_MS, builderPaths, builderResumePrompt, stoppedBuilder, ownedBuilder, stageOwnedBuilder, claimOwnedBuilder, finishOwnedBuilder } from "../lib/builder.mjs";
+import { BUILDER_START_TIMEOUT_MS, builderPaths, builderResumePrompt, stoppedBuilder, ownedBuilder, stageOwnedBuilder, claimOwnedBuilder, finishOwnedBuilder, markOwnedBuilderFailed } from "../lib/builder.mjs";
 import { childEnv, checkPrompt, findExecutable, modelShape, projectRoot, worktreeNames } from "../lib/start.mjs";
 import { parseCodeMode, resolveCodeMode } from "../lib/code-mode.mjs";
 import { openTasks } from "../lib/tasks.mjs";
-import { ownedFile, readOwned, writeOwned } from "../lib/owned.mjs";
+import { listOwned, ownedFile, readOwned, writeOwned } from "../lib/owned.mjs";
 import { modelFields } from "../lib/session-events.mjs";
 import { limitFromRunError } from "../lib/limits.mjs";
 import { alertLimit } from "../lib/limit-alert.mjs";
@@ -809,6 +809,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     const timeout = builder ? BUILDER_START_TIMEOUT_MS : START_TIMEOUT_MS;
     try {
       const run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, system: Boolean(builder || patternRun) || system !== false, ...(continuation ? { continuation } : {}), ...(builder ? { builder } : {}), ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), codeMode: resolveCodeMode(codeMode, env) });
+      if (builder) watchBuilderFailure(workflowId, run);
       const ended = run.then((out) => fail(502, `${harness} session ended at once: ${out?.ended || "no reason"}`));
       ended.catch(() => {});
       const s = await Promise.race([
@@ -1077,15 +1078,43 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     return { status: "answered" };
   }
 
+  function watchBuilderFailure(workflowId, run) {
+    void run.catch(async () => {
+      const failed = [...sessions.values()].find(({ record }) => record.workflowId === workflowId && record.builder);
+      if (failed) await reconcileFailedBuilder(failed.record);
+    });
+  }
+
+  async function reconcileFailedBuilder(record) {
+    if (!record.builder || record.status === "ended") return;
+    const workflow = durable.status(record.workflowId);
+    if (workflow?.status !== "ERROR") return;
+    const reason = workflow.error || "Builder workflow failed";
+    try {
+      markOwnedBuilderFailed(record.project, record.builder, record.address, reason, env);
+      const session = sessions.get(record.address);
+      if (session) await endSession(session, reason);
+      else {
+        const cfg = sessionCfg(record.project, record.harness, record.label);
+        writeOwned(cfg, { ...record, status: "ended", run: null, approvals: [] });
+        await recordSession(cfg, { id: record.nativeId, cwd: record.cwd, harness: record.harness, event: "ended" }).catch(() => {});
+      }
+    } catch (error) {
+      log(`failed to reconcile builder ${record.builder}: ${error.message}`);
+    }
+  }
+
   /** Interrupts a running run, then ends the workflow; resolves once the session ended or CLOSE_WAIT_MS passed. */
   async function close(address) {
     const s = find(address);
+    await reconcileFailedBuilder(s.record);
     if (s.record.status === "ended") return { status: "ended" };
     if (s.record.status === "running") await s.live?.interrupt().catch(() => {});
     durable.send(s.record.workflowId, "input", { close: true });
     const timer = new AbortController();
     await Promise.race([durable.result(s.record.workflowId).catch(() => {}), delay(CLOSE_WAIT_MS, null, { signal: timer.signal }).catch(() => {})]);
     timer.abort();
+    await reconcileFailedBuilder(s.record);
     return { status: s.record.status === "ended" ? "ended" : "closing" };
   }
 
@@ -1096,11 +1125,15 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     const sessionIds = durable.pending().filter(isSession);
     const claimed = sessionIds.map((id) => new Promise((resolve) => claims.set(id, resolve)));
     const ids = durable.recover();
+    for (const id of sessionIds) watchBuilderFailure(id, durable.result(id));
     const waits = sessionIds.map((id, i) => Promise.race([claimed[i], durable.result(id).catch(() => {})]));
     const timer = new AbortController();
     await Promise.race([Promise.all(waits), delay(START_TIMEOUT_MS, null, { signal: timer.signal }).catch(() => {})]);
     timer.abort();
     for (const id of sessionIds) claims.delete(id);
+    for (const cfg of configs.values()) {
+      for (const record of listOwned(cfg)) await reconcileFailedBuilder(record);
+    }
     if (watch) for (const cfg of configs.values()) watchProject(cfg);
     if (watch && pumpMs > 0) {
       pumpTimer = setInterval(() => pumpDeliveries().catch((error) => log(`delivery pump failed: ${error.message}`)), pumpMs);
