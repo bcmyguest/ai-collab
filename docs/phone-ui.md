@@ -87,6 +87,8 @@ Each session card shows **where it runs** after its address: `folder` (the proje
 
 A **Go to agent** button sits on every Home card, its "started by" parent, each subagent run (in threads, the overview and on cards), and each overview row's agent. In chat, tap the agent's name to open its session. A session started by another shows **Back to parent** under its title; a subagent run's view has **Back to parent** to its session's thread.
 
+Home shows the deployed UI commit and its subject in the Deployment section. When there are unseen reviewed changes, the same section lists them under **Shipped since last check**. **Mark all seen** clears those entries and keeps the deployed commit visible.
+
 ## Chat and activity views
 
 A session's **Timeline** interleaves its direct thread and broadcast posts with its activity rows by time: each finished turn folds into one **Working on … · N steps** row, and its final reply shows as a bubble. Live tool calls show while a turn runs. The composer sits below. The project chat shows the broadcast topic, with a **finished** row per completed session turn (its first line of the final reply) and a **working on** row per busy session; tool calls stay out of it. **Raw activity** (the session's ⋯ menu) lists every tool call unfolded.

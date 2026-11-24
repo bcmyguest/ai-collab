@@ -1158,7 +1158,7 @@ function Console({ account }) {
             {home && !inbox && <LandReviews landing={data.landing} disabled={working} onLand={() => action("land-reviews", { project: undefined }, "Landing reviews")}/>}
             {home && <DecisionQueue decisions={data.decisions} inbox={inbox} now={now} disabled={working} action={action}
               seen={seenDecisions} markSeen={markDecisionSeen} openInbox={() => navigate({ level: "inbox" })}/>}
-            {home && !inbox && data.shipped?.length > 0 && <Shipped items={data.shipped}
+            {home && !inbox && !data.hosted && <Shipped items={data.shipped}
               open={item => navigate({ project: item.project, level: "tasks", task: item.id })}/>}
             {!inbox && <SessionList sessions={data.sessions} now={now} open={openCard} raw={openRaw} disabled={working} showProject={home} compact={home}
               inactiveOpen={inactiveOpen} onInactiveToggle={rememberInactive}
