@@ -26,7 +26,15 @@ async function phoneFixture({ homeSessions = false, inactive = false, kanban = f
     mkdirSync(root);
     const doc = { v: 1, tasks: [] };
     addTask(doc, { id: project, title: project === names[0] ? "Mobile layout" : "Publish draft", priority: "P1" });
-    if (kanban) addTask(doc, { id: "archived", title: "Archived task", status: "done" });
+    if (kanban) {
+      addTask(doc, { id: "archived", title: "Archived task", status: "done" });
+      for (const status of ["open", "decided"]) {
+        for (let index = 0; index < 24; index++) {
+          const id = `${status}-${index}`;
+          addTask(doc, { id, title: id, status, priority: "P2" });
+        }
+      }
+    }
     writeStore(taskStoreFile(project, env), doc);
     return { root, project, url: fake.url, peers: "claude" };
   });
@@ -258,7 +266,7 @@ async function checkKanban(page, fixture) {
   await page.getByRole("button", { name: "Message about Mobile layout" }).waitFor();
   await page.getByRole("button", { name: "Back to board" }).click();
 
-  const handle = open.getByText("⠿");
+  const handle = open.getByRole("listitem").filter({ has: card }).getByText("⠿");
   const source = await handle.boundingBox();
   const destination = await ready.boundingBox();
   await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
@@ -289,6 +297,32 @@ async function checkKanban(page, fixture) {
   await done.getByText("Archived task").waitFor();
   await toggle.click();
   assert.equal(await done.getByText("Archived task").count(), 0);
+
+  await page.setViewportSize({ width: 1800, height: 844 });
+  const board = page.getByRole("region", { name: "Task board" });
+  assert.ok((await board.boundingBox()).width > 1152);
+  const boardBounds = await board.boundingBox();
+  const navigation = await page.getByRole("navigation", { name: "Project views" }).boundingBox();
+  assert.equal(boardBounds.y + boardBounds.height, navigation.y);
+  const openCards = open.locator("ul");
+  const readyCards = ready.locator("ul");
+  const headingTop = (await open.getByRole("heading").boundingBox()).y;
+  await openCards.hover();
+  await page.mouse.wheel(0, 400);
+  await page.waitForFunction(() => document.querySelector('[data-task-column="open"] ul').scrollTop > 0);
+  assert.equal(await readyCards.evaluate(node => node.scrollTop), 0);
+  assert.equal((await open.getByRole("heading").boundingBox()).y, headingTop);
+  assert.equal(await board.evaluate(node => node.scrollTop), 0);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await board.getByRole("button", { name: "Graph", exact: true }).click();
+  const canvas = board.getByRole("region", { name: "Graph canvas" });
+  const graph = canvas.getByRole("img", { name: "Task dependency graph" });
+  assert.ok((await graph.boundingBox()).width <= (await canvas.boundingBox()).width);
+  await canvas.hover();
+  await page.mouse.wheel(0, 400);
+  await page.waitForFunction(() => document.querySelector('[aria-label="Graph canvas"]').scrollTop > 0);
+  assert.equal(await board.evaluate(node => node.scrollTop), 0);
 }
 
 const deployedChrome = "/home/b/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome";

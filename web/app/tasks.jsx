@@ -226,14 +226,14 @@ const Column = memo(function Column({ status, list, now, compose, open, fullId, 
     <span aria-hidden className={cn("inline-block size-2 rounded-full", DOT[status])}/>{statusLabel(status)} · {list.length}
   </>;
   return <section aria-label={status} data-task-column={status} className={cn("flex min-w-0 flex-col gap-2",
-    !fullId && "min-h-24 snap-start rounded-xl border bg-muted/30 p-2", target && "ring-2 ring-inset ring-primary")}>
-    <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+    !fullId && "min-h-0 snap-start rounded-xl border bg-muted/30 p-2", target && "ring-2 ring-inset ring-primary")}>
+    <h2 className="flex shrink-0 items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
       {toggle ? <button type="button" aria-expanded={!collapsed} onClick={toggle}
         className="flex w-full items-center gap-2 py-1 uppercase">
         {heading}<span aria-hidden className="ml-auto">{collapsed ? "+" : "−"}</span>
       </button> : heading}
     </h2>
-    {!collapsed && (list.length ? <ul className="flex flex-col gap-2">{list.map(task => {
+    {!collapsed && (list.length ? <ul className={cn("flex flex-col gap-2", !fullId && "min-h-0 overflow-y-auto overscroll-y-contain")}>{list.map(task => {
       const age = task.last ? ageOf(task.last.at, now) : "";
       return fullId
         ? <Card key={task.id} task={task} age={age} compose={compose} open={open} fullId continuation={continuation} recover={recover}/>
@@ -325,7 +325,8 @@ export function TaskBoard({ project, board, now, open, compose, decide, skip, re
   const recoverTask = useCallback((id, harness) => recoverRef.current?.(id, harness), []);
   const task = taskId && tasks.find(item => item.id === taskId);
   const waiting = useMemo(() => sortTasks(tasks.filter(item => item.question && !item.question.answer)), [tasks]);
-  return <section aria-label="Task board" className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-3 py-4">
+  return <section aria-label="Task board" className={cn("mx-auto flex min-h-0 w-full flex-1 flex-col gap-4 px-3 py-4",
+    taskId ? "max-w-6xl overflow-y-auto overscroll-contain" : "overflow-hidden")}>
     {board?.error && <p role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">Task store is invalid: {board.error}</p>}
     {taskId ? <>
       <Button type="button" size="sm" variant="outline" className="self-start" onClick={back}>Back to board</Button>
@@ -334,20 +335,22 @@ export function TaskBoard({ project, board, now, open, compose, decide, skip, re
       {task ? <Column status={task.status} list={[task]} fullId now={clock} compose={message} open={openOwner} continuation={continuation} recover={recover && recoverTask}/>
         : board && !board.error && <p role="status">Task #{taskId} was not found.</p>}
     </> : <>
-      {landControl}
-      {outcomeControls && <OutcomeCards outcomes={board?.outcomes} tasks={tasks} inspect={inspect} controls={outcomeControls}/>}
-      {waiting.length > 0 && decide && <section aria-label="Needs your decision" className="flex flex-col gap-2">
-        <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-amber-600 dark:text-amber-400">
-          <span aria-hidden className="inline-block size-2 rounded-full bg-amber-500"/>Needs you · {waiting.length}
-        </h2>
-        <ul className="flex flex-col gap-2 md:grid md:grid-cols-2">{waiting.map(item => <Decision key={item.id} task={item} decide={decide} skip={skip} compose={message}/>)}</ul>
-      </section>}
-      <div role="group" aria-label="View" className="flex gap-2">
+      <div className="flex max-h-[30dvh] shrink-0 flex-col gap-4 overflow-y-auto overscroll-y-contain empty:hidden">
+        {landControl}
+        {outcomeControls && <OutcomeCards outcomes={board?.outcomes} tasks={tasks} inspect={inspect} controls={outcomeControls}/>}
+        {waiting.length > 0 && decide && <section aria-label="Needs your decision" className="flex flex-col gap-2">
+          <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-amber-600 dark:text-amber-400">
+            <span aria-hidden className="inline-block size-2 rounded-full bg-amber-500"/>Needs you · {waiting.length}
+          </h2>
+          <ul className="flex flex-col gap-2 md:grid md:grid-cols-2">{waiting.map(item => <Decision key={item.id} task={item} decide={decide} skip={skip} compose={message}/>)}</ul>
+        </section>}
+      </div>
+      <div role="group" aria-label="View" className="flex shrink-0 gap-2">
         {VIEWS.map(([id, name]) => <Button key={id} type="button" size="sm" variant={view === id ? "default" : "outline"}
           aria-pressed={view === id} className="h-8 rounded-full" onClick={() => setView(id)}>{name}</Button>)}
       </div>
       {view === "graph" ? <TaskGraph tasks={tasks} open={open}/> : <>
-        <div role="group" aria-label="Filter by status" className="flex flex-wrap gap-2">
+        <div role="group" aria-label="Filter by status" className="flex shrink-0 flex-wrap gap-2">
           {FILTERS.map(status => <Button key={status} type="button" size="sm" variant={filter === status ? "default" : "outline"}
             aria-pressed={filter === status} className="h-8 rounded-full capitalize" onClick={() => {
               views.set(filterKey, status === "all" ? "" : status);
@@ -359,7 +362,7 @@ export function TaskBoard({ project, board, now, open, compose, decide, skip, re
           </Button>)}
         </div>
         <div ref={lane} aria-label="Status columns" tabIndex={filter === "all" ? 0 : undefined}
-          className={cn("grid shrink-0 items-stretch gap-3 pb-2", filter === "all" &&
+          className={cn("grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] items-stretch gap-3 pb-2", filter === "all" &&
             "auto-cols-[85%] grid-flow-col snap-x snap-mandatory overflow-x-auto overscroll-x-contain data-[dragging=true]:snap-none sm:auto-cols-[minmax(13rem,1fr)]")}>
           {columns.map(([status, list]) => <Column key={status} status={status} list={list} now={clock}
             inspect={inspectTask} move={moveCard} dragStart={filter === "all" ? dragStart : null} target={target === status}
