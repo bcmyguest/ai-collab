@@ -32,6 +32,7 @@ test("live OpenShell schedule bootstrap matrix", {
         writeFileSync(join(cwd, "fixture.txt"), "sandbox bootstrap\n");
         git("add", "fixture.txt");
         git("commit", "--quiet", "--no-verify", "-m", "Bootstrap fixture");
+        const originalHead = git("rev-parse", "HEAD").toString();
 
         const logs = [];
         let stdout = "";
@@ -55,6 +56,7 @@ test("live OpenShell schedule bootstrap matrix", {
         assert.ok(logs.includes(`sandbox ${sandbox} deleted`), diagnostics);
         assert.ok(!(await listSandboxes()).some(({ name }) => name === sandbox), `${sandbox} still exists`);
         assert.ok(logs.includes("no new commits"), diagnostics);
+        assert.equal(git("rev-parse", "HEAD").toString(), originalHead);
         assert.equal(code, 0, stderr.trim() || diagnostics);
         assert.match(stdout + stderr, /\b\d+\.\d+\.\d+\b/, `${command} did not print a version`);
       } finally {
