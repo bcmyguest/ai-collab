@@ -56,5 +56,7 @@ test("the product team validates and each role names one limit-chain fallback", 
   assert.equal(calls[0].model, "grok-4.7-high");
   assert.match(calls[0].prompt, /role "pm"/);
   assert.match(calls[0].prompt, /clean the backlog/);
+  assert.match(calls[0].prompt, /answer operator and agent questions/);
+  assert.match(checked.pattern.roles.find((role) => role.id === "review").responsibility, /screen-state/);
   assert.match(calls[0].prompt, new RegExp(`This session continues as ${FALLBACK.replace(/[.]/g, "\\.")}`));
 });

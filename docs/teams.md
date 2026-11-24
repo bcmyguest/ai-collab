@@ -11,7 +11,7 @@ digraph "fix-and-review" {
   graph [description="Scope, implement, and review one change; the reviewer sends it back up to three times."];
   lead        [agent="cursor:deepseek-v41-flash-1017-high", prompt="Scope the task into one change with acceptance criteria. Hand off to the implementer."];
   implementer [agent="claude:claude-haiku-5-5", prompt="Edit the code and add or run tests. Hand off the diff and test results to the reviewer."];
-  reviewer    [agent="cursor:deepseek-v41-flash-1017-high", prompt="Review the diff against the scope. Approve, or request changes with specific points."];
+  reviewer    [agent="cursor:deepseek-v41-flash-1017-high", prompt="Review the diff against the scope. Run node tools/screen-state.mjs --write /tmp/screen-base.json in the base checkout and node tools/screen-state.mjs --against /tmp/screen-base.json in the change. Include which screens changed, and judge whether those screens are the ones the task named. A review without that result is not done. Approve, or request changes with specific points."];
   lead        -> implementer [on="scope", kind="pair", required=false];
   implementer -> reviewer    [on="diff and test results", kind="pair", required=true];
   reviewer    -> implementer [on="changes requested", kind="pair", required=false, cap=3];

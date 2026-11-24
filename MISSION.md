@@ -29,6 +29,9 @@ Give the operator one place to run, watch and steer a coding agents from a phone
 - New builders: `ai-collab builder start --task <id> --harness codex --model gpt-6.2-sol --brief <file>` (operator: Codex gpt-6.2-sol for every worker for now; no Cursor or Claude builders) (OpenShell sandbox). Do not start builders on the host. Leave existing host builders alone until they finish.
 - Each task starts with `ai-collab team start product pm "<task>"`: the PM checks the vision, engineering does the work, and review reports to the PM. Every few tasks the PM hands notes to the CEO, who does not see every task.
 - Each tick the PM cleans the backlog: remove done tasks, and blocked tasks whose id ends in -wt and a number, then render the board. Leave open, ready, building, and review.
+- The PM answers questions. Each tick, answer operator and agent questions the vision already decides, then clear them. Ask the operator only what the vision does not decide.
+- At most 2 builders may be running or staging. Do not start another while 2 are live.
+- A review runs `node tools/screen-state.mjs --write /tmp/screen-base.json` on the base and `--against /tmp/screen-base.json` on the change, and reports which screens changed.
 - If `ai-collab pattern runs` shows no running review, start one with `ai-collab team start review reviewer "<task>"` on a Ready task that has a diff to review. Do not start a team for a task id ending in -wt and a number. Do not replace a builder that committed nothing.
 - Run the isolated suite in a subshell `( ... )` so its HOME/CODEX_HOME never leak into later commands like builder start.
 - Gate merges on isolated HOME: `H=$(mktemp -d); PATH=… HOME=$H CODEX_HOME=$H/.codex TMPDIR=$(mktemp -d -p /dev/shm) npm test`.

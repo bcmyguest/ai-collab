@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { buildersToRemove, cleanBuilders, worktreeIsProtected } from "../lib/builder-clean.mjs";
+import { builderLiveRefusal, buildersToRemove, cleanBuilders, worktreeIsProtected } from "../lib/builder-clean.mjs";
 import { stateDir } from "../lib/config.mjs";
 
 test("buildersToRemove keeps running and staging and drops oldest finished, then failed, then stopped", () => {
@@ -94,5 +94,20 @@ test("cleanBuilders removes the selected state dir and its worktree without touc
   assert.equal(readFileSync(path.join(repo, "notes.md"), "utf8"), "# notes\n");
   assert.match(git("worktree", "list"), /ai-collab-wt-new-fin/);
   assert.doesNotMatch(git("worktree", "list"), /ai-collab-wt-old-fin/);
+  rmSync(home, { recursive: true, force: true });
+});
+
+test("builderLiveRefusal allows one live builder and refuses a third", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-builder-live-"));
+  const env = { ...process.env, HOME: home, AI_COLLAB_STATE_DIR: path.join(home, "state") };
+  const stamp = (id, phase) => {
+    const dir = path.join(stateDir(env), "builders", id);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "state.json"), `${JSON.stringify({ id, phase })}\n`);
+  };
+  stamp("one", "running");
+  assert.equal(builderLiveRefusal(env), "");
+  stamp("two", "staging");
+  assert.match(builderLiveRefusal(env), /2 builders are already running or staging/);
   rmSync(home, { recursive: true, force: true });
 });

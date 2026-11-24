@@ -56,6 +56,7 @@ test("the review team validates and a limited role names its fallback", async (t
   };
   const started = await teamStart(cfg, "review", "reviewer", "Review the diff for task ready-1", env, { start, models: MODELS });
   assert.equal(started.status, "running");
+  assert.match(calls[0].prompt, /screen-state\.mjs/);
   assert.match(calls[0].prompt, new RegExp(`This session continues as ${FALLBACK.replace(/[.]/g, "\\.")}`));
   assert.equal(calls[0].model, reviewer.model);
 
