@@ -215,3 +215,21 @@ test("cursor: an aborted or errored stop never continues", async (t) => {
   assert.deepEqual(await decideStop(cfg, { host: "cursor", input: { status: "aborted" }, ...deps }), { action: "stop" });
   assert.equal((await decideStop(cfg, { host: "cursor", input: { status: "completed" }, ...deps })).action, "continue");
 });
+
+test("Skip releases Stop when an important question is pending", async (t) => {
+  const { fake, cfg, clock, deps } = await setup(t);
+  await setMode(fake, cfg, "on");
+  const { id } = await askQuestion(cfg, "Which region?", { seconds: 0, important: true });
+  clock.events.push({
+    at: clock.t + 5000,
+    run: () => fake.inject(ALL, JSON.stringify({ v: 1, kind: "approval-end", from: "operator", id, reason: "skipped" })),
+  });
+  const stop = () => decideStop(cfg, { host: "claude", ...deps });
+  const result = await stop();
+  assert.equal(result.action, "continue");
+  assert.match(result.text, new RegExp(`operator skipped your question id=${id}`));
+  assert.equal(clock.slept, 5000);
+  assert.deepEqual(openQuestions(cfg), []);
+  assert.equal(waitRequestedAt(cfg), 0);
+  assert.deepEqual(await stop(), { action: "stop" });
+});

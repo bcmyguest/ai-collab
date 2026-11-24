@@ -254,7 +254,7 @@ Home's **Operator decisions** list and the decision inbox (`#inbox`, **Waiting o
 | Decision | What Skip does |
 |---|---|
 | Permission approval or `AskUserQuestion` choice | Publishes `approval-end` with reason `skipped` from `operator` and no reply. The waiting hook returns no decision, as on `afk-off`, so the harness shows its own terminal prompt; nothing is allowed or denied. |
-| `ask_question` question or choice | The same `approval-end`; the card leaves the queue. The asking agent gets no answer and keeps its own wait. |
+| `ask_question` question or choice | The same `approval-end` removes the card from the queue and clears its wait. The tool returns `status: "skipped"`, or the Stop hook resumes the agent with a skip notice if it was waiting. |
 | Usage-limit card | The same `approval-end`, and the stored card is marked skipped, so no pick is accepted. The next report of that window opens a fresh card. |
 | Task question | Clears the question (as `task_update clear_question`) and adds the progress line `Skipped by operator`. Nothing goes to the channel. |
 | Suspended pattern run | Not offered: the run has no prompt to fall back on. Resume it, or leave it waiting. |
