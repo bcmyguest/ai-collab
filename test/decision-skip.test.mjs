@@ -72,6 +72,7 @@ test("Skip closes a permission request and a question with a skipped end, and se
   assert.equal((await post("skip", { id: PERMISSION })).status, 409, "a skipped request is closed");
   assert.equal((await post("approve", { id: PERMISSION, decision: "allow" })).status, 409, "a skipped request takes no answer");
   assert.equal((await post("skip", { id: QUESTION })).status, 409);
+  assert.equal((await post("reply", { question: QUESTION, body: "Yes" })).status, 409);
   assert.equal((await post("skip", { id: OWNED })).status, 409, "a runner session has no terminal prompt to fall back on");
   assert.equal((await post("skip", { id: "ffffffffffff" })).status, 404);
   assert.equal((await post("skip", { id: "nope" })).status, 400);

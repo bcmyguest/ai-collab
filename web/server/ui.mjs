@@ -939,36 +939,45 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       return { status: "Skipped", detail: taskId };
     }
     if (typeof id !== "string" || !APPROVAL_ID.test(id)) reject(400, "Invalid decision");
-    const events = project.hub.events(project.topic);
-    const items = events.map(entry);
-    if (items.some(e => e?.kind === "Approval" && e.approval.id === id)) {
-      const approval = findApproval(project, id);
-      if (approval.owned) reject(409, "A runner session has no terminal prompt; answer this request");
-      if (approval.tool === LIMIT_TOOL) {
-        if (hosted) reject(403, "Handle usage limits on the agent machine");
-        const result = await skipLimit(project.cfg, id);
-        if (result.status !== "skipped") reject(409, result.detail);
+    await resolveDecision(project, id, async (events, replies) => {
+      const items = events.map(entry);
+      if (items.some(e => e?.kind === "Approval" && e.approval.id === id)) {
+        const approval = findApproval(project, id);
+        if (approval.owned) reject(409, "A runner session has no terminal prompt; answer this request");
+        if (replies.some(value => replyDecision(approval, value))) reject(409, "This request has closed");
+        if (approval.tool === LIMIT_TOOL) {
+          if (hosted) reject(403, "Handle usage limits on the agent machine");
+          const result = await skipLimit(project.cfg, id);
+          if (result.status !== "skipped") reject(409, result.detail);
+        }
+      } else {
+        if (!items.some(e => e?.kind === "Question" && e.question === id)) reject(404, "Unknown decision");
+        if (replies.length) reject(409, "This question has closed");
       }
-    } else {
-      if (!items.some(e => e?.kind === "Question" && e.question === id)) reject(404, "Unknown decision");
-      const { ends, replies } = outcomes(events);
-      if (ends.has(id) || replies.has(id)) reject(409, "This question has closed");
-    }
-    const end = encodeEnvelope("approval-end", { from: "operator", id, reason: "skipped", ...(by ? { by } : {}), ts: new Date().toISOString() }, project.cfg.wire);
-    await publish(project.cfg, project.topic, end, { title: "ai-collab approval skipped", priority: 1, onPublished: project.hub.record });
+      const end = encodeEnvelope("approval-end", { from: "operator", id, reason: "skipped", ...(by ? { by } : {}), ts: new Date().toISOString() }, project.cfg.wire);
+      await publish(project.cfg, project.topic, end, { title: "ai-collab approval skipped", priority: 1, onPublished: project.hub.record });
+    });
     return { status: "Skipped" };
   }
 
-  async function publishDecision(project, id, reply, by, valid = Boolean) {
+  async function resolveDecision(project, id, resolve) {
     const pending = project.publishingDecisions ??= new Set();
-    const replies = outcomes(project.hub.events(project.topic)).replies.get(id) ?? [];
-    if (pending.has(id) || replies.some(valid)) reject(409, "This request has closed");
+    const events = project.hub.events(project.topic);
+    const { ends, replies } = outcomes(events);
+    if (pending.has(id) || ends.has(id)) reject(409, "This request has closed");
     pending.add(id);
     try {
-      await publish(project.cfg, project.topic, reply, { title: replyTitle(project.cfg, by), onPublished: project.hub.record });
+      await resolve(events, replies.get(id) ?? []);
     } finally {
       pending.delete(id);
     }
+  }
+
+  async function publishDecision(project, id, reply, by, valid = Boolean) {
+    await resolveDecision(project, id, async (_events, replies) => {
+      if (replies.some(valid)) reject(409, "This request has closed");
+      await publish(project.cfg, project.topic, reply, { title: replyTitle(project.cfg, by), onPublished: project.hub.record });
+    });
   }
 
   // An A2UI surface action: a choice's picks become the answers object, a question's text the reply body.

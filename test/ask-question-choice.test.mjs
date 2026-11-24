@@ -84,3 +84,15 @@ test("MCP ask_question takes options and multi_select over stdio and returns the
   assert.deepEqual(openQuestions(cfg), []);
   assert.equal(waitRequestedAt(cfg), 0);
 });
+
+test("ask_question returns skipped and clears the wait when the operator skips a choice", async (t) => {
+  const { fake, cfg } = await setup(t);
+  const pending = askQuestion(cfg, "Which framework?", {
+    seconds: 5, intervalMs: 20, important: true, choices: [{ label: "React" }, { label: "Vue" }],
+  });
+  const { id } = await published(fake, "approval");
+  fake.inject(ALL, JSON.stringify({ v: 1, kind: "approval-end", from: "operator", id, reason: "skipped" }));
+  assert.deepEqual(await pending, { id, status: "skipped" });
+  assert.deepEqual(openQuestions(cfg), []);
+  assert.equal(waitRequestedAt(cfg), 0);
+});
