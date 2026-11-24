@@ -410,6 +410,11 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     await recordSession(cfg, { id: opened.nativeId, cwd, harness, event: "owned", proc }).catch(() => {});
     if (!wf.replaying) await enqueuePublish(s, () => publishEvent(cfg, harness, { type: EventType.CUSTOM, name: NOTICE, value: `owned session started (${permissionMode})` }));
     claims.get(wf.id)?.(s);
+    const finishBuilder = (finished) => wf.step("builder.finish", async () => {
+      await s.live?.close().catch(() => {});
+      s.live = null;
+      await finishOwnedBuilder(builder, staged, finished?.outcome === "success" ? 0 : 1, env, log, undefined, finished?.usageLimit);
+    });
     let next = { text: input.prompt, messageIds: [], system: input.system ?? Boolean(builder || patternRun) };
     for (;;) {
       if (!next) {
@@ -452,11 +457,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         continue;
       }
       if (builder) {
-        await wf.step("builder.finish", async () => {
-          await s.live?.close().catch(() => {});
-          s.live = null;
-          await finishOwnedBuilder(builder, staged, finished?.outcome === "success" ? 0 : 1, env, log, undefined, finished?.usageLimit);
-        });
+        await finishBuilder(finished);
         return wf.step("close", () => endSession(s, "builder finished"));
       }
       if (patternRun && finished?.handoff) {
@@ -470,13 +471,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         }, { onCut: () => null });
       }
     }
-    if (builder) {
-      await wf.step("builder.finish", async () => {
-        await s.live?.close().catch(() => {});
-        s.live = null;
-        await finishOwnedBuilder(builder, staged, 1, env, log);
-      });
-    }
+    if (builder) await finishBuilder();
     return wf.step("close", () => endSession(s, "closed by the operator"));
   }
 
