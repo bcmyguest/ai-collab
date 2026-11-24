@@ -7,10 +7,10 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright-core";
 
-async function phoneFixture({ homeSessions = false, inactive = false, kanban = false } = {}) {
+export async function phoneFixture({ homeSessions = false, inactive = false, kanban = false } = {}) {
   const { createUi, installUi } = await import("../web/server/ui.mjs");
   const { broadcastTopic, inboxTopic, loadProjects, sessionLabel } = await import("../lib/config.mjs");
   const { addTask, taskStoreFile, writeStore } = await import("../lib/tasks.mjs");
@@ -325,6 +325,8 @@ async function checkKanban(page, fixture) {
   assert.equal(await board.evaluate(node => node.scrollTop), 0);
 }
 
+const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isDirectRun) {
 const deployedChrome = "/home/b/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome";
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || (existsSync(deployedChrome) ? deployedChrome : undefined) });
 let fixture;
@@ -366,4 +368,5 @@ try {
 } finally {
   await browser.close();
   await fixture?.close();
+}
 }

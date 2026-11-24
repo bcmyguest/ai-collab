@@ -18,6 +18,7 @@
     "commands",
     "deploy",
     "tools/smoke-ui.mjs",
+    "tools/screen-state.mjs",
     "hooks",
     "lib",
     "runner",
