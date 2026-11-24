@@ -111,7 +111,12 @@ if (args[0] === "sandbox" && args[1] === "exec") {
   }
   if (cwd) mkdirSync(cwd, { recursive: true });
   const child = spawn(cmd[0], cmd.slice(1), { stdio: "inherit", env, ...(cwd ? { cwd } : {}) });
-  child.on("exit", (code) => process.exit(code ?? 1));
+  child.on("exit", (code) => {
+    if (process.env.FAKE_BUILDER_CUT_AFTER_AGENT && cmd[0] === process.env.FAKE_SANDBOX_CURSOR_BIN) {
+      process.kill(process.ppid, "SIGKILL");
+    }
+    process.exit(code ?? 1);
+  });
 } else {
   process.stderr.write(`fake openshell: unsupported ${args.join(" ")}\n`);
   process.exit(2);
