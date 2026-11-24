@@ -45,9 +45,9 @@ const HARNESS_ENV = { cursor: { CURSOR_AGENT_ALLOW_PROCESS_INSPECTION: "1" } };
 // Inside the sandbox: task writes are recorded for the host, builder commands are refused, the rest is the real CLI.
 const CLI_SHIM = `#!/bin/sh
 case "$1 $2" in
-  "task list"|"task show") ;;
+  "task list"|"task show"|"task outcomes") ;;
   task\\ *) d="\${AI_COLLAB_SANDBOX_OUT:-${OUT}}/ai-collab"; mkdir -p "$d" || exit 1; printf '%s\\0' "$@" > "$d/$(date +%s%N)-$$"
-    echo "ai-collab: recorded; the host applies task set and task progress when this run ends"; exit 0 ;;
+    echo "ai-collab: recorded; the host applies supported task commands when this run ends"; exit 0 ;;
   builder\\ *) echo "ai-collab: builder commands work on the host only" >&2; exit 2 ;;
 esac
 exec ${NODE_IN} ${APP_IN}/scripts/ai-collab.mjs "$@"
@@ -216,14 +216,15 @@ export async function land({ openshell, env, sandbox, cwd, name, staged, dir, lo
   return target;
 }
 
-/** Replays recorded `task set|progress` calls through the host CLI; others are logged and dropped. */
-export async function replayTasks({ dir, project, env, log }) {
+/** Replays supported task calls through the host CLI; others are logged and dropped. */
+export async function replayTasks({ dir, project, env, log, name }) {
   const recorded = join(dir, "out", "ai-collab");
   if (!existsSync(recorded)) return 0;
   let count = 0;
   for (const file of readdirSync(recorded).sort()) {
     const argv = parseRecordedCall(readFileSync(join(recorded, file), "utf8"));
-    if (!replayable(argv)) { log(`dropped recorded call: ${argv.slice(0, 2).join(" ")}`); continue; }
+    const outcome = name === "pm" && argv[0] === "task" && ["propose-outcome", "report-outcome"].includes(argv[1]);
+    if (!outcome && !replayable(argv)) { log(`dropped recorded call: ${argv.slice(0, 2).join(" ")}`); continue; }
     const out = await runTool(process.execPath, [CLI, ...argv], { env: { ...env, AI_COLLAB_PROJECT: project } });
     if (out.code === 0) count += 1; else log(`recorded call failed: ${(out.stderr || "").trim()}`);
   }
@@ -273,7 +274,7 @@ export async function sandboxRun({ name, cwd, project, command }, { env = proces
       log(`could not land the work; staging kept in ${dir}: ${error.message}`);
     }
     const got = await runTool(openshell, ["sandbox", "download", sandbox, OUT, join(dir, "out")], { env, timeoutMs: SYNC_TIMEOUT_MS });
-    if (got.code === 0 && proj) log(`${await replayTasks({ dir, project: proj, env, log })} recorded task call(s) applied`);
+    if (got.code === 0 && proj) log(`${await replayTasks({ dir, project: proj, env, log, name })} recorded task call(s) applied`);
     return code;
   } finally {
     process.removeListener("SIGTERM", onTerm);

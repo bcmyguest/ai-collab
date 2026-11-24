@@ -155,19 +155,19 @@ test("with sign-in on, /api routes answer 401 until signed in, and UI sends carr
   assert.deepEqual(await (await ui.auth(new Request(`${ORIGIN}/api/auth/me`), "me")).json(), { enabled: true, user: null });
 
   assert.equal((await post("send", { target: `bob#${bob.session}`, body: "from octocat" }, cookieFor("octocat"))).status, 201);
-  assert.equal((await post("send", { target: "all", body: "from hubot" }, cookieFor("hubot"))).status, 201);
+  assert.equal((await post("send", { target: "all", body: "@bob from hubot" }, cookieFor("hubot"))).status, 201);
   assert.equal((await post("reply", { question: "123456789abc", body: "yes" }, cookieFor("hubot"))).status, 201);
   assert.equal((await post("afk", { mode: "on" }, cookieFor("octocat"))).status, 201);
   assert.deepEqual(modes, [["on", "octocat"]]);
 
   const got = await claimInbox(bob);
-  assert.deepEqual(got.map(m => [m.body, m.by]), [["from octocat", "octocat"], ["from hubot", "hubot"]]);
+  assert.deepEqual(got.map(m => [m.body, m.by]), [["from octocat", "octocat"], ["@bob from hubot", "hubot"]]);
   assert.match(formatInbox(got), /from=operator \(octocat\) to=bob#0000000000000001/);
 
   const stream = ui.events(new Request(`${ORIGIN}/api/events`, { signal: ctrl.signal, headers: { cookie: cookieFor("octocat") } }));
   assert.equal(stream.status, 200);
   const state = await firstUpdate(stream, "state");
-  const sent = state.messages.find(m => m.body === "from hubot");
+  const sent = state.messages.find(m => m.body === "@bob from hubot");
   assert.equal(sent.from, "operator");
   assert.equal(sent.by, "hubot");
   const reply = state.messages.find(m => m.kind === "Reply");

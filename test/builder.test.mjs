@@ -1,20 +1,24 @@
 // `ai-collab builder`: a sandboxed builder end to end against fake openshell, systemd-run, agent and oncebitten.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
+import { createServer } from "node:http";
 import path from "node:path";
+import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { runCli } from "../lib/cli.mjs";
 import {
-  briefNotes, builderPaths, builderAssignment, builderSandbox, builderPolicy, captureHooks, harnessCommand, hostCaptureEvents, parseRecordedCall, replayable, sharedLibs,
+  briefNotes, builderPaths, builderAssignment, builderSandbox, builderPolicy, captureHooks, harnessCommand, hostCaptureEvents, parseRecordedCall, replayable, sharedLibs, toolSources,
 } from "../lib/builder.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { listOwned } from "../lib/owned.mjs";
 import { taskStoreFile } from "../lib/tasks.mjs";
 import { saveTeamText } from "../lib/patterns.mjs";
 import { loadConfig } from "../lib/config.mjs";
+import { toolClient } from "../lib/tool-api.mjs";
+import { hostCaller } from "../lib/code-run.mjs";
 import { setProjectPaused } from "../lib/project-pause.mjs";
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import { openDurable } from "../runner/durable.mjs";
@@ -96,15 +100,56 @@ test("builder start leaves a paused project’s task and worktree untouched", as
   assert.equal(existsSync(builderPaths("smoke-task", l.env).worktree), false);
 });
 
+test("MCP builder_start runs the agent in its own sandbox and lands its commit on the host branch", { timeout: 15000 }, async (t) => {
+  const l = lab();
+  await withTask(l);
+  const session = "0123456789abcdef";
+  const client = toolClient({ env: l.env, cwd: l.root });
+  const args = { task: "smoke-task", brief: "Add one line to notes.md.", harness: "cursor", session };
+  assert.ok(client.listTools().some((tool) => tool.name === "builder_start"));
+  await assert.rejects(client.callTool("builder_start", { ...args, branch: "main" }), /not a known argument/);
+  await assert.rejects(client.callTool("builder_start", { ...args, model: "--force" }), /Invalid builder model/);
+  await assert.rejects(client.callTool("builder_start", { ...args, brief: "--config=value" }), /Start the builder brief/);
+  await assert.rejects(client.callTool("builder_start", { ...args, harness: "codex", brief: "a".repeat(4000) }), /brief and sandbox notes/);
+  await assert.rejects(hostCaller({ client, session })("builder_start", args), /not available in run_code/);
+  const sandbox = toolClient({ env: { ...l.env, AI_COLLAB_BUILDER: "parent" }, cwd: l.root });
+  assert.ok(!sandbox.listTools().some((tool) => tool.name === "builder_start"));
+  await assert.rejects(sandbox.callTool("builder_start", args), /Unknown tool/);
+  assert.equal(existsSync(builderPaths("smoke-task", l.env).worktree), false);
+
+  const script = fileURLToPath(new URL("../scripts/ai-collab-mcp.mjs", import.meta.url));
+  const child = spawn(process.execPath, [script, "claude"], { cwd: l.root, env: l.env, stdio: ["pipe", "pipe", "inherit"] });
+  t.after(() => child.kill());
+  const output = createInterface({ input: child.stdout })[Symbol.asyncIterator]();
+  child.stdin.write(JSON.stringify({
+    jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "builder_start", arguments: args },
+  }) + "\n");
+  const response = JSON.parse((await output.next()).value);
+  assert.equal(response.id, 1);
+  assert.ok(!response.result.isError, response.result.content[0].text);
+  const result = JSON.parse(response.result.content[0].text);
+  const paths = builderPaths("smoke-task", l.env);
+  assert.deepEqual(result, {
+    unit: paths.unit, task: "smoke-task", sandbox: SANDBOX, worktree: paths.worktree, branch: "builder/smoke-task",
+  });
+  assert.ok(readFileSync(paths.brief, "utf8").startsWith(args.brief + "\n"));
+  assert.match(wtGit(l, "log", "--format=%s", "-2"), /^docs: add a line\ninit\n$/);
+});
+
 test("builder start runs the agent in its own sandbox and lands its commit on the host branch", async () => {
   const l = lab();
   await withTask(l);
+  const taskFile = taskStoreFile("demo", l.env);
+  l.env.FAKE_OPENSHELL_UPLOAD_TASKS = taskFile;
   const res = await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief);
   assert.equal(res.code, 0, res.err);
   assert.match(res.out, new RegExp(`^builder-smoke-task\tsmoke-task\t${SANDBOX}\t.*ai-collab-wt-smoke-task\tbuilder/smoke-task\n$`));
   const [run] = readJsonLines(l.env.FAKE_SYSTEMD_LOG).filter((a) => a[0] === "systemd-run");
   for (const flag of ["--user", "--collect", "--unit=builder-smoke-task", `--working-directory=${path.join(l.home, "ai-collab-wt-smoke-task")}`, "--setenv=AI_COLLAB_PROJECT=demo", "--setenv=AI_COLLAB_BUILDER_TASK=smoke-task"]) assert.ok(run.includes(flag), flag);
   assert.deepEqual(run.slice(-3), ["builder", "run", "smoke-task"]);
+  const uploads = readJsonLines(taskFile + ".uploads");
+  assert.ok(uploads.length > 0);
+  assert.ok(uploads.every(({ tasks }) => tasks.find(t => t.id === "smoke-task").status === "open"));
   // The commit made inside the sandbox is on the host branch, and the worktree is clean.
   assert.match(wtGit(l, "log", "--format=%s", "-2"), /^docs: add a line\ninit\n$/);
   assert.equal(wtGit(l, "status", "--porcelain").replace(/^\?\? node_modules\n?/m, ""), "");
@@ -147,15 +192,56 @@ test("builder start runs the agent in its own sandbox and lands its commit on th
   const state = JSON.parse(readFileSync(builderPaths("smoke-task", l.env).state, "utf8"));
   assert.equal(state.phase, "finished");
   assert.equal(state.sandboxDeleted, true);
+  const journal = readFileSync(l.env.FAKE_SYSTEMD_UNIT_LOG, "utf8").split("\n");
+  assert.deepEqual(journal.filter(line => /^builder smoke-task: (collecting workspace|settled as)/.test(line)), [
+    `builder smoke-task: collecting workspace from sandbox ${SANDBOX}`,
+    "builder smoke-task: settled as review (agent exit 0, requested done, oncebitten exit 0)",
+  ]);
 });
 
-test("a cursor builder runs with process inspection allowed so OpenShell can identify it", async () => {
-  const l = lab();
+test("an interrupted standalone agent is collected without launching it again", async () => {
+  const l = lab({ FAKE_BUILDER_CUT_AFTER_AGENT: "1" });
   await withTask(l);
-  assert.equal((await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief)).code, 0);
+  const started = await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief);
+  assert.equal(started.code, 0, started.err);
+  assert.equal(task(l).status, "building");
+  assert.equal(readJsonLines(l.env.FAKE_BUILDER_LOG).length, 1);
+
+  delete l.env.FAKE_BUILDER_CUT_AFTER_AGENT;
+  const cli = path.join(HERE, "../scripts/ai-collab.mjs");
+  execFileSync(process.execPath, [cli, "builder", "run", "smoke-task"], { env: l.env });
+  execFileSync(process.execPath, [cli, "builder", "run", "smoke-task"], { env: l.env });
+  assert.match(wtGit(l, "log", "-1", "--format=%s"), /docs: add a line/);
+  assert.equal(readJsonLines(l.env.FAKE_BUILDER_LOG).length, 1);
+  const calls = readJsonLines(l.env.FAKE_OPENSHELL_LOG);
+  assert.equal(calls.filter((call) => call[1] === "create").length, 1);
+  assert.equal(calls.filter((call) => call[1] === "delete").length, 1);
+  assert.equal(task(l).status, "blocked");
+  assert.equal(task(l).progress.filter((p) => p.text === "half way").length, 1);
+});
+
+test("a Cursor builder reaches a fake API with process inspection enabled and lands its commit", async (t) => {
+  const requests = [];
+  const server = createServer((req, res) => {
+    requests.push([req.method, req.url, req.headers.host]);
+    res.end("cursor-ok");
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const l = lab({ FAKE_CURSOR_API_PORT: String(server.address().port) });
+  await withTask(l);
+  const result = await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief);
+  assert.equal(result.code, 0, result.err);
   const run = readJsonLines(l.env.FAKE_OPENSHELL_LOG).find((a) => a[1] === "exec" && a.includes("cursor-agent"));
   assert.ok(run, "no exec of cursor-agent");
   assert.equal(run[run.indexOf("CURSOR_AGENT_ALLOW_PROCESS_INSPECTION=1") - 1], "--env");
+  assert.equal(run[run.indexOf("AI_COLLAB_PROJECT=demo") - 1], "--env");
+  assert.deepEqual(requests, [["GET", "/probe", "api2.cursor.sh"]]);
+  assert.equal(wtGit(l, "rev-list", "--count", "main..HEAD").trim(), "1");
+  assert.equal(task(l).status, "review");
 });
 
 test("uncommitted work is committed on the host and waits for review", async () => {
@@ -173,6 +259,9 @@ test("an agent that fails with no work leaves the task blocked and the sandbox d
   assert.equal((await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief)).code, 0);
   assert.equal(task(l).status, "blocked");
   assert.match(task(l).detail, /exited 3 with 0 commit\(s\) and set no status/);
+  assert.ok(readFileSync(l.env.FAKE_SYSTEMD_UNIT_LOG, "utf8").split("\n").includes(
+    "builder smoke-task: settled as blocked (agent exit 3, requested no status, oncebitten skipped)",
+  ));
   assert.deepEqual(JSON.parse(readFileSync(l.env.FAKE_OPENSHELL_STATE, "utf8")).sandboxes, []);
 });
 
@@ -321,6 +410,21 @@ test("sharedLibs lists a binary's libraries without glibc's own", async () => {
   assert.ok(libs.every((p) => path.isAbsolute(p) && !/^(libc|libm|libdl|libpthread|librt|ld-linux)\./.test(path.basename(p))));
 });
 
+test("sandbox staging discovers oncebitten in Cargo's bin directory when the service PATH omits it", (t) => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-oncebitten-home-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const state = { harness: "codex", root: home };
+  const env = { HOME: home, PATH: "/usr/bin:/bin" };
+  for (const cargoHome of [path.join(home, ".cargo"), path.join(home, "custom-cargo")]) {
+    const bin = path.join(cargoHome, "bin");
+    mkdirSync(bin, { recursive: true });
+    symlinkSync(ONCEBITTEN, path.join(bin, "oncebitten"));
+  }
+  assert.equal(toolSources(state, env).oncebitten, ONCEBITTEN);
+  assert.equal(toolSources(state, { ...env, HOME: path.join(home, "other"), CARGO_HOME: path.join(home, "custom-cargo") }).oncebitten, ONCEBITTEN);
+  assert.equal(toolSources(state, { ...env, AI_COLLAB_BUILDER_ONCEBITTEN: "none" }).oncebitten, "");
+});
+
 test("a CODEX_HOME with no login falls back to the user's ~/.codex login", async () => {
   const { toolSources } = await import("../lib/builder.mjs");
   const { homedir } = await import("node:os");
@@ -332,7 +436,7 @@ test("a CODEX_HOME with no login falls back to the user's ~/.codex login", async
   assert.equal(src.codexAuth, existsSync(own) ? own : "");
 });
 
-async function ownedBuilderTest(t, prompt) {
+async function ownedBuilderTest(t, prompt, { restart = false, restartFallback = false } = {}) {
   const ntfy = await startFakeNtfy();
   t.after(() => ntfy.close());
   const l = lab({ AI_COLLAB_URL: ntfy.url, AI_COLLAB_PEERS: "claude,codex,operator" });
@@ -344,6 +448,7 @@ async function ownedBuilderTest(t, prompt) {
     AI_COLLAB_CODEX_TREE: tree,
     AI_COLLAB_RUNNER_SOCKET: path.join(l.home, "s"),
     FAKE_CODEX_LOG: path.join(l.home, "codex.log"),
+    ...(restartFallback ? { FAKE_BUILDER_MODE: "restart" } : {}),
   });
   await withTask(l);
   writeFileSync(l.brief, prompt);
@@ -351,11 +456,11 @@ async function ownedBuilderTest(t, prompt) {
   const hostLog = path.join(l.home, "host-codex.log");
   const hostCodex = path.join(l.home, "bin", "codex");
   writeFileSync(hostCodex, '#!/bin/sh\nprintf "launched\\n" >> "$1"\nexit 1\n', { mode: 0o755 });
-  const durable = openDurable(path.join(l.home, "runner.db"));
-  const runner = createRunner({
+  const makeRunner = () => createRunner({
     projects: [cfg], adapters: new Map([["codex", codexAdapter({ command: { file: hostCodex, args: [hostLog] } })]]),
-    durable, env: l.env, watch: false,
+    durable: openDurable(path.join(l.home, "runner.db")), env: l.env, watch: false,
   });
+  let runner = makeRunner();
   t.after(() => runner.stop());
   const control = await listenControl(runner, l.env.AI_COLLAB_RUNNER_SOCKET);
   t.after(() => control.close());
@@ -391,19 +496,60 @@ async function ownedBuilderTest(t, prompt) {
   assert.ok(turn?.params.input[0].text.startsWith(prompt));
   assert.match(turn.params.input[0].text, /oncebitten check --base main/);
   if (prompt === "limit") {
-    while (Date.now() < deadline && runner.get(address).status !== "ended") {
+    if (restartFallback) {
+      const workspace = path.join(l.home, "sandboxes", SANDBOX, "work", path.basename(builderPaths("smoke-task", l.env).worktree), "notes.md");
+      while (Date.now() < deadline && !(existsSync(workspace) && readFileSync(workspace, "utf8").includes("pending fallback edit"))) {
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      assert.match(readFileSync(workspace, "utf8"), /pending fallback edit/);
+      await runner.stop();
+      assert.equal(task(l).status, "building");
+      runner = makeRunner();
+      await runner.boot();
+    }
+    const finishDeadline = Date.now() + 5000;
+    while (Date.now() < finishDeadline && runner.get(address).status !== "ended") {
       await new Promise(resolve => setTimeout(resolve, 20));
     }
     assert.equal(runner.get(address).status, "ended");
     assert.equal(task(l).status, "review");
     assert.match(wtGit(l, "show", "HEAD:notes.md"), /a line from the builder/);
-    assert.equal(readJsonLines(l.env.FAKE_BUILDER_LOG).length, 1);
+    const fallbackCalls = readJsonLines(l.env.FAKE_BUILDER_LOG);
+    assert.equal(fallbackCalls.length, restartFallback ? 2 : 1);
+    if (restartFallback) {
+      assert.ok(fallbackCalls[1].args.some(arg => arg.startsWith("The runner restarted")));
+      assert.match(wtGit(l, "show", "HEAD:notes.md"), /pending fallback edit\na line from the builder/);
+      assert.equal(readJsonLines(l.env.FAKE_OPENSHELL_LOG).filter(args => args[1] === "create").length, 2);
+    }
     assert.deepEqual(JSON.parse(readFileSync(l.env.FAKE_OPENSHELL_STATE, "utf8")).sandboxes, []);
     return;
   }
   assert.equal(builderAssignment("demo", task(l), listOwned(cfg), l.env), null);
   const paths = builderPaths("smoke-task", l.env);
   appendFileSync(path.join(l.home, "sandboxes", SANDBOX, "work", path.basename(paths.worktree), "notes.md"), "pending Codex edit\n");
+  if (restart) {
+    await runner.stop();
+    runner = makeRunner();
+    assert.equal((await runner.boot()).length, 1);
+    const resumedDeadline = Date.now() + 5000;
+    while (Date.now() < resumedDeadline && runner.get(address).status !== "ended") {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    assert.equal(runner.get(address).status, "ended");
+    assert.equal(task(l).status, "review");
+    assert.equal(task(l).owner, address);
+    assert.match(wtGit(l, "show", "HEAD:notes.md"), /pending Codex edit/);
+    const calls = readJsonLines(l.env.FAKE_CODEX_LOG);
+    const resume = calls.find(row => row.method === "thread/resume");
+    assert.equal(resume?.params.threadId, turn.params.threadId);
+    const turns = calls.filter(row => row.method === "turn/start");
+    assert.equal(turns.length, 2);
+    assert.match(turns[1].params.input[0].text, /^The runner restarted/);
+    const sandboxCalls = readJsonLines(l.env.FAKE_OPENSHELL_LOG);
+    assert.equal(sandboxCalls.filter(args => args[1] === "create").length, 1);
+    assert.deepEqual(JSON.parse(readFileSync(l.env.FAKE_OPENSHELL_STATE, "utf8")).sandboxes, []);
+    return;
+  }
   const stopped = await l.cli("builder", "stop", "smoke-task");
   assert.equal(stopped.code, 0, stopped.err);
   assert.equal(runner.get(address).status, "ended");
@@ -445,6 +591,8 @@ async function ownedBuilderTest(t, prompt) {
 }
 
 test("Codex builder links its task before sending the brief", (t) => ownedBuilderTest(t, "hang"));
+test("runner restart resumes a Codex builder in its original sandbox", (t) => ownedBuilderTest(t, "hang", { restart: true }));
+test("runner restart resumes the usage-limit fallback with its pending edits", { timeout: 20000 }, (t) => ownedBuilderTest(t, "limit", { restartFallback: true }));
 test("runner-owned Codex retries a usage limit with Cursor", (t) => ownedBuilderTest(t, "limit"));
 
 test("Codex builder uses the standalone unit when the control socket is absent", async () => {
@@ -465,28 +613,60 @@ test("Codex builder uses the standalone unit when the control socket is absent",
   assert.equal(task(l).owner, undefined);
 });
 
-test("standalone Codex retries a usage limit with Cursor and carries uncommitted edits forward", async () => {
-  const l = lab();
-  l.env.AI_COLLAB_RUNNER_SOCKET = path.join(l.home, "missing.sock");
-  const tree = path.join(l.home, "codex-release");
-  mkdirSync(path.join(tree, "bin"), { recursive: true });
-  const codex = path.join(tree, "bin", "codex");
-  writeFileSync(codex, '#!/bin/sh\necho "Codex partial edit" >> notes.md\necho "Usage limit reached" >&2\nexit 1\n', { mode: 0o755 });
-  symlinkSync(codex, path.join(l.home, "bin", "codex"));
-  l.env.AI_COLLAB_CODEX_TREE = tree;
-  writeFileSync(path.join(l.env.XDG_CONFIG_HOME, "ai-collab", "defaults.json"), JSON.stringify({ builderOrder: ["codex", "cursor"] }));
+test("a Cursor usage limit is visible on the task and stops later dispatches for that model", async () => {
+  const l = lab({ FAKE_BUILDER_MODE: "cursor-limit" });
   await withTask(l);
-  const res = await l.cli("builder", "start", "--task", "smoke-task", "--brief", l.brief);
-  assert.equal(res.code, 0, res.err);
-  assert.equal(task(l).status, "review");
-  assert.match(wtGit(l, "show", "HEAD:notes.md"), /Codex partial edit\na line from the builder/);
-  const [cursor] = readJsonLines(l.env.FAKE_BUILDER_LOG);
-  assert.equal(cursor.args[6], "deepseek-v41-flash-1017-high");
-  const calls = readJsonLines(l.env.FAKE_OPENSHELL_LOG);
-  assert.equal(calls.filter((row) => row[1] === "create").length, 2);
-  assert.equal(calls.filter((row) => row[1] === "delete").length, 2);
-  assert.ok(readJsonLines(l.env.FAKE_ONCEBITTEN_LOG).some((row) => row.args[0] === "check"));
+  const first = await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief);
+  assert.equal(first.code, 0, first.err);
+  assert.equal(task(l).status, "blocked");
+  assert.match(task(l).detail, /reached its usage limit.*2099-12-19/);
+  assert.equal((await l.cli("task", "add", "Second task")).code, 0);
+  const retry = await l.cli("builder", "start", "--task", "second-task", "--harness", "cursor", "--brief", l.brief);
+  assert.equal(retry.code, 1);
+  assert.match(retry.err, /reached its usage limit/);
+  assert.equal(existsSync(builderPaths("second-task", l.env).worktree), false);
+  assert.equal(readJsonLines(l.env.FAKE_BUILDER_LOG).length, 1);
+  l.env.FAKE_BUILDER_MODE = "dirty";
+  const other = await l.cli("builder", "start", "--task", "second-task", "--harness", "cursor", "--model", "other-model", "--brief", l.brief);
+  assert.equal(other.code, 0, other.err);
+  assert.equal(readJsonLines(l.env.FAKE_BUILDER_LOG).length, 2);
 });
+
+for (const [label, stream, failDownload] of [
+  ["carries edits forward after a stderr limit", "stderr", false],
+  ["carries edits forward after a stdout limit", "stdout", false],
+  ["retains the retry sandbox when collection fails", "stdout", true],
+]) {
+  test("standalone Codex fallback " + label, async () => {
+    const l = lab(failDownload ? { FAKE_FAIL_RETRY_DOWNLOAD: "1" } : {});
+    l.env.AI_COLLAB_RUNNER_SOCKET = path.join(l.home, "missing.sock");
+    const tree = path.join(l.home, "codex-release");
+    mkdirSync(path.join(tree, "bin"), { recursive: true });
+    const codex = path.join(tree, "bin", "codex");
+    writeFileSync(codex, '#!/bin/sh\necho "Codex partial edit" >> notes.md\necho "ERROR: Usage limit reached"' + (stream === "stderr" ? " >&2" : "") + '\nexit 1\n', { mode: 0o755 });
+    symlinkSync(codex, path.join(l.home, "bin", "codex"));
+    l.env.AI_COLLAB_CODEX_TREE = tree;
+    writeFileSync(path.join(l.env.XDG_CONFIG_HOME, "ai-collab", "defaults.json"), JSON.stringify({ builderOrder: ["codex", "cursor"] }));
+    await withTask(l);
+    const res = await l.cli("builder", "start", "--task", "smoke-task", "--brief", l.brief);
+    assert.equal(res.code, 0, res.err);
+    const [cursor] = readJsonLines(l.env.FAKE_BUILDER_LOG);
+    assert.equal(cursor.args[6], "deepseek-v41-flash-1017-high");
+    const calls = readJsonLines(l.env.FAKE_OPENSHELL_LOG);
+    assert.equal(calls.filter((row) => row[1] === "create").length, 2);
+    assert.equal(calls.filter((row) => row[1] === "delete").length, failDownload ? 1 : 2);
+    if (failDownload) {
+      assert.equal(task(l).status, "blocked");
+      assert.match(task(l).detail, /sandbox download failed/);
+      const recovery = builderAssignment("demo", task(l), [], l.env)?.recovery;
+      assert.equal(recovery?.sandboxWorkspace, true);
+      return;
+    }
+    assert.equal(task(l).status, "review");
+    assert.match(wtGit(l, "show", "HEAD:notes.md"), /Codex partial edit\na line from the builder/);
+    assert.ok(readJsonLines(l.env.FAKE_ONCEBITTEN_LOG).some((row) => row.args[0] === "check"));
+  });
+}
 
 for (const harness of ["cursor", "opencode"]) {
   test(`${harness} stages a local code MCP server in the builder sandbox`, async () => {
@@ -530,4 +710,28 @@ test("defaults.json limitFallback picks the harness a Codex usage limit retries 
   assert.equal(res.code, 0, res.err);
   const [retry] = readJsonLines(l.env.FAKE_BUILDER_LOG);
   assert.ok(retry.args.includes("opencode/deepseek-v4.1-flash-free"), JSON.stringify(retry.args));
+});
+
+test("a Codex usage limit skips a Cursor model that is already limited and retries with OpenCode", async () => {
+  const l = lab({ AI_COLLAB_OPENCODE_BIN: AGENT, FAKE_SANDBOX_OPENCODE_BIN: AGENT, FAKE_BUILDER_MODE: "cursor-limit" });
+  l.env.AI_COLLAB_RUNNER_SOCKET = path.join(l.home, "missing.sock");
+  writeFileSync(path.join(l.env.XDG_CONFIG_HOME, "ai-collab", "defaults.json"), JSON.stringify({ builderOrder: ["codex"], limitFallback: "cursor:deepseek-v41-flash-1017-high" }));
+  await withTask(l);
+  const blocked = await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief);
+  assert.equal(blocked.code, 0, blocked.err);
+  assert.match(task(l).detail, /reached its usage limit/);
+  const tree = path.join(l.home, "codex-release");
+  mkdirSync(path.join(tree, "bin"), { recursive: true });
+  const codex = path.join(tree, "bin", "codex");
+  writeFileSync(codex, '#!/bin/sh\necho "Usage limit reached" >&2\nexit 1\n', { mode: 0o755 });
+  symlinkSync(codex, path.join(l.home, "bin", "codex"));
+  l.env.AI_COLLAB_CODEX_TREE = tree;
+  l.env.FAKE_BUILDER_MODE = "commit";
+  l.env.FAKE_BUILDER_TASK = "second-task";
+  assert.equal((await l.cli("task", "add", "Second task")).code, 0);
+  const res = await l.cli("builder", "start", "--task", "second-task", "--brief", l.brief);
+  assert.equal(res.code, 0, res.err);
+  const launches = readJsonLines(l.env.FAKE_BUILDER_LOG);
+  assert.ok(launches.at(-1).args.includes("opencode/deepseek-v4.1-flash-free"), JSON.stringify(launches.at(-1).args));
+  assert.equal(launches.filter((row) => row.args.includes("deepseek-v41-flash-1017-high")).length, 1);
 });

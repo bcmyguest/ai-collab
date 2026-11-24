@@ -9,7 +9,7 @@ import { publishStatus } from "../lib/inbox.mjs";
 import { cleanName, sessionName } from "../lib/names.mjs";
 import { listSessions, recordSession } from "../lib/sessions.mjs";
 import { createUi } from "../web/server/ui.mjs";
-import { fallbackName, sessionState, sessionTree, visibleWake } from "../web/lib/session-state.js";
+import { fallbackName, isOpenGroup, listedGroups, sessionCounts, sessionState, sessionTree, visibleWake } from "../web/lib/session-state.js";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
@@ -44,6 +44,10 @@ test("session state: waiting, AFK hold, working by open call or recent activity,
   assert.equal(sessionState({ ...online, lastActivityAt: NOW - 61_000 }, NOW), "idle");
   assert.equal(sessionState({ online: false, lastActivityAt: NOW - 1000 }, NOW), "working", "registry liveness can lag a fresh event");
   assert.equal(sessionState({ online: false }, NOW), "offline");
+  assert.equal(sessionState({ online: true, harness: "opencode", event: "Stop" }, NOW), "offline", "a stopped OpenCode session is not active while its server stays up");
+  assert.equal(sessionState({ online: true, harness: "claude", event: "Stop" }, NOW), "idle");
+  assert.equal(sessionCounts([{ online: true, harness: "opencode", event: "Stop" }, { online: true, harness: "claude", event: "Stop" }], NOW).running, 0);
+  assert.equal(sessionCounts([{ online: true, lastActivityAt: NOW - 1000 }], NOW).running, 1);
 });
 
 test("wake banner hides once the session reports after the wake began, or is back online after it ended", () => {
@@ -85,6 +89,20 @@ test("session tree: urgent groups first, children nest under their parent and li
   assert.equal(tree[0].state, "idle");
   assert.deepEqual(tree[0].children.map(n => [n.id, n.state]), [["codex#2", "waiting"]]);
   assert.equal(tree.filter(n => n.id.startsWith("a#")).length, 2, "a parent cycle keeps both at the top level");
+});
+
+test("an idle online session is not in an open group", () => {
+  const tree = sessionTree([
+    { id: "cursor#idle", online: true, seenAt: NOW - 120_000 },
+    { id: "cursor#work", online: true, lastActivityAt: NOW - 1000 },
+    { id: "cursor#off", online: false, seenAt: NOW },
+  ], NOW);
+  assert.equal(tree.find(node => node.id === "cursor#idle").state, "idle");
+  assert.equal(isOpenGroup("idle"), false);
+  const { open, idle } = listedGroups(tree);
+  assert.deepEqual(idle.map(node => node.id), ["cursor#idle"]);
+  assert.deepEqual([...open.values()].flat().map(node => node.id), ["cursor#work"]);
+  assert.equal(open.has("idle"), false);
 });
 
 test("home stream covers every project: names, states, subagents, parents, pending cards answered from home", async (t) => {

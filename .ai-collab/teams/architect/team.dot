@@ -1,0 +1,7 @@
+digraph "architect" {
+  graph [description="Turn a board decision into a scoped brief for the PM."];
+  architect [agent="cursor", prompt="Act as Strategist/Architect. Register your session with the role:architect identity tag. Use the task and board answer supplied by the host operator. If a decision is pending, tell the operator what question to put on the board and wait for the host to relay the answer before handing off. Use the answer to prepare a brief with the objective, scope, constraints, tradeoffs, risks, and acceptance criteria. Pass the brief and task ID to the PM using the brief ready event."];
+  pm [agent="cursor", prompt="Receive the architectural brief and return the task ID, agreed scope, acceptance criteria, and delivery next steps to the host operator for recording on the task board. Advance on finished with that summary."];
+  architect -> pm [on="brief ready", kind="pair", required=true];
+  pm -> done [on="finished", kind="pair", required=false];
+}

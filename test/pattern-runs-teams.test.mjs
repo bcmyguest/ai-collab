@@ -246,7 +246,7 @@ test("a role's fallback goes into its start brief as an instruction not to switc
   const { env, cfg } = await fixture(t, { fb: withFallback });
   const { calls, start } = fakeStart();
   await startRun(cfg, "fb", "go", env, { start, models: MODELS, now: clock() });
-  assert.match(calls[0].prompt, /If you hit a usage or subscription limit, tell the operator and propose switching to codex:gpt-5; do not switch yourself\./);
+  assert.match(calls[0].prompt, /If you hit a usage or subscription limit, stop\. This session continues as codex:gpt-5\. Do not wait for the operator and do not switch yourself\./);
 });
 
 test("a pair edge between roles with different counts is an invalid team", async (t) => {

@@ -54,7 +54,7 @@ test("a DOT pattern resumes after runner restart and accepts agent and operator 
     // Recovery must use the compiled graph that the run started with.
     writeFileSync(pattern.file, "invalid");
     const durable = await boot();
-    const workflow = `pattern:demo:${started.id}`;
+    const workflow = `pattern-${started.id}`;
     assert.equal(durable.status(workflow).status, "PENDING");
     assert.equal(runner.list().length, 1);
     const moved = await advanceRun(ctx.cfg, started.id, "ready", { env: ctx.env, override: true, by: "operator", note: "Changes ready" });
@@ -65,6 +65,12 @@ test("a DOT pattern resumes after runner restart and accepts agent and operator 
     assert.ok(existsSync(join(ctx.cfg.stateDir, "runner", "pattern-runs", ctx.cfg.project, started.id + ".json")));
     await until(() => runStatus(ctx.cfg, started.id).status === "done", "reviewer handoff");
     assert.equal((await durable.result(workflow)).status, "done");
+    const stepNames = durable.steps(workflow).map((step) => step.name);
+    assert.ok(stepNames.includes("enter") && stepNames.includes("event") && stepNames.includes("leave"));
+    const recorded = durable.listNamed("pattern", 10).find((row) => row.id === workflow);
+    assert.equal(recorded.input.name, "durable");
+    assert.equal(recorded.input.task, "Ship it");
+    assert.equal(recorded.input.definition.roles[0].id, "builder");
     assert.equal(runStatus(ctx.cfg, started.id).handoffs[0].by, "operator");
     assert.equal(runStatus(ctx.cfg, started.id).handoffs[1].note, "complete");
   } finally {

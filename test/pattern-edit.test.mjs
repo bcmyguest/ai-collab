@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
 import { BUILT_IN_PATTERNS, copyPattern, createPattern, listPatterns, removableNames, removePattern, savePattern, validatePattern } from "../lib/patterns.mjs";
 import { createTeam, listTeams } from "../lib/teams.mjs";
+import { mentionedTeams } from "../web/lib/message-routing.js";
+import { patternMentionTargets } from "../web/lib/mentions.js";
 
 const MODELS = { claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] };
 
@@ -89,6 +91,51 @@ test("saving a team's name as a pattern converts the team and removes it", async
   assert.equal(crew.source, "project");
   assert.equal(crew.legacy, undefined);
   assert.deepEqual(crew.roles.map((role) => role.id), ["lead"]);
+});
+
+test("a project team can be copied into a second project and then appears as a mention target there", async () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-pattern-copy-"));
+  const alpha = path.join(home, "alpha");
+  const beta = path.join(home, "beta");
+  mkdirSync(alpha);
+  mkdirSync(beta);
+  mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
+  writeFileSync(path.join(home, ".config", "ai-collab", "projects.json"), JSON.stringify([
+    { root: alpha, project: "alpha", url: "http://127.0.0.1:9", peers: "claude,codex,cursor" },
+    { root: beta, project: "beta", url: "http://127.0.0.1:9", peers: "claude,codex,cursor" },
+  ]));
+  const base = { HOME: home, XDG_CONFIG_HOME: path.join(home, ".config"), AI_COLLAB_PEER: "operator", AI_COLLAB_PEERS: "claude,codex,cursor", AI_COLLAB_URL: "http://127.0.0.1:9" };
+  const envA = { ...base, AI_COLLAB_PROJECT: "alpha" };
+  const envB = { ...base, AI_COLLAB_PROJECT: "beta" };
+  const cfgA = loadConfig(envA);
+  const cfgB = loadConfig(envB);
+  const text = `digraph "crew" {
+  graph [description="Do the work."];
+  doer [agent="claude:claude-haiku-5-5", prompt="Do the work."];
+  doer -> done [on="finished", kind="pair", required=true];
+}
+`;
+  const source = path.join(alpha, ".ai-collab", "teams", "crew");
+  mkdirSync(source, { recursive: true });
+  const sourceFile = path.join(source, "team.dot");
+  writeFileSync(sourceFile, text);
+  assert.equal(listPatterns(cfgB, envB).crew.source, "other");
+  assert.equal(listPatterns(cfgA, envA).crew.file, sourceFile);
+
+  const copy = await copyPattern(cfgB, "crew", envB, MODELS);
+  const dest = path.join(beta, ".ai-collab", "teams", "crew", "team.dot");
+  assert.equal(copy.source, "project");
+  assert.equal(copy.file, dest);
+  assert.equal(readFileSync(dest, "utf8"), text);
+  assert.equal(readFileSync(sourceFile, "utf8"), text);
+  const listed = listPatterns(cfgB, envB).crew;
+  assert.equal(listed.source, "project");
+  assert.equal(listed.file, dest);
+  assert.deepEqual(patternMentionTargets([listed]).map((option) => option.id), ["crew"]);
+  assert.deepEqual(mentionedTeams("@crew ship it", ["crew"]), ["crew"]);
+  await assert.rejects(copyPattern(cfgB, "crew", envB, MODELS), /already project/);
+  assert.equal(readFileSync(sourceFile, "utf8"), text);
+  assert.equal(listPatterns(cfgA, envA).crew.file, sourceFile);
 });
 
 test("copyPattern puts a built-in pattern in the project under its name", async () => {

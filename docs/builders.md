@@ -4,6 +4,10 @@ A builder is one agent that implements one task on its own branch. `ai-collab bu
 
 Lib: `lib/builder.mjs`. OpenShell lifecycle: `runner/sandbox.mjs`. Tests: `test/builder.test.mjs` and `test/builder-claude.test.mjs` with fake `openshell`, `systemd-run`, `systemctl`, agent and `oncebitten` from `test/helpers/`.
 
+`runner/runner.mjs` manages the durable session steps for runner-owned builders. Both supervisors use `lib/builder.mjs` to collect work, publish landing results, and clean up sandboxes. Cleanup retains an uploaded workspace until its worktree has been collected.
+
+For the opt-in host integration matrix, see [Live OpenShell bootstrap smoke](sandbox-smoke.md).
+
 ## What runs where
 
 | Agent | Where | How |
@@ -37,15 +41,19 @@ Defaults: Cursor `deepseek-v41-flash-1017-high`, Codex `gpt-6.2-sol`, Claude `ha
 
 When `--harness` is omitted, the first supported entry in `defaults.json`'s `builderOrder` array selects the starting harness. For example, `"builderOrder": ["codex", "cursor"]` starts with Codex. Codex is the built-in starting harness.
 
-Both Codex launch paths retry a subscription usage limit once with `defaults.json`'s `limitFallback` (`harness:model`), else Cursor `deepseek-v41-flash-1017-high`. The supervisor copies the Git worktree and recorded task calls and hooks into a fresh OpenShell sandbox, then sends the brief again. The normal collection and oncebitten check run after the retry.
+Both Codex launch paths retry a subscription usage limit without asking. The order is `defaults.json`'s `limitFallback` (`harness:model`), else Cursor `deepseek-v41-flash-1017-high`, then `opencode/deepseek-v4.1-flash-free` when the earlier model is already limited. The supervisor copies the Git worktree and recorded task calls and hooks into a fresh OpenShell sandbox, then sends the brief again. The normal collection and oncebitten check run after a retry that is not itself limited.
+
+When Cursor reports a model usage limit, the task records the cause and retry time. Starts, recoveries, and Codex fallbacks on the same host skip that model until the end of the reported reset date in UTC, or for five hours when Cursor gives no usable date. Other approved models remain available.
 
 ## Runner-owned Codex builders
 
 The runner starts a dedicated Codex app-server inside the staged OpenShell sandbox and sends the brief as its first turn. It sets the task to `building` and records the session address as the task owner before sending the brief. The phone shows the session activity and the task card opens it. Pass `--run ID` to attach the task to a team run. An existing run association is retained when the flag is omitted.
 
-When the turn ends, the runner collects the branch and task calls, runs the normal landing checks, and deletes the sandbox. A restart cuts the active turn and the runner attempts collection on recovery. The ended session remains linked from the task for its timeline. If the runner responds with a start error, the CLI reports that error. The standalone path is used when the control socket is absent or refuses the connection.
+When the turn ends, the runner collects the branch and task calls, runs the normal landing checks, and deletes the sandbox. After a restart, the runner opens the same Codex thread in its existing sandbox and starts a continuation turn. If resuming fails, the runner attempts to collect the workspace. The ended session remains linked from the task for its timeline. If the runner responds with a start error, the CLI reports that error. The standalone path is used when the control socket is absent or refuses the connection.
 
 ## What the standalone unit does
+
+The task moves to `building` after the sandbox workspace is uploaded and before the unit runs the agent.
 
 ```mermaid
 flowchart TD
@@ -97,6 +105,10 @@ Each secret goes through a 0600 temp copy and a single-file upload; it never app
 
 The login shell of `sandbox exec` sets `SSL_CERT_FILE` to the CA OpenShell terminates TLS with, so the unit never overrides it.
 
+Cursor needs OpenShell's DNS broker and outbound TCP 443 to the Cursor hosts listed above. The broker must be able to resolve the running CLI's binary identity through `/proc/<pid>/exe`. The builder passes `CURSOR_AGENT_ALLOW_PROCESS_INSPECTION=1` to the CLI and lists the staged executables, including the bundled `node`, in the network policy. Keep the image's resolver configuration readable under `/etc`. The Cursor endpoints use `protocol: tcp` and `tls: skip`, so the OpenShell broker routes the connection and Cursor validates the origin certificate. This setup uses the standard OpenShell builder capabilities, with no additional Linux capabilities required.
+
+For the reachability gate, launch a throwaway Cursor builder from the OpenShell host using `ai-collab builder start --task <smoke-task> --harness cursor --brief <file>`. Give it a brief that asks it to edit a tracked file, commit, and run `oncebitten check --base main`. Verify a successful Cursor response in the builder unit log and confirm the commit landed on the host's builder branch. A DNS lookup alone cannot verify TLS or policy routing. The fake-endpoint regression in `test/builder.test.mjs` exercises the builder launch and commit round trip. Keep using Codex builders per [MISSION](../MISSION.md) until the live gate passes.
+
 The harness's own sandbox or permission prompts are off (`--sandbox disabled` for Cursor, `--dangerously-bypass-approvals-and-sandbox` for Codex, `--dangerously-skip-permissions` for Claude): OpenShell is the isolation. Codex also gets `--dangerously-bypass-hook-trust`, because a headless `codex exec` otherwise fires no hooks at all; it covers hooks from `$CODEX_HOME` and installed plugins, and hooks a repository ships in its own `.codex/` stay off in a sandbox project Codex has not marked trusted (see [Install](install.md#codex)).
 
 ## Continue a stopped builder
@@ -139,6 +151,8 @@ The packet rides in the same store write that moves the task to `review`, so a c
 The host's capture hooks (`~/.cursor/hooks.json`, `~/.codex/hooks.json` calling `oncebitten capture --host <h>`) do not exist in the sandbox. The unit reads the host hooks file, takes the events whose command runs `oncebitten capture` (Cursor's defaults: `beforeSubmitPrompt`, `postToolUse`, `postToolUseFailure`; Codex: `UserPromptSubmit`), and writes the same events into the sandbox home with the command `ob-capture <harness>`. That shim saves each payload under `/sandbox/out/oncebitten`. After the run the host pipes every payload into `oncebitten capture --host <harness>`, with `/sandbox/work/ai-collab-wt-<id>` rewritten to the host worktree, so captures land in the host's `~/.local/share/oncebitten/events.db`. Chosen over running `oncebitten capture` inside: the events database stays on the host and is never uploaded.
 
 Every brief ends with the sandbox notes, which tell the agent to run `oncebitten check --base main` and fix what fires before it marks the task done. The `oncebitten` binary is uploaded for that. The host runs the same check on the landed branch as a backstop. `steer` hooks are not carried into the sandbox.
+
+The runner looks for `oncebitten` on its service `PATH`, then in `$CARGO_HOME/bin` or `~/.cargo/bin` when `CARGO_HOME` is unset.
 
 ## Lean Claude builders
 
@@ -242,3 +256,7 @@ Cursor and OpenCode builders can batch worktree operations with `ai-collab-code`
 OpenCode uses the OpenCode 2 CLI in standalone mode. The supervisor stages the executable found on PATH or at `AI_COLLAB_OPENCODE_BIN`. For an installation with a launcher shim, set that override to the standalone executable. The default model is `opencode/deepseek-v4.1-flash-free`, and the sandbox policy permits OpenCode's model endpoint and model catalog. The launcher and MCP registration follow the [OpenCode CLI](https://opencode.ai/docs/cli/commands/) and [MCP configuration](https://opencode.ai/docs/mcp-servers/) documentation.
 
 The policy passes OpenCode's TLS to `opencode.ai` and `models.dev` through unterminated (`protocol: tcp`, `tls: skip`), as it does for Cursor. Measured 2026-11-22 with OpenCode 2.2.5, prompt "Reply with the single word OK.", fresh home, same egress IP: through OpenShell's TLS-terminating `rest` proxy, Zen answered every free-model request with HTTP 429 `FreeUsageLimitError` ("Free models work in OpenCode"); with TLS passthrough the same sandbox got `OK`. The proxy forwards OpenCode's headers and adds none (checked against an echo service), so Zen tells the clients apart below HTTP, by the proxy's own TLS connection; which signal it reads is UNVERIFIED. The cost: OpenShell no longer inspects OpenCode's API requests, only the destination host and port.
+
+## Probes
+
+- 2026-11-23: OpenShell Codex builder commit probe on main `26c11ebf`.

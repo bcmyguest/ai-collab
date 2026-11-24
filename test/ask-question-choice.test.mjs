@@ -6,7 +6,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { loadConfig } from "../lib/config.mjs";
-import { askQuestion } from "../lib/questions.mjs";
+import { askQuestion, openQuestions, waitRequestedAt } from "../lib/questions.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 
@@ -67,7 +67,7 @@ test("invalid choices are refused before anything is published", async (t) => {
 });
 
 test("MCP ask_question takes options and multi_select over stdio and returns the chosen labels", { timeout: 15000 }, async (t) => {
-  const { fake, env } = await setup(t);
+  const { fake, env, cfg } = await setup(t);
   const script = fileURLToPath(new URL("../scripts/ai-collab-mcp.mjs", import.meta.url));
   const child = spawn(process.execPath, [script, "claude"], { env, stdio: ["pipe", "pipe", "inherit"] });
   t.after(() => child.kill());
@@ -81,4 +81,18 @@ test("MCP ask_question takes options and multi_select over stdio and returns the
   fake.inject(ALL, `reply ${asked.id} ${JSON.stringify({ "Which tests?": "E2E, Unit" })}`);
   const result = JSON.parse(JSON.parse((await lines.next()).value).result.content[0].text);
   assert.deepEqual(result, { id: asked.id, status: "answered", answer: "E2E, Unit", selected: ["E2E", "Unit"], source: "unverified ntfy broadcast" });
+  assert.deepEqual(openQuestions(cfg), []);
+  assert.equal(waitRequestedAt(cfg), 0);
+});
+
+test("ask_question returns skipped and clears the wait when the operator skips a choice", async (t) => {
+  const { fake, cfg } = await setup(t);
+  const pending = askQuestion(cfg, "Which framework?", {
+    seconds: 5, intervalMs: 20, important: true, choices: [{ label: "React" }, { label: "Vue" }],
+  });
+  const { id } = await published(fake, "approval");
+  fake.inject(ALL, JSON.stringify({ v: 1, kind: "approval-end", from: "operator", id, reason: "skipped" }));
+  assert.deepEqual(await pending, { id, status: "skipped" });
+  assert.deepEqual(openQuestions(cfg), []);
+  assert.equal(waitRequestedAt(cfg), 0);
 });

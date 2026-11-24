@@ -26,6 +26,7 @@ import { formatInbox, hookOutput, identityLine, stopOutput } from "../lib/format
 import { currentMode, operatorPrompt, takeModeNote } from "../lib/mode.mjs";
 import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.mjs";
 import { decideStop } from "../lib/stop.mjs";
+import { REQUIRE_RUN_CODE_ENV } from "../lib/code-mode.mjs";
 import { recordSession } from "../lib/sessions.mjs";
 import { sessionName } from "../lib/names.mjs";
 import { harnessProcess, isRunning } from "../lib/process.mjs";
@@ -141,8 +142,8 @@ async function deliver(cfg, host, event, msg, key) {
   const messages = await claimInbox(cfg, { throttle: event !== "SessionStart", limit: 4 });
   sendReceipts(cfg, messages.map((m) => m.id));
   const note = await takeModeNote(cfg, { force: event === "SessionStart" });
-  const identity = event === "SessionStart" || messages.length ? identityLine(cfg) : "";
-  const text = [note, identity, family, formatInbox(messages, { session: cfg.session })].filter(Boolean).join("\n");
+  const identity = event === "SessionStart" ? identityLine(cfg) : "";
+  const text = [note, identity, family, formatInbox(messages, { session: cfg.session, peer: cfg.peer })].filter(Boolean).join("\n");
   return hookOutput(host, event, text);
 }
 
@@ -216,7 +217,7 @@ async function main() {
   const closing = closeTerminalCards(cfg, { host, key, input: msg }).catch(() => []);
   // Claude's StopFailure with error rate_limit: a limit card for this session, one per window (lib/limit-alert.mjs).
   const limit = key === "stopfailure" && host === "claude" && !(typeof msg.agent_id === "string" && msg.agent_id) ? classifyLimit("claude", { kind: "stop_failure", ...msg }) : null;
-  const limited = limit ? alertLimit(cfg, { harness: "claude", limit }).catch(() => ({})) : Promise.resolve({});
+  const limited = limit ? alertLimit(cfg, { harness: "claude", limit, auto: true }).catch(() => ({})) : Promise.resolve({});
   const event = EVENTS.get(key);
   let output = neutral(host, key);
   // A prompt the operator typed (not a wake run, agent hand-back or ai-collab's own text); recorded, AFK unchanged.
@@ -236,6 +237,7 @@ async function main() {
       if (!subagent) await recordSession(cfg, {
         id: sessionId, cwd, harness: host, event: event || key.slice(0, 32), proc: harnessProcess(host), parent: cfg.parent,
         name: NAMED_EVENTS.has(event) ? sessionName(host, msg, env) : "", model: msg.model,
+        requireRunCode: env[REQUIRE_RUN_CODE_ENV] === "1",
         ...(typed ? { operatorPromptAt: Date.now() } : {}),
       }).catch(() => {});
       if (event && !activityOnly) output = await deliver(cfg, host, event, msg, key);

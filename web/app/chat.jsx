@@ -19,16 +19,19 @@ import { contextMeter, filesRead } from "@/lib/context-view";
 import { agentDetail } from "@/lib/agent-detail";
 import { composerDestination } from "@/lib/message-routing";
 import { quotedReply, usableReplyId } from "@/lib/reply-quote";
-import { withMentions } from "@/lib/mentions";
+import { patternMentionTargets, withMentions } from "@/lib/mentions";
 import { chatThread } from "@/lib/chat-turns";
 import { NewAgentComposer } from "./new-session";
 import { PatternsPage } from "./patterns-page";
+import { LandReviews } from "./land-reviews";
+import { OutcomeRequest } from "./outcomes";
 import { TaskBoard } from "./tasks";
 import { ProjectNav } from "./project-nav";
+import { Shipped } from "./shipped";
 import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
 import { TABS, parseSelection, projectNavigation, projectViewCounts, selectionHash } from "@/lib/selection";
 import { agentName, namedAgents, unnamedAgents } from "@/lib/sidebar";
-import { sessionState } from "@/lib/session-state";
+import { isLive, sessionState } from "@/lib/session-state";
 import { subscribeUiEvents } from "@/lib/ui-events";
 import { ActivityRow, GoToAgent, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
@@ -108,57 +111,16 @@ async function api(path, payload) {
   return result;
 }
 
-function ConversationHistory({ requested }) {
-  const [query, setQuery] = useState("");
-  const [result, setResult] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  async function load(search, extra = {}) {
-    setBusy(true);
-    setError("");
-    try {
-      const page = await api("history?" + requested, { query: search, ...extra });
-      setResult(current => ({
-        ...page, query: search,
-        messages: extra.before ? [...current.messages, ...page.messages] : page.messages,
-      }));
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return <details className="text-sm" onToggle={event => {
-    if (event.currentTarget.open && !busy) void load(query);
-  }}>
-    <summary className="cursor-pointer">History{result?.unread ? " · " + result.unread + " unread" : ""}</summary>
-    <div className="mt-2 max-h-[45vh] space-y-2 overflow-auto rounded-lg border p-2">
-      <form className="flex flex-wrap gap-2" onSubmit={event => { event.preventDefault(); void load(query); }}>
-        <input aria-label="Search conversation history" placeholder="Search history" maxLength={200} value={query}
-          onChange={event => setQuery(event.target.value)} className="min-w-0 flex-1 rounded-md border bg-background px-2"/>
-        <Button size="sm" disabled={busy}>Search</Button>
-        {!!result?.unread && !result.query && <Button type="button" size="sm" variant="outline" disabled={busy}
-          onClick={() => load("", { read: result.latest })}>Mark as read</Button>}
-      </form>
-      {error && <p role="alert">{error}</p>}
-      {busy && <p role="status">Loading history…</p>}
-      {result && !result.messages.length && <p>No matching messages.</p>}
-      {result?.messages.map(message => <div key={message.id} className="border-t pt-2">
-        <div className="text-xs text-muted-foreground">{message.by || message.sender || message.from} · {new Date(message.time * 1000).toLocaleString()}</div>
-        <p className="whitespace-pre-wrap break-words">{message.body}</p>
-        {message.attachment && <a className="underline" href={"/api/file/" + encodeURIComponent(message.attachment.file)}>{message.attachment.name}</a>}
-      </div>)}
-      {result?.next && <Button size="sm" variant="outline" disabled={busy}
-        onClick={() => load(result.query, { before: result.next })}>Load older</Button>}
-    </div>
-  </details>;
+/** Team and role for a session address, from the agent list. Empty when the session holds no live role. */
+function seatOf(agents, address) {
+  const agent = (agents || []).find(item => item.id === address);
+  return agent?.team ? agent.team + " · " + agent.role : "";
 }
 
-/** "msg 3m ago · active just now"; activity comes from the agent's hooks. */
+/** "msg 3m ago · active just now" only while the session is waiting, held, or working. Hook seenAt is not a turn. */
 function seen(item, now) {
-  return item.activeAt ? `msg ${ago(item.lastMessageAt, now)} · active ${ago(item.activeAt, now)}` : `msg ${ago(item.lastMessageAt, now)}`;
+  const live = item.live === true || (item.live === undefined && isLive(item, now));
+  return live && item.activeAt ? `msg ${ago(item.lastMessageAt, now)} · active ${ago(item.activeAt, now)}` : `msg ${ago(item.lastMessageAt, now)}`;
 }
 
 /** After a deploy the server runs a newer build than this page; offer a reload until the operator takes it. */
@@ -259,11 +221,12 @@ function SessionRow({ agent, project, selected, now, navigate, dispose, openRaw,
             <span className="truncate font-mono text-xs">{short(agent.id)}</span><SessionName agent={agent}/>
           </>}
           {agent.owner && <span className="truncate text-[11px] text-muted-foreground">@{agent.owner}</span>}
+          {agent.team && <span className="truncate text-[11px] text-muted-foreground" title="Team and role">{agent.team} · {agent.role}</span>}
           <span className="self-start"><RunningCount runs={agent.subagents} now={now}/></span>
         </span>
         {agent.waiting && <span role="img" aria-label="Waiting on you" title="Waiting on you" className="inline-block size-2.5 shrink-0 rounded-full bg-amber-500 ring-2 ring-amber-500/25"/>}
-        <Dot online={agent.online}/>
-        <span className="shrink-0 text-right text-[11px] leading-tight text-muted-foreground">{ago(agent.lastMessageAt, now)}{agent.activeAt ? <><br/>active {ago(agent.activeAt, now)}</> : null}</span>
+        <Dot online={isLive(agent, now)}/>
+        <span className="shrink-0 text-right text-[11px] leading-tight text-muted-foreground">{ago(agent.lastMessageAt, now)}{isLive(agent, now) && agent.activeAt ? <><br/>active {ago(agent.activeAt, now)}</> : null}</span>
       </button>
       {dispose && <SessionMenu node={{ ...agent, project }} disabled={disabled} dispose={dispose} raw={openRaw} map={() => navigate({ project, level: "compactions" })} label={"Session actions for " + agent.id}/>}
     </div>
@@ -291,10 +254,10 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
   const active = [];
   const inactive = [];
   for (const agent of visible) {
-    const group = sessionState(agent, now) === "offline" ? inactive : active;
+    const group = isLive(agent, now) ? active : inactive;
     group.push(agent);
   }
-  return <nav aria-label="Projects" className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto p-4">
+  return <div className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto p-4">
     <button type="button" onClick={() => navigate({ level: "home" })} aria-current={selected.level === "home" ? "page" : undefined}
       className="flex items-center gap-2 rounded-xl px-2 text-left text-sm font-semibold tracking-tight" title="Home: every project's sessions">
       <span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground">ai</span>AI Collab
@@ -321,7 +284,6 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
       </ul>
       {data.closedProjects?.length > 0 && <div className="pt-4"><ClosedProjects names={data.closedProjects} act={projectAction}/></div>}
     </section>
-    {/* Chat, Tasks and Teams are a project's own views: they live in the project rail (the bottom bar on a phone). */}
     {/* Scheduled jobs are the runner's own entries, not agents: they stay in their own section below. */}
     <ScheduledJobs project={home ? "" : current} openRun={openHash}/>
     {/* Agents (sessions that set an identity name) sit apart from the plain session rows and from Scheduled jobs. */}
@@ -344,7 +306,7 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
         </ul>
       </InactiveSessions>}
     </section>
-  </nav>;
+  </div>;
 }
 
 function ZoomControls({ data, selected, now, navigate, compact }) {
@@ -381,7 +343,7 @@ function QueueRow({ message, disabled, change }) {
       <p className="min-w-0 flex-1 truncate" title={message.body}>{message.body}</p>
       <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => setDraft(message.body)}>Edit</Button>
       <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => change(message, "cancel")}>Cancel</Button>
-      <Button type="button" variant="ghost" size="sm" disabled={disabled || message.urgent} onClick={() => change(message, "steer")}>{message.urgent ? "Steered" : "Steer"}</Button>
+      <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => change(message, "steer")}>Retry delivery</Button>
     </> : <form className="flex w-full flex-wrap items-center gap-2" onSubmit={async event => {
       event.preventDefault();
       if (await change(message, "edit", draft)) setDraft(null);
@@ -422,8 +384,8 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
         {at > 0 && <time dateTime={new Date(at).toISOString()} title={clock.format(at)}>{ago(at, now)}</time>}
         {replyFrom && message.kind !== "Approval" && <button type="button" aria-label={"Reply to " + sender} title="Reply" onClick={() => replyFrom({ id: message.id, sender, prefill, body: message.body })}
           className="rounded-full p-0.5 hover:bg-muted hover:text-foreground"><Reply className="size-3.5"/></button>}
-        {message.scope === "all" && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">to all</Badge>}        {message.urgent && <span role="img" aria-label="Sent now" title="Sent now: delivered at the agent's next tool call" data-urgent className="text-amber-500"><Zap className="size-3.5"/></span>}
-        {outgoing && <Ticks state={message.receipt}/>}
+        {message.scope === "all" && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">to all</Badge>}        {message.urgent && !message.cancelled && <span role="img" aria-label="Sent now" title="Sent now: delivered at the agent's next tool call" data-urgent className="text-amber-500"><Zap className="size-3.5"/></span>}
+        {outgoing && (message.queueStatus ? <span>{message.queueStatus}</span> : <Ticks state={message.receipt}/>)}
         {openable && sender.includes("#") && <GoToAgent onClick={go} className="size-6"/>}
       </div>
       {message.quote && <Quote quote={message.quote} label={short(message.quote.sender)}/>}
@@ -471,9 +433,10 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
   const pending = useRef(false);
   const prefillFocused = useRef(false);
   const mention = mentionAt(draft);
-  const options = [...agents.map(agent => ({ id: agent.id, name: agent.name, lastMessageAt: agent.lastMessageAt, activeAt: agent.activeAt, online: agent.online })),
+  const options = [...agents.map(agent => ({ id: agent.id, name: agent.name, lastMessageAt: agent.lastMessageAt, activeAt: agent.activeAt, online: agent.online, live: isLive(agent, now) })),
     ...harnesses.map(harness => ({ id: harness.id, lastMessageAt: harness.lastMessageAt, activeAt: harness.activeAt, harness: true })),
     ...(teams || []).map(team => ({ id: team.id, team: true, members: team.members })),
+    ...patternMentionTargets(routing.patterns).filter(option => !(teams || []).some(team => team.id === option.id)),
     ...startable.flatMap(harness => modelsOf(models, harness).map(model => ({ id: harness + ":" + model, harness, model }))),
     // Open subagent runs of the project's sessions, tagged @session/run.
     ...agents.flatMap(agent => (agent.subagents || []).filter(run => run.open).map(run => ({ id: agent.id + "/" + run.run, owner: agent.id, run: true,
@@ -581,8 +544,8 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
         <Avatar address={option.run ? option.owner : option.model ? option.harness : option.team ? "operator" : option.id} className="size-6 text-[9px]"/>
         <span className="flex min-w-0 flex-1 flex-col">{option.run ? <span className="truncate text-xs text-foreground/80">{option.label}</span> : <span className="truncate font-mono text-xs">@{option.id}</span>}
           {option.run ? null : option.model ? <span className="truncate text-xs text-foreground/80">{(HARNESS_NAMES[option.harness] || option.harness) + " · " + option.model}</span> : option.team ? <span className="truncate text-xs text-foreground/80">{(option.members || []).join(", ")}</span> : <SessionName agent={option}/>}</span>
-        {!option.harness && !option.run && !option.team && <Dot online={option.online}/>}
-        <span className="shrink-0 text-xs text-muted-foreground">{option.run ? "subagent" : option.team ? "team" : option.model ? "new session" : (option.harness ? "harness · " : "") + seen(option, now)}</span>
+        {!option.harness && !option.run && !option.team && <Dot online={option.live === true}/>}
+        <span className="shrink-0 text-xs text-muted-foreground">{option.run ? "subagent" : option.pattern ? "pattern" : option.team ? "team" : option.model ? "new session" : (option.harness ? "harness · " : "") + seen(option, now)}</span>
       </button>)}
     </div>}
     <div onKeyDownCapture={event => {
@@ -669,7 +632,7 @@ function CompletionRow({ row, when, open }) {
   return <button type="button" data-type="completion" onClick={() => open(row.agent)} title={row.agent}
     className="flex min-w-0 items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent">
     <CircleCheck className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400"/>
-    <span className="min-w-0 flex-1 truncate"><span className="font-mono text-foreground">{short(row.agent)}</span> finished{row.turns > 1 ? " " + row.turns + " turns" : ""}{row.text && " · " + row.text}</span>
+    <span className="min-w-0 flex-1 truncate"><span className="font-mono text-foreground">{short(row.agent)}</span>{row.seat && " · " + row.seat} finished{row.turns > 1 ? " " + row.turns + " turns" : ""}{row.text && " · " + row.text}</span>
     {row.time > 0 && <time className="shrink-0 text-xs" dateTime={new Date(row.time * 1000).toISOString()}>{when(row.time * 1000)}</time>}
   </button>;
 }
@@ -679,7 +642,7 @@ function LiveRow({ row, open }) {
   return <button type="button" data-type="live" onClick={() => open(row.agent)} title={row.agent}
     className="flex min-w-0 items-center gap-2 rounded-xl border border-dashed bg-card px-2.5 py-1.5 text-left text-sm">
     <LoaderCircle className="size-4 shrink-0 animate-spin text-muted-foreground"/>
-    <span className="min-w-0 flex-1 truncate"><span className="font-mono">{short(row.agent)}</span> · working{row.summary && " on " + row.summary}</span>
+    <span className="min-w-0 flex-1 truncate"><span className="font-mono">{short(row.agent)}</span>{row.seat && " · " + row.seat} · working{row.summary && " on " + row.summary}</span>
   </button>;
 }
 
@@ -727,6 +690,8 @@ function Console({ account }) {
   const stick = useRef(null);
   // A restored view is already complete, so its screen renders at once instead of waiting for the new state frame.
   const [ready, setReady] = useState(Boolean(cached));
+  const [outcomeProject, setOutcomeProject] = useState("");
+  const [outcomeError, setOutcomeError] = useState("");
   const [navOpen, setNavOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -929,7 +894,7 @@ function Console({ account }) {
   // The new-agent composer replaces the chat while it is open.
   const paused = data.projects.some(item => item.id === project && item.paused);
   const composing = level === "project" && Boolean(creating) && creating === project && ready && !paused;
-  const viewCounts = projectViewCounts(data);
+  const viewCounts = projectViewCounts(ready ? data : undefined);
   const agent = level === "session" ? data.agents.find(item => item.id === selected.session) : undefined;
   const target = level === "session" ? selected.session : "all";
   const missing = level === "session" && !target;
@@ -1019,25 +984,45 @@ function Console({ account }) {
   }
   // Close, reopen and delete a project; Delete asks first and leaves the repo, worktrees and ntfy history alone.
   async function projectAction(path, name) {
+    if (path === "request-outcome") {
+      setNavOpen(false);
+      setOutcomeError("");
+      setOutcomeProject(name);
+      return;
+    }
     if (path === "delete" && !window.confirm("Delete " + name + " from the project registry? Its repo, worktrees and ntfy history stay. Live sessions in its repo will re-home under the folder name.")) return;
     const done = await action(path, { project: name }, path === "close" ? "Closed" : path === "reopen" ? "Reopened" : "Deleted");
     if (done && path !== "reopen" && name === (selected.project || data.project)) navigate({ level: "home" });
   }
-  const sidebar = <Sidebar inactiveOpen={inactiveOpen} onInactiveToggle={rememberInactive} data={data} selected={selected} now={now} navigate={navigate} newSession={newSession} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")} openRaw={openRaw} projectAction={projectAction}
-    openHash={hash => { setNavOpen(false); location.hash = hash.slice(1); }}/>;
+  const sidebarProps = {
+    inactiveOpen, onInactiveToggle: rememberInactive, data, selected, now, navigate, newSession, disabled: working,
+    dispose: node => action("dispose", { project: node.project, target: node.id }, "Disposed"), openRaw, projectAction,
+    openHash: hash => { setNavOpen(false); location.hash = hash.slice(1); },
+  };
   const anyWaiting = data.projects.some(project => project.waiting > 0);
   // A picked project keeps its three views at every level inside it, so one list feeds the rail and the phone's bar.
   const navLinks = projectNavigation(project, level, viewCounts);
   return <SurfaceContext.Provider value={{ surfaces, submit: payload => action("a2ui", payload, "Sent"), disabled: !ready || working }}><div className="flex h-dvh w-full overflow-hidden">
-    <aside className="hidden w-72 shrink-0 border-r bg-sidebar text-sidebar-foreground md:block">{sidebar}</aside>
+    <aside aria-label="Projects and sessions" className="hidden w-72 shrink-0 border-r bg-sidebar text-sidebar-foreground md:block"><Sidebar {...sidebarProps}/></aside>
     <ProjectNav links={navLinks} rail/>
     <Sheet open={navOpen} onOpenChange={setNavOpen}>
       <SheetContent side="left" className="w-[85vw] max-w-80 bg-sidebar p-0">
         <SheetTitle className="sr-only">Projects</SheetTitle>
         <SheetDescription className="sr-only">Pick a project or a session</SheetDescription>
-        {sidebar}
+        <Sidebar {...sidebarProps}/>
       </SheetContent>
     </Sheet>
+    <OutcomeRequest project={outcomeProject} close={() => setOutcomeProject("")} disabled={working} error={outcomeError}
+      submit={async fields => {
+        setWorking(true);
+        setOutcomeError("");
+        try {
+          await api("request-outcome", { project: outcomeProject, ...fields });
+          setOutcomeProject("");
+          navigate({ project: outcomeProject, level: "tasks" });
+        } catch (err) { setOutcomeError(err.message); }
+        finally { setWorking(false); }
+      }}/>
     <main className="flex min-w-0 flex-1 flex-col">
       <header className="sticky top-0 z-10 flex flex-col gap-2 border-b bg-background/85 px-3 py-2 backdrop-blur supports-backdrop-filter:bg-background/70">
         <div className={cn("flex items-center gap-2", level === "session" && "flex-wrap")}>
@@ -1083,7 +1068,7 @@ function Console({ account }) {
           <Button variant="outline" size="sm" disabled={working}
             onClick={() => action("project-pause", { paused: !paused }, paused ? "New work resumed" : "New work paused")}>{paused ? "Resume new work" : "Pause new work"}</Button>
         </div>}
-        {!home && !patterns && <ZoomControls data={data} selected={selected} now={now} navigate={navigate}
+        {level === "session" && selected.session && <ZoomControls data={data} selected={selected} now={now} navigate={navigate}
           compact={level === "session" && agent?.session && <span className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {agent.modelControl && modelsOf(models, "claude").length > 0 && <select
               aria-label="Claude model" className="h-9 w-28 truncate rounded-full border bg-background px-2 text-sm"
@@ -1100,7 +1085,6 @@ function Console({ account }) {
               raw={openRaw} label={"Session actions for " + selected.session}/>
             <Button variant="outline" size="sm" className="h-9 rounded-full" aria-label="Compact" disabled={!ready || working}
               onClick={() => action("compact", { target: selected.session }, "Compaction requested")}><Minimize2/>Compact</Button></span>}/>}
-        {!home && !listing && !tasksView && !patterns && !subagents && !raw && !compactions && <ConversationHistory key={requested} requested={requested}/>}
       </header>
       <div className={cn("flex flex-col gap-2 px-3 empty:hidden", composing && "min-h-0 flex-1 justify-center pb-[20vh]")}>
         {composing && <NewAgentComposer key={project + ":" + (data.startable || []).join(",")} project={project} startable={data.startable || []} places={data.startPlaces || ["folder"]} startPlace={data.startPlace || "folder"} sandboxHarnesses={data.openshellHarnesses || []}
@@ -1119,10 +1103,11 @@ function Console({ account }) {
         </div>}
       </div>
       {patterns && <div className="min-h-0 flex-1 overflow-y-auto">
-        {ready ? <PatternsPage data={data} project={project} selected={selected} navigate={navigate} call={patternCall} disabled={working}/>
+        {ready ? <PatternsPage data={data} project={project} selected={selected} navigate={navigate} call={patternCall} disabled={working} models={models}/>
           : <p className="py-16 text-center text-sm text-muted-foreground">Loading patterns…</p>}
       </div>}
-      {!patterns && !composing && (tasksView ? <TaskBoard key={project} project={project} board={ready ? data.tasks : null} now={now} taskId={selected.task}
+      {!patterns && !composing && (tasksView ? <TaskBoard key={project} project={project} board={ready ? data.tasks : null} now={now} taskId={selected.task} landControl={ready && <LandReviews landing={data.landing} disabled={working} onLand={() => action("land-reviews", {}, "Landing reviews")}/>}
+        outcomeControls={{ act: action, disabled: working, paused }}
         back={() => navigate({ project, level: "tasks" })} compose={id => navigate({ project, level: "project", composeTask: id })}
         continuation={{ harnesses: paused ? [] : data.startable || [], launch: (id, harness) => action("continue-builder", { id, harness }, "Replacement started") }}
         inspect={id => navigate({ project, level: "tasks", task: id })}
@@ -1141,8 +1126,11 @@ function Console({ account }) {
                 onClick={() => navigate({ project: item.id, level: "project" })}>
                 <span className="truncate">{item.id}</span><Badge variant="secondary">New work paused</Badge>
               </button>)}
+            {home && !inbox && <LandReviews landing={data.landing} disabled={working} onLand={() => action("land-reviews", { project: undefined }, "Landing reviews")}/>}
             {home && <DecisionQueue decisions={data.decisions} inbox={inbox} now={now} disabled={working} action={action}
               seen={seenDecisions} markSeen={markDecisionSeen} openInbox={() => navigate({ level: "inbox" })}/>}
+            {home && !inbox && data.shipped?.length > 0 && <Shipped items={data.shipped}
+              open={item => navigate({ project: item.project, level: "tasks", task: item.id })}/>}
             {!inbox && <SessionList sessions={data.sessions} now={now} open={openCard} raw={openRaw} disabled={working} showProject={home} compact={home}
               inactiveOpen={inactiveOpen} onInactiveToggle={rememberInactive}
               deadOpen={Boolean(views.get(memoryKey, {}).dead)} onDeadToggle={rememberDead}
@@ -1160,7 +1148,7 @@ function Console({ account }) {
           {!home && !listing && !subagents && (!ready || thread.length + live.length === 0) && <p className="py-16 text-center text-sm text-muted-foreground">
             {ready ? (raw ? "No activity yet." : "No messages yet.") : loadError ? "" : watching ? "Loading project chat…" : "Loading conversation…"}</p>}
           {ready && !home && !listing && !subagents && thread.map(({ message, activity: row }) => row
-            ? row.type === "completion" ? <CompletionRow key={row.id} row={row} when={at => ago(at, now)} open={openAddress}/>
+            ? row.type === "completion" ? <CompletionRow key={row.id} row={{ ...row, seat: seatOf(data.agents, row.agent) }} when={at => ago(at, now)} open={openAddress}/>
               : <ActivityRow key={row.id} row={row} when={at => ago(at, now)} now={now} goRun={goRun}/>
             : <ChatMessage key={message.id} message={message} operator={data.operator} me={account.user?.login} now={now} open={openAddress} disabled={!ready || working} taskLinks={taskLinks}
               detail={agentDetail(data.agents.find(agent => agent.id === message.from))}
@@ -1168,7 +1156,7 @@ function Console({ account }) {
               skip={payload => action("skip", payload, "Skipped")}
               reply={id => { setQuestion(id); setNotice(""); document.getElementById("composer")?.focus(); }}
               replyFrom={target => setReplyTo(target)}/>)}
-          {ready && watching && live.map(row => <LiveRow key={row.id} row={row} open={openAddress}/>)}
+          {ready && watching && live.map(row => <LiveRow key={row.id} row={{ ...row, seat: seatOf(data.agents, row.agent) }} open={openAddress}/>)}
           {ready && inline && <Working rows={rows} now={now}/>}
           <ChatContainerScrollAnchor/>
         </ChatContainerContent>

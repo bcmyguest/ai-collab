@@ -127,6 +127,8 @@ The command runs with `spawn` (argv, no shell) in its own process group, stdin c
 
 **Prompt blocks.** A harness command's prompt is the schedule's own prompt, then the project's [mission file](mission.md) (`withMission`, `lib/mission.mjs`), then the [run review](mission.md#the-run-review) (`withReview`, `lib/pm-review.mjs`). Both are appended at run time, so a tick always reads the current files, and a plain script is left exactly as `schedules.json` wrote it.
 
+**PM workspace.** A `pm` entry may set `workspace` to an absolute path. That path is a separate clone of the `cwd` repo's origin, not a linked worktree. At the start of the tick the runner clones it when the directory is missing, and when the clone is clean it runs `git fetch` and `git pull --ff-only` there. A dirty clone is left as it is and the reason is logged. The tick never resets or checks out `cwd`. An existing clone is not reset, even when it has local commits. The command runs in the workspace and the mission is read from there; `projectOfFolder` still uses `cwd`, so the run stays on the registered project. Builder start and merge start keep using that project. Omitting `workspace` leaves the tick in `cwd`.
+
 Config: `$XDG_CONFIG_HOME/ai-collab/schedules.json` (default `~/.config/ai-collab/schedules.json`), or the path in `AI_COLLAB_SCHEDULES`. A JSON array. An invalid entry, unreadable file or bad JSON is reported in `configError` and skipped; the runner keeps serving. A missing file means no schedules. Code: `runner/schedules.mjs`.
 
 The runner takes `runner.lock` beside `runner.db`; a second live runner on the same state directory refuses to start. The control socket binds before any tick starts, so a runner that cannot bind starts no command.
@@ -147,6 +149,7 @@ The runner takes `runner.lock` beside `runner.db`; a second live runner on the s
 | `command` | non-empty array of strings: argv, no shell | yes |
 | `timeoutSec` | positive integer, default 900, shorter than `everyMinutes` × 60 | no |
 | `sandbox` | boolean; `true` runs the command in a fresh OpenShell sandbox; the command must run `claude`, `codex`, `cursor-agent`/`agent` or `opencode` | no |
+| `workspace` | absolute path; for `pm`, the clone the tick runs in and reads `MISSION.md` from. The directory may be missing until the tick clones it. `cwd` stays the registered project | no |
 
 **Sandboxed ticks.** With `"sandbox": true` the tick runs `node runner/sandbox-run.mjs --name <name> --cwd <cwd> [--project <p>] -- <command>` in its scope, and the host guard (`lib/agent-guard.mjs`) lets `--force` and the like through. Without it, a command whose argv turns the harness's approvals off is refused with a `tail` that names the flag, unless the runner has `AI_COLLAB_ALLOW_HOST_AGENT=1`. A plain script (`steward.sh`, `round.mjs`, `runner-reload.sh`) is never wrapped. `sandbox-run.mjs`:
 
@@ -156,6 +159,8 @@ The runner takes `runner.lock` beside `runner.db`; a second live runner on the s
 4. Downloads the clone, commits loose edits as `chore(sandbox): uncommitted work from schedule <name>`, and fetches new commits into `cwd`'s repo as branch `sandbox/<name>-<UTC stamp>`; the checked-out branch is not touched. A failed download keeps the sandbox and the staging and logs both.
 5. Replays recorded `ai-collab task set|progress` calls through the host CLI and drops other task writes with a log line. Inside, `ai-collab task list|show` read the snapshot, `builder` commands are refused, and other commands are the real CLI over ntfy.
 6. Deletes the sandbox, also after SIGTERM from a timeout.
+
+The scheduler passes host install overrides such as `AI_COLLAB_CURSOR_TREE` and `AI_COLLAB_BUILDER_NODE` to `sandbox-run.mjs` for staging. The helper constructs the environment used inside OpenShell.
 
 Live 2026-11-23 (throwaway entry `sbx-proof-tick`, Cursor DeepSeek, project in a temp repo): the tick wrote and committed a file, sent `sandboxed tick OK` to the project's `all` topic over ntfy, landed 2 commits on `sandbox/sbx-proof-tick-20261123T032955Z`, deleted its sandbox, and finished in 34 s. Ticks that use the MCP `task_update` tool write the sandbox's task file, which is dropped: only CLI `task set|progress` reach the host.
 
@@ -402,7 +407,7 @@ How a UI start reaches the runner (the UI change comes with the first adapter, n
 The runner streams, per project, `ai-collab-<project>--to--all` plus `ai-collab-<project>--to--<harness>` for every loaded adapter, from the stored cursor.
 
 - A `msg` envelope with `to: <harness>` and `toSession: <label>` of an owned session (a direct message or an @mention) becomes a durable `input` message for that session.
-- A `msg` envelope with `to: "all"` on the broadcast topic, and raw operator text there that is neither a phone reply nor a question, becomes an `input` message for every owned session of the project, like a terminal session. A session's own broadcast is skipped. Each delivery to an idle owned session starts a turn.
+- A `msg` envelope with `to: "all"` on the broadcast topic, and raw operator text there that is neither a phone reply nor a question, becomes an `input` message only for an owned session the body `@mentions` (`@harness#label` or `@harness`). Other project-chat posts stay on the channel and do not start a turn. A session's own broadcast is skipped. A delivered post to an idle owned session starts a turn. A direct message still always wakes that session.
 - Every input is deduplicated by `ntfy:<event id>:<label>`. The text is `lib/format.mjs` `formatInbox([message])`, the same block hooks inject, so agents answer with `reply_to_operator` or `send_to_all` as they do today. `urgent: true` steers when the adapter can steer; otherwise it queues.
 - `reply <id> <answer>` on the broadcast topic answers the owned approval with that id (`lib/approvals.mjs` `replyDecision`). Anyone who can post to the project topic may answer.
 
@@ -513,6 +518,25 @@ The opt-in test starts `runner/main.mjs` with an isolated project, database, and
 
 The OpenShell builder returned `ENOENT` for `openshell --version` at the live test's preflight. Cursor Agent was also absent from its PATH. The test skips by default. The earlier live probe described above reached ACP `initialize` and failed at `session/new` with Cursor logging `EAI_AGAIN api2.cursor.sh`.
 
+### Live verification of scheduled sandbox bootstrap
+
+On the runner host, install Claude, Codex, Cursor Agent and OpenCode under the
+runner account and make sure OpenShell has a free sandbox slot. The test uses the
+same host install overrides and login staging as a scheduled sandbox run.
+
+```sh
+export TMPDIR="$(mktemp -d -p /tmp)"
+AI_COLLAB_LIVE_SANDBOX_BOOTSTRAP=1 node --test test/live-sandbox-bootstrap.test.mjs
+```
+
+Each row uses a fresh Git fixture and sandbox. It checks that the staged launcher
+prints a version, the checkout returns with no new commits, and OpenShell removes
+the sandbox. The version probes require no model requests. The matrix skips by
+default and reports missing prerequisites as failures when explicitly enabled.
+
+For authenticated model turns through the scheduler, builder, and runner
+entry points, see [Live OpenShell bootstrap smoke](sandbox-smoke.md).
+
 ## Files
 
 | Path | Role |
@@ -546,7 +570,7 @@ Environment: `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (minutes before an unanswered owne
 ## Operator decisions (2026-11-21)
 
 - **DBOS:** keep the DBOS-shaped `node:sqlite` layer now; move to DBOS later.
-- **1 Broadcast delivery:** owned sessions receive every project-chat broadcast and every @mention, like terminal sessions. Each delivery to an idle owned session starts a turn.
+- **1 Broadcast delivery:** an owned session takes a project-chat post only when it `@mentions` that session or its harness, the same rule as a terminal session. A direct message always wakes it. Each such delivery to an idle owned session starts a turn.
 - **2 Cut runs:** every cut run is marked interrupted, on every adapter. No adapter resumes a cut run.
 - **3 Default modes:** each harness's auto mode where it has one, else the mode a user's own session uses:
   - Claude `auto`; Codex `auto` (on-request plus auto review); OpenCode `supervised` (its default asks go to the phone); Cursor `supervised` in a worktree.

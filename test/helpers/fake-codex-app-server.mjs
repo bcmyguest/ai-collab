@@ -9,6 +9,7 @@ if (!process.argv.includes("app-server") && !process.argv.includes("--version"))
 const LOG = process.env.FAKE_CODEX_LOG;
 const ROLLOUT = process.env.FAKE_CODEX_ROLLOUT;
 const rawThreads = new Set();
+const resumedThreads = new Set();
 const log = (entry) => { if (LOG) appendFileSync(LOG, `${JSON.stringify(entry)}\n`); };
 const write = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 // A prompt containing "closing" meets a thread still closing for its first FAKE_CODEX_CLOSING_TIMES turn/start
@@ -58,7 +59,7 @@ function runTurn(threadId, text) {
     write({ id, method: "item/commandExecution/requestApproval", params: { threadId, turnId, itemId, startedAtMs: Date.now(), command: approve[1], cwd: "/tmp" } });
     return;
   }
-  if (/\bhang\b/.test(text)) { hanging.set(turnId, threadId); return; }
+  if (/\bhang\b/.test(text) && !(resumedThreads.has(threadId) && text.startsWith("The runner restarted"))) { hanging.set(turnId, threadId); return; }
   if (/\bfail\b/.test(text)) { finishTurn(threadId, turnId, "failed", { message: "fake turn failure" }); return; }
   if (/\blimit\b/.test(text)) { finishTurn(threadId, turnId, "failed", { message: "fake usage limit reached", codexErrorInfo: "usageLimitExceeded" }); return; }
   if (/\bcrash\b/.test(text)) { process.exit(3); }
@@ -98,6 +99,7 @@ function handle(message) {
       return write({ id, result: { thread: { id: threadId }, cwd: params.cwd, model: params.model ?? "gpt-fake", modelProvider: "fake", approvalPolicy: params.approvalPolicy, approvalsReviewer: params.approvalsReviewer, sandbox: { type: "readOnly" } } });
     }
     case "thread/resume":
+      resumedThreads.add(params.threadId);
       return write({ id, result: { thread: { id: params.threadId, path: ROLLOUT } } });
     case "turn/start": {
       const text = params.input[0].text;

@@ -21,12 +21,19 @@ const DOT = `digraph "scout" {
 `;
 
 // A fake writing agent: prints a fixed answer, or fails when asked to. `name` picks the harness executable to fake.
+// `fail: true` exits 3 with "nope" on stderr. A string exits 1 with that text on stderr (a usage limit is stderr-only).
 function fakeAuthor(home, { answer = `\`\`\`dot\n${DOT}\`\`\``, fail = false, name = "cursor-agent" } = {}) {
   const bin = path.join(home, "bin");
   mkdirSync(bin, { recursive: true });
-  const script = `#!/bin/sh\n${fail ? "echo nope >&2\nexit 3\n" : `${JSON.stringify(answer.replace(/\n/g, "\\n"))}`}\n`;
   const file = path.join(bin, name);
-  writeFileSync(file, fail ? script : `#!/bin/sh\nprintf '%s\\n' '${answer.replace(/'/g, "'\\''")}'\n`);
+  const record = `printf '%s\\n' "$@" > ${JSON.stringify(path.join(home, "author-args"))}\n`;
+  if (fail) {
+    const text = typeof fail === "string" ? fail : "nope";
+    const code = typeof fail === "string" ? 1 : 3;
+    writeFileSync(file, `#!/bin/sh\n${record}printf '%s\\n' ${JSON.stringify(text)} >&2\nexit ${code}\n`);
+  } else {
+    writeFileSync(file, `#!/bin/sh\n${record}printf '%s\\n' '${answer.replace(/'/g, "'\\''")}'\n`);
+  }
   chmodSync(file, 0o755);
   return bin;
 }
@@ -52,7 +59,7 @@ async function ui(t, { answer, fail, name, peers } = {}) {
   t.after(() => fake.close());
   const made = setup({ answer, fail, name, peers });
   const cfg = loadConfig({ ...made.env, AI_COLLAB_URL: fake.url });
-  const server = createUi({ cfg, env: made.env, models: async () => ({ claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] }) });
+  const server = createUi({ cfg, env: made.env, models: async () => ({ claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high", "grok-4.7-high"] }) });
   t.after(() => server.close());
   const post = (body) => server.handle(new Request(`${base}/api/pattern`, {
     method: "POST", headers: { Origin: base, "Content-Type": "application/json" }, body: JSON.stringify({ project: "demo", ...body }),
@@ -98,8 +105,38 @@ test("a writing agent that fails reports the failure and writes nothing", async 
   const made = await post({ authorRequest: "x", team: "scout" });
   assert.equal(made.status, 201);
   assert.equal(made.body.status, "failed");
-  assert.match(made.body.detail, /cursor-agent exited 3/);
+  assert.match(made.body.detail, /cursor-agent exited 3: nope/);
   assert.equal(existsSync(path.join(root, ".ai-collab", "teams", "scout")), false);
+});
+
+test("a writing agent that exits 1 reports the usage-limit text from stderr", async (t) => {
+  const { post, root } = await ui(t, { fail: "ActionRequiredError: You've hit your usage limit. Switch to a different model or set a Spend Limit to continue with this model." });
+  const made = await post({ authorRequest: "x", team: "scout" });
+  assert.equal(made.status, 201);
+  assert.equal(made.body.status, "failed");
+  assert.match(made.body.detail, /cursor-agent exited 1: ActionRequiredError: You've hit your usage limit/);
+  assert.match(made.body.detail, /Switch to a different model/);
+  assert.equal(existsSync(path.join(root, ".ai-collab", "teams", "scout")), false);
+});
+
+test("the draft runs the harness and model the operator selected", async (t) => {
+  const { post, home } = await ui(t, { name: "agent" });
+  const made = await post({ authorRequest: "Find something, then write it up.", team: "scout", authorHarness: "cursor", authorModel: "grok-4.7-high" });
+  assert.equal(made.status, 201, JSON.stringify(made.body));
+  assert.equal(made.body.status, "answered");
+  assert.equal(made.body.harness, "cursor");
+  const args = readFileSync(path.join(home, "author-args"), "utf8").split("\n");
+  assert.equal(args[0], "-p");
+  assert.equal(args[2], "--model");
+  assert.equal(args[3], "grok-4.7-high");
+});
+
+test("an unknown writing model is refused before the agent starts", async (t) => {
+  const { post, home } = await ui(t, { name: "agent" });
+  const made = await post({ authorRequest: "x", authorHarness: "cursor", authorModel: "not-a-model" });
+  assert.equal(made.status, 400);
+  assert.match(made.body.error, /not available for this harness/);
+  assert.equal(existsSync(path.join(home, "author-args")), false);
 });
 
 test("a project with no cursor-agent drafts through a harness it can run", async (t) => {

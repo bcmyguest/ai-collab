@@ -9,7 +9,7 @@ import { sse } from "./helpers/ui-stream.mjs";
 
 const base = "http://127.0.0.1:8795";
 
-test("the snapshot's projectCounts counts each project's online and offline sessions", async (t) => {
+test("the snapshot's projectCounts counts a live turn as running and an idle process as off", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
   const env = peerEnv(fake, { peer: "alice" });
@@ -24,5 +24,5 @@ test("the snapshot's projectCounts counts each project's online and offline sess
   const stream = sse(ui.events(new Request(`${base}/api/events`, { signal: ctrl.signal })));
   const first = (await stream.next()).value;
   ctrl.abort();
-  assert.deepEqual(first.data.projectCounts, { demo: { running: 1, inactive: 1 } });
+  assert.deepEqual(first.data.projectCounts, { demo: { running: 0, inactive: 2 } });
 });

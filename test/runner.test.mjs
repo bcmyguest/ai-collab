@@ -300,7 +300,7 @@ test("an operator message to an owned session becomes its next run and gets a re
   }
 });
 
-test("project-chat broadcasts reach every owned session; a session's own broadcast does not", async () => {
+test("a project-chat post reaches an owned session only when it @mentions that session or its harness", async () => {
   const fake = await startFakeNtfy();
   const ctx = setup(fake);
   const adapter = createFakeAdapter({ harness: "codex" });
@@ -313,13 +313,19 @@ test("project-chat broadcasts reach every owned session; a session's own broadca
     await until(() => runner.get(a.session).status === "idle" && runner.get(b.session).status === "idle", "both idle");
     const sends = () => adapter.calls.filter((c) => c.op === "send");
     fake.inject(BROADCAST, JSON.stringify({ v: 1, kind: "msg", from: "claude", session: "0123456789abcdef", to: "all", ts: new Date().toISOString(), body: "team update" }));
-    await until(() => sends().filter((c) => /team update/.test(c.text)).length === 2, "envelope broadcast to both");
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(sends().filter((c) => /team update/.test(c.text)).length, 0, "an unmentioned broadcast reaches no session");
+    fake.inject(BROADCAST, JSON.stringify({ v: 1, kind: "msg", from: "claude", session: "0123456789abcdef", to: "all", ts: new Date().toISOString(), body: "@codex team update" }));
+    await until(() => sends().filter((c) => /@codex team update/.test(c.text)).length === 2, "a harness mention reaches both");
     fake.inject(BROADCAST, "operator typed this");
-    await until(() => sends().filter((c) => /operator typed this/.test(c.text)).length === 2, "plain broadcast to both");
-    fake.inject(BROADCAST, JSON.stringify({ v: 1, kind: "msg", from: "codex", session: sessionLabel(a.nativeId), to: "all", ts: new Date().toISOString(), body: "from a" }));
-    await until(() => sends().filter((c) => /from a/.test(c.text)).length === 1, "own broadcast reaches the other session only");
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(sends().filter((c) => /operator typed this/.test(c.text)).length, 0, "plain text with no mention reaches no session");
+    fake.inject(BROADCAST, "@codex operator typed this");
+    await until(() => sends().filter((c) => /@codex operator typed this/.test(c.text)).length === 2, "a plain mention reaches both");
+    fake.inject(BROADCAST, JSON.stringify({ v: 1, kind: "msg", from: "codex", session: sessionLabel(a.nativeId), to: "all", ts: new Date().toISOString(), body: "@codex from a" }));
+    await until(() => sends().filter((c) => /@codex from a/.test(c.text)).length === 1, "own broadcast reaches the other session only");
     await new Promise((r) => setTimeout(r, 100));
-    assert.equal(sends().filter((c) => /from a/.test(c.text)).length, 1);
+    assert.equal(sends().filter((c) => /@codex from a/.test(c.text)).length, 1);
   } finally {
     await runner.stop();
     await fake.close();
@@ -344,9 +350,12 @@ test("a start-only post (only @harness:model tags) reaches no owned session", as
     fake.inject(BROADCAST, startOnly);
     await new Promise((r) => setTimeout(r, 150));
     assert.equal(sends().filter((c) => /build it/.test(c.text)).length, 0, "a start-only post reaches no owned session");
-    // The same post without the mark is an ordinary broadcast and still reaches both.
+    // The same words without the mark, and without a mention, still reach nobody.
     fake.inject(BROADCAST, JSON.stringify({ v: 1, kind: "msg", from: "operator", to: "all", ts: new Date().toISOString(), body: "build it" }));
-    await until(() => sends().filter((c) => /build it/.test(c.text)).length === 2, "ordinary broadcast to both");
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(sends().filter((c) => /build it/.test(c.text)).length, 0, "an unmentioned broadcast reaches no owned session");
+    fake.inject(BROADCAST, JSON.stringify({ v: 1, kind: "msg", from: "operator", to: "all", ts: new Date().toISOString(), body: "@codex build it now" }));
+    await until(() => sends().filter((c) => /@codex build it now/.test(c.text)).length === 2, "a harness mention reaches both");
   } finally {
     await runner.stop();
     await fake.close();

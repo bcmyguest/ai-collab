@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { toGraph } from "@/lib/pattern-graph";
+import { initialChoice, modelsOf } from "@/lib/start-default";
 import { ConfirmButton, RoleGraph } from "./pattern-graph";
 import { renameTeam, sourceLine } from "@/lib/team-editor";
 
 // The operator describes a team in words; a writing agent drafts team.dot; the operator confirms the name and saves.
 // With `pattern` set it edits that team: the current DOT goes into the brief, and saving replaces it after a confirm.
 // The DOT editor stays the escape hatch: "Open in DOT editor" carries the name there.
-export function TeamAuthor({ templates, pattern = null, project, call, go, disabled }) {
+export function TeamAuthor({ templates, pattern = null, project, call, go, disabled, startable = [], models = {}, authorDefault = { harness: "cursor", model: "deepseek-v41-flash-1017-high" } }) {
   const editing = Boolean(pattern);
   const [request, setRequest] = useState("");
   const [name, setName] = useState(pattern?.name ?? "");
@@ -16,6 +17,8 @@ export function TeamAuthor({ templates, pattern = null, project, call, go, disab
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
   const [draft, setDraft] = useState(null);
+  const [writer, setWriter] = useState(() => initialChoice({ startable, models, setting: authorDefault }));
+  const pickedWriter = useRef(false);
   // Set when a save was refused because the name is taken; the save becomes an explicit Replace.
   const [replaceAsk, setReplaceAsk] = useState(false);
 
@@ -26,6 +29,14 @@ export function TeamAuthor({ templates, pattern = null, project, call, go, disab
   // The draft says which entry already uses the name it was checked under; that only applies while that is still the
   // name being saved. A name typed afterwards is checked by the save, which offers Replace when it is taken.
   const replaces = checked && draft.exists && draft.exists !== "built-in" && draft.exists !== "team" && target === draft.name;
+  const harnesses = startable.length ? startable : (writer.harness ? [writer.harness] : []);
+  const listedModels = modelsOf(models, writer.harness);
+  const modelChoices = listedModels.includes(writer.model) || !writer.model ? listedModels : [writer.model, ...listedModels];
+
+  useEffect(() => {
+    if (pickedWriter.current) return;
+    setWriter(initialChoice({ startable, models, setting: authorDefault }));
+  }, [startable, models, authorDefault]);
 
   async function ask() {
     setBusy("draft"); setNotice("");
@@ -34,7 +45,10 @@ export function TeamAuthor({ templates, pattern = null, project, call, go, disab
     // The operator's words carry the conversation; a valid draft is already in `current`, so its answer is not repeated.
     // When the last answer did not check, it is carried as a turn instead, so the writer can see what it wrote wrong.
     const said = history.filter(turn => turn.from === "operator" || !current);
-    const result = await call({ project, authorRequest: request, team: name || pattern?.name || "", authorScope: scope, authorTurns: said, authorCurrent: current });
+    const result = await call({
+      project, authorRequest: request, team: name || pattern?.name || "", authorScope: scope, authorTurns: said, authorCurrent: current,
+      ...(writer.harness ? { authorHarness: writer.harness, authorModel: writer.model } : {}),
+    });
     setBusy("");
     if (result?.error) { setNotice(result.error); return; }
     setHistory(turns => [...turns, { from: "operator", text: request }, ...(result.reply ? [{ from: "agent", text: result.reply }] : [])]);
@@ -66,7 +80,7 @@ export function TeamAuthor({ templates, pattern = null, project, call, go, disab
       <h2 className="font-semibold">{editing ? `Refine ${pattern.name}` : "Describe a team"}</h2>
       <p className="text-xs text-muted-foreground">{editing
         ? "Say what should change. The agent sees the team as it is now, drafts the whole file, and nothing is saved until you approve."
-        : "Say what the team should do, in your own words. An agent drafts team.dot, you confirm, it is saved. No DOT unless you want it."}</p>
+        : "Say what the team should do, in your own words. Pick the agent and model that draft team.dot, confirm, and it is saved. No DOT unless you want it."}</p>
     </div>
 
     <section className="flex flex-col gap-2">
@@ -82,6 +96,16 @@ export function TeamAuthor({ templates, pattern = null, project, call, go, disab
         {!editing && <select aria-label="Scope" className="rounded border bg-background px-2 py-1 text-xs" value={scope} disabled={disabled || Boolean(busy)} onChange={event => setScope(event.target.value)}>
           <option value="project">project</option>
           <option value="global">global</option>
+        </select>}
+        {harnesses.length > 0 && <select aria-label="Writing agent" className="rounded border bg-background px-2 py-1 text-xs" value={writer.harness} disabled={disabled || Boolean(busy)} onChange={event => {
+          const harness = event.target.value;
+          pickedWriter.current = true;
+          setWriter({ harness, model: modelsOf(models, harness)[0] || "" });
+        }}>
+          {harnesses.map(harness => <option key={harness} value={harness}>{harness}</option>)}
+        </select>}
+        {modelChoices.length > 0 && <select aria-label="Writing model" className="max-w-full rounded border bg-background px-2 py-1 font-mono text-xs" value={writer.model} disabled={disabled || Boolean(busy)} onChange={event => { pickedWriter.current = true; setWriter(current => ({ ...current, model: event.target.value })); }}>
+          {modelChoices.map(model => <option key={model} value={model}>{model}</option>)}
         </select>}
         <Button type="button" size="sm" disabled={!canAsk} onClick={ask}>{busy === "draft" ? "Drafting…" : history.length ? "Ask again" : "Draft with agent"}</Button>
       </div>

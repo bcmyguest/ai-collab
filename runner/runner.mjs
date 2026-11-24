@@ -8,13 +8,14 @@ import { setTimeout as delay } from "node:timers/promises";
 import { EventType } from "@ag-ui/core";
 import { DOT_EVENT_MAX } from "../lib/dot.mjs";
 import { getPattern } from "../lib/patterns.mjs";
-import { applyPatternAdvance, cutPatternRun, launchPatternRun, NOTE_MAX, preparePatternRun, RUN_ID, runStatus } from "../lib/pattern-runs.mjs";
+import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, cutPatternEntry, cutPatternLeave, launchPatternRun, NOTE_MAX, preparePatternRun, RUN_ID, runStatus } from "../lib/pattern-runs.mjs";
+import { patternWorkflowId, runPatternWorkflow, seedPatternRun } from "../lib/pattern-workflow.mjs";
 import { statePath } from "../lib/state.mjs";
 import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, receiptsTopic, sessionLabel, startPlaceSetting } from "../lib/config.mjs";
-import { RESERVE_MS, ATTACHMENT_BUDGET_MS, claimInbox, markDelivered, parseEnvelope, releaseOwned, reserveOwned, reservedMessage } from "../lib/inbox.mjs";
+import { RESERVE_MS, ATTACHMENT_BUDGET_MS, claimInbox, markDelivered, mentionsAgent, parseEnvelope, releaseOwned, reserveOwned, reservedMessage } from "../lib/inbox.mjs";
 import { parsePhoneReply, parseQuestionText } from "../lib/questions.mjs";
 import { replyDecision, APPROVAL_ID } from "../lib/approvals.mjs";
-import { formatInbox, identityLine } from "../lib/format.mjs";
+import { formatInbox } from "../lib/format.mjs";
 import { attachmentOf, cacheAttachmentsWithin, localizedAttachment } from "../lib/attachment-cache.mjs";
 import { streamEvents } from "../lib/ntfy.mjs";
 import { listSessions, recordSession } from "../lib/sessions.mjs";
@@ -22,7 +23,7 @@ import { claudeConfirmedSince, claudeSnapshot, claudeWindowMs } from "../lib/cla
 import { ackTracker, direct, MAX_ATTEMPTS, PUSHED, pushSession, readDispatchLedger, readySession, writeDispatchLedger } from "../lib/deliver-push.mjs";
 import { sessionIdleState } from "../lib/idle.mjs";
 import { opencodeRequest } from "../lib/opencode-api.mjs";
-import { BUILDER_START_TIMEOUT_MS, builderPaths, stoppedBuilder, ownedBuilder, stageOwnedBuilder, claimOwnedBuilder, finishOwnedBuilder } from "../lib/builder.mjs";
+import { BUILDER_START_TIMEOUT_MS, builderPaths, builderResumePrompt, stoppedBuilder, ownedBuilder, stageOwnedBuilder, claimOwnedBuilder, finishOwnedBuilder } from "../lib/builder.mjs";
 import { childEnv, checkPrompt, findExecutable, modelShape, projectRoot, worktreeNames } from "../lib/start.mjs";
 import { parseCodeMode, resolveCodeMode } from "../lib/code-mode.mjs";
 import { openTasks } from "../lib/tasks.mjs";
@@ -201,8 +202,9 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       if (card) closeApproval(s, card.id, e.value.reason);
       return;
     }
-    // A harness limit (an adapter event or a run error): one limit card per session and window.
-    if (limit) enqueuePublish(s, () => alertLimit(s.cfg, { harness: r.harness, limit }).catch((error) => log(`limit alert failed: ${error.message}`)));
+    // A harness limit. A builder is retried by its supervisor, so it does not also raise a choice card.
+    // Any other session starts the configured fallback (Cursor DeepSeek unless defaults say otherwise) and does not ask.
+    if (limit && !r.builder) enqueuePublish(s, () => alertLimit(s.cfg, { harness: r.harness, limit, auto: true }).catch((error) => log(`limit alert failed: ${error.message}`)));
     const system = e.type === EventType.RUN_STARTED && s.systemPrompt === true;
     if (e.type === EventType.RUN_STARTED) delete s.systemPrompt;
     enqueuePublish(s, () => publishEvent(s.cfg, r.harness, e, { system }));
@@ -243,14 +245,14 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   }
 
   // The live handle, resuming the native session for the next input when this execution has none (after a restart).
-  async function liveHandle(s) {
+  async function liveHandle(s, staged) {
     if (s.live) return s.live;
     if (s.record.status === "ended") fail(409, "The owned session has ended");
-    if (s.record.builder) fail(409, "The builder sandbox session cannot resume");
+    if (s.record.builder && !staged) fail(409, "The builder sandbox session requires its staged launcher");
     const adapter = adapterOf(s.record.harness);
     if (adapter.capabilities.resume === "none") fail(409, `${s.record.harness} sessions cannot resume`);
     s.resuming ??= (async () => {
-      s.live = await adapter.resume(s.record, contextFor({ s }, s.record.harness, s.signal), ownedEnv());
+      s.live = await adapter.resume(s.record, contextFor({ s }, s.record.harness, s.signal), ownedEnv(), staged);
       save(s);
       return s.live;
     })().finally(() => { s.resuming = null; });
@@ -343,7 +345,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       } catch (error) {
         return { failed: error.message };
       }
-    }, { onCut: () => ({ failed: "runner restarted while staging the builder" }) });
+    });
     if (staged?.failed) {
       await wf.step("builder.fail", () => finishOwnedBuilder(builder, null, 1, env, log, staged.failed));
       return { ended: staged.failed };
@@ -373,7 +375,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         throw error;
       }
       return { nativeId: holder.live.nativeId };
-    }, { onCut: () => ({ failed: "the runner stopped while the session opened" }) });
+    }, builder ? {} : { onCut: () => ({ failed: "the runner stopped while the session opened" }) });
     if (opened.failed) {
       if (builder) await wf.step("builder.fail", () => finishOwnedBuilder(builder, staged, 1, env, log, opened.failed));
       return { ended: opened.failed };
@@ -409,6 +411,11 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     await recordSession(cfg, { id: opened.nativeId, cwd, harness, event: "owned", proc }).catch(() => {});
     if (!wf.replaying) await enqueuePublish(s, () => publishEvent(cfg, harness, { type: EventType.CUSTOM, name: NOTICE, value: `owned session started (${permissionMode})` }));
     claims.get(wf.id)?.(s);
+    const finishBuilder = (finished) => wf.step("builder.finish", async () => {
+      await s.live?.close().catch(() => {});
+      s.live = null;
+      await finishOwnedBuilder(builder, staged, finished?.outcome === "success" ? 0 : 1, env, log, undefined, finished?.usageLimit, wf.signal);
+    });
     let next = { text: input.prompt, messageIds: [], system: input.system ?? Boolean(builder || patternRun) };
     for (;;) {
       if (!next) {
@@ -418,9 +425,13 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       }
       const turn = next;
       next = null;
+      const cut = async (runId, reason) => {
+        const result = await cutRun(s, runId, reason);
+        return builder ? { ...result, resumeBuilder: true } : result;
+      };
       const sent = await wf.step("run.send", async () => {
         try {
-          const handle = await liveHandle(s);
+          const handle = await liveHandle(s, staged);
           while (s.switchingModel) await s.switchingModel.catch(() => {});
           s.record.status = "running";
           save(s);
@@ -437,15 +448,17 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
           await enqueuePublish(s, () => publishEvent(s.cfg, harness, { type: EventType.CUSTOM, name: ERROR, value: `input not delivered: ${error.message}` }));
           return { error: error.message };
         }
-      }, { onCut: () => cutRun(s, null, "runner restarted before the harness accepted the input") });
+      }, { onCut: () => cut(null, "runner restarted before the harness accepted the input") });
       if (!sent.runId && !builder) continue;
-      const finished = sent.runId && await wf.step("run.wait", () => waitRun(s, sent.runId), { onCut: () => cutRun(s, sent.runId, "runner restarted") });
+      const interrupted = () => cut(sent.runId, "runner restarted");
+      const finished = sent.runId && await wf.step("run.wait",
+        () => builder && !s.live ? interrupted() : waitRun(s, sent.runId), { onCut: interrupted });
+      if (sent.resumeBuilder || finished?.resumeBuilder) {
+        next = { text: builderResumePrompt(input.prompt), messageIds: [], system: true };
+        continue;
+      }
       if (builder) {
-        await wf.step("builder.finish", async () => {
-          await s.live?.close().catch(() => {});
-          s.live = null;
-          await finishOwnedBuilder(builder, staged, finished?.outcome === "success" ? 0 : 1, env, log, undefined, finished?.usageLimit);
-        });
+        await finishBuilder(finished);
         return wf.step("close", () => endSession(s, "builder finished"));
       }
       if (patternRun && finished?.handoff) {
@@ -459,13 +472,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         }, { onCut: () => null });
       }
     }
-    if (builder) {
-      await wf.step("builder.finish", async () => {
-        await s.live?.close().catch(() => {});
-        s.live = null;
-        await finishOwnedBuilder(builder, staged, 1, env, log);
-      });
-    }
+    if (builder) await finishBuilder();
     return wf.step("close", () => endSession(s, "closed by the operator"));
   }
 
@@ -528,7 +535,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         batch = batch.filter((m) => got.owned.includes(m.id)).map(m => reservedMessage(scfg, m)).filter(Boolean);
         if (!batch.length) break;
         const shown = await cacheAttachmentsWithin(scfg, batch, { budgetMs: ATTACHMENT_BUDGET_MS });
-        const text = formatInbox(shown, { session: label });
+        const text = formatInbox(shown, { session: label, peer: harness });
         const messageIds = batch.map((m) => m.id);
         const sent = await wf.step("wake.send", async () => {
           // A harness that refused the turn without starting it and says the session is still closing (a codex thread
@@ -654,7 +661,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     textFor: async (scfg, message, attemptNo) => {
       const shown = attemptNo > 1 ? { ...message, attempt: attemptNo, attempts: MAX_ATTEMPTS } : message;
       const [cached] = await cacheAttachmentsWithin(scfg, [shown], { budgetMs: ATTACHMENT_BUDGET_MS });
-      return [identityLine(scfg), formatInbox([cached], { session: scfg.session })].filter(Boolean).join("\n");
+      return formatInbox([cached], { session: scfg.session, peer: scfg.peer });
     },
   };
   const deps = { ...deliveryDeps, ...delivery };
@@ -856,14 +863,14 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   }
 
   const patternReplies = new Map();
-  const patternWorkflowId = (project, id) => `pattern:${project}:${id}`;
   const patternConfig = (project) => {
     const cfg = configs.get(project);
     if (!cfg) fail(400, "Unknown project");
     return { ...cfg, peer: "operator", session: "" };
   };
 
-  async function patternWorkflow(wf, { project, initial, request }) {
+  async function patternWorkflow(wf, input) {
+    const { project } = input;
     const cfg = patternConfig(project);
     const launch = async (_cfg, { patternRun, ...options }) => {
       for (;;) {
@@ -876,38 +883,42 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         }
       }
     };
-    let reply = await wf.step("pattern.entry", async () => {
-      const started = await launchPatternRun(cfg, initial, env, launch);
-      wf.signal.throwIfAborted();
-      return started;
-    }, {
-      onCut: () => cutPatternRun(cfg, initial, "start"),
-    });
-    patternReplies.get(request)?.({ reply });
-    while (reply.status === "running" || reply.status === "suspended") {
-      const { request, event, options } = await wf.recv("advance");
-      const outcome = await wf.step("pattern.advance", async () => {
+    const notify = (address, text) => send(address, { text });
+    const visible = (advanced) => {
+      const reply = { ...advanced };
+      delete reply.targets;
+      delete reply.arrival;
+      return reply;
+    };
+    return runPatternWorkflow(wf, input, {
+      enterEntry: (_input, runId) => launchPatternRun(cfg, seedPatternRun(input, runId, now), env, launch),
+      leave: async (runId, message) => {
         try {
-          const advanced = await applyPatternAdvance(cfg, initial.id, event, {
-            ...options, env, now, start: launch, notify: (address, text) => send(address, { text }),
+          const advanced = await applyPatternAdvance(cfg, runId, message.event, {
+            ...message.options, env, now, start: launch, notify, launchNext: false,
           });
-          wf.signal.throwIfAborted();
-          return { reply: advanced };
+          const targets = advanced.targets ?? [];
+          return { reply: visible(advanced), launch: advanced.status === "running" && targets.length > 0, targets, arrival: advanced.arrival };
         } catch (error) {
-          wf.signal.throwIfAborted();
-          return { error: error.message };
+          if (wf.signal.aborted) throw error;
+          return { error: error.message, launch: false };
         }
-      }, { onCut: () => ({ reply: cutPatternRun(cfg, initial, "advance") }) });
-      patternReplies.get(request)?.(outcome);
-      if (outcome.reply) reply = outcome.reply;
-    }
-    return reply;
+      },
+      enterNext: async (runId, left) => {
+        const activated = await activatePatternTargets(cfg, runId, left.targets, left.arrival, { env, start: launch, notify });
+        return { reply: { ...left.reply, ...activated, handoff: left.reply?.handoff } };
+      },
+      cutEntry: (_input, runId) => cutPatternEntry(cfg, runId),
+      cutLeave: (runId) => cutPatternLeave(cfg, runId),
+      cutEnter: (runId, left) => cutPatternEnter(cfg, runId, left.targets),
+      reply: (outcome) => patternReplies.get(wf.id)?.(outcome),
+    });
   }
 
   durable.register("pattern", patternWorkflow);
 
-  async function waitForPattern(id, request, submit) {
-    const response = new Promise((resolve) => patternReplies.set(request, resolve));
+  async function waitForPattern(id, submit) {
+    const response = new Promise((resolve) => patternReplies.set(id, resolve));
     try {
       submit();
       const outcome = await Promise.race([
@@ -917,7 +928,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       if (outcome.error) fail(409, outcome.error);
       return outcome.reply;
     } finally {
-      patternReplies.delete(request);
+      patternReplies.delete(id);
     }
   }
 
@@ -938,21 +949,21 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     }
     if (now() - lastStartAt < startGapMs) fail(429, "Wait 10 seconds between starts");
     lastStartAt = now();
-    const id = patternWorkflowId(project, initial.id);
-    const request = randomUUID();
-    return waitForPattern(id, request, () => durable.startWorkflow("pattern", id, { project, initial, request }));
+    const id = patternWorkflowId(initial.id);
+    return waitForPattern(id, () => durable.startWorkflow("pattern", id, {
+      name: initial.definition.name, task: initial.task, definition: initial.definition, project,
+    }));
   }
 
   async function advancePattern({ project, id, event, note, caller, override, confirmation, by } = {}) {
     const cfg = patternConfig(project);
     if (typeof id !== "string" || !RUN_ID.test(id)) fail(400, "Invalid pattern run id");
-    const workflow = patternWorkflowId(project, id);
+    const workflow = patternWorkflowId(id);
     const status = durable.status(workflow);
     if (!status) fail(404, "Unknown runner pattern");
     if (status.status !== "PENDING") fail(409, `run ${id} is ${runStatus(cfg, id).status}`);
     if (!(override === true && typeof confirmation === "string" && RUN_ID.test(confirmation))
         && (typeof event !== "string" || !event.trim() || event.trim().length > DOT_EVENT_MAX)) fail(400, "Invalid pattern event");
-    const request = randomUUID();
     const options = {
       note: typeof note === "string" ? note.trim().slice(0, NOTE_MAX) : "",
       caller: typeof caller === "string" ? caller : "",
@@ -960,7 +971,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       confirmation: typeof confirmation === "string" ? confirmation : "",
       by: typeof by === "string" ? by.slice(0, 80) : "operator",
     };
-    return waitForPattern(workflow, request, () => durable.send(workflow, "advance", { request, event, options }));
+    return waitForPattern(workflow, () => durable.send(workflow, "advance", { event, options }));
   }
 
   /** Queues input as a durable message, or steers the running run when asked and supported. */
@@ -1142,18 +1153,23 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       const s = sessions.get(`${m.to}#${m.toSession}`);
       if (s) await deliver(cfg, s, item(s), m.urgent === true, m.from, sender, true);
     } else if (broadcast && m.to === "all") {
-      // A project-chat broadcast reaches every owned session of the project, except a start-only post.
+      // A project-chat post reaches an owned session only when it @mentions that session or its harness.
+      // A start-only post addresses the session its tag starts. A direct message is handled above and always wakes.
       if (m.from === "operator" && m.startOnly === true) return;
-      for (const s of sessions.values()) await deliver(cfg, s, item(s), m.urgent === true, m.from, sender);
+      for (const s of sessions.values()) {
+        if (!mentionsAgent(m.body, { peer: s.record.harness, session: s.record.label })) continue;
+        await deliver(cfg, s, item(s), m.urgent === true, m.from, sender, true);
+      }
     }
   }
 
-  // Raw text the operator typed in the project chat (not a phone reply, not a question) reaches every owned session.
+  // Raw project-chat text reaches an owned session only when it @mentions that session or its harness.
   async function deliverPlain(cfg, ev) {
     const text = (ev.message || "").trim();
     if (!text || parseQuestionText(text)) return;
     for (const s of sessions.values()) {
-      await deliver(cfg, s, { id: ev.id, from: "ntfy", to: "all", ts: "", body: text.slice(0, TEXT_MAX), operatorBroadcast: true }, false, "ntfy", "");
+      if (!mentionsAgent(text, { peer: s.record.harness, session: s.record.label })) continue;
+      await deliver(cfg, s, { id: ev.id, from: "ntfy", to: "all", ts: "", body: text.slice(0, TEXT_MAX), operatorBroadcast: true }, false, "ntfy", "", true);
     }
   }
 
@@ -1181,7 +1197,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     // A live session gets the message only after any attachment is in the shared cache, so it reads the file
     // rather than downloading it again.
     const [cached] = await cacheAttachmentsWithin({ ...cfg, peer: s.record.harness, session: s.record.label }, [message], { budgetMs: ATTACHMENT_BUDGET_MS });
-    const text = formatInbox([cached], { session: s.record.label });
+    const text = formatInbox([cached], { session: s.record.label, peer: s.record.harness });
     await send(s.record.address, { text, steer: urgent, messageIds: [message.id], dedupe: `ntfy:${message.id}:${s.record.label}` }).catch((error) => log(`delivery failed: ${error.message}`));
   }
 

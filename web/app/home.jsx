@@ -5,7 +5,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { STATE_LABELS, sessionTree } from "@/lib/session-state";
+import { STATE_LABELS, isOpenGroup, listedGroups, sessionTree } from "@/lib/session-state";
 import { deadSplit } from "@/lib/session-dead";
 import { runState, subagentLabel } from "@/lib/activity-rows";
 import { SUBAGENT_LABELS, subagentState } from "@/lib/subagent-state";
@@ -24,7 +24,7 @@ const CHIP = {
   idle: "border-border bg-muted text-muted-foreground",
   offline: "border-dashed border-border bg-transparent text-muted-foreground",
 };
-const GROUPS = [["waiting", "Waiting on you"], ["afk", "AFK hold"], ["working", "Working"], ["idle", "Idle"]];
+const GROUPS = [["waiting", "Waiting on you"], ["afk", "AFK hold"], ["working", "Working"]];
 const short = address => address?.includes("#") ? address.slice(0, address.indexOf("#") + 9) : address;
 
 export function StateChip({ state }) {
@@ -60,7 +60,8 @@ function SessionCard({ node, now, open, openAddress, act, answer, skip, dispose,
   const [detailsOpen, setDetailsOpen] = useState(false);
   const name = (!node.generatedName && node.name) || short(node.id);
   const folder = node.folder && node.folder !== node.project ? node.folder : "";
-  const activity = ago(Math.max(node.seenAt || 0, node.lastActivityAt || 0), now);
+  const stamp = Math.max(node.seenAt || 0, node.lastActivityAt || 0);
+  const activity = isOpenGroup(node.state) && stamp ? ago(stamp, now) : "";
   const running = node.subagents.filter(run => runState(run, now) === "running");
   const label = running.length ? running.length + " subagent" + (running.length === 1 ? "" : "s") : "";
   const meter = contextMeter(node.context || {});
@@ -71,9 +72,9 @@ function SessionCard({ node, now, open, openAddress, act, answer, skip, dispose,
           className="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-md text-left hover:bg-accent">
           <span className="w-full truncate font-medium" title={name}>{name}</span>
           <span className="flex w-full min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-            <span className="min-w-0 truncate" title={[node.project, folder].filter(Boolean).join(" · ")}>{node.project}{folder && " · " + folder}</span>
+            <span className="min-w-0 truncate" title={[node.project, folder, node.team && node.team + " · " + node.role].filter(Boolean).join(" · ")}>{node.project}{folder && " · " + folder}{node.team && " · " + node.team + " · " + node.role}</span>
             <StateChip state={node.state}/>
-            <span className="shrink-0">{activity}</span>
+            {activity && <span className="shrink-0">{activity}</span>}
           </span>
         </button>
         <SessionMenu node={node} disabled={disabled} dispose={dispose} raw={raw} detailsAction={
@@ -92,9 +93,10 @@ function SessionCard({ node, now, open, openAddress, act, answer, skip, dispose,
             <span className="font-mono">{short(node.id)}</span>
             {node.owner && <span title="Agent owner">· @{node.owner}</span>}
             {node.harness && <span title="Agent type">· {HARNESS_LABELS[node.harness] || node.harness}</span>}
+            {node.team && <span title="Team and role">· {node.team} · {node.role}</span>}
             {node.where && <span title="Where it runs">· {node.where}</span>}
             {showProject && <span>· {node.project}</span>}
-            <span>· active {activity}</span>
+            {activity && <span>· active {activity}</span>}
             {meter.text && <span data-context={meter.level} title="Context used"
               className={cn(meter.level === "full" && "text-destructive", meter.level === "warn" && "text-amber-600")}>· context {meter.text}</span>}
             {label && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]" title="Running subagents">{label}</Badge>}
@@ -110,6 +112,7 @@ function SessionCard({ node, now, open, openAddress, act, answer, skip, dispose,
           className={cn(meter.level === "full" && "text-destructive", meter.level === "warn" && "text-amber-600")}>Context {meter.text}</span>}
         {node.owner && <span title="Agent owner">@{node.owner}</span>}
         {node.harness && <span title="Agent type">{HARNESS_LABELS[node.harness] || node.harness}</span>}
+        {node.team && <span title="Team and role">{node.team} · {node.role}</span>}
         {node.where && <span title="Where it runs">{node.where}</span>}
       </div>}
       {(!compact || detailsOpen) && node.parent && <p className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
@@ -157,17 +160,18 @@ export function InactiveSessions({ count, open, onToggle, children }) {
   </section>;
 }
 
-/** Session cards grouped Waiting on you, AFK hold, Working, Idle, then Offline collapsed; Offline splits a Dead section (silent a day) behind one tap. */
+/** Session cards grouped Waiting on you, AFK hold, and Working. Idle joins Offline in the collapsed inactive section; Offline splits a Dead section (silent a day) behind one tap. */
 export function SessionList({ sessions, now, open, openAddress, act, answer, skip, dispose, raw, disabled, showProject, compact, empty, inactiveOpen, onInactiveToggle, deadOpen, onDeadToggle }) {
   const tree = sessionTree(sessions || [], now, { separateOffline: true });
   if (!tree.length) return <p className="py-16 text-center text-sm text-muted-foreground">{empty}</p>;
   const card = node => <SessionCard key={node.project + node.id} node={node} now={now} open={open} openAddress={openAddress} act={act} answer={answer} skip={skip} dispose={dispose} raw={raw} disabled={disabled} showProject={showProject} compact={compact}/>;
+  const { open: openGroups, idle } = listedGroups(tree);
   const [offline, dead] = deadSplit(tree, now);
   const countNodes = nodes => nodes.reduce((total, node) => total + 1 + countNodes(node.children), 0);
-  const inactiveCount = countNodes(offline) + countNodes(dead);
+  const inactiveCount = countNodes(idle) + countNodes(offline) + countNodes(dead);
   return <div className="flex min-w-0 flex-col gap-5">
-    {GROUPS.map(([group, title]) => {
-      const list = tree.filter(node => node.group === group);
+    {GROUPS.filter(([group]) => isOpenGroup(group)).map(([group, title]) => {
+      const list = openGroups.get(group) || [];
       if (!list.length) return null;
       const body = <ul className="flex flex-col gap-2">{list.map(card)}</ul>;
       return <section key={group} data-group={group} aria-label={title}>
@@ -175,6 +179,7 @@ export function SessionList({ sessions, now, open, openAddress, act, answer, ski
       </section>;
     })}
     {inactiveCount > 0 && <InactiveSessions count={inactiveCount} open={inactiveOpen} onToggle={onInactiveToggle}>
+      {idle.length > 0 && <ul className="flex flex-col gap-2">{idle.map(card)}</ul>}
       {offline.length > 0 && <ul className="flex flex-col gap-2">{offline.map(card)}</ul>}
       {dead.length > 0 && <section data-group="dead" aria-label="Dead sessions">
         <button type="button" aria-expanded={Boolean(deadOpen)} onClick={() => onDeadToggle?.(!deadOpen)}

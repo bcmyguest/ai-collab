@@ -1,3 +1,5 @@
+import { HOST_CHECKOUT } from "../../lib/merge-cli.mjs";
+import { landReviews, mergeReview } from "./land-reviews.mjs";
 import { isProjectPaused, PROJECT_PAUSED, setProjectPaused } from "../../lib/project-pause.mjs";
 import { terminalHasDraft } from "../../lib/terminal-draft.mjs";
 import { EventType } from "@ag-ui/core";
@@ -26,7 +28,7 @@ import { readContext } from "../../lib/usage.mjs";
 import { parseCommand } from "../lib/slash-commands.js";
 import { startModes } from "../lib/start-mode.js";
 import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } from "../../lib/approvals.mjs";
-import { availableHarnesses, availablePlaces, defaultStartPlace, openshellHarnesses, openshellRunner, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
+import { START_HARNESSES, availableHarnesses, availablePlaces, defaultStartPlace, openshellHarnesses, openshellRunner, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
 import { codeModeDefault } from "../../lib/code-mode.mjs";
 import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
@@ -35,19 +37,20 @@ import { closedProjectNames, createTeam, deleteTeam, listTeams, readProjectsFile
 import { clearFields, modelFields, sessionHistory } from "../../lib/session-events.mjs";
 import { compactionFields } from "../../lib/compaction.mjs";
 import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern, savePattern, saveTeamText, teamTemplates, teamTextOf } from "../../lib/patterns.mjs";
-import { authorTeam, saveAuthoredTeam } from "../../lib/team-author.mjs";
+import { authorModel, authorTeam, saveAuthoredTeam } from "../../lib/team-author.mjs";
 import { listOwned, readOwned } from "../../lib/owned.mjs";
 import { builderAssignment, recoverBuilder, stoppedBuilder } from "../../lib/builder.mjs";
-import { REVIEW_ACTIONS, STATUSES, openTasks } from "../../lib/tasks.mjs";
+import { REVIEW_ACTIONS, STATUSES, TaskNotFoundError, openTasks } from "../../lib/tasks.mjs";
 import { priorityOf } from "../../lib/task-order.mjs";
 import { mentions, mentionedNames, mentionedTeams, startOnlyMentions, messageDestinations } from "../lib/message-routing.js";
 import { taskTags } from "../lib/task-tags.js";
+import { shippedTasks } from "./shipped.mjs";
 import { taskBoard } from "./task-board.mjs";
-import { advanceRun, listRuns, startRun } from "../../lib/pattern-runs.mjs";
+import { advanceRun, listRuns, rolesByAddress, startRun } from "../../lib/pattern-runs.mjs";
 import { formatTeamOrchestrator } from "../../lib/format.mjs";
 import { activityRows, groupSubagents, summarize } from "../lib/activity-rows.js";
 import { childRuns } from "../lib/child-subagents.js";
-import { fallbackName, sessionCounts, visibleWake, waitingOn } from "../lib/session-state.js";
+import { fallbackName, sessionCounts, shownOnline, visibleWake, waitingOn } from "../lib/session-state.js";
 import { createHostedUi } from "./hosted.mjs";
 import { createAuth } from "./auth.mjs";
 import { createHub } from "./hub.mjs";
@@ -63,7 +66,7 @@ import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a
 export { mentionedNames, mentionedTeams, startOnlyMentions };
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "move-task", "continue-builder", "recover-builder", "project-pause", "review", "skip"];
+const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "move-task", "continue-builder", "recover-builder", "project-pause", "land-reviews", "review", "skip", "request-outcome", "approve-outcome", "accept-outcome"];
 const HOSTED_ACTIONS = new Set(["history", "messages", "send", "reply", "afk", "approve", "a2ui", "skip"]);
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
@@ -323,7 +326,7 @@ function originalOf(quote) {
   return { sender: typeof source.sender === "string" ? source.sender : "", body: typeof source.body === "string" ? source.body : "" };
 }
 
-export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start: launch = startSession, models = listModels, push: notifier = null, auth = null, runner = runnerClient, hasDraft = terminalHasDraft, hosted = false }) {
+export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start: launch = startSession, models = listModels, push: notifier = null, auth = null, runner = runnerClient, hasDraft = terminalHasDraft, hosted = false, landingCheckout = HOST_CHECKOUT, runMergeReview = mergeReview }) {
   if (!configs.length) throw new Error("No ai-collab project is configured");
   for (const item of configs) if (!item.enabled) throw new Error(item.reason);
   if (allowedOrigin && (!allowedOrigin.startsWith("https://") || new URL(allowedOrigin).origin !== allowedOrigin)) {
@@ -340,6 +343,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   let pushTimer = null;
   let lastStartAt = 0;
   let closed = false;
+  let landing = { running: false, receipts: [] };
 
   const start = launch === startSession ? startSession : async (cfg, options) =>
     isProjectPaused(cfg) ? { status: "failed", detail: PROJECT_PAUSED } : launch(cfg, options);
@@ -523,7 +527,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     if (checked.error) return ": " + checked.error;
     if (Date.now() - lastStartAt < START_GAP_MS) return ": wait 10 seconds between starts";
     lastStartAt = Date.now();
-    const result = await start(cfg, { ...options, prompt: checked.text, env, place: "folder" });
+    const taggedStart = { ...options, prompt: checked.text, env, place: "folder" };
+    const result = launch === startSession
+      ? await startSession(cfg, { ...taggedStart, requireRunCode: true })
+      : await start(cfg, taggedStart);
     return result.status === "failed" ? " start failed: " + result.detail : " starting a new session";
   }
 
@@ -705,6 +712,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }
     }
     const pending = pendingBySender(project, list);
+    const membership = rolesByAddress(listRuns(cfg));
     return shown.map(agent => {
       const row = latest.get(agent.id);
       const lastAt = row ? Math.max(row.time, ...(row.rows || []).map(r => r.time)) * 1000 : 0;
@@ -712,10 +720,11 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       // Unfinished runs; the browser counts only those with a row in the last 2 min (runState).
       const subagents = (runs.get(agent.id) || []).map(run => ({ id: run.id, agent: run.agent, run: run.run, kind: run.kind, description: run.description, steps: run.steps, time: run.time, lastTime: run.lastTime, last: run.last, open: run.open }));
       return {
-        ...agent, project: cfg.project, harness: peerOf(agent.id), lastActivityAt: lastAt, ...(open ? { openCallAt: lastAt } : {}),
+        ...agent, project: cfg.project, harness: peerOf(agent.id), online: shownOnline(agent), lastActivityAt: lastAt, ...(open ? { openCallAt: lastAt } : {}),
         // Only the Stop hook's own "hold" status marks a hold; an ordinary turn end publishes "stop".
         afkHold: mode !== "off" && statuses.get(agent.id)?.event === "hold" && row?.type === "stop",
         ...(lastAction.has(agent.id) ? { lastAction: lastAction.get(agent.id) } : {}), subagents, pending: pending.get(agent.id) || [],
+        ...(membership.get(agent.id) ? { team: membership.get(agent.id).team, role: membership.get(agent.id).role } : {}),
         ...cardContext(cfg, agent),
       };
     });
@@ -789,17 +798,19 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const shared = topic.filter(item => !(item.kind === "Reply" && answered.has(item.question)));
     const states = new Map();
     const local = new Set(agentList.filter(agent => agent.registered).map(agent => agent.id));
-    const withQueue = items => items.flatMap(item => {
-      if (!queueEntry(item)) return [item];
+    const withQueue = items => items.map(item => {
+      if (!queueEntry(item)) return item;
       if (!states.has(item.to)) {
         const [peer, session] = item.to.split("#");
         states.set(item.to, readState(statePath({ ...project.cfg, peer, session })));
       }
       const state = states.get(item.to);
       const current = queuedMessage(item, state);
-      if (!current) return [];
-      const queued = !archived && local.has(item.to) && !state.seen.includes(item.id) && !reads.get(item.id)?.has(item.to);
-      return [queued ? { ...current, queued: true } : current];
+      if (!current) return { ...item, ...state.queue[item.id], queueStatus: "Canceled" };
+      const claimed = state.seen.includes(item.id);
+      const read = reads.get(item.id)?.has(item.to);
+      if (!archived && local.has(item.to) && !claimed && !read) return { ...current, queued: true };
+      return claimed && !read ? { ...current, queueStatus: "Claimed for delivery" } : current;
     });
     let list;
     if (session) {
@@ -924,45 +935,61 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     if (taskId !== undefined) {
       if (hosted) reject(403, "Skip task questions on the agent machine");
       if (!project.tasks || typeof taskId !== "string") reject(400, "Give the task id");
+      const result = { status: "Skipped", detail: taskId };
       let task;
-      try { task = project.tasks.get(taskId); } catch (err) { reject(404, err.message); }
+      try { task = project.tasks.get(taskId); }
+      catch (err) {
+        if (err instanceof TaskNotFoundError) return result;
+        reject(404, err.message);
+      }
       if (!task.question || task.question.answer) reject(409, "This task has no open question");
       try { await project.tasks.update(taskId, { ask: null, progress: { by: who, text: SKIPPED_PROGRESS } }); }
-      catch (err) { reject(400, err.message); }
+      catch (err) {
+        if (err instanceof TaskNotFoundError) return result;
+        reject(400, err.message);
+      }
       broadcast();
-      return { status: "Skipped", detail: taskId };
+      return result;
     }
     if (typeof id !== "string" || !APPROVAL_ID.test(id)) reject(400, "Invalid decision");
-    const events = project.hub.events(project.topic);
-    const items = events.map(entry);
-    if (items.some(e => e?.kind === "Approval" && e.approval.id === id)) {
-      const approval = findApproval(project, id);
-      if (approval.owned) reject(409, "A runner session has no terminal prompt; answer this request");
-      if (approval.tool === LIMIT_TOOL) {
-        if (hosted) reject(403, "Handle usage limits on the agent machine");
-        const result = await skipLimit(project.cfg, id);
-        if (result.status !== "skipped") reject(409, result.detail);
-      }
-    } else {
-      if (!items.some(e => e?.kind === "Question" && e.question === id)) reject(404, "Unknown decision");
-      const { ends, replies } = outcomes(events);
-      if (ends.has(id) || replies.has(id)) reject(409, "This question has closed");
-    }
-    const end = encodeEnvelope("approval-end", { from: "operator", id, reason: "skipped", ...(by ? { by } : {}), ts: new Date().toISOString() }, project.cfg.wire);
-    await publish(project.cfg, project.topic, end, { title: "ai-collab approval skipped", priority: 1, onPublished: project.hub.record });
+    const items = project.hub.events(project.topic).map(entry);
+    const hasApproval = items.some(e => e?.kind === "Approval" && e.approval.id === id);
+    if (!hasApproval && !items.some(e => e?.kind === "Question" && e.question === id)) return { status: "Skipped" };
+    await resolveDecision(project, id, async (_events, replies) => {
+      if (hasApproval) {
+        const approval = findApproval(project, id);
+        if (approval.owned) reject(409, "A runner session has no terminal prompt; answer this request");
+        if (replies.some(value => replyDecision(approval, value))) reject(409, "This request has closed");
+        if (approval.tool === LIMIT_TOOL) {
+          if (hosted) reject(403, "Handle usage limits on the agent machine");
+          const result = await skipLimit(project.cfg, id);
+          if (result.status !== "skipped") reject(409, result.detail);
+        }
+      } else if (replies.length) reject(409, "This question has closed");
+      const end = encodeEnvelope("approval-end", { from: "operator", id, reason: "skipped", ...(by ? { by } : {}), ts: new Date().toISOString() }, project.cfg.wire);
+      await publish(project.cfg, project.topic, end, { title: "ai-collab approval skipped", priority: 1, onPublished: project.hub.record });
+    });
     return { status: "Skipped" };
   }
 
-  async function publishDecision(project, id, reply, by, valid = Boolean) {
+  async function resolveDecision(project, id, resolve) {
     const pending = project.publishingDecisions ??= new Set();
-    const replies = outcomes(project.hub.events(project.topic)).replies.get(id) ?? [];
-    if (pending.has(id) || replies.some(valid)) reject(409, "This request has closed");
+    const events = project.hub.events(project.topic);
+    const { ends, replies } = outcomes(events);
+    if (pending.has(id) || ends.has(id)) reject(409, "This request has closed");
     pending.add(id);
     try {
-      await publish(project.cfg, project.topic, reply, { title: replyTitle(project.cfg, by), onPublished: project.hub.record });
+      await resolve(events, replies.get(id) ?? []);
     } finally {
       pending.delete(id);
     }
+  }
+
+  async function publishDecision(project, id, reply, by, valid = Boolean) {
+    await resolveDecision(project, id, async (_events, replies) => {
+      if (replies.some(valid)) reject(409, "This request has closed");
+      await publish(project.cfg, project.topic, reply, { title: replyTitle(project.cfg, by), onPublished: project.hub.record });
+    });
   }
 
   // An A2UI surface action: a choice's picks become the answers object, a question's text the reply body.
@@ -999,6 +1026,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     try { return projectRoot(project.cfg.project, env); } catch { return ""; }
   }
 
+  const canLand = project => !hosted && project.tasks && taskRoot(project) === landingCheckout;
+
   // The plain-text diff of one build, capped so a huge change cannot exhaust memory or the connection.
   async function diffRange(root, base, commit) {
     const { stdout } = await runFile("git", ["diff", "--no-ext-diff", "--no-textconv", base, commit, "--"],
@@ -1029,7 +1058,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       project: project.cfg.project, operator: project.operator.peer, mode, alerts: readAlertLevel(env),
       // Sessions per project as running and inactive, read by the sidebar rows; kept apart from projects. A session
       // whose worktree was deleted has no card, so it is not counted either.
-      projectCounts: Object.fromEntries(shown.map(item => [item.cfg.project, sessionCounts(item === project ? placed(list) : item.failed ? [] : placed(agents(item, lastMessages(item))))])),
+      projectCounts: Object.fromEntries(shown.map(item => [item.cfg.project, sessionCounts(item === project ? own : item.failed ? [] : sessionCards(item, agents(item, lastMessages(item)), mode))])),
       // Waiting counts per project, present only when above 0; a failed project has no sessions to count.
       projects: shown.map(item => {
         const count = item === project ? waiting.size : item.failed ? 0 : waitingIds(item, placed(agents(item, lastMessages(item)))).size;
@@ -1048,8 +1077,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         const owned = agent.peer === "claude" && agent.id === session ? readOwned(project.cfg, agent.session) : null;
         const modelControl = owned?.address === agent.id && ["idle", "running"].includes(owned.status)
           ? { current: owned.model || "", busy: owned.status === "running" } : null;
-        const { lastActivityAt, openCallAt, afkHold, pending } = card || {};
-        const base = { ...agent, lastActivityAt, openCallAt, afkHold, pending, ...(subagents.length ? { subagents } : {}), ...(modelControl ? { modelControl } : {}) };
+        const { lastActivityAt, openCallAt, afkHold, pending, team, role } = card || {};
+        const base = { ...agent, lastActivityAt, openCallAt, afkHold, pending, ...(team ? { team, role } : {}), ...(subagents.length ? { subagents } : {}), ...(modelControl ? { modelControl } : {}) };
         // Context telemetry and instruction files from the session's state file (lib/usage.mjs).
         const context = readContext({ stateDir: project.cfg.stateDir, project: project.cfg.project, peer: agent.peer, session: agent.session });
         const withContext = context.tokens !== null || context.files.length ? { ...base, context } : base;
@@ -1059,13 +1088,18 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       messages: scope === "home" ? [] : messages(project, { harness, session }, list),
       ...(cards ? { sessions: cards } : {}),
       ...(scope === "home" ? {
+        ...(!hosted ? { shipped: shown.flatMap(item => item.failed ? [] :
+          shippedTasks(item.tasks, item.cfg.project, taskRoot(item))).sort((a, b) => b.at - a.at) } : {}),
         decisions: shown.flatMap(item => item.failed ? [] : projectDecisions(item,
           item === project ? runs : listRuns(item.cfg), item === project ? list : cards.filter(card => card.project === item.cfg.project))),
         unavailable: shown.filter(item => item.failed).map(item => item.cfg.project) } : {}),
+      ...((scope === "home" ? shown.some(canLand) : canLand(project)) ? { landing } : {}),
       ...(hosted ? { hosted: true } : {}),
       startable: startable(project),
       // The new-session default (defaults.json startDefault, else cursor on deepseek); the form prefills it when available.
       startDefault: startDefaultSetting(env),
+      // The describe-a-team writer (AI_COLLAB_TEAM_AUTHOR_MODEL, else cursor deepseek); the composer prefills it and can override it.
+      authorDefault: authorModel(env),
       // Native code mode for new starts (defaults.json codeMode, default on); the composer prefills its toggle.
       codeModeDefault: codeModeDefault(env),
       startPlaces: startPlaces(project),
@@ -1144,6 +1178,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   function push(client) {
     if (client.authorized && !client.authorized()) return client.disconnect();
     const current = snapshot(client);
+    client.hasQueuedMessages = Boolean(client.session && current.messages.some(item => item.queued));
     client.hasOpenTasks = current.tasks.tasks.some(task => task.status !== "done");
     client.hasReview = current.tasks.tasks.some(task => task.review && !task.review.decision);
     client.hasRunningJobs = current.agents.some(agent => agent.runningJobs) || current.sessions?.some(agent => agent.runningJobs);
@@ -1247,7 +1282,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           if (client.authorized && !client.authorized()) return client.disconnect();
           client.write(": keepalive\n\n");
           // A process can exit without a task or job registry write, and a build review shows a branch that can move.
-          if (client.ready && (client.hasRunningJobs || client.hasOpenTasks || client.hasReview) && clients.has(client)) push(client);
+          // Home also picks up merges that move origin/main without changing a task.
+          // A local delivery claim can complete without a receipt or registry update.
+          if (client.ready && (client.hasQueuedMessages || client.hasRunningJobs || client.hasOpenTasks || client.hasReview || (!hosted && client.scope === "home")) && clients.has(client)) push(client);
         }, KEEPALIVE_MS);
         keepalive.unref?.();
         request.signal?.addEventListener("abort", close, { once: true });
@@ -1341,7 +1378,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       assertSameOrigin(request, allowedOrigin);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") reject(415, "JSON required");
       if (action === "history") return history(request, by, await payload(request));
-      const { project: name, paused, target, body, queueAction, question, mode, level: alertLevel, id, status: taskStatus, decision, answers, harness, prompt, place, worktree, openshell, urgent, sendAnyway, model, startMode, codeMode, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText, commit, submission, note: reviewNote, taskId } = await payload(request);
+      const input = await payload(request);
+      const { project: name, paused, target, body, queueAction, question, mode, level: alertLevel, id, status: taskStatus, decision, answers, harness, prompt, place, worktree, openshell, urgent, sendAnyway, model, startMode, codeMode, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText, commit, submission, note: reviewNote, taskId } = input;
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -1363,6 +1401,29 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         removeProject(env, name);
         removed.add(name);
         return json(200, { status: "Deleted", detail: name });
+      }
+      if (action === "land-reviews") {
+        if (landing.running) reject(409, "A review batch is already running");
+        const hidden = hiddenProjects();
+        const targets = [...projects].filter(([id, item]) =>
+          (name === undefined || id === name) && !hidden.has(id) && canLand(item))
+          .map(([name, item]) => ({ name, tasks: item.tasks }));
+        if (!targets.length) reject(403, "Select a project registered to the PM checkout");
+        landing = { running: true, receipts: [] };
+        broadcast();
+        landReviews(targets, {
+          by: by ? `operator:${by}` : "operator",
+          merge: review => runMergeReview(review, env),
+          onReceipt(result) {
+            landing.receipts.push(result);
+            broadcast();
+          },
+        }).catch(error => { landing.error = error.message; }).finally(() => {
+          landing.running = false;
+          landing.finished = true;
+          broadcast();
+        });
+        return json(202, { status: "Landing reviews" });
       }
       const project = projectFor(name);
       const { cfg, operator, topic } = project;
@@ -1392,6 +1453,16 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         catch (err) { reject(409, err.message); }
         broadcast();
         return json(201, { status: "Builder started", detail: id });
+      }
+      if (["request-outcome", "approve-outcome", "accept-outcome"].includes(action)) {
+        if (!project.tasks) reject(400, "Select a project with a task store");
+        const step = action.split("-")[0];
+        if (step === "approve" && isProjectPaused(cfg)) reject(409, PROJECT_PAUSED);
+        let outcome;
+        try { outcome = await project.tasks.outcome(step, input); }
+        catch (err) { reject(step === "request" ? 400 : 409, err.message); }
+        broadcast();
+        return json(step === "request" ? 201 : 200, { outcome });
       }
       if (action === "move-task") {
         if (!project.tasks || typeof id !== "string" || !STATUSES.includes(taskStatus)) reject(400, "Give a task id and valid status");
@@ -1459,10 +1530,21 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (deletePatternName) return json(201, removePattern(cfg, String(deletePatternName), env));
         // Team author: one writing-agent turn from the operator's chat text, then a save of the DOT it drafted.
         if (authorRequest !== undefined) {
+          // The composer picks the writer. An unknown harness or model is refused here, before the process starts.
+          const writerHarness = authorHarness ? String(authorHarness) : "";
+          const writerModel = authorModelName ? String(authorModelName) : "";
+          if (writerHarness && (!START_HARNESSES.includes(writerHarness) || !startable(project).includes(writerHarness))) {
+            reject(400, "That harness is not available for this project");
+          }
+          if (writerModel) {
+            const forHarness = writerHarness || authorModel(env).harness;
+            const listed = await models(cfg.stateDir, env, { peers: cfg.peers });
+            if (!listed[forHarness]?.includes(writerModel)) reject(400, "That model is not available for this harness");
+          }
           const drafted = await authorTeam(cfg, {
             request: String(authorRequest ?? ""), name: String(teamName ?? ""), scope: String(authorScope ?? "project"),
             current: String(authorCurrent ?? ""), turns: Array.isArray(authorTurns) ? authorTurns : [], peers: cfg.peers, startable: startable(project), env,
-            ...(authorHarness ? { harness: String(authorHarness) } : {}), ...(authorModelName ? { model: String(authorModelName) } : {}),
+            ...(writerHarness ? { harness: writerHarness } : {}), ...(writerModel ? { model: writerModel } : {}),
           }).catch((error) => reject(400, error.message));
           return json(201, drafted);
         }
@@ -1542,7 +1624,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       if (action === "queue") {
         const peer = recipient(cfg, target, true);
         if (typeof id !== "string" || !/^[a-zA-Z0-9-]{1,64}$/.test(id)) reject(400, "Invalid message ID");
-        if (!listSessions(cfg).some(session => session.id === target)) reject(409, "Queue actions require a locally registered session");
+        const registered = listSessions(cfg).find(session => session.id === target);
+        if (!registered) reject(409, "Queue actions require a locally registered session");
         const inbox = inboxOf(project, peer);
         await project.hub.open(inbox);
         await project.hub.open(project.receipts);
@@ -1559,9 +1642,16 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         else reject(400, "Unknown queue action");
         const session = target.split("#")[1];
         if (!await changeQueuedMessage({ ...cfg, peer, session }, id, change)) reject(409, "This message is no longer available to change");
-        if (change.urgent) markUrgent(operator, target);
+        let outcome = {};
+        if (change.urgent) {
+          markUrgent(operator, target);
+          const wake = wakeAgent(project, target, registered);
+          outcome = wake.status === "online" || wake.status === "queued"
+            ? { status: "Queued for the agent’s next poll" }
+            : wake;
+        }
         broadcast();
-        return json(200, {});
+        return json(200, outcome);
       }
       if (action === "dispose") {
         disposeSession(cfg, target);

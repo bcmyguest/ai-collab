@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
-import { advanceRun, listRuns, runStatus, startRun } from "../lib/pattern-runs.mjs";
+import { advanceRun, listRuns, rolesByAddress, runStatus, startRun } from "../lib/pattern-runs.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 
@@ -206,4 +206,18 @@ test("advance rejects unknown runs and bad ids", async (t) => {
   const { env, cfg } = await fixture(t);
   await assert.rejects(advanceRun(cfg, "abcdef1234", "scope", { caller: "claude#0123456789abcdef", env }), /unknown run/);
   await assert.rejects(advanceRun(cfg, "../etc", "scope", { env }), /invalid run id/);
+});
+
+test("rolesByAddress names the live role and ignores a finished run", () => {
+  const live = {
+    status: "running", pattern: "product",
+    definition: { roles: [{ id: "pm" }, { id: "engineer" }] },
+    live: [{ role: "engineer", index: 0 }],
+    sessions: { pm: "cursor#aaaaaaaaaaaaaaaa", engineer: "cursor#bbbbbbbbbbbbbbbb" },
+  };
+  const done = { status: "done", pattern: "review", definition: { roles: [{ id: "reviewer" }] }, sessions: { reviewer: "cursor#bbbbbbbbbbbbbbbb" } };
+  const seats = rolesByAddress([done, live]);
+  assert.deepEqual(seats.get("cursor#bbbbbbbbbbbbbbbb"), { team: "product", role: "engineer" });
+  assert.deepEqual(seats.get("cursor#aaaaaaaaaaaaaaaa"), { team: "product", role: "pm" });
+  assert.equal(rolesByAddress([done]).size, 0);
 });

@@ -16,7 +16,7 @@ Tests use an in-process fake ntfy server (`test/helpers/fake-ntfy.mjs`) and need
 
 ### Schedules
 
-The runner runs the commands in `~/.config/ai-collab/schedules.json` on a timer: a JSON array of `{name, everyMinutes, cwd, command, timeoutSec, wakeOnTasks}`. `wakeOnTasks` names a project: when one of its tasks moves to `done` or `blocked`, the runner starts the schedule at once (checked every 15 s, retried while a tick still runs), so the PM hands off the next task without waiting for the timer. Each tick is a durable workflow whose id starts at most once while `runner.db` is intact; a start after downtime runs only the latest due tick. An invalid entry is reported in `configError` and skipped. Keys, the skip and cut rules, and the control routes are in [Scheduled workflows](owned-sessions-contract.md#scheduled-workflows). `GET /v1/schedules` and `POST /v1/schedules/:name/run` on the control socket show and trigger them.
+The runner runs the commands in `~/.config/ai-collab/schedules.json` on a timer: a JSON array of `{name, everyMinutes, cwd, command, timeoutSec, wakeOnTasks, workspace}`. `wakeOnTasks` names a project: when one of its tasks moves to `done` or `blocked`, the runner starts the schedule at once (checked every 15 s, retried while a tick still runs), so the PM hands off the next task without waiting for the timer. Each tick is a durable workflow whose id starts at most once while `runner.db` is intact; a start after downtime runs only the latest due tick. An invalid entry is reported in `configError` and skipped. Keys, the skip and cut rules, and the control routes are in [Scheduled workflows](owned-sessions-contract.md#scheduled-workflows). `GET /v1/schedules` and `POST /v1/schedules/:name/run` on the control socket show and trigger them.
 
 A tick's command runs in its own transient systemd user scope, the same wrapper a start from the phone uses (`runner/schedules.mjs` calls `lib/scope.mjs`), so an agent a tick started survives `systemctl --user restart ai-collab-runner`. `timeoutSec` is passed to the scope as `RuntimeMaxSec` as well as enforced by the runner, so a command cut off by a restart is still held to its deadline. The runner's timeout and abort still send SIGTERM to the command's process group, which reaches a scoped payload because the scope execs in place. Without systemd, or with `AI_COLLAB_SCOPE=off`, the command is spawned detached exactly as before.
 
@@ -32,6 +32,18 @@ Migrate the feature-request PM tick from the `ai-collab-pm.timer` systemd user t
 
 Rollback: remove the `pm` entry, then re-enable the timer with `systemctl --user enable --now ai-collab-pm.timer`.
 
+### Starting builders from the PM
+
+Allow the `builder_start` tool on the `ai-collab` MCP server in the host PM's tool guard. Pass the task ID as `task`, the brief itself as `brief` (up to 4,000 characters), and the calling PM's 16-character lowercase hexadecimal hook label as `session`. Start the brief with a heading or sentence. For Codex, the brief and the appended sandbox notes must fit within 4,000 characters.
+
+```json
+{"task":"fix-build","brief":"Fix the failing build and run the test suite.","session":"0123456789abcdef","harness":"codex","model":"gpt-6.2-sol"}
+```
+
+To read a brief from a file, use `ai-collab builder start --task <id> --brief <file>` on the host.
+
+`harness` and `model` use the CLI defaults when omitted. The tool uses the PM's configured project and returns the task, sandbox, worktree, branch, and either the runner session or the systemd unit. It applies the same project pause and sandbox capacity checks as `ai-collab builder start`. The tool is available through direct host MCP calls. The code-mode allowlists exclude builder launches, and sandboxed builders and scheduled ticks have no direct `builder_start` tool.
+
 ## Git hooks
 
 Run `./setup_prek.sh` once. It installs [prek](https://github.com/j178/prek) (through `uv`), runs `npm ci`, and installs two git hooks from `.pre-commit-config.yaml`: whitespace and JSON/YAML checks on `pre-commit`, and [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) on `commit-msg` (`feat:`, `fix:`, `docs:`, `ci:`, `chore:` ...). Run `prek run --all-files` to check the whole repo as CI does.
@@ -42,7 +54,16 @@ Run `./setup_prek.sh` once. It installs [prek](https://github.com/j178/prek) (th
 
 Rerun `scripts/install-git-hooks.sh` after the hook changes.
 
-The PM lands builder branches with `ai-collab merge start <branch>...`. It fetches origin, merges the branches onto `origin/main` (never local main) in a fresh worktree, runs `npm ci` and `npm test` there with a temporary `HOME`, `CODEX_HOME` and `TMPDIR`, pushes on green, confirms with `git ls-remote origin refs/heads/main` that origin holds the pushed commit, runs `git pull --ff-only` in /home/b/ai-collab and removes the worktree. Its last line is the result: `merge: merged <sha> (<branches>); host pulled`, `...; host pull skipped: <git error>` when local edits or a diverged main block the pull, or `merge: refused: <reason>` with nothing pushed on a conflict, red gate or unverified push. A refused run keeps its worktree for inspection.
+The PM lands builder branches with `ai-collab merge start <branch>...` on the host. The command fetches `origin/main`, merges the requested branches in order in a fresh worktree, and runs `npm ci` and `npm test` with isolated `HOME`, `CODEX_HOME`, and `TMPDIR`. After the gate passes, it pushes the tested commit, verifies the remote tip, attempts `git pull --ff-only` in `/home/b/ai-collab`, and cleans up the merge worktree. When that pull succeeds, it runs `npm run build -- --deploy-and-verify` in the host checkout, which builds the UI, restarts `ai-collab-ui`, and verifies it. When the pull is skipped, it does not deploy the stale checkout and prints why. A refusal after worktree creation reports the retained worktree path. Once npm starts, the refusal also includes the path to a log with stdout and stderr from each npm step.
+
+### Merge gate triage
+
+- **Branch moved past the submitted commit.** Review the current builder tip before submitting it for landing. The gate checks the expected tip before creating a worktree.
+- **Branch does not merge cleanly.** The gate attempts to abort the failed merge and retains the worktree with any earlier successful merges from the batch. Give the coordinator the worktree path and failed branch. After resolving the conflict, rerun the isolated host gate on the resulting commit before pushing.
+- **npm missing or install failed.** Check the PM service's Node installation and PATH. The gate prefers npm bundled with Node and can resolve mise's Node before replacing HOME. Read the `npm ci` output for registry, dependency, or lockfile errors. If temporary directory creation fails, check that the service can write to `/dev/shm`.
+- **Tests failed or modified tracked files.** Inspect the npm output and retained worktree. Fix the failing test or the step that changes tracked files, then rerun the host gate for the corrected commit. Builder tests serve as a preflight.
+- **Push or remote verification failed.** Fetch and inspect `origin/main` before retrying. A verification failure can follow a successful push if another update advances the remote. If the tested commit is already in the remote history, it has landed. Otherwise, rebuild and retest against the current remote tip.
+- **Host pull skipped.** The remote push has been verified. The UI deploy does not run. Use the reported Git error to diagnose the host checkout and preserve local edits while reconciling it.
 
 To land other work by hand, use a worktree:
 

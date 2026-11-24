@@ -472,15 +472,25 @@ export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND, requ
         throw error;
       }
     },
-    async resume(record, ctx, resumeEnv) {
-      if (record.place === "openshell") throw new Error("Codex OpenShell threads cannot resume");
+    async resume(record, ctx, resumeEnv, staged) {
+      if (record.place === "openshell" && !staged?.argv?.[0]) throw new Error("Codex OpenShell threads require a prepared launcher to resume");
       const { settings, error } = permissionSettings("codex", record.permissionMode, record.place);
       if (error) throw new Error(error);
-      const session = newSession({ pool, ctx, env: resumeEnv, cwd: record.cwd, place: record.place, mode: record.permissionMode, model: record.model, settings, codeMode: record.codeMode });
+      const [file, ...args] = staged?.argv ?? [];
+      const sessionPool = file ? { command: { file, args }, requestMs } : pool;
+      const session = newSession({
+        pool: sessionPool, ctx, env: resumeEnv, cwd: staged?.workdir ?? record.cwd, place: record.place,
+        mode: record.permissionMode, model: record.model, settings: staged ? openshellPermission(settings) : settings, codeMode: record.codeMode,
+      });
       session.nativeId = record.nativeId;
       session.address = record.address;
-      await attach(session);
-      return makeHandle(session);
+      try {
+        await attach(session);
+        return makeHandle(session);
+      } catch (error) {
+        if (file) sessionPool.server?.child.kill();
+        throw error;
+      }
     },
     async listModels(listEnv) {
       const server = await currentServer(pool, listEnv);

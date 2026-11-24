@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { broadcastTopic, inboxTopic, receiptsTopic } from "../../lib/config.mjs";
 import { BACKOFF_BASE_MS, BACKOFF_MAX_MS, MAX_ATTEMPTS, PUSHED, REDELIVER_MS, TTL_MS, direct, pushSession, readySession, runCommand } from "../../lib/deliver-push.mjs";
-import { identityLine, formatInbox } from "../../lib/format.mjs";
+import { formatInbox } from "../../lib/format.mjs";
 import { sessionIdleState } from "../../lib/idle.mjs";
 import { claimInbox, ATTACHMENT_BUDGET_MS, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery, reservedMessage } from "../../lib/inbox.mjs";
 import { cacheAttachmentsWithin } from "../../lib/attachment-cache.mjs";
@@ -123,11 +123,11 @@ export function createDispatcher({
     return "failed";
   }
 
-  // The text a session receives: identity line plus the formatted messages. An attachment is cached first,
-  // so the session reads this machine's copy instead of downloading the file from ntfy again.
+  // The text a session receives. An attachment is cached first, so the session reads this machine's copy
+  // instead of downloading the file from ntfy again. The sender-identity paragraph is SessionStart only.
   const textFor = async (scfg, messages) => {
     const shown = await cacheAttachmentsWithin(scfg, messages, { budgetMs: ATTACHMENT_BUDGET_MS });
-    return [identityLine(scfg), formatInbox(shown, { session: scfg.session })].filter(Boolean).join("\n");
+    return formatInbox(shown, { session: scfg.session, peer: scfg.peer });
   };
 
   // Claude takes a socket message in any state, when its gate is open; Codex waits for an idle session; OpenCode takes a queued or steering prompt in any state.
@@ -167,6 +167,7 @@ export function createDispatcher({
       if (!await ready(session, active)) continue;
       const scfg = { ...cfg, peer: session.peer, session: session.session };
       // The predicate runs before the cap: fyi, broadcasts and messages in backoff or reserved do not use up the claim.
+      // A project-chat @mention is not pushed here. claimInbox and the runner deliver it to the session it names.
       const candidates = await claim(scfg, {
         commit: false, limit: CLAIM_LIMIT, accept: (m) => direct(m) && !cooling(session, m.id),
       }).catch(() => []);

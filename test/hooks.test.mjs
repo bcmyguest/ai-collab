@@ -167,7 +167,7 @@ test("configured hooks deliver phone posts to each session and identify outbound
     { root: cwd, project: "fixture", url: fake.url, tokenFile },
   ]));
   const env = { XDG_CONFIG_HOME: root, XDG_STATE_HOME: root, AI_COLLAB_POLL_INTERVAL_MS: "0" };
-  fake.inject("ai-collab-fixture--to--all", "Please post a status update");
+  fake.inject("ai-collab-fixture--to--all", "@cursor @codex @claude Please post a status update");
 
   const sessions = [
     ["cursor", "postToolUse", { conversation_id: "raw-cursor-1" }],
@@ -181,7 +181,7 @@ test("configured hooks deliver phone posts to each session and identify outbound
     const out = JSON.parse((await runHook(["--host", host], input, env)).out);
     const first = { additional_context: out.hookSpecificOutput?.additionalContext ?? out.additional_context };
     assert.match(first.additional_context, /from=ntfy.*Please post a status update/);
-    const label = first.additional_context.match(/AI_COLLAB_SESSION=([a-f0-9]{16})/)?.[1];
+    const label = first.additional_context.match(/session="([a-f0-9]{16})"/)?.[1];
     assert.ok(label);
     labels.push(label);
     assert.doesNotMatch(first.additional_context, /raw-cursor|raw-codex|raw-claude/);
@@ -193,7 +193,7 @@ test("configured hooks deliver phone posts to each session and identify outbound
   assert.deepEqual(JSON.parse((await runHook(["--host", "codex"], outside, env)).out), {});
 
   const firstCursor = loadConfig({ ...env, AI_COLLAB_PEER: "cursor", AI_COLLAB_SESSION: labels[0] }, { cwd });
-  await sendMessage(firstCursor, "all", "Here is my status");
+  await sendMessage(firstCursor, "all", "@cursor Here is my status");
   assert.match(fake.state.publishes.at(-1).title, new RegExp(`cursor#${labels[0]}`));
   const secondCursor = JSON.parse((await runHook(["--host", "cursor"], {
     cwd, hook_event_name: "postToolUse", conversation_id: "raw-cursor-2",

@@ -75,7 +75,7 @@ test("a system broadcast (a pattern-run notice) shows as a system sender in the 
   const env = peerEnv(fake, { peer: "operator", AI_COLLAB_PEERS: "claude,codex,cursor" });
   const operator = loadConfig(env);
   const agent = loadConfig({ ...env, AI_COLLAB_PEER: "claude", AI_COLLAB_SESSION: LABEL });
-  const notice = "Pattern run 4f2c1ab failed: the reviewer could not start.";
+  const notice = "@claude Pattern run 4f2c1ab failed: the reviewer could not start.";
 
   // Only ai-collab itself, from the operator's address, may mark a message as its own; an agent may not impersonate it.
   await assert.rejects(sendMessage(loadConfig({ ...env, AI_COLLAB_PEER: "claude" }), "all", "from an agent", { system: true }),

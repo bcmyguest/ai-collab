@@ -43,9 +43,9 @@ test("no envelope means off; claimInbox records the mode and never delivers it a
   fake.inject(ALL, mode("on", now));
   fake.inject(ALL, mode("quiet", now - 1000)); // older ts, published later: ignored
   const operator = loadConfig(peerEnv(fake, { peer: "operator" }));
-  await sendMessage(operator, "all", "hello agents");
+  await sendMessage(operator, "all", "@alice hello agents");
   const messages = await claimInbox(cfg);
-  assert.deepEqual(messages.map((m) => m.body), ["hello agents"]);
+  assert.deepEqual(messages.map((m) => m.body), ["@alice hello agents"]);
   assert.deepEqual(storedMode(cfg), { mode: "on", ts: now });
 });
 

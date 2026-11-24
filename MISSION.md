@@ -14,13 +14,25 @@ Give the operator one place to run, watch and steer a coding agents from a phone
 
 ## Rules
 
-- Never run `systemctl --user restart ai-collab-runner` (or stop it): a runner restart kills the PM tick that the runner started, so the tick dies mid-work and no builders start. When merged runner code needs loading, say so in the tick status ("runner restart wanted") and the coordinator restarts it between ticks. Restarting ai-collab-ui is fine.
-- Run `ai-collab merge start builder/<name>` on the PM host. It fetches `origin/main` from `/home/b/ai-collab`, creates a separate `merge/*` worktree, merges the local builder branch, installs dependencies and runs the isolated `npm test` gate against the merged files. The host gate runs about 1215 tests. Builder sandbox worktrees run about 875 tests and are not valid gates. Launch the CLI with the mise-installed Node binary so its bin directory supplies npm under the temporary HOME.
-- On green, the command pushes the tested commit and prints the host pull, UI deploy and smoke commands. It leaves the merge worktree and branch for inspection. Never check out `main` in a second worktree (no `-f`): moving main from elsewhere leaves /home/b/ai-collab's files stale.
+- Leave ai-collab-runner active so the current PM tick can finish. When merged runner code needs loading, report that a runner restart is wanted. The coordinator restarts it between ticks.
+- Restarting ai-collab-ui is fine.
+- Run `ai-collab merge start builder/<name>` on the PM host. It fetches origin/main, creates a fresh merge worktree, merges the builder branch and runs the isolated host gate.
+- Run the host gate with the installed Node and npm binaries. The smaller sandbox test suite is insufficient for the host gate.
+- On green, the command pushes the tested commit and prints the host pull, UI deploy and smoke commands. It cleans up the merge worktree and branch on success. Never check out `main` in a second worktree (no `-f`): moving main from elsewhere leaves /home/b/ai-collab's files stale.
 - Merge and resolve conflicts in a worktree (`git worktree add`), never in /home/b/ai-collab: the CLI, hooks and OpenCode load code from that checkout, so conflict markers there break every agent. Push the merged result; then pull in /home/b/ai-collab.
+- If the merge gate refuses after creating a worktree, hand it to the coordinator. See [merge gate triage](docs/development.md#merge-gate-triage). Resolve conflicts there or in a fresh worktree from origin/main, then rerun the isolated gate before pushing.
+- After landing, verify origin/main, mark tasks done, render the board and clean up stale builder worktrees.
 - Never hold the builder pool for a merge; merge in parallel.
+- Read the builder failure before retrying. Keep a usage-limit verdict and reset time on the existing task. Retry with another operator-approved model or after reset, and continue landing eligible changes.
+- The operator has approved moving eligible reviews to done while the coordinator lands their branches asynchronously. Verify origin/main before reporting a branch as shipped.
 - Every tick ends with a send_to_all status line: merged, started, running count, and what is waiting on the operator.
 - New builders: `ai-collab builder start --task <id> --harness codex --model gpt-6.2-sol --brief <file>` (operator: Codex gpt-6.2-sol for every worker for now; no Cursor or Claude builders) (OpenShell sandbox). Do not start builders on the host. Leave existing host builders alone until they finish.
+- Each task starts with `ai-collab team start product pm "<task>"`: the PM checks the vision, engineering does the work, and review reports to the PM. Every few tasks the PM hands notes to the CEO, who does not see every task.
+- Each tick the PM cleans the backlog: remove done tasks, and blocked tasks whose id ends in -wt and a number, then render the board. Leave open, ready, building, and review.
+- The PM answers questions. Each tick, answer operator and agent questions the vision already decides, then clear them. Ask the operator only what the vision does not decide.
+- At most 2 builders may be running or staging. Do not start another while 2 are live.
+- A review runs `node tools/screen-state.mjs --write /tmp/screen-base.json` on the base and `--against /tmp/screen-base.json` on the change, and reports which screens changed.
+- If `ai-collab pattern runs` shows no running review, start one with `ai-collab team start review reviewer "<task>"` on a Ready task that has a diff to review. Do not start a team for a task id ending in -wt and a number. Do not replace a builder that committed nothing.
 - Run the isolated suite in a subshell `( ... )` so its HOME/CODEX_HOME never leak into later commands like builder start.
 - Gate merges on isolated HOME: `H=$(mktemp -d); PATH=… HOME=$H CODEX_HOME=$H/.codex TMPDIR=$(mktemp -d -p /dev/shm) npm test`.
 - Update test assertions when behaviour changes; never weaken tests. No ask_question for test edits.
@@ -29,4 +41,4 @@ Give the operator one place to run, watch and steer a coding agents from a phone
 - Before marking done: oncebitten check --base main (when rules exist).
 - After every web/UI deploy, run `node deploy/verify-ui.mjs` for the headless smoke and decision inbox check, or use `npm run build -- --deploy-and-verify` to build, restart the UI service, and verify. On failure, revert and redeploy. Builder briefs for web/ changes must say so.
 - Isolated suite gate: use mise-installed node/npm binaries (not mise shims) when TMP HOME breaks mise trust.
-- Do not git stash uncommitted work on main; leave it and notify the owner.
+- Run `git -C /home/b/ai-collab stash` only when the operator explicitly requests it in a DM or broadcast. Otherwise, leave uncommitted work on main in place and notify the owner.

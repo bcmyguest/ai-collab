@@ -9,6 +9,13 @@ export const STATES = ["waiting", "afk", "working", "idle", "offline"];
 export const STATE_LABELS = { waiting: "Waiting on you", afk: "AFK hold", working: "Working", idle: "Idle", offline: "Offline" };
 const FIRST_WORDS = 6;
 
+/** The card's online dot. A stopped OpenCode session is offline while the shared server process stays up. */
+export function shownOnline(s) {
+  if (!s?.online) return false;
+  if (s.harness === "opencode" && /^(stop|sessionend|ended)$/i.test(s.event || "")) return false;
+  return true;
+}
+
 /** True when a pending item the operator can answer in the UI is open: blocking and not expired. */
 export function waitingOn(pending, now) {
   return (pending || []).some(p => p.blocking && !(p.expiresAt && p.expiresAt < now));
@@ -22,17 +29,40 @@ export function waitingOn(pending, now) {
 export function sessionState(s, now) {
   if (waitingOn(s.pending, now)) return "waiting";
   if (s.runningJobs > 0) return "working";
-  if (s.online && s.afkHold) return "afk";
+  if (shownOnline(s) && s.afkHold) return "afk";
   if (s.openCallAt && now - s.openCallAt < WORKING_MS) return "working";
   if (s.lastActivityAt && now - s.lastActivityAt < RECENT_MS) return "working";
   if (s.subagents?.some(run => runState(run, now) === "running")) return "working";
-  return s.online ? "idle" : "offline";
+  return shownOnline(s) ? "idle" : "offline";
 }
 
 /** The wake to show for a session, or null once it reported after the wake began or the wake is no longer running. */
-/** A project's sessions as running (online) and inactive (offline) counts for its sidebar row. */
-export function sessionCounts(agents) {
-  const running = agents.filter(agent => agent.online).length;
+const LIVE = new Set(["waiting", "afk", "working"]);
+
+/** True when the chat would show this session as waiting, held, or working, not idle or offline. */
+export function isLive(s, now) {
+  return LIVE.has(sessionState(s, now));
+}
+
+/** True when All sessions keeps this group open. Idle and offline stay in the collapsed inactive section. */
+export function isOpenGroup(group) {
+  return LIVE.has(group);
+}
+
+/** Open-list cards by group, and idle roots that fold into the inactive section. Offline stays out of both. */
+export function listedGroups(tree) {
+  const open = new Map(STATES.filter(isOpenGroup).map(group => [group, []]));
+  const idle = [];
+  for (const node of tree) {
+    if (isOpenGroup(node.group)) open.get(node.group).push(node);
+    else if (node.group === "idle") idle.push(node);
+  }
+  return { open, idle };
+}
+
+/** A project's sessions as running (a live turn) and off (idle or offline) for its sidebar row. */
+export function sessionCounts(agents, now = Date.now()) {
+  const running = agents.filter((agent) => isLive(agent, now)).length;
   return { running, inactive: agents.length - running };
 }
 

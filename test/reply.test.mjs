@@ -48,6 +48,22 @@ test("the identity line explains every reply route", () => {
   assert.equal(identityLine({ peer: "codex", session: "" }), "");
 });
 
+test("a team message to this session says (you) and a team message to someone else keeps the address", () => {
+  const mine = formatInbox([{
+    id: "m1", from: "cursor#aaaaaaaaaaaaaaaa", to: "cursor#bbbbbbbbbbbbbbbb", forTeam: "product",
+    ts: "t", body: "cursor#bbbbbbbbbbbbbbbb take the pm role",
+  }], { session: "bbbbbbbbbbbbbbbb", peer: "cursor" });
+  assert.match(mine, /to=\(you\)/);
+  assert.match(mine, /This team message is for \(you\)/);
+  assert.match(mine, /body="\(you\) take the pm role"/);
+  assert.doesNotMatch(mine, /team_start/);
+  const other = formatInbox([{
+    id: "m2", from: "cursor#aaaaaaaaaaaaaaaa", to: "cursor#cccccccccccccccc", forTeam: "product", ts: "t", body: "go",
+  }], { session: "bbbbbbbbbbbbbbbb", peer: "cursor" });
+  assert.match(other, /to=cursor#cccccccccccccccc/);
+  assert.match(other, /team_start/);
+});
+
 test("stop continuation shapes: block+reason for Claude and Codex, followup_message for Cursor", () => {
   assert.deepEqual(stopOutput("claude", "x"), { decision: "block", reason: "x" });
   assert.deepEqual(stopOutput("codex", "x"), { decision: "block", reason: "x" });

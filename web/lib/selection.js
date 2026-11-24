@@ -38,7 +38,7 @@ const PROJECT_VIEWS = [["project", "Chat"], ["tasks", "Tasks"], ["patterns", "Te
  * `counts` adds each view's badge: Tasks its task count with `waiting` tasks to decide, Teams its pattern count.
  */
 export function projectNavigation(project, level, counts = {}) {
-  if (!project || level === "home" || level === "inbox") return [];
+  if (!project || !LEVELS.some(([id]) => id === level)) return [];
   return PROJECT_VIEWS.map(([view, label]) => ({
     view,
     label,

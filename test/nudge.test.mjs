@@ -47,7 +47,8 @@ test("queue actions change one pending message and respect delivery reservations
   const first = await sendMessage(operator, target, "original", { operatorThread: true });
   const second = await sendMessage(operator, target, "discard", { operatorThread: true });
   const third = await sendMessage(operator, target, "unchanged", { operatorThread: true });
-  const ui = createUi({ cfg });
+  const control = t.mock.fn(async () => ({ status: "failed", detail: "Wake failed" }));
+  const ui = createUi({ cfg, control });
   t.after(() => ui.close());
   const change = (id, queueAction, body) => ui.handle(new Request(`${base}/api/queue`, {
     method: "POST", headers: { Origin: base, "Content-Type": "application/json" },
@@ -67,7 +68,14 @@ test("queue actions change one pending message and respect delivery reservations
   assert.equal((await change(first.id, "edit", "too early")).status, 409);
   await releaseDelivery(bob, [first.id]);
   assert.equal((await change(first.id, "edit", "edited")).status, 200);
+  const retry = await change(first.id, "steer");
+  assert.equal(retry.status, 200);
+  assert.equal((await retry.json()).status, "waking");
+  assert.equal(control.mock.callCount(), 1);
+  assert.equal(control.mock.calls[0].arguments[0], "wake");
+  assert.equal(control.mock.calls[0].arguments[1].id, target);
   assert.equal((await change(first.id, "steer")).status, 200);
+  assert.equal(control.mock.callCount(), 2, "a failed wake can be retried");
   assert.equal((await change(second.id, "cancel")).status, 200);
   assert.deepEqual(await reserveDelivery(bob, [second.id]), []);
   assert.equal(reservedMessage(bob, peeked).body, "edited");
@@ -78,5 +86,8 @@ test("queue actions change one pending message and respect delivery reservations
     [third.id, "unchanged", undefined],
   ]);
   assert.equal((await change(first.id, "cancel")).status, 409);
-  assert.equal((await snapshot()).some(m => m.queued), false);
+  const finished = await snapshot();
+  assert.equal(finished.some(m => m.queued), false);
+  assert.equal(finished.find(m => m.id === second.id).queueStatus, "Canceled");
+  assert.equal(finished.find(m => m.id === first.id).queueStatus, "Claimed for delivery");
 });

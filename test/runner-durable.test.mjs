@@ -89,3 +89,23 @@ test("kv keeps a value across opens", async () => {
   assert.equal(second.getKv("ntfy-cursor:demo"), "m00000007");
   await second.close();
 });
+
+test("a workflow that handles shutdown remains pending for recovery", async () => {
+  const file = dbFile();
+  const first = openDurable(file);
+  first.register("flow", async (wf) => {
+    try { await wf.recv("go"); } catch (error) {
+      if (!wf.signal.aborted) throw error;
+    }
+    return "exited";
+  });
+  first.startWorkflow("flow", "shutdown", {});
+  await first.close();
+
+  const second = openDurable(file);
+  second.register("flow", (wf) => wf.recv("go"));
+  assert.deepEqual(second.recover(), ["shutdown"]);
+  second.send("shutdown", "go", "resumed");
+  assert.equal(await second.result("shutdown"), "resumed");
+  await second.close();
+});

@@ -7,10 +7,10 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright-core";
 
-async function phoneFixture({ homeSessions = false, inactive = false, kanban = false } = {}) {
+export async function phoneFixture({ homeSessions = false, inactive = false, kanban = false } = {}) {
   const { createUi, installUi } = await import("../web/server/ui.mjs");
   const { broadcastTopic, inboxTopic, loadProjects, sessionLabel } = await import("../lib/config.mjs");
   const { addTask, taskStoreFile, writeStore } = await import("../lib/tasks.mjs");
@@ -26,7 +26,15 @@ async function phoneFixture({ homeSessions = false, inactive = false, kanban = f
     mkdirSync(root);
     const doc = { v: 1, tasks: [] };
     addTask(doc, { id: project, title: project === names[0] ? "Mobile layout" : "Publish draft", priority: "P1" });
-    if (kanban) addTask(doc, { id: "archived", title: "Archived task", status: "done" });
+    if (kanban) {
+      addTask(doc, { id: "archived", title: "Archived task", status: "done" });
+      for (const status of ["open", "decided"]) {
+        for (let index = 0; index < 24; index++) {
+          const id = `${status}-${index}`;
+          addTask(doc, { id, title: id, status, priority: "P2" });
+        }
+      }
+    }
     writeStore(taskStoreFile(project, env), doc);
     return { root, project, url: fake.url, peers: "claude" };
   });
@@ -158,8 +166,7 @@ async function checkComposer(page, fixture) {
   await send("Direct session message", direct, [fixture.direct]);
   const queued = page.getByRole("region", { name: "Queued messages" });
   const row = queued.getByRole("listitem").filter({ hasText: "Direct session message" });
-  const steer = row.getByRole("button", { name: "Steer", exact: true });
-  await steer.waitFor();
+  await row.getByRole("button", { name: "Retry delivery", exact: true }).waitFor();
   await page.waitForFunction(() => document.getElementById("composer")?.value === "");
   const urgentBody = "Urgent direct session message";
   await draft.fill(urgentBody);
@@ -246,43 +253,56 @@ async function checkOperatorWorkflow(page) {
   await inbox.getByRole("heading", { name: /^Waiting on you · \d+$/ }).waitFor();
   await page.getByRole("button", { name: "Home", exact: true }).click();
   await home.waitFor();
-  await checkDeployedProjectNav(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const projectButton = page.getByRole("button", { name: /^New session in / }).first();
+  if (await projectButton.count()) {
+    const project = (await projectButton.getAttribute("aria-label")).replace(/^New session in /, "");
+    await checkProjectNav(page, { project });
+  }
 }
 
-// The live deployment's project views: the rail beside the sidebar on a computer, the bar under the composer on a phone.
-async function checkDeployedProjectNav(page) {
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto(page.url().replace(/#.*$/, "#home"));
-  await page.getByRole("navigation", { name: "Projects" }).waitFor();
-  const start = page.getByRole("button", { name: /^New session in / }).first();
-  if (!(await start.count())) return; // A deployment with no project has no project views to check.
-  const project = (await start.getAttribute("aria-label")).replace(/^New session in /, "");
+async function checkProjectNav(page, { project }) {
   const views = page.getByRole("navigation", { name: "Project views" });
-  const visible = async () => {
-    for (let index = 0; index < await views.count(); index += 1) {
-      const box = await views.nth(index).boundingBox();
-      if (box && box.width > 0 && box.height > 0) return views.nth(index);
+  const sidebar = page.getByRole("complementary", { name: "Projects and sessions" });
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    assert.equal(await views.count(), 0);
+    const phone = viewport.width < 768;
+    if (phone) await page.getByRole("button", { name: "Projects", exact: true }).click();
+    const picker = phone ? page.getByRole("dialog", { name: "Projects" }) : sidebar;
+    await picker.getByRole("button").filter({ has: page.getByText(project, { exact: true }) }).click();
+    await views.waitFor();
+    assert.equal(await views.count(), 1);
+    const labels = ["Chat", "Tasks", "Teams"];
+    for (const label of [...labels.slice(1), labels[0]]) {
+      const link = views.getByRole("link", { name: new RegExp(`^${label}(,|$)`) });
+      await link.click();
+      await link.and(views.locator('[aria-current="page"]')).waitFor();
+      assert.equal(await views.locator('[aria-current="page"]').count(), 1);
+      await page.getByRole("heading", { name: label, exact: true, level: 1 }).waitFor();
+      assert.equal(new URLSearchParams(new URL(page.url()).hash.slice(1)).get("project"), project);
     }
-    return null;
-  };
-  for (const [level, label] of [["project", "Chat"], ["tasks", "Tasks"], ["patterns", "Teams"]]) {
-    await page.goto(page.url().replace(/#.*$/, "#") + new URLSearchParams({ project, level }));
-    const nav = await visible();
-    await nav.getByRole("link").first().waitFor();
-    const current = nav.getByRole("link").locator('[aria-current="page"]');
-    assert.equal(await current.count(), 1, level + " highlights one view");
-    assert.equal((await current.innerText()).trim(), label);
+    const links = views.getByRole("link");
+    assert.equal(await links.count(), 3);
+    const boxes = await links.evaluateAll(nodes => nodes.map(node => {
+      const { x, y, width, height } = node.getBoundingClientRect();
+      return { x, y, width, height };
+    }));
+    for (const { width, height } of boxes) assert.ok(width >= 44 && height >= 44);
+    const navBox = await views.boundingBox();
+    if (phone) {
+      assert.ok(Math.abs(navBox.y + navBox.height - viewport.height) <= 1);
+      assert.ok(boxes.every(box => box.y === boxes[0].y));
+    } else {
+      const sidebarBox = await sidebar.boundingBox();
+      const contentBox = await page.getByRole("main").boundingBox();
+      assert.ok(sidebarBox.x + sidebarBox.width <= navBox.x && navBox.x + navBox.width <= contentBox.x);
+      assert.ok(boxes.every((box, index) => box.x === boxes[0].x && (!index || box.y > boxes[index - 1].y)));
+    }
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.getByRole("main").getByRole("button", { name: "Home", exact: true }).click();
+    await views.waitFor({ state: "hidden" });
   }
-  const rail = await visible();
-  const railBox = await rail.boundingBox();
-  const sidebarBox = await page.getByRole("navigation", { name: "Projects" }).boundingBox();
-  assert.ok(railBox.x >= sidebarBox.x + sidebarBox.width - 1, "the rail sits right of the projects sidebar");
-  await page.setViewportSize({ width: 390, height: 844 });
-  const bar = await visible();
-  const barBox = await bar.boundingBox();
-  assert.ok(barBox.y + barBox.height >= 700, "the phone's bar sits at the bottom of the screen");
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390);
-  await page.goto(page.url().replace(/#.*$/, "#home"));
 }
 
 async function checkKanban(page, fixture) {
@@ -296,7 +316,7 @@ async function checkKanban(page, fixture) {
   await page.getByRole("button", { name: "Message about Mobile layout" }).waitFor();
   await page.getByRole("button", { name: "Back to board" }).click();
 
-  const handle = open.getByText("⠿");
+  const handle = open.getByRole("listitem").filter({ has: card }).getByText("⠿");
   const source = await handle.boundingBox();
   const destination = await ready.boundingBox();
   await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
@@ -327,60 +347,36 @@ async function checkKanban(page, fixture) {
   await done.getByText("Archived task").waitFor();
   await toggle.click();
   assert.equal(await done.getByText("Archived task").count(), 0);
-}
 
-async function checkProjectNav(page, fixture) {
-  const project = fixture.project;
-  const nav = () => page.getByRole("navigation", { name: "Project views" });
-  const visibleNav = async () => {
-    const navs = nav();
-    for (let index = 0; index < await navs.count(); index += 1) {
-      const box = await navs.nth(index).boundingBox();
-      if (box && box.width > 0 && box.height > 0) return navs.nth(index);
-    }
-    return null;
-  };
-  async function open(level, label) {
-    await page.goto(fixture.url + "/#" + new URLSearchParams({ project, level }));
-    const bar = await visibleNav();
-    await bar.getByRole("link").first().waitFor();
-    // Exactly one view is current, and it is the one the URL names.
-    const current = bar.getByRole("link").locator('[aria-current="page"]');
-    assert.equal(await current.count(), 1);
-    assert.equal((await current.innerText()).trim(), label);
-    for (const box of await bar.getByRole("link").evaluateAll(nodes => nodes.map(node => {
-      const rect = node.getBoundingClientRect();
-      return { width: rect.width, height: rect.height };
-    }))) assert.ok(box.width >= 44 && box.height >= 44, "a nav target is at least 44 × 44: " + JSON.stringify(box));
-  }
-  // A phone: Chat, Tasks and Teams are one bar at the bottom, and each view opens in the same project.
+  await page.setViewportSize({ width: 1800, height: 844 });
+  const board = page.getByRole("region", { name: "Task board" });
+  assert.ok((await board.boundingBox()).width > 1152);
+  const boardBounds = await board.boundingBox();
+  const navigation = await page.getByRole("navigation", { name: "Project views" }).boundingBox();
+  assert.equal(boardBounds.y + boardBounds.height, navigation.y);
+  const openCards = open.locator("ul");
+  const readyCards = ready.locator("ul");
+  const headingTop = (await open.getByRole("heading").boundingBox()).y;
+  await openCards.hover();
+  await page.mouse.wheel(0, 400);
+  await page.waitForFunction(() => document.querySelector('[data-task-column="open"] ul').scrollTop > 0);
+  assert.equal(await readyCards.evaluate(node => node.scrollTop), 0);
+  assert.equal((await open.getByRole("heading").boundingBox()).y, headingTop);
+  assert.equal(await board.evaluate(node => node.scrollTop), 0);
+
   await page.setViewportSize({ width: 390, height: 844 });
-  await open("project", "Chat");
-  await open("tasks", "Tasks");
-  await open("patterns", "Teams");
-  const phoneBar = await visibleNav();
-  const barBox = await phoneBar.boundingBox();
-  assert.ok(barBox.y + barBox.height >= 700, "the phone's nav sits at the bottom of the screen");
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390, "no horizontal overflow");
-  // A computer: the same three links are a vertical rail beside the projects sidebar.
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto(fixture.url + "/#" + new URLSearchParams({ project, level: "tasks" }));
-  const rail = await visibleNav();
-  await rail.getByRole("link").first().waitFor();
-  assert.equal(await rail.getByRole("link").count(), 3);
-  const railBox = await rail.boundingBox();
-  const sidebarBox = await page.getByRole("navigation", { name: "Projects" }).boundingBox();
-  assert.ok(railBox.x >= sidebarBox.x + sidebarBox.width - 1, "the rail sits right of the projects sidebar");
-  const railLinks = await rail.getByRole("link").evaluateAll(nodes => nodes.map(node => {
-    const rect = node.getBoundingClientRect();
-    return { x: Math.round(rect.x), y: Math.round(rect.y) };
-  }));
-  assert.equal(new Set(railLinks.map(link => link.x)).size, 1, "the rail stacks its links in a column");
-  assert.deepEqual([...railLinks].sort((a, b) => a.y - b.y).map(link => link.y), railLinks.map(link => link.y), "top to bottom in order");
-  assert.equal(await page.getByRole("navigation", { name: "Projects" }).isVisible(), true, "desktop keeps the projects sidebar");
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+  await board.getByRole("button", { name: "Graph", exact: true }).click();
+  const canvas = board.getByRole("region", { name: "Graph canvas" });
+  const graph = canvas.getByRole("img", { name: "Task dependency graph" });
+  assert.ok((await graph.boundingBox()).width <= (await canvas.boundingBox()).width);
+  await canvas.hover();
+  await page.mouse.wheel(0, 400);
+  await page.waitForFunction(() => document.querySelector('[aria-label="Graph canvas"]').scrollTop > 0);
+  assert.equal(await board.evaluate(node => node.scrollTop), 0);
 }
 
+const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isDirectRun) {
 const deployedChrome = "/home/b/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome";
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || (existsSync(deployedChrome) ? deployedChrome : undefined) });
 let fixture;
@@ -424,4 +420,5 @@ try {
 } finally {
   await browser.close();
   await fixture?.close();
+}
 }

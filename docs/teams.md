@@ -11,7 +11,7 @@ digraph "fix-and-review" {
   graph [description="Scope, implement, and review one change; the reviewer sends it back up to three times."];
   lead        [agent="cursor:deepseek-v41-flash-1017-high", prompt="Scope the task into one change with acceptance criteria. Hand off to the implementer."];
   implementer [agent="claude:claude-haiku-5-5", prompt="Edit the code and add or run tests. Hand off the diff and test results to the reviewer."];
-  reviewer    [agent="cursor:deepseek-v41-flash-1017-high", prompt="Review the diff against the scope. Approve, or request changes with specific points."];
+  reviewer    [agent="cursor:deepseek-v41-flash-1017-high", prompt="Review the diff against the scope. Run node tools/screen-state.mjs --write /tmp/screen-base.json in the base checkout and node tools/screen-state.mjs --against /tmp/screen-base.json in the change. Include which screens changed, and judge whether those screens are the ones the task named. A review without that result is not done. Approve, or request changes with specific points."];
   lead        -> implementer [on="scope", kind="pair", required=false];
   implementer -> reviewer    [on="diff and test results", kind="pair", required=true];
   reviewer    -> implementer [on="changes requested", kind="pair", required=false, cap=3];
@@ -69,7 +69,7 @@ Does not load (the file shows `invalid` with the line):
 - `cap`: a handoff that would exceed `cap` suspends the run and notifies the operator. Each advance that fires the handoff counts once.
 - `max_visits`: a handoff that would exceed `max_visits` for a role instance suspends the run and notifies the operator. The entry role counts as its first visit.
 - In a suspended run, the operator can confirm the pending handoff in the run view. The confirmation applies to that handoff only and is recorded with the operator’s login.
-- `fallback`: part of the role's start brief. It says: if the role hits a usage or subscription limit, tell the operator and propose switching to the fallback; do not switch yourself. Nothing switches automatically.
+- `fallback`: the `harness:model` the runner starts when that role hits a usage limit, ahead of the project default. The role does not ask the operator to switch.
 - A role whose session cannot start fails the run with the reason and notifies the operator.
 - Only a live instance's session can advance a run. The operator's UI can override and records the operator's login on the handoff.
 - A run uses the pattern snapshot taken at start; later edits to the file do not change it.
@@ -126,7 +126,7 @@ A writing agent turns a plain-language request into one `team.dot`; the operator
 - The name is what you typed, else the team being refined, else the digraph the agent wrote. A name typed after the draft renames the digraph on save, as the editor does. A name already in use needs the confirm, which replaces it (`authorReplace`).
 - Nothing is saved until "Save team". A project save goes through `saveTeamText`; a global save writes `<config dir>/ai-collab/teams/<name>/team.dot`. A built-in name, a legacy team name, and a save into the other scope are refused, so one file never silently shadows another.
 - "Open in DOT editor" carries the name to the editor, where the text stays editable by hand.
-- The writing agent is `AI_COLLAB_TEAM_AUTHOR_MODEL` (default `cursor:deepseek-v41-flash-1017-high`), run once with the brief as one argv element. When the project cannot run that harness, another installed one writes instead (cursor, claude, codex, opencode), with no model. A failed or empty answer writes nothing.
+- The composer picks the writing harness and model. The prefill is `AI_COLLAB_TEAM_AUTHOR_MODEL` (default `cursor:deepseek-v41-flash-1017-high`). It runs once with the brief as one argv element. When the project cannot run that harness and the operator has not picked one, another installed one writes instead (cursor, claude, codex, opencode), with no model. A failed answer includes the harness's stderr (a usage limit is printed there), and nothing is written.
 - Requests go through the `pattern` POST action (`authorRequest` for a draft, `authorDot` to save), with the same same-origin, JSON and sign-in checks as other actions.
 
 ## Limits
@@ -139,3 +139,11 @@ A writing agent turns a plain-language request into one `team.dot`; the operator
 ## Legacy team roster in the UI
 
 Open a legacy team in the project's **Teams** view to see its member roster. For a project team, **Edit roster** lets you save one harness or harness:model per line. Global rosters are read-only in the UI. Teams also work through `ai-collab team create|list|delete|start|status`, the MCP `team_*` tools, and `@team` chats. Create new coordination as a pattern.
+
+## Strategist/Architect
+
+Start the project pattern with `ai-collab pattern start architect "#<task-id> <objective>"` from the host shell. The entry role registers the session identity tag `role:architect`, which you can find with `ai-collab agents --tag role:architect`.
+
+From the host session, check the [task board](tasks.md#decisions) and include the answer in the run brief. If the decision is pending, keep the run at the Architect role and relay the answer to that session when the operator responds. Builder task snapshots cannot observe host board updates.
+
+The required `brief ready` handoff sends the PM the task ID, objective, scope, constraints, tradeoffs, risks, and acceptance criteria. The PM returns the agreed scope and delivery next steps to the host operator for recording on the task board.

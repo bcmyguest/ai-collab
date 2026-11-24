@@ -41,34 +41,34 @@ async function setMode(fake, cfg, mode) {
 test("off mode: Stop delivers a waiting operator broadcast with reply instructions, else stops at once", async (t) => {
   const { cfg, operator, clock, deps } = await setup(t);
   assert.deepEqual(await decideStop(cfg, { host: "claude", input: { stop_hook_active: false }, ...deps }), { action: "stop" });
-  await sendMessage(operator, "all", "Where are we?");
+  await sendMessage(operator, "all", `@alice#${SESSION} Where are we?`);
   const r = await decideStop(cfg, { host: "claude", input: { stop_hook_active: false }, ...deps });
   assert.equal(r.action, "continue");
   assert.equal(r.why, "messages");
-  assert.match(r.text, /body="Where are we\?" This is an operator broadcast\. Answer it in the shared channel with the ai-collab send_to_all tool \(reply_to="m\d+", session="aabbccddeeff0123"/);
-  assert.match(r.text, /reply_to_operator tool/, "identity line carries the direct-reply how-to");
+  assert.match(r.text, /body="@alice#aabbccddeeff0123 Where are we\?" This is an operator broadcast\. Answer it in the shared channel with the ai-collab send_to_all tool \(reply_to="m\d+", session="aabbccddeeff0123"/);
+  assert.doesNotMatch(r.text, /Your sender identity is/);
   assert.equal(clock.slept, 0, "off mode never waits");
 });
 
 test("loop guard: at most stopCap consecutive message continuations, then a forced stop resets the chain", async (t) => {
   const { cfg, operator, deps } = await setup(t, { AI_COLLAB_STOP_CAP: "2" });
   const stop = (active) => decideStop(cfg, { host: "codex", input: { stop_hook_active: active }, ...deps });
-  await sendMessage(operator, "all", "one");
+  await sendMessage(operator, "all", `@alice#${SESSION} one`);
   assert.equal((await stop(false)).action, "continue");
-  await sendMessage(operator, "all", "two");
+  await sendMessage(operator, "all", `@alice#${SESSION} two`);
   assert.equal((await stop(true)).action, "continue");
-  await sendMessage(operator, "all", "three");
+  await sendMessage(operator, "all", `@alice#${SESSION} three`);
   assert.deepEqual(await stop(true), { action: "stop" }, "cap reached: the message stays queued");
   const next = await stop(false);
   assert.equal(next.action, "continue");
-  assert.match(next.text, /body="three"/);
+  assert.match(next.text, /body="@alice#aabbccddeeff0123 three"/);
 });
 
 test("afk on: after wait_for_operator, Stop waits for an operator message and continues when one arrives", async (t) => {
   const { fake, cfg, operator, clock, deps } = await setup(t);
   await setMode(fake, cfg, "on");
   await requestWait(cfg);
-  clock.events.push({ at: clock.t + 180_000, run: () => sendMessage(operator, "all", "Next: run the migration") });
+  clock.events.push({ at: clock.t + 180_000, run: () => sendMessage(operator, "all", `@alice#${SESSION} Next: run the migration`) });
   const r = await decideStop(cfg, { host: "claude", input: { stop_hook_active: false }, ...deps });
   assert.equal(r.why, "messages");
   assert.match(r.text, /Next: run the migration/);
@@ -136,6 +136,20 @@ test("afk on: a plain ask_question arms the wait and its answer continues the ag
   assert.equal(waitRequestedAt(cfg), 0);
 });
 
+test("off mode: Stop delivers a board answer once without waiting", async (t) => {
+  const { fake, cfg, clock, deps } = await setup(t);
+  const q = await askQuestion(cfg, "Which region?", { seconds: 0 });
+  fake.inject(ALL, "reply " + q.id + " west");
+  const stop = () => decideStop(cfg, { host: "claude", ...deps });
+  const result = await stop();
+  assert.equal(result.why, "answer");
+  assert.match(result.text, /answer="west"/);
+  assert.deepEqual(openQuestions(cfg), []);
+  assert.equal(waitRequestedAt(cfg), 0);
+  assert.deepEqual(await stop(), { action: "stop" });
+  assert.equal(clock.waits, 0);
+});
+
 test("afk on: an important question holds the session past the AFK wait until it is answered", async (t) => {
   const { fake, cfg, clock, deps } = await setup(t, { AI_COLLAB_AFK_WAIT_S: "60" });
   await setMode(fake, cfg, "on");
@@ -173,7 +187,7 @@ test("the real wait holds one streaming subscription and wakes on the first even
   await requestWait(cfg);
   const polls = fake.state.polls.length;
   const started = Date.now();
-  setTimeout(() => sendMessage(operator, "all", "wake up"), 300);
+  setTimeout(() => sendMessage(operator, "all", `@alice#${SESSION} wake up`), 300);
   const r = await decideStop(cfg, { host: "claude", input: { stop_hook_active: false } });
   assert.equal(r.why, "messages");
   assert.match(r.text, /wake up/);
@@ -197,7 +211,25 @@ test("a failing stream backs off exponentially instead of hammering ntfy", { tim
 
 test("cursor: an aborted or errored stop never continues", async (t) => {
   const { cfg, operator, deps } = await setup(t);
-  await sendMessage(operator, "all", "hi");
+  await sendMessage(operator, "all", `@alice#${SESSION} hi`);
   assert.deepEqual(await decideStop(cfg, { host: "cursor", input: { status: "aborted" }, ...deps }), { action: "stop" });
   assert.equal((await decideStop(cfg, { host: "cursor", input: { status: "completed" }, ...deps })).action, "continue");
+});
+
+test("Skip releases Stop when an important question is pending", async (t) => {
+  const { fake, cfg, clock, deps } = await setup(t);
+  await setMode(fake, cfg, "on");
+  const { id } = await askQuestion(cfg, "Which region?", { seconds: 0, important: true });
+  clock.events.push({
+    at: clock.t + 5000,
+    run: () => fake.inject(ALL, JSON.stringify({ v: 1, kind: "approval-end", from: "operator", id, reason: "skipped" })),
+  });
+  const stop = () => decideStop(cfg, { host: "claude", ...deps });
+  const result = await stop();
+  assert.equal(result.action, "continue");
+  assert.match(result.text, new RegExp(`operator skipped your question id=${id}`));
+  assert.equal(clock.slept, 5000);
+  assert.deepEqual(openQuestions(cfg), []);
+  assert.equal(waitRequestedAt(cfg), 0);
+  assert.deepEqual(await stop(), { action: "stop" });
 });

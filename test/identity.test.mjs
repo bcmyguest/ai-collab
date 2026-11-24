@@ -30,6 +30,6 @@ test("Cursor can send as its conversation without setting identity variables", a
   await sendMessage(operator, `cursor#${second.session}`, "For the second session");
   assert.deepEqual((await claimInbox(first)).map(({ body }) => body), []);
   assert.deepEqual((await claimInbox(second)).map(({ body }) => body), [
-    "For the second session", "Hello from Cursor",
+    "For the second session",
   ]);
 });

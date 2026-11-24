@@ -132,7 +132,7 @@ function PatternInspect({ pattern, own, go, act, busy, disabled, notice, raw }) 
   </div>;
 }
 
-export function PatternsPage({ data, project, selected, navigate, call, disabled }) {
+export function PatternsPage({ data, project, selected, navigate, call, disabled, models = {} }) {
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
   const patterns = [...(data.patterns ?? [])].sort((a, b) => a.name.localeCompare(b.name));
@@ -178,7 +178,7 @@ export function PatternsPage({ data, project, selected, navigate, call, disabled
     // Only a project team file or a project pattern can be replaced in place; other sources are read-only here.
     const canRefine = editing && !editing.legacy && !editing.invalid && (editing.source === "project" || editing.source === "global");
     if (editing && !canRefine) return <p className="py-16 text-center text-sm text-muted-foreground">{`${SCOPE_LABELS[editing.source] ?? editing.source} patterns are read-only here; copy it to the project or start a new team.`}</p>;
-    return <TeamAuthor key={selected.pattern || "new"} templates={data.templates ?? []} pattern={editing} project={project} call={call} go={go} disabled={disabled}/>;
+    return <TeamAuthor key={selected.pattern || "new"} templates={data.templates ?? []} pattern={editing} project={project} call={call} go={go} disabled={disabled} startable={data.startable ?? []} models={models} authorDefault={data.authorDefault}/>;
   }
 
   if (selected.pattern) {
