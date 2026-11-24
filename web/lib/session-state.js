@@ -37,9 +37,16 @@ export function sessionState(s, now) {
 }
 
 /** The wake to show for a session, or null once it reported after the wake began or the wake is no longer running. */
-/** A project's sessions as running (online) and inactive (offline) counts for its sidebar row. */
-export function sessionCounts(agents) {
-  const running = agents.filter(shownOnline).length;
+const LIVE = new Set(["waiting", "afk", "working"]);
+
+/** True when the chat would show this session as waiting, held, or working, not idle or offline. */
+export function isLive(s, now) {
+  return LIVE.has(sessionState(s, now));
+}
+
+/** A project's sessions as running (a live turn) and off (idle or offline) for its sidebar row. */
+export function sessionCounts(agents, now = Date.now()) {
+  const running = agents.filter((agent) => isLive(agent, now)).length;
   return { running, inactive: agents.length - running };
 }
 

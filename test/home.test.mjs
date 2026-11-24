@@ -46,7 +46,8 @@ test("session state: waiting, AFK hold, working by open call or recent activity,
   assert.equal(sessionState({ online: false }, NOW), "offline");
   assert.equal(sessionState({ online: true, harness: "opencode", event: "Stop" }, NOW), "offline", "a stopped OpenCode session is not active while its server stays up");
   assert.equal(sessionState({ online: true, harness: "claude", event: "Stop" }, NOW), "idle");
-  assert.equal(sessionCounts([{ online: true, harness: "opencode", event: "Stop" }, { online: true, harness: "claude", event: "Stop" }]).running, 1);
+  assert.equal(sessionCounts([{ online: true, harness: "opencode", event: "Stop" }, { online: true, harness: "claude", event: "Stop" }], NOW).running, 0);
+  assert.equal(sessionCounts([{ online: true, lastActivityAt: NOW - 1000 }], NOW).running, 1);
 });
 
 test("wake banner hides once the session reports after the wake began, or is back online after it ended", () => {

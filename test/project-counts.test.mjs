@@ -2,8 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { sessionCounts } from "../web/lib/session-state.js";
 
-test("online sessions count as running, the rest as inactive", () => {
-  assert.deepEqual(sessionCounts([{ online: true }, { online: false }, { online: true }, { online: false }, { online: false }]), { running: 2, inactive: 3 });
+test("a live turn counts as running and an idle process counts as off", () => {
+  const now = 1_800_000_000_000;
+  assert.deepEqual(sessionCounts([
+    { online: true, lastActivityAt: now - 1000 },
+    { online: true },
+    { online: false },
+  ], now), { running: 1, inactive: 2 });
 });
 
 test("a project with no sessions counts zero running and zero inactive", () => {

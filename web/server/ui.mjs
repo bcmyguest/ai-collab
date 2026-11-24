@@ -1056,7 +1056,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       project: project.cfg.project, operator: project.operator.peer, mode, alerts: readAlertLevel(env),
       // Sessions per project as running and inactive, read by the sidebar rows; kept apart from projects. A session
       // whose worktree was deleted has no card, so it is not counted either.
-      projectCounts: Object.fromEntries(shown.map(item => [item.cfg.project, sessionCounts(item === project ? placed(list) : item.failed ? [] : placed(agents(item, lastMessages(item))))])),
+      projectCounts: Object.fromEntries(shown.map(item => [item.cfg.project, sessionCounts(item === project ? own : item.failed ? [] : sessionCards(item, agents(item, lastMessages(item)), mode))])),
       // Waiting counts per project, present only when above 0; a failed project has no sessions to count.
       projects: shown.map(item => {
         const count = item === project ? waiting.size : item.failed ? 0 : waitingIds(item, placed(agents(item, lastMessages(item)))).size;

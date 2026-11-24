@@ -30,7 +30,7 @@ import { Shipped } from "./shipped";
 import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
 import { TABS, parseSelection, projectNavigation, selectionHash } from "@/lib/selection";
 import { agentName, namedAgents, unnamedAgents } from "@/lib/sidebar";
-import { sessionState } from "@/lib/session-state";
+import { isLive, sessionState } from "@/lib/session-state";
 import { subscribeUiEvents } from "@/lib/ui-events";
 import { ActivityRow, GoToAgent, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
@@ -216,7 +216,7 @@ function SessionRow({ agent, project, selected, now, navigate, dispose, openRaw,
           <span className="self-start"><RunningCount runs={agent.subagents} now={now}/></span>
         </span>
         {agent.waiting && <span role="img" aria-label="Waiting on you" title="Waiting on you" className="inline-block size-2.5 shrink-0 rounded-full bg-amber-500 ring-2 ring-amber-500/25"/>}
-        <Dot online={agent.online}/>
+        <Dot online={isLive(agent, now)}/>
         <span className="shrink-0 text-right text-[11px] leading-tight text-muted-foreground">{ago(agent.lastMessageAt, now)}{agent.activeAt ? <><br/>active {ago(agent.activeAt, now)}</> : null}</span>
       </button>
       {dispose && <SessionMenu node={{ ...agent, project }} disabled={disabled} dispose={dispose} raw={openRaw} map={() => navigate({ project, level: "compactions" })} label={"Session actions for " + agent.id}/>}
@@ -245,7 +245,7 @@ function Sidebar({ projectNav, data, selected, now, navigate, newSession, dispos
   const active = [];
   const inactive = [];
   for (const agent of visible) {
-    const group = sessionState(agent, now) === "offline" ? inactive : active;
+    const group = isLive(agent, now) ? active : inactive;
     group.push(agent);
   }
   return <div className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto p-4">
@@ -532,7 +532,7 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
         <Avatar address={option.run ? option.owner : option.model ? option.harness : option.team ? "operator" : option.id} className="size-6 text-[9px]"/>
         <span className="flex min-w-0 flex-1 flex-col">{option.run ? <span className="truncate text-xs text-foreground/80">{option.label}</span> : <span className="truncate font-mono text-xs">@{option.id}</span>}
           {option.run ? null : option.model ? <span className="truncate text-xs text-foreground/80">{(HARNESS_NAMES[option.harness] || option.harness) + " · " + option.model}</span> : option.team ? <span className="truncate text-xs text-foreground/80">{(option.members || []).join(", ")}</span> : <SessionName agent={option}/>}</span>
-        {!option.harness && !option.run && !option.team && <Dot online={option.online}/>}
+        {!option.harness && !option.run && !option.team && <Dot online={isLive(option, now)}/>}
         <span className="shrink-0 text-xs text-muted-foreground">{option.run ? "subagent" : option.team ? "team" : option.model ? "new session" : (option.harness ? "harness · " : "") + seen(option, now)}</span>
       </button>)}
     </div>}
