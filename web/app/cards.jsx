@@ -28,8 +28,8 @@ export function ChoiceCard({ questions, answers, onSubmit, disabled, title }) {
     {questions.map((q, i) => {
       const chosen = answers?.[q.question];
       return <fieldset key={i} className="flex min-w-0 flex-col gap-2">
-        <legend className="flex flex-wrap items-center gap-2 pb-1">
-          {q.header && <Badge variant="secondary" className="h-5 px-2 text-[11px]">{q.header}</Badge>}
+        <legend className="flex max-w-full flex-wrap items-center gap-2 pb-1 wrap-anywhere">
+          {q.header && <Badge variant="secondary" className="min-h-5 max-w-full px-2 text-[11px] wrap-anywhere whitespace-normal">{q.header}</Badge>}
           <span className="font-medium">{q.question}</span>
           {q.multiSelect && <span className="text-xs text-muted-foreground">pick any</span>}
         </legend>
@@ -37,14 +37,14 @@ export function ChoiceCard({ questions, answers, onSubmit, disabled, title }) {
           const on = readOnly ? String(chosen || "").split(", ").includes(option.label) : picked[i].includes(option.label);
           return <button key={option.label} type="button" role={q.multiSelect ? "checkbox" : "radio"} aria-checked={on} disabled={readOnly || disabled}
             onClick={() => toggle(i, option.label, q.multiSelect)}
-            className={cn("flex w-full flex-col gap-1 rounded-xl border px-3 py-2 text-left transition-colors enabled:hover:bg-accent disabled:cursor-default",
+            className={cn("flex min-h-11 w-full min-w-0 flex-col gap-1 rounded-xl border px-3 py-2 text-left transition-colors enabled:hover:bg-accent disabled:cursor-default",
               on && "border-primary bg-primary/10")}>
-            <span className="flex items-center gap-2 font-medium">
-              <span aria-hidden className={cn("grid size-4 shrink-0 place-items-center border", q.multiSelect ? "rounded" : "rounded-full", on && "border-primary bg-primary text-primary-foreground")}>{on && <Check className="size-3"/>}</span>
-              {option.label}
+            <span className="flex min-w-0 items-start gap-2 font-medium">
+              <span aria-hidden className={cn("mt-0.5 grid size-4 shrink-0 place-items-center border", q.multiSelect ? "rounded" : "rounded-full", on && "border-primary bg-primary text-primary-foreground")}>{on && <Check className="size-3"/>}</span>
+              <span className="min-w-0 wrap-anywhere">{option.label}</span>
             </span>
-            {option.description && <span className="pl-6 text-xs text-muted-foreground">{option.description}</span>}
-            {option.preview && <pre className="ml-6 max-h-48 overflow-auto rounded-lg border bg-muted/50 px-2 py-1.5 font-mono text-xs whitespace-pre-wrap">{option.preview}</pre>}
+            {option.description && <span className="min-w-0 pl-6 text-sm wrap-anywhere text-muted-foreground">{option.description}</span>}
+            {option.preview && <pre className="ml-6 max-h-48 overflow-auto wrap-anywhere rounded-lg border bg-muted/50 px-2 py-1.5 font-mono text-xs whitespace-pre-wrap">{option.preview}</pre>}
           </button>;
         })}
         {!readOnly && <Textarea aria-label={"Other answer: " + q.question} placeholder="Other…" value={other[i]} disabled={disabled}

@@ -18,8 +18,8 @@ export const OptionPicker = createComponentImplementation(OptionPickerApi, ({ pr
   // Closed: only the chosen labels, as a compact summary; a typed Other answer shows as its own line.
   if (readOnly) return <div role="list" className="flex flex-wrap gap-1.5">
     {props.options.filter(option => picked.includes(option.label)).map(option =>
-      <span key={option.label} role="listitem" className="inline-flex h-6 items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 text-xs font-medium">
-        <Check aria-hidden className="size-3 text-primary"/>{option.label}
+      <span key={option.label} role="listitem" className="inline-flex min-h-6 min-w-0 max-w-full items-start gap-1 rounded-lg border border-primary/40 bg-primary/10 px-2 py-1 text-sm font-medium">
+        <Check aria-hidden className="mt-1 size-3 shrink-0 text-primary"/><span className="min-w-0 wrap-anywhere">{option.label}</span>
       </span>)}
   </div>;
   return <div role={multi ? "group" : "radiogroup"} className="flex flex-col gap-1.5">
@@ -27,16 +27,16 @@ export const OptionPicker = createComponentImplementation(OptionPickerApi, ({ pr
       const on = picked.includes(option.label);
       return <button key={option.label} type="button" role={multi ? "checkbox" : "radio"} aria-checked={on} disabled={readOnly}
         onClick={() => choose(option.label)}
-        className={cn("flex w-full min-w-0 flex-col gap-1 rounded-lg border px-3 py-2 text-left transition-colors enabled:hover:bg-accent disabled:cursor-default",
+        className={cn("flex min-h-11 w-full min-w-0 flex-col gap-1 rounded-lg border px-3 py-2 text-left transition-colors enabled:hover:bg-accent disabled:cursor-default",
           on ? "border-primary bg-primary/10" : "border-border")}>
-        <span className="flex min-h-7 min-w-0 items-center gap-2.5">
-          <span aria-hidden className={cn("grid size-4 shrink-0 place-items-center border", multi ? "rounded-[4px]" : "rounded-full", on ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/60")}>{on && <Check className="size-3"/>}</span>
+        <span className="flex min-h-7 min-w-0 items-start gap-2.5">
+          <span aria-hidden className={cn("mt-0.5 grid size-4 shrink-0 place-items-center border", multi ? "rounded-[4px]" : "rounded-full", on ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/60")}>{on && <Check className="size-3"/>}</span>
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate text-sm font-medium">{option.label}</span>
-            {option.description && <span className="truncate text-xs text-muted-foreground">{option.description}</span>}
+            <span className="wrap-anywhere text-sm font-medium">{option.label}</span>
+            {option.description && <span className="wrap-anywhere text-sm text-muted-foreground">{option.description}</span>}
           </span>
         </span>
-        {option.preview && <pre className="ml-6.5 max-h-32 overflow-auto rounded-md border bg-muted/50 px-2 py-1 font-mono text-xs whitespace-pre-wrap">{option.preview}</pre>}
+        {option.preview && <pre className="ml-6.5 max-h-32 overflow-auto rounded-md border bg-muted/50 px-2 py-1 font-mono text-xs wrap-anywhere whitespace-pre-wrap">{option.preview}</pre>}
       </button>;
     })}
     {props.otherChild && !readOnly && <div className="flex min-h-11 items-center">{buildChild(props.otherChild)}</div>}
