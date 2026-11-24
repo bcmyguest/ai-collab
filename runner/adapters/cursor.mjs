@@ -377,6 +377,8 @@ export default function cursorAdapter(config = {}) {
   const connections = new Set();
   // One sandbox per project, reused: created by the first session and deleted when the last one closes.
   const sandboxes = new Map();
+  // Sessions restored after a runner restart, by address. Each holds a claim on its sandbox until it resumes or closes.
+  const restored = new Map();
   // Sandboxes whose (large) CLI tree is already uploaded; it is only re-uploaded into a new sandbox.
   const stagedTrees = new Set();
 
@@ -388,14 +390,17 @@ export default function cursorAdapter(config = {}) {
     let argv;
     // A claimed sandbox (and the session that holds it) is released again on any failure below.
     let sandbox = null;
+    // A restored session already holds its claim on the sandbox: resuming takes it over instead of counting a second one.
+    const held = spec.address ? restored.get(spec.address) : undefined;
+    if (held) restored.delete(spec.address);
     const session = { sessionId: null, run: null, approvals: new Map(), tools: new Map(), closed: false, ctx, sandbox: null, env, cwd: spec.cwd, model: spec.model };
     try {
       if (spec.place === "openshell") {
         // One sandbox per project, reused: created by the first session and deleted when the last one closes.
-        const name = spec.patternRun ? teamSandboxName(spec.project, spec.patternRun) : sandboxName(spec.project);
+        const name = sandboxOf(spec);
         policyPath ||= writePolicy(cursorTree);
         sandbox = await ensureSandboxIn({ openshell: openshellBin, env, name, policy: policyPath });
-        claim(sandbox, spec.cwd);
+        if (!held) claim(sandbox, spec.cwd);
         session.sandbox = sandbox;
         const prepared = await prepareSandbox({
           openshell: openshellBin, env, sandbox, cwd: spec.cwd, home: spec.home ?? spec.env?.HOME, project: spec.project, cursorTree,
@@ -543,6 +548,9 @@ export default function cursorAdapter(config = {}) {
 
   const threadOf = (session) => `cursor#${sessionLabel(session.sessionId)}`;
 
+  // The sandbox a session lives in: its team run's, else its project's. Deterministic, so a restart can name it again.
+  const sandboxOf = ({ project, patternRun }) => (patternRun ? teamSandboxName(project, patternRun) : sandboxName(project));
+
   // Counts a session's claim on its project's sandbox; the sandbox is deleted when the last claim goes.
   function claim(name, cwd) {
     const known = sandboxes.get(name) ?? { cwd, refs: 0 };
@@ -646,7 +654,7 @@ export default function cursorAdapter(config = {}) {
       if (settings.error) throw new Error(settings.error);
       const attached = await attach({
         project: record.project, cwd: record.cwd, place: record.place, permission: settings.settings,
-        model: record.model, patternRun: record.patternRun, env, requireLoad: true,
+        model: record.model, patternRun: record.patternRun, address: record.address, env, requireLoad: true,
       }, ctx);
       try {
         attached.session.sessionId = record.nativeId;
@@ -669,6 +677,26 @@ export default function cursorAdapter(config = {}) {
     },
 
     async listCommands() { return []; },
+
+    /**
+     * A session the runner restored after a restart has no handle and lost its in-memory sandbox claim. This names its
+     * sandbox again and rebuilds the claim, so that closing it (release) syncs its edits back and frees the sandbox.
+     */
+    restore(record, ctx, env = {}) {
+      if (record?.place !== "openshell" || record.status === "ended" || !record.address || restored.has(record.address)) return;
+      const name = sandboxOf(record);
+      claim(name, record.cwd);
+      restored.set(record.address, { sessionId: record.nativeId, sandbox: name, cwd: record.cwd, env: { ...env, ...OWNED }, ctx, approvals: new Map(), closed: false });
+    },
+
+    /** Ends a restored session that never resumed: copies its edits back and deletes the sandbox when no other session holds it. */
+    async release(record) {
+      const session = restored.get(record?.address);
+      if (!session) return true;
+      restored.delete(record.address);
+      session.closed = true;
+      return closeSandbox(session);
+    },
 
     async shutdown() {
       for (const conn of connections) conn.kill();

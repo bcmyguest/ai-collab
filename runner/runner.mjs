@@ -8,8 +8,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { EventType } from "@ag-ui/core";
 import { DOT_EVENT_MAX } from "../lib/dot.mjs";
 import { getPattern } from "../lib/patterns.mjs";
-import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, cutPatternEntry, cutPatternLeave, cutPatternRun, launchPatternRun, NOTE_MAX, preparePatternRun, RUN_ID, runStatus } from "../lib/pattern-runs.mjs";
-import { patternWorkflowId, runPatternWorkflow, seedPatternRun } from "../lib/pattern-workflow.mjs";
+import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, cutPatternEntry, cutPatternLeave, cutPatternRun, launchPatternRun, NOTE_MAX, preparePatternRun, RUN_ID, runStatus, sessionsOfRun } from "../lib/pattern-runs.mjs";
+import { patternWorkflowId, runIdOfPatternWorkflow, runPatternWorkflow, seedPatternRun } from "../lib/pattern-workflow.mjs";
 import { statePath } from "../lib/state.mjs";
 import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, receiptsTopic, sessionLabel, startPlaceSetting } from "../lib/config.mjs";
 import { RESERVE_MS, ATTACHMENT_BUDGET_MS, claimInbox, markDelivered, mentionsAgent, parseEnvelope, releaseOwned, reserveOwned, reservedMessage } from "../lib/inbox.mjs";
@@ -241,6 +241,10 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     for (const card of record.approvals) s.pending.set(card.id, card);
     holder.s = s;
     sessions.set(record.address, s);
+    // A session restored after a restart has no handle: its adapter rebuilds the sandbox claim the restart lost.
+    if (!holder.live && record.status !== "ended") {
+      try { adapters.get(record.harness)?.restore?.(record, contextFor(holder, record.harness, wf.signal), ownedEnv()); } catch (error) { log(`${record.harness}: could not restore ${record.address}: ${error.message}`); }
+    }
     return s;
   }
 
@@ -285,7 +289,8 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
 
   async function endSession(s, reason) {
     for (const card of [...s.record.approvals]) closeApproval(s, card.id, "cancelled");
-    await s.live?.close().catch(() => {});
+    if (s.live) await s.live.close().catch(() => {});
+    else await Promise.resolve(adapters.get(s.record.harness)?.release?.(s.record)).catch((error) => log(`${s.record.harness}: could not release ${s.record.address}: ${error.message}`));
     s.live = null;
     s.record.status = "ended";
     s.record.run = null;
@@ -873,7 +878,25 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     return { ...cfg, peer: "operator", session: "" };
   };
 
+  // A run that reached done or failed closes its role sessions, so a team's sandbox is synced back and released.
+  async function releasePatternSessions(project, runId) {
+    let run;
+    try { run = runStatus(patternConfig(project), runId); } catch { return null; }
+    const open = sessionsOfRun(run).map((address) => sessions.get(address)).filter((s) => s && s.record.status !== "ended");
+    await Promise.all(open.map((s) => close(s.record.address).catch((error) => log(`could not close ${s.record.address} after run ${runId}: ${error.message}`))));
+    return open.length;
+  }
+
   async function patternWorkflow(wf, input) {
+    const reply = await runPattern(wf, input);
+    // Not a durable step (replay logs must keep their steps): a restart before the workflow finishes simply releases again.
+    if (reply?.status === "done" || reply?.status === "failed") {
+      await releasePatternSessions(input.project, input.initial?.id ?? runIdOfPatternWorkflow(wf.id));
+    }
+    return reply;
+  }
+
+  async function runPattern(wf, input) {
     const { project } = input;
     const cfg = patternConfig(project);
     const launch = async (_cfg, { patternRun, ...options }) => {
