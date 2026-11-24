@@ -437,7 +437,9 @@ try {
   page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
   page.on("pageerror", error => errors.push("pageerror: " + error.message));
   page.on("response", response => { if (response.status() >= 400) errors.push(response.status() + " " + response.url()); });
-  const url = fixture?.url || process.argv.slice(2).find(arg => !arg.startsWith("--")) || "http://127.0.0.1:8795/";
+  const url = composer
+    ? fixture.url + "/#" + new URLSearchParams({ project: fixture.project })
+    : fixture?.url || process.argv.slice(2).find(arg => !arg.startsWith("--")) || "http://127.0.0.1:8795/";
   const startupDeadline = Date.now() + 15_000;
   for (;;) {
     try {
@@ -461,6 +463,9 @@ try {
   console.log(errors.slice(0, 15).join("\n") || "no errors");
   console.log("text:", (await page.innerText("body")).slice(0, 300).replace(/\n+/g, " | "));
   if (((operatorWorkflow || kanban || projectNav || uiSdk) && errors.length) || /pageerror|couldn.t load/.test(errors.join("\n"))) process.exitCode = 1;
+} catch (error) {
+  console.error(error);
+  process.exitCode = 1;
 } finally {
   await browser.close();
   await fixture?.close();

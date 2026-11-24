@@ -1164,7 +1164,7 @@ function Console({ account }) {
             childRuns={(agent?.subagents || []).filter(run => run.child)} openChild={child => navigate({ project, level: "session", harness: child.kind, session: child.id })}
             back={() => navigate({ ...selected, project, tab: "activity", run: "" })}
             pick={run => navigate({ ...selected, project, tab: "subagents", run })}/>}
-          {!home && !listing && !subagents && (!ready || thread.length + live.length === 0) && <p className="py-16 text-center text-sm text-muted-foreground">
+          {!home && !listing && !subagents && (!ready || (thread.length + live.length === 0 && (raw || queue.length === 0))) && <p className="py-16 text-center text-sm text-muted-foreground">
             {ready ? (raw ? "No activity yet." : "No messages yet.") : loadError ? "" : watching ? "Loading project chat…" : "Loading conversation…"}</p>}
           {ready && !home && !listing && !subagents && thread.map(({ message, activity: row }) => row
             ? row.type === "completion" ? <CompletionRow key={row.id} row={{ ...row, seat: seatOf(data.agents, row.agent) }} when={at => ago(at, now)} open={openAddress}/>

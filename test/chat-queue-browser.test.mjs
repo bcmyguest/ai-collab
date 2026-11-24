@@ -32,6 +32,8 @@ test("phone chat routes mentions and urgent messages, preserves drafts, and edit
 
   const queue = page.getByRole("region", { name: "Queued messages" });
   const original = queue.getByRole("listitem").filter({ hasText: "Review the first revision" });
+  await original.waitFor();
+  assert.equal(await page.getByText("No messages yet.", { exact: true }).count(), 0);
   await original.getByRole("button", { name: "Edit", exact: true }).click();
   await queue.getByRole("textbox", { name: "Edit queued message" }).fill("Review the final revision");
   await queue.getByRole("button", { name: "Save", exact: true }).click();
