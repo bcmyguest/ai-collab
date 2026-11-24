@@ -6,6 +6,8 @@ Lib: `lib/builder.mjs`. OpenShell lifecycle: `runner/sandbox.mjs`. Tests: `test/
 
 `runner/runner.mjs` manages the durable session steps for runner-owned builders. Both supervisors use `lib/builder.mjs` to collect work, publish landing results, and clean up sandboxes. Cleanup retains an uploaded workspace until its worktree has been collected.
 
+For the opt-in host integration matrix, see [Live OpenShell bootstrap smoke](sandbox-smoke.md).
+
 ## What runs where
 
 | Agent | Where | How |

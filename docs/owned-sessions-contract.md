@@ -531,6 +531,9 @@ prints a version, the checkout returns with no new commits, and OpenShell remove
 the sandbox. The version probes require no model requests. The matrix skips by
 default and reports missing prerequisites as failures when explicitly enabled.
 
+For authenticated model turns through the scheduler, builder, and runner
+entry points, see [Live OpenShell bootstrap smoke](sandbox-smoke.md).
+
 ## Files
 
 | Path | Role |
