@@ -2,6 +2,9 @@
   "version": 1,
   "hooks": {
     "sessionStart": [{ "command": "\"${CURSOR_PLUGIN_ROOT}/scripts/ai-collab-hook\" --host cursor" }],
+    "preToolUse": [{ "command": "\"${CURSOR_PLUGIN_ROOT}/scripts/ai-collab-hook\" --read-gate --host cursor", "timeout": 10 }],
+    "beforeReadFile": [{ "command": "\"${CURSOR_PLUGIN_ROOT}/scripts/ai-collab-hook\" --read-gate --host cursor", "timeout": 10 }],
+    "beforeShellExecution": [{ "command": "\"${CURSOR_PLUGIN_ROOT}/scripts/ai-collab-hook\" --read-gate --host cursor", "timeout": 10 }],
     "beforeSubmitPrompt": [{ "command": "\"${CURSOR_PLUGIN_ROOT}/scripts/ai-collab-hook\" --activity --host cursor", "timeout": 5 }],
     "afterAgentResponse": [{ "command": "\"${CURSOR_PLUGIN_ROOT}/scripts/ai-collab-hook\" --activity --host cursor", "timeout": 5 }],
     "postToolUse": [{ "command": "\"${CURSOR_PLUGIN_ROOT}/scripts/ai-collab-hook\" --host cursor" }],
