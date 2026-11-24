@@ -130,7 +130,9 @@ export function runCommand(command, { cwd, env = process.env, timeoutMs, signal,
 
     const keep = (chunk) => { tail = (tail + chunk).slice(-TAIL_CHARS); };
     const killGroup = (sig) => {
-      try { process.kill(-child.pid, sig); } catch { /* the group is already gone */ }
+      const { pid } = child;
+      if (pid === undefined) return;
+      try { process.kill(-pid, sig); } catch { /* the group is already gone */ }
     };
     const finish = () => {
       if (settled) return;
