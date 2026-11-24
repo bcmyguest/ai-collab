@@ -9,7 +9,7 @@ import { publishStatus } from "../lib/inbox.mjs";
 import { cleanName, sessionName } from "../lib/names.mjs";
 import { listSessions, recordSession } from "../lib/sessions.mjs";
 import { createUi } from "../web/server/ui.mjs";
-import { fallbackName, sessionState, sessionTree, visibleWake } from "../web/lib/session-state.js";
+import { fallbackName, sessionCounts, sessionState, sessionTree, visibleWake } from "../web/lib/session-state.js";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
@@ -44,6 +44,9 @@ test("session state: waiting, AFK hold, working by open call or recent activity,
   assert.equal(sessionState({ ...online, lastActivityAt: NOW - 61_000 }, NOW), "idle");
   assert.equal(sessionState({ online: false, lastActivityAt: NOW - 1000 }, NOW), "working", "registry liveness can lag a fresh event");
   assert.equal(sessionState({ online: false }, NOW), "offline");
+  assert.equal(sessionState({ online: true, harness: "opencode", event: "Stop" }, NOW), "offline", "a stopped OpenCode session is not active while its server stays up");
+  assert.equal(sessionState({ online: true, harness: "claude", event: "Stop" }, NOW), "idle");
+  assert.equal(sessionCounts([{ online: true, harness: "opencode", event: "Stop" }, { online: true, harness: "claude", event: "Stop" }]).running, 1);
 });
 
 test("wake banner hides once the session reports after the wake began, or is back online after it ended", () => {

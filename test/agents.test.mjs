@@ -8,8 +8,7 @@ import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, parseEnvelope, sendMessage } from "../lib/inbox.mjs";
 import { respond, sendAndAwait, waitForMessages } from "../lib/agents.mjs";
-import { processStart } from "../lib/process.mjs";
-import { agentDirectory, listSessions, recordSession, setIdentity } from "../lib/sessions.mjs";
+import { agentDirectory, recordSession, setIdentity } from "../lib/sessions.mjs";
 import { formatInbox } from "../lib/format.mjs";
 import { runCli } from "../lib/cli.mjs";
 
@@ -91,19 +90,6 @@ test("set_identity is kept across hook writes and listed by list_agents", async 
   const [entry] = agentDirectory(bob, { all: true });
   assert.deepEqual([entry.address, entry.project, entry.name, entry.activity, entry.tags], [`bob#${B}`, "demo", "reviewer", "reviewing PR 12", ["pr:12", "role:reviewer"]]);
   assert.deepEqual(await setIdentity(bob, { activity: "" }), { name: "reviewer", tags: ["pr:12", "role:reviewer"] });
-});
-
-test("a stopped OpenCode session is offline while its server process is still running", async (t) => {
-  const fake = await startFakeNtfy();
-  t.after(() => fake.close());
-  const { bob } = pair(fake);
-  const proc = { pid: process.pid, start: processStart(process.pid) };
-  await recordSession(bob, { id: "session-b", cwd: "/tmp", harness: "opencode", event: "Stop", proc });
-  assert.equal(listSessions(bob).find((s) => s.harness === "opencode").online, false);
-  await recordSession(bob, { id: "session-b", cwd: "/tmp", harness: "claude", event: "Stop", proc });
-  assert.equal(listSessions(bob).find((s) => s.harness === "claude").online, true);
-  await recordSession(bob, { id: "session-b", cwd: "/tmp", harness: "opencode", event: "UserPromptSubmit", proc });
-  assert.equal(listSessions(bob).find((s) => s.harness === "opencode").online, true);
 });
 
 test("CLI send --urgent, respond and identity", async (t) => {

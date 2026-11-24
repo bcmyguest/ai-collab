@@ -50,7 +50,7 @@ import { advanceRun, listRuns, startRun } from "../../lib/pattern-runs.mjs";
 import { formatTeamOrchestrator } from "../../lib/format.mjs";
 import { activityRows, groupSubagents, summarize } from "../lib/activity-rows.js";
 import { childRuns } from "../lib/child-subagents.js";
-import { fallbackName, sessionCounts, visibleWake, waitingOn } from "../lib/session-state.js";
+import { fallbackName, sessionCounts, shownOnline, visibleWake, waitingOn } from "../lib/session-state.js";
 import { createHostedUi } from "./hosted.mjs";
 import { createAuth } from "./auth.mjs";
 import { createHub } from "./hub.mjs";
@@ -719,7 +719,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       // Unfinished runs; the browser counts only those with a row in the last 2 min (runState).
       const subagents = (runs.get(agent.id) || []).map(run => ({ id: run.id, agent: run.agent, run: run.run, kind: run.kind, description: run.description, steps: run.steps, time: run.time, lastTime: run.lastTime, last: run.last, open: run.open }));
       return {
-        ...agent, project: cfg.project, harness: peerOf(agent.id), lastActivityAt: lastAt, ...(open ? { openCallAt: lastAt } : {}),
+        ...agent, project: cfg.project, harness: peerOf(agent.id), online: shownOnline(agent), lastActivityAt: lastAt, ...(open ? { openCallAt: lastAt } : {}),
         // Only the Stop hook's own "hold" status marks a hold; an ordinary turn end publishes "stop".
         afkHold: mode !== "off" && statuses.get(agent.id)?.event === "hold" && row?.type === "stop",
         ...(lastAction.has(agent.id) ? { lastAction: lastAction.get(agent.id) } : {}), subagents, pending: pending.get(agent.id) || [],
