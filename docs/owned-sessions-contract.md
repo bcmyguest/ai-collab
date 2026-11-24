@@ -407,7 +407,7 @@ How a UI start reaches the runner (the UI change comes with the first adapter, n
 The runner streams, per project, `ai-collab-<project>--to--all` plus `ai-collab-<project>--to--<harness>` for every loaded adapter, from the stored cursor.
 
 - A `msg` envelope with `to: <harness>` and `toSession: <label>` of an owned session (a direct message or an @mention) becomes a durable `input` message for that session.
-- A `msg` envelope with `to: "all"` on the broadcast topic, and raw operator text there that is neither a phone reply nor a question, becomes an `input` message for every owned session of the project, like a terminal session. A session's own broadcast is skipped. Each delivery to an idle owned session starts a turn.
+- A `msg` envelope with `to: "all"` on the broadcast topic, and raw operator text there that is neither a phone reply nor a question, becomes an `input` message only for an owned session the body `@mentions` (`@harness#label` or `@harness`). Other project-chat posts stay on the channel and do not start a turn. A session's own broadcast is skipped. A delivered post to an idle owned session starts a turn. A direct message still always wakes that session.
 - Every input is deduplicated by `ntfy:<event id>:<label>`. The text is `lib/format.mjs` `formatInbox([message])`, the same block hooks inject, so agents answer with `reply_to_operator` or `send_to_all` as they do today. `urgent: true` steers when the adapter can steer; otherwise it queues.
 - `reply <id> <answer>` on the broadcast topic answers the owned approval with that id (`lib/approvals.mjs` `replyDecision`). Anyone who can post to the project topic may answer.
 
@@ -570,7 +570,7 @@ Environment: `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (minutes before an unanswered owne
 ## Operator decisions (2026-11-21)
 
 - **DBOS:** keep the DBOS-shaped `node:sqlite` layer now; move to DBOS later.
-- **1 Broadcast delivery:** owned sessions receive every project-chat broadcast and every @mention, like terminal sessions. Each delivery to an idle owned session starts a turn.
+- **1 Broadcast delivery:** an owned session takes a project-chat post only when it `@mentions` that session or its harness, the same rule as a terminal session. A direct message always wakes it. Each such delivery to an idle owned session starts a turn.
 - **2 Cut runs:** every cut run is marked interrupted, on every adapter. No adapter resumes a cut run.
 - **3 Default modes:** each harness's auto mode where it has one, else the mode a user's own session uses:
   - Claude `auto`; Codex `auto` (on-request plus auto review); OpenCode `supervised` (its default asks go to the phone); Cursor `supervised` in a worktree.

@@ -12,7 +12,7 @@ The ntfy token is the trust boundary. Anyone who can read a project's topics see
 - **Inbound text is untrusted.** Every message is injected as a single JSON-quoted line, with control and bidi characters stripped and the body capped at 2000 characters for display. It is labelled as sender-claimed and untrusted data. Peer text cannot override the user’s request.
 - **Sender names are claimed.** Anyone who can publish to a topic can claim any `from`. Protect the ntfy server with auth and ACLs. Treat the token as the trust boundary.
 - **Best effort.** There is no outbox or retry; [read receipts](messaging.md#receipts) only drive the operator UI's ticks. A message sent while the server is down is lost. Messages are delivered to peers that read them within the server's cache window.
-- **Bounded work.** Each claim reads at most 20 messages and 256 KB per topic. Inbox reads are throttled. Hooks deliver messages once per session using a cursor and recent message IDs. Sessions that share a peer name each see the broadcast.
+- **Bounded work.** Each claim reads at most 20 messages and 256 KB per topic. Inbox reads are throttled. Hooks deliver messages once per session using a cursor and recent message IDs. Sessions that share a peer name each see a project-chat post that `@mentions` that harness or their own session, and each sees a direct message on the peer inbox.
 
 ## Approvals and replies
 

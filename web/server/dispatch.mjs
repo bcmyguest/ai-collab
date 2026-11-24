@@ -167,6 +167,7 @@ export function createDispatcher({
       if (!await ready(session, active)) continue;
       const scfg = { ...cfg, peer: session.peer, session: session.session };
       // The predicate runs before the cap: fyi, broadcasts and messages in backoff or reserved do not use up the claim.
+      // A project-chat @mention is not pushed here. claimInbox and the runner deliver it to the session it names.
       const candidates = await claim(scfg, {
         commit: false, limit: CLAIM_LIMIT, accept: (m) => direct(m) && !cooling(session, m.id),
       }).catch(() => []);

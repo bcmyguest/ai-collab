@@ -52,7 +52,7 @@ test("the UI downloads an attachment once and every later read, and every agent,
 
   const stream = sse(ui.events(new Request("http://127.0.0.1:8795/api/events", { signal: ctrl.signal })));
   await stream.next();
-  await sendMessage(agent, "all", "Here is the screenshot", { attachment: tempPng() });
+  await sendMessage(agent, "all", "@claude Here is the screenshot", { attachment: tempPng() });
   const message = await nextMessage(stream, (item) => Boolean(item.attachment));
 
   const first = await ui.file(message.attachment.file);
@@ -68,7 +68,7 @@ test("the UI downloads an attachment once and every later read, and every agent,
   assert.deepEqual(fake.state.fileReads, [message.attachment.file], "no reload or re-render downloads the file again");
 
   // The UI's copy is the one the agent reads: a claim carries its path and downloads nothing.
-  const [claimed] = (await claimInbox(shared)).filter((m) => m.body === "Here is the screenshot");
+  const [claimed] = (await claimInbox(shared)).filter((m) => m.body === "@claude Here is the screenshot");
   assert.ok(claimed.attachment?.local_path, "the delivered message names the cached file");
   assert.equal(readFileSync(claimed.attachment.local_path).length, PNG.length);
   assert.deepEqual(fake.state.fileReads, [message.attachment.file], "the agent reused the UI's copy");
@@ -85,9 +85,9 @@ test("an agent that sees a screenshot first downloads it once, and the UI then s
 
   const stream = sse(ui.events(new Request("http://127.0.0.1:8795/api/events", { signal: ctrl.signal })));
   await stream.next();
-  await sendMessage(loadConfig(peerEnv(fake, { peer: "bob" })), "all", "from bob", { attachment: tempPng() });
+  await sendMessage(loadConfig(peerEnv(fake, { peer: "bob" })), "all", "@claude from bob", { attachment: tempPng() });
 
-  const [claimed] = (await claimInbox(agent)).filter((m) => m.body === "from bob");
+  const [claimed] = (await claimInbox(agent)).filter((m) => m.body === "@claude from bob");
   assert.ok(claimed.attachment?.local_path, "the agent cached the file it was handed");
   assert.equal(fake.state.fileReads.length, 1);
 
