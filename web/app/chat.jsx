@@ -110,9 +110,10 @@ async function api(path, payload) {
   return result;
 }
 
-/** "msg 3m ago · active just now"; activity comes from the agent's hooks. */
+/** "msg 3m ago · active just now" only while the session is waiting, held, or working. Hook seenAt is not a turn. */
 function seen(item, now) {
-  return item.activeAt ? `msg ${ago(item.lastMessageAt, now)} · active ${ago(item.activeAt, now)}` : `msg ${ago(item.lastMessageAt, now)}`;
+  const live = item.live === true || (item.live === undefined && isLive(item, now));
+  return live && item.activeAt ? `msg ${ago(item.lastMessageAt, now)} · active ${ago(item.activeAt, now)}` : `msg ${ago(item.lastMessageAt, now)}`;
 }
 
 /** After a deploy the server runs a newer build than this page; offer a reload until the operator takes it. */
@@ -217,7 +218,7 @@ function SessionRow({ agent, project, selected, now, navigate, dispose, openRaw,
         </span>
         {agent.waiting && <span role="img" aria-label="Waiting on you" title="Waiting on you" className="inline-block size-2.5 shrink-0 rounded-full bg-amber-500 ring-2 ring-amber-500/25"/>}
         <Dot online={isLive(agent, now)}/>
-        <span className="shrink-0 text-right text-[11px] leading-tight text-muted-foreground">{ago(agent.lastMessageAt, now)}{agent.activeAt ? <><br/>active {ago(agent.activeAt, now)}</> : null}</span>
+        <span className="shrink-0 text-right text-[11px] leading-tight text-muted-foreground">{ago(agent.lastMessageAt, now)}{isLive(agent, now) && agent.activeAt ? <><br/>active {ago(agent.activeAt, now)}</> : null}</span>
       </button>
       {dispose && <SessionMenu node={{ ...agent, project }} disabled={disabled} dispose={dispose} raw={openRaw} map={() => navigate({ project, level: "compactions" })} label={"Session actions for " + agent.id}/>}
     </div>
@@ -422,7 +423,7 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
   const pending = useRef(false);
   const prefillFocused = useRef(false);
   const mention = mentionAt(draft);
-  const options = [...agents.map(agent => ({ id: agent.id, name: agent.name, lastMessageAt: agent.lastMessageAt, activeAt: agent.activeAt, online: agent.online })),
+  const options = [...agents.map(agent => ({ id: agent.id, name: agent.name, lastMessageAt: agent.lastMessageAt, activeAt: agent.activeAt, online: agent.online, live: isLive(agent, now) })),
     ...harnesses.map(harness => ({ id: harness.id, lastMessageAt: harness.lastMessageAt, activeAt: harness.activeAt, harness: true })),
     ...(teams || []).map(team => ({ id: team.id, team: true, members: team.members })),
     ...startable.flatMap(harness => modelsOf(models, harness).map(model => ({ id: harness + ":" + model, harness, model }))),
@@ -532,7 +533,7 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
         <Avatar address={option.run ? option.owner : option.model ? option.harness : option.team ? "operator" : option.id} className="size-6 text-[9px]"/>
         <span className="flex min-w-0 flex-1 flex-col">{option.run ? <span className="truncate text-xs text-foreground/80">{option.label}</span> : <span className="truncate font-mono text-xs">@{option.id}</span>}
           {option.run ? null : option.model ? <span className="truncate text-xs text-foreground/80">{(HARNESS_NAMES[option.harness] || option.harness) + " · " + option.model}</span> : option.team ? <span className="truncate text-xs text-foreground/80">{(option.members || []).join(", ")}</span> : <SessionName agent={option}/>}</span>
-        {!option.harness && !option.run && !option.team && <Dot online={isLive(option, now)}/>}
+        {!option.harness && !option.run && !option.team && <Dot online={option.live === true}/>}
         <span className="shrink-0 text-xs text-muted-foreground">{option.run ? "subagent" : option.team ? "team" : option.model ? "new session" : (option.harness ? "harness · " : "") + seen(option, now)}</span>
       </button>)}
     </div>}

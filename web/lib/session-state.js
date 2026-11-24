@@ -44,6 +44,22 @@ export function isLive(s, now) {
   return LIVE.has(sessionState(s, now));
 }
 
+/** True when All sessions keeps this group open. Idle and offline stay in the collapsed inactive section. */
+export function isOpenGroup(group) {
+  return LIVE.has(group);
+}
+
+/** Open-list cards by group, and idle roots that fold into the inactive section. Offline stays out of both. */
+export function listedGroups(tree) {
+  const open = new Map(STATES.filter(isOpenGroup).map(group => [group, []]));
+  const idle = [];
+  for (const node of tree) {
+    if (isOpenGroup(node.group)) open.get(node.group).push(node);
+    else if (node.group === "idle") idle.push(node);
+  }
+  return { open, idle };
+}
+
 /** A project's sessions as running (a live turn) and off (idle or offline) for its sidebar row. */
 export function sessionCounts(agents, now = Date.now()) {
   const running = agents.filter((agent) => isLive(agent, now)).length;
