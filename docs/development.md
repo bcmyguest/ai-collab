@@ -34,11 +34,13 @@ Rollback: remove the `pm` entry, then re-enable the timer with `systemctl --user
 
 ### Starting builders from the PM
 
-Allow the `builder_start` tool on the `ai-collab` MCP server in the host PM's tool guard. Call it with the task ID, an inline brief of up to 4,000 characters, and the session label from the hook. Start the brief with a heading or sentence. For Codex, the brief and the appended sandbox notes must fit within 4,000 characters.
+Allow the `builder_start` tool on the `ai-collab` MCP server in the host PM's tool guard. Pass the task ID as `task`, the brief itself as `brief` (up to 4,000 characters), and the calling PM's 16-character lowercase hexadecimal hook label as `session`. Start the brief with a heading or sentence. For Codex, the brief and the appended sandbox notes must fit within 4,000 characters.
 
 ```json
 {"task":"fix-build","brief":"Fix the failing build and run the test suite.","session":"0123456789abcdef","harness":"codex","model":"gpt-6.2-sol"}
 ```
+
+To read a brief from a file, use `ai-collab builder start --task <id> --brief <file>` on the host.
 
 `harness` and `model` use the CLI defaults when omitted. The tool uses the PM's configured project and returns the task, sandbox, worktree, branch, and either the runner session or the systemd unit. It applies the same project pause and sandbox capacity checks as `ai-collab builder start`. The tool is available through direct host MCP calls. The code-mode allowlists exclude builder launches, and sandboxed builders and scheduled ticks have no direct `builder_start` tool.
 
