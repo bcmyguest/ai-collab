@@ -139,3 +139,11 @@ A writing agent turns a plain-language request into one `team.dot`; the operator
 ## Legacy team roster in the UI
 
 Open a legacy team in **Patterns and teams** to see its member roster. For a project team, **Edit roster** lets you save one harness or harness:model per line. Global rosters are read-only in the UI. Teams also work through `ai-collab team create|list|delete|start|status`, the MCP `team_*` tools, and `@team` chats. Create new coordination as a pattern.
+
+## Strategist/Architect
+
+Start the project pattern with `ai-collab pattern start architect "#<task-id> <objective>"` from the host shell. The entry role registers the session identity tag `role:architect`, which you can find with `ai-collab agents --tag role:architect`.
+
+From the host session, check the [task board](tasks.md#decisions) and include the answer in the run brief. If the decision is pending, keep the run at the Architect role and relay the answer to that session when the operator responds. Builder task snapshots cannot observe host board updates.
+
+The required `brief ready` handoff sends the PM the task ID, objective, scope, constraints, tradeoffs, risks, and acceptance criteria. The PM returns the agreed scope and delivery next steps to the host operator for recording on the task board.
