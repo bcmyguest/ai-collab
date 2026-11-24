@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { HarnessLogo, hasLogo } from "./logos";
-import { Activity, Square, ArrowLeft, ArrowUp, AtSign, Bot, Check, CheckCheck, CircleCheck, Coffee, CornerLeftUp, FolderGit2, ListChecks, LoaderCircle, Menu, Minimize2, Monitor, Moon, Plus, Reply, RotateCw, Sun, VolumeX, X, Zap } from "lucide-react";
+import { Activity, Square, ArrowLeft, ArrowUp, AtSign, Bot, Check, CheckCheck, CircleCheck, Coffee, CornerLeftUp, FolderGit2, LoaderCircle, Menu, Minimize2, Monitor, Moon, Plus, Reply, RotateCw, Sun, VolumeX, X, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatContainerContent, ChatContainerRoot, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
@@ -285,7 +285,7 @@ function AgentList({ agents, project, selected, now, navigate, dispose, openRaw,
   </section>;
 }
 
-function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, disabled, projectAction, openHash, inactiveOpen, onInactiveToggle }) {
+function Sidebar({ projectNav, data, selected, now, navigate, newSession, dispose, openRaw, disabled, projectAction, openHash, inactiveOpen, onInactiveToggle }) {
   const current = selected.project || data.project;
   // Home's state carries the server's default project's agents; they are not "this project" here.
   const home = selected.level === "home" || selected.level === "inbox";
@@ -296,7 +296,7 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
     const group = sessionState(agent, now) === "offline" ? inactive : active;
     group.push(agent);
   }
-  return <nav aria-label="Projects" className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto p-4">
+  return <div className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto p-4">
     <button type="button" onClick={() => navigate({ level: "home" })} aria-current={selected.level === "home" ? "page" : undefined}
       className="flex items-center gap-2 rounded-xl px-2 text-left text-sm font-semibold tracking-tight" title="Home: every project's sessions">
       <span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground">ai</span>AI Collab
@@ -323,23 +323,7 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
       </ul>
       {data.closedProjects?.length > 0 && <div className="pt-4"><ClosedProjects names={data.closedProjects} act={projectAction}/></div>}
     </section>
-    {!home && <section className="px-2 pb-2">
-      {/* The task board has its own entry, beside Patterns and teams, rather than a link beside SESSIONS. */}
-      <button type="button" onClick={() => navigate({ project: current, level: "tasks" })} aria-current={selected.level === "tasks" ? "page" : undefined}
-        title="Every task in this project, on a status board"
-        className={cn("flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left text-sm transition-colors hover:bg-sidebar-accent", selected.level === "tasks" && "bg-sidebar-accent font-medium")}>
-        <ListChecks className="size-4 shrink-0 text-muted-foreground"/>
-        <span className="min-w-0 flex-1 truncate">Tasks</span>
-        {(() => { const waiting = (data.tasks?.tasks || []).filter(task => task.question && !task.question.answer).length;
-          return waiting > 0 && <span aria-label={`${waiting} waiting on your decision`} className="shrink-0 rounded-full bg-amber-500 px-1.5 text-xs font-medium text-white">{waiting} need you</span>; })()}
-        <span className="shrink-0 text-xs text-muted-foreground">{(data.tasks?.tasks || []).length}</span>
-      </button>
-      <button type="button" onClick={() => navigate({ project: current, level: "patterns" })} aria-current={selected.level === "patterns" ? "page" : undefined}
-        className={cn("flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left text-sm transition-colors hover:bg-sidebar-accent", selected.level === "patterns" && "bg-sidebar-accent font-medium")}>
-        <span className="min-w-0 flex-1 truncate">Patterns and teams</span>
-        <span className="shrink-0 text-xs text-muted-foreground">{(data.patterns || []).length}</span>
-      </button>
-    </section>}
+    {projectNav}
     {/* Scheduled jobs are the runner's own entries, not agents: they stay in their own section below. */}
     <ScheduledJobs project={home ? "" : current} openRun={openHash}/>
     {/* Agents (sessions that set an identity name) sit apart from the plain session rows and from Scheduled jobs. */}
@@ -362,7 +346,7 @@ function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, 
         </ul>
       </InactiveSessions>}
     </section>
-  </nav>;
+  </div>;
 }
 
 function ZoomControls({ data, selected, now, navigate, compact }) {
@@ -1042,23 +1026,39 @@ function Console({ account }) {
     const done = await action(path, { project: name }, path === "close" ? "Closed" : path === "reopen" ? "Reopened" : "Deleted");
     if (done && path !== "reopen" && name === (selected.project || data.project)) navigate({ level: "home" });
   }
-  const sidebar = <Sidebar inactiveOpen={inactiveOpen} onInactiveToggle={rememberInactive} data={data} selected={selected} now={now} navigate={navigate} newSession={newSession} disabled={working} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")} openRaw={openRaw} projectAction={projectAction}
-    openHash={hash => { setNavOpen(false); location.hash = hash.slice(1); }}/>;
+  const sidebarProps = {
+    inactiveOpen, onInactiveToggle: rememberInactive, data, selected, now, navigate, newSession, disabled: working,
+    dispose: node => action("dispose", { project: node.project, target: node.id }, "Disposed"), openRaw, projectAction,
+    openHash: hash => { setNavOpen(false); location.hash = hash.slice(1); },
+  };
   const anyWaiting = data.projects.some(project => project.waiting > 0);
-  const projectNav = projectLinks.length > 0 && <nav aria-label="Project views" className="shrink-0 border-t bg-background px-3 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
-    <div className="mx-auto grid max-w-3xl grid-cols-3 gap-1">
-      {projectLinks.map(({ label, href, current }) => <a key={href} href={href} aria-current={current ? "page" : undefined}
-        className={cn("flex min-h-11 items-center justify-center rounded-lg px-2 text-sm font-medium focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
-          current ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>{label}</a>)}
-    </div>
-  </nav>;
+  const navTasks = ready ? data.tasks?.tasks || [] : [];
+  const navWaiting = navTasks.filter(task => task.question && !task.question.answer).length;
+  function renderProjectNav(rail) {
+    if (projectLinks.length === 0) return null;
+    return <nav aria-label="Project views" className={rail ? "hidden md:block" : "shrink-0 border-t bg-background px-3 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] md:hidden"}>
+      <div className={rail ? "flex flex-col gap-1" : "mx-auto grid max-w-3xl grid-cols-3 gap-1"}>
+        {projectLinks.map(({ label, href, current }) => <a key={href} href={href} aria-current={current ? "page" : undefined}
+          className={cn("flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-medium focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+            rail ? "justify-between" : "justify-center",
+            current ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
+          {label}
+          {rail && ready && label === "Tasks" && <>
+            {navWaiting > 0 && <span className="ml-auto rounded-full bg-amber-500 px-1.5 text-xs font-medium text-white">{navWaiting} need you</span>}
+            <span className="text-xs">{navTasks.length}</span>
+          </>}
+          {rail && ready && label === "Patterns" && <span className="text-xs">{(data.patterns || []).length}</span>}
+        </a>)}
+      </div>
+    </nav>;
+  }
   return <SurfaceContext.Provider value={{ surfaces, submit: payload => action("a2ui", payload, "Sent"), disabled: !ready || working }}><div className="flex h-dvh w-full overflow-hidden">
-    <aside className="hidden w-72 shrink-0 border-r bg-sidebar text-sidebar-foreground md:block">{sidebar}</aside>
+    <aside className="hidden w-72 shrink-0 border-r bg-sidebar text-sidebar-foreground md:block"><Sidebar {...sidebarProps} projectNav={renderProjectNav(true)}/></aside>
     <Sheet open={navOpen} onOpenChange={setNavOpen}>
       <SheetContent side="left" className="w-[85vw] max-w-80 bg-sidebar p-0">
         <SheetTitle className="sr-only">Projects</SheetTitle>
         <SheetDescription className="sr-only">Pick a project or a session</SheetDescription>
-        {sidebar}
+        <Sidebar {...sidebarProps}/>
       </SheetContent>
     </Sheet>
     <OutcomeRequest project={outcomeProject} close={() => setOutcomeProject("")} disabled={working} error={outcomeError}
@@ -1240,7 +1240,7 @@ function Console({ account }) {
           }
           return sent;
         }}/>}
-      {projectNav}
+      {renderProjectNav(false)}
     </main>
   </div></SurfaceContext.Provider>;
 }

@@ -27,9 +27,14 @@ test("task and pattern deep links highlight their parent view", () => {
   }
 });
 
-test("project navigation is scoped to the three project views", () => {
-  for (const level of ["home", "inbox", "session", "compactions"]) {
+test("project navigation appears only within a project", () => {
+  for (const level of ["home", "inbox"]) {
     assert.deepEqual(projectNavigation("demo", level), []);
   }
   assert.deepEqual(projectNavigation("", "project"), []);
+  for (const level of ["session", "compactions"]) {
+    const links = projectNavigation("demo", level);
+    assert.equal(links.length, 3);
+    assert.equal(links.some(link => link.current), false);
+  }
 });
