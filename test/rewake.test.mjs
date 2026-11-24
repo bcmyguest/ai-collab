@@ -39,7 +39,7 @@ test("runWaiter claims a waiting message at once and returns exit code 2 with th
   assert.equal(r.code, 2);
   assert.match(r.text, /from=bob/);
   assert.match(r.text, /body="review PR 12"/);
-  assert.match(r.text, /Your sender identity is alice#/);
+  assert.doesNotMatch(r.text, /Your sender identity is alice#/);
 });
 
 test("runWaiter wakes on a message that arrives on the stream", async (t) => {

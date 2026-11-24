@@ -14,7 +14,7 @@ import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, receiptsTopic, 
 import { RESERVE_MS, ATTACHMENT_BUDGET_MS, claimInbox, markDelivered, mentionsAgent, parseEnvelope, releaseOwned, reserveOwned, reservedMessage } from "../lib/inbox.mjs";
 import { parsePhoneReply, parseQuestionText } from "../lib/questions.mjs";
 import { replyDecision, APPROVAL_ID } from "../lib/approvals.mjs";
-import { formatInbox, identityLine } from "../lib/format.mjs";
+import { formatInbox } from "../lib/format.mjs";
 import { attachmentOf, cacheAttachmentsWithin, localizedAttachment } from "../lib/attachment-cache.mjs";
 import { streamEvents } from "../lib/ntfy.mjs";
 import { listSessions, recordSession } from "../lib/sessions.mjs";
@@ -534,7 +534,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         batch = batch.filter((m) => got.owned.includes(m.id)).map(m => reservedMessage(scfg, m)).filter(Boolean);
         if (!batch.length) break;
         const shown = await cacheAttachmentsWithin(scfg, batch, { budgetMs: ATTACHMENT_BUDGET_MS });
-        const text = formatInbox(shown, { session: label });
+        const text = formatInbox(shown, { session: label, peer: harness });
         const messageIds = batch.map((m) => m.id);
         const sent = await wf.step("wake.send", async () => {
           // A harness that refused the turn without starting it and says the session is still closing (a codex thread
@@ -660,7 +660,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     textFor: async (scfg, message, attemptNo) => {
       const shown = attemptNo > 1 ? { ...message, attempt: attemptNo, attempts: MAX_ATTEMPTS } : message;
       const [cached] = await cacheAttachmentsWithin(scfg, [shown], { budgetMs: ATTACHMENT_BUDGET_MS });
-      return [identityLine(scfg), formatInbox([cached], { session: scfg.session })].filter(Boolean).join("\n");
+      return formatInbox([cached], { session: scfg.session, peer: scfg.peer });
     },
   };
   const deps = { ...deliveryDeps, ...delivery };
@@ -1192,7 +1192,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     // A live session gets the message only after any attachment is in the shared cache, so it reads the file
     // rather than downloading it again.
     const [cached] = await cacheAttachmentsWithin({ ...cfg, peer: s.record.harness, session: s.record.label }, [message], { budgetMs: ATTACHMENT_BUDGET_MS });
-    const text = formatInbox([cached], { session: s.record.label });
+    const text = formatInbox([cached], { session: s.record.label, peer: s.record.harness });
     await send(s.record.address, { text, steer: urgent, messageIds: [message.id], dedupe: `ntfy:${message.id}:${s.record.label}` }).catch((error) => log(`delivery failed: ${error.message}`));
   }
 

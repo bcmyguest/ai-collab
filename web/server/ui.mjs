@@ -46,7 +46,7 @@ import { mentions, mentionedNames, mentionedTeams, startOnlyMentions, messageDes
 import { taskTags } from "../lib/task-tags.js";
 import { shippedTasks } from "./shipped.mjs";
 import { taskBoard } from "./task-board.mjs";
-import { advanceRun, listRuns, startRun } from "../../lib/pattern-runs.mjs";
+import { advanceRun, listRuns, rolesByAddress, startRun } from "../../lib/pattern-runs.mjs";
 import { formatTeamOrchestrator } from "../../lib/format.mjs";
 import { activityRows, groupSubagents, summarize } from "../lib/activity-rows.js";
 import { childRuns } from "../lib/child-subagents.js";
@@ -712,6 +712,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }
     }
     const pending = pendingBySender(project, list);
+    const membership = rolesByAddress(listRuns(cfg));
     return shown.map(agent => {
       const row = latest.get(agent.id);
       const lastAt = row ? Math.max(row.time, ...(row.rows || []).map(r => r.time)) * 1000 : 0;
@@ -723,6 +724,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         // Only the Stop hook's own "hold" status marks a hold; an ordinary turn end publishes "stop".
         afkHold: mode !== "off" && statuses.get(agent.id)?.event === "hold" && row?.type === "stop",
         ...(lastAction.has(agent.id) ? { lastAction: lastAction.get(agent.id) } : {}), subagents, pending: pending.get(agent.id) || [],
+        ...(membership.get(agent.id) ? { team: membership.get(agent.id).team, role: membership.get(agent.id).role } : {}),
         ...cardContext(cfg, agent),
       };
     });
@@ -1075,8 +1077,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         const owned = agent.peer === "claude" && agent.id === session ? readOwned(project.cfg, agent.session) : null;
         const modelControl = owned?.address === agent.id && ["idle", "running"].includes(owned.status)
           ? { current: owned.model || "", busy: owned.status === "running" } : null;
-        const { lastActivityAt, openCallAt, afkHold, pending } = card || {};
-        const base = { ...agent, lastActivityAt, openCallAt, afkHold, pending, ...(subagents.length ? { subagents } : {}), ...(modelControl ? { modelControl } : {}) };
+        const { lastActivityAt, openCallAt, afkHold, pending, team, role } = card || {};
+        const base = { ...agent, lastActivityAt, openCallAt, afkHold, pending, ...(team ? { team, role } : {}), ...(subagents.length ? { subagents } : {}), ...(modelControl ? { modelControl } : {}) };
         // Context telemetry and instruction files from the session's state file (lib/usage.mjs).
         const context = readContext({ stateDir: project.cfg.stateDir, project: project.cfg.project, peer: agent.peer, session: agent.session });
         const withContext = context.tokens !== null || context.files.length ? { ...base, context } : base;

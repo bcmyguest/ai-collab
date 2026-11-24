@@ -110,6 +110,12 @@ async function api(path, payload) {
   return result;
 }
 
+/** Team and role for a session address, from the agent list. Empty when the session holds no live role. */
+function seatOf(agents, address) {
+  const agent = (agents || []).find(item => item.id === address);
+  return agent?.team ? agent.team + " · " + agent.role : "";
+}
+
 /** "msg 3m ago · active just now" only while the session is waiting, held, or working. Hook seenAt is not a turn. */
 function seen(item, now) {
   const live = item.live === true || (item.live === undefined && isLive(item, now));
@@ -214,6 +220,7 @@ function SessionRow({ agent, project, selected, now, navigate, dispose, openRaw,
             <span className="truncate font-mono text-xs">{short(agent.id)}</span><SessionName agent={agent}/>
           </>}
           {agent.owner && <span className="truncate text-[11px] text-muted-foreground">@{agent.owner}</span>}
+          {agent.team && <span className="truncate text-[11px] text-muted-foreground" title="Team and role">{agent.team} · {agent.role}</span>}
           <span className="self-start"><RunningCount runs={agent.subagents} now={now}/></span>
         </span>
         {agent.waiting && <span role="img" aria-label="Waiting on you" title="Waiting on you" className="inline-block size-2.5 shrink-0 rounded-full bg-amber-500 ring-2 ring-amber-500/25"/>}
@@ -622,7 +629,7 @@ function CompletionRow({ row, when, open }) {
   return <button type="button" data-type="completion" onClick={() => open(row.agent)} title={row.agent}
     className="flex min-w-0 items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent">
     <CircleCheck className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400"/>
-    <span className="min-w-0 flex-1 truncate"><span className="font-mono text-foreground">{short(row.agent)}</span> finished{row.turns > 1 ? " " + row.turns + " turns" : ""}{row.text && " · " + row.text}</span>
+    <span className="min-w-0 flex-1 truncate"><span className="font-mono text-foreground">{short(row.agent)}</span>{row.seat && " · " + row.seat} finished{row.turns > 1 ? " " + row.turns + " turns" : ""}{row.text && " · " + row.text}</span>
     {row.time > 0 && <time className="shrink-0 text-xs" dateTime={new Date(row.time * 1000).toISOString()}>{when(row.time * 1000)}</time>}
   </button>;
 }
@@ -632,7 +639,7 @@ function LiveRow({ row, open }) {
   return <button type="button" data-type="live" onClick={() => open(row.agent)} title={row.agent}
     className="flex min-w-0 items-center gap-2 rounded-xl border border-dashed bg-card px-2.5 py-1.5 text-left text-sm">
     <LoaderCircle className="size-4 shrink-0 animate-spin text-muted-foreground"/>
-    <span className="min-w-0 flex-1 truncate"><span className="font-mono">{short(row.agent)}</span> · working{row.summary && " on " + row.summary}</span>
+    <span className="min-w-0 flex-1 truncate"><span className="font-mono">{short(row.agent)}</span>{row.seat && " · " + row.seat} · working{row.summary && " on " + row.summary}</span>
   </button>;
 }
 
@@ -1150,7 +1157,7 @@ function Console({ account }) {
           {!home && !listing && !subagents && (!ready || thread.length + live.length === 0) && <p className="py-16 text-center text-sm text-muted-foreground">
             {ready ? (raw ? "No activity yet." : "No messages yet.") : loadError ? "" : watching ? "Loading project chat…" : "Loading conversation…"}</p>}
           {ready && !home && !listing && !subagents && thread.map(({ message, activity: row }) => row
-            ? row.type === "completion" ? <CompletionRow key={row.id} row={row} when={at => ago(at, now)} open={openAddress}/>
+            ? row.type === "completion" ? <CompletionRow key={row.id} row={{ ...row, seat: seatOf(data.agents, row.agent) }} when={at => ago(at, now)} open={openAddress}/>
               : <ActivityRow key={row.id} row={row} when={at => ago(at, now)} now={now} goRun={goRun}/>
             : <ChatMessage key={message.id} message={message} operator={data.operator} me={account.user?.login} now={now} open={openAddress} disabled={!ready || working} taskLinks={taskLinks}
               detail={agentDetail(data.agents.find(agent => agent.id === message.from))}
@@ -1158,7 +1165,7 @@ function Console({ account }) {
               skip={payload => action("skip", payload, "Skipped")}
               reply={id => { setQuestion(id); setNotice(""); document.getElementById("composer")?.focus(); }}
               replyFrom={target => setReplyTo(target)}/>)}
-          {ready && watching && live.map(row => <LiveRow key={row.id} row={row} open={openAddress}/>)}
+          {ready && watching && live.map(row => <LiveRow key={row.id} row={{ ...row, seat: seatOf(data.agents, row.agent) }} open={openAddress}/>)}
           {ready && inline && <Working rows={rows} now={now}/>}
           <ChatContainerScrollAnchor/>
         </ChatContainerContent>

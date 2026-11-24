@@ -142,8 +142,8 @@ async function deliver(cfg, host, event, msg, key) {
   const messages = await claimInbox(cfg, { throttle: event !== "SessionStart", limit: 4 });
   sendReceipts(cfg, messages.map((m) => m.id));
   const note = await takeModeNote(cfg, { force: event === "SessionStart" });
-  const identity = event === "SessionStart" || messages.length ? identityLine(cfg) : "";
-  const text = [note, identity, family, formatInbox(messages, { session: cfg.session })].filter(Boolean).join("\n");
+  const identity = event === "SessionStart" ? identityLine(cfg) : "";
+  const text = [note, identity, family, formatInbox(messages, { session: cfg.session, peer: cfg.peer })].filter(Boolean).join("\n");
   return hookOutput(host, event, text);
 }
 

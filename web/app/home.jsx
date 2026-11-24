@@ -72,7 +72,7 @@ function SessionCard({ node, now, open, openAddress, act, answer, skip, dispose,
           className="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-md text-left hover:bg-accent">
           <span className="w-full truncate font-medium" title={name}>{name}</span>
           <span className="flex w-full min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-            <span className="min-w-0 truncate" title={[node.project, folder].filter(Boolean).join(" · ")}>{node.project}{folder && " · " + folder}</span>
+            <span className="min-w-0 truncate" title={[node.project, folder, node.team && node.team + " · " + node.role].filter(Boolean).join(" · ")}>{node.project}{folder && " · " + folder}{node.team && " · " + node.team + " · " + node.role}</span>
             <StateChip state={node.state}/>
             {activity && <span className="shrink-0">{activity}</span>}
           </span>
@@ -93,6 +93,7 @@ function SessionCard({ node, now, open, openAddress, act, answer, skip, dispose,
             <span className="font-mono">{short(node.id)}</span>
             {node.owner && <span title="Agent owner">· @{node.owner}</span>}
             {node.harness && <span title="Agent type">· {HARNESS_LABELS[node.harness] || node.harness}</span>}
+            {node.team && <span title="Team and role">· {node.team} · {node.role}</span>}
             {node.where && <span title="Where it runs">· {node.where}</span>}
             {showProject && <span>· {node.project}</span>}
             {activity && <span>· active {activity}</span>}
@@ -111,6 +112,7 @@ function SessionCard({ node, now, open, openAddress, act, answer, skip, dispose,
           className={cn(meter.level === "full" && "text-destructive", meter.level === "warn" && "text-amber-600")}>Context {meter.text}</span>}
         {node.owner && <span title="Agent owner">@{node.owner}</span>}
         {node.harness && <span title="Agent type">{HARNESS_LABELS[node.harness] || node.harness}</span>}
+        {node.team && <span title="Team and role">{node.team} · {node.role}</span>}
         {node.where && <span title="Where it runs">{node.where}</span>}
       </div>}
       {(!compact || detailsOpen) && node.parent && <p className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
