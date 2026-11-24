@@ -34,6 +34,11 @@ if (process.env.FAKE_CURSOR_API_PORT) {
   });
 }
 if (mode === "fail") process.exit(3);
+if (mode === "restart" && !readFileSync("notes.md", "utf8").includes("pending fallback edit")) {
+  appendFileSync("notes.md", "pending fallback edit\n");
+  setInterval(() => {}, 1000);
+  await new Promise(() => {});
+}
 if (mode === "cursor-limit") {
   console.error("ActionRequiredError: You've hit your usage limit. Your usage limits will reset when your monthly cycle ends on 12/18/2099.");
   process.exit(1);
@@ -48,7 +53,7 @@ if (mode === "commit") {
     execFileSync("sh", ["-c", command], { input: JSON.stringify({ hook_event_name: "postToolUse", cwd: `/sandbox/work/${basename(process.cwd())}` }) });
   }
 }
-if (mode === "commit" || mode === "empty") {
+if (mode === "commit" || mode === "empty" || mode === "restart") {
   const task = process.env.FAKE_BUILDER_TASK;
   execFileSync(join(sandbox, "tools", "bin", "ai-collab"), ["task", "progress", task, "half way"]);
   execFileSync(join(sandbox, "tools", "bin", "ai-collab"), ["task", "set", task, "status=done"]);
