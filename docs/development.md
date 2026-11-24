@@ -19,6 +19,16 @@ AI_COLLAB_NEXT_DIST=.next-demo node tools/smoke-ui.mjs --ui-sdk
 
 The browser runs the SDK's `snapshot()` and `act()` against the outcome form, then submits it to a local fixture. The flag exposes `window.aiCollabTestBridge` for test builds. For deployment, run `npm run build` with the flag unset.
 
+### Chat browser checks
+
+```sh
+npm run build
+node tools/smoke-ui.mjs --composer
+AI_COLLAB_BROWSER_TEST=1 node --test test/chat-queue-browser.test.mjs
+```
+
+The checks use a 390-pixel viewport and a local ntfy fixture. They cover message routing, urgent sends, edits and cancellation in the queue, and draft isolation between project and session chats. Set `CHROME_PATH` if Chromium is outside the Playwright cache.
+
 ## Owned-session runner
 
 `runner/` holds the `ai-collab-runner` service skeleton: the adapter contract, a SQLite workflow log, the control socket and a fake adapter. Adapters code against [the owned-sessions contract](owned-sessions-contract.md). Run it with `npm run runner`; `deploy/ai-collab-runner.service` is the user-unit template.
