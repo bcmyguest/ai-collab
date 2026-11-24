@@ -5,14 +5,14 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { EventType } from "@ag-ui/core";
-import { sessionLabel } from "../../lib/config.mjs";
+import { autoDefaults, sessionLabel } from "../../lib/config.mjs";
 import { exportSpans, otlpEndpoint, runRecorder } from "../../lib/cursor-trace.mjs";
 import { cursorBinary, findExecutable } from "../../lib/start.mjs";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, permissionSettings } from "../contract.mjs";
 import { builderPolicy } from "../../lib/builder.mjs";
 import {
   destroySandbox, downloadTree, ensureSandbox as ensureSandboxIn, execArgv as sandboxExecArgv, runTool,
-  sandboxName as sandboxNameFor, teamSandboxName, uploadFile, uploadLogins, uploadTree,
+  sandboxName as sandboxNameFor, teamSandboxName, uploadFile, uploadLogins, uploadSecret, uploadTree,
 } from "../sandbox.mjs";
 
 // ACP protocolVersion 1 and the method names come from the ACP spec; `agent acp` answered `initialize`
@@ -27,6 +27,9 @@ const OWNED = { AI_COLLAB_OWNED: "cursor" };
 const SANDBOX_ROOT = "/sandbox";
 const SANDBOX_HOME = "/sandbox/home";
 const SANDBOX_BIN = "/sandbox/bin";
+// The host ntfy, as the runner's sandbox stage publishes it. The file is the only copy of the bearer token.
+const NTFY_URL = "http://host.openshell.internal:8794";
+const TOKEN_IN = `${SANDBOX_HOME}/.config/ai-collab/ntfy-token`;
 // The name the CLI is launched by inside a sandbox, whatever it is called on the host.
 const SANDBOX_LAUNCHER = "cursor-agent";
 // The CLI marks itself non-dumpable unless this is set; OpenShell then cannot read its /proc/<pid>/exe and denies its sockets (lib/builder.mjs).
@@ -175,8 +178,11 @@ function connect(argv, { env, cwd, log, onRequest, onNotify }) {
  * is uploaded before the run and downloaded after it; the CLI tree is uploaded once under SANDBOX_ROOT; auth is the
  * host's `$XDG_CONFIG_HOME/cursor/auth.json` (or `~/.config/cursor/auth.json`), written to a 0600 temp file and
  * uploaded, never passed in argv or --env, so it never reaches a log. Missing auth is not fatal: the CLI asks to log in.
+ * The ntfy token is uploaded the same way when the host has one, and defaults.json points tokenFile at that path,
+ * so send_to_all, reply_to_operator and ask_question can publish. A team worktree reuses the clone and still
+ * gets the token: the marker skips only the worktree upload.
  */
-export async function prepareSandbox({ openshell, env, sandbox, cwd, home = homedir(), cursorTree, launcher = SANDBOX_LAUNCHER, staged = new Set(), reuseWorktree = false, log = () => {} }) {
+export async function prepareSandbox({ openshell, env, sandbox, cwd, home = homedir(), project = "", cursorTree, launcher = SANDBOX_LAUNCHER, staged = new Set(), reuseWorktree = false, log = () => {} }) {
   const remoteWork = `${SANDBOX_ROOT}/work`;
   const workdir = `${remoteWork}/${basename(cwd)}`;
   const marker = `${SANDBOX_ROOT}/.team-worktree-ready`;
@@ -217,7 +223,35 @@ export async function prepareSandbox({ openshell, env, sandbox, cwd, home = home
   }
   // Claude and Codex logins too, as builders get them (operator decision 2026-11-23).
   await uploadLogins({ openshell, env, sandbox, home, remoteHome: SANDBOX_HOME, log });
+  await stageNtfy({ openshell, env, sandbox, project, workdir, log });
   return { workdir, env: execEnv };
+}
+
+// The host's ntfy token file from defaults.json, or "" when none is configured.
+function hostTokenFile(env) {
+  const file = autoDefaults(env)?.tokenFile;
+  return typeof file === "string" && existsSync(file) ? file : "";
+}
+
+// Uploads the bearer token and points the sandbox MCP at that file. The token stays out of argv, env and logs.
+async function stageNtfy({ openshell, env, sandbox, project, workdir, log }) {
+  const token = hostTokenFile(env);
+  if (!token) return;
+  const dir = mkdtempSync(join(tmpdir(), "ai-collab-sandbox-ntfy-"));
+  try {
+    const ntfy = { url: NTFY_URL, tokenFile: TOKEN_IN };
+    const config = join(dir, "ai-collab");
+    mkdirSync(config, { recursive: true });
+    writeFileSync(join(config, "defaults.json"), `${JSON.stringify({ ...ntfy, peers: "claude,codex,cursor,opencode" }, null, 2)}\n`, { mode: 0o600 });
+    if (project && workdir) writeFileSync(join(config, "projects.json"), `${JSON.stringify([{ root: workdir, project, ...ntfy }], null, 2)}\n`, { mode: 0o600 });
+    // The directory upload replaces ai-collab/, so the token file goes in after it and is not wiped.
+    await uploadTree({ openshell, env, sandbox, local: config, remote: dirname(dirname(TOKEN_IN)) });
+    await uploadSecret({ openshell, env, sandbox, file: token, remoteDir: dirname(TOKEN_IN), name: basename(TOKEN_IN) });
+  } catch (error) {
+    log(`cursor: could not stage the ntfy token; sends from the sandbox will be refused (${error.message.split("\n")[0]})`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 // Copies the auth file in through a 0600 temp file (a single-file upload keeps the mode), then deletes the temp file.
@@ -364,7 +398,7 @@ export default function cursorAdapter(config = {}) {
         claim(sandbox, spec.cwd);
         session.sandbox = sandbox;
         const prepared = await prepareSandbox({
-          openshell: openshellBin, env, sandbox, cwd: spec.cwd, home: spec.home ?? spec.env?.HOME, cursorTree,
+          openshell: openshellBin, env, sandbox, cwd: spec.cwd, home: spec.home ?? spec.env?.HOME, project: spec.project, cursorTree,
           staged: stagedTrees, reuseWorktree: Boolean(spec.patternRun), log: (l) => ctx.log(l),
         });
         argv = execArgv({ openshell: openshellBin, sandbox, args: cursorArgs, workdir: prepared.workdir, env: { ...prepared.env, ...SANDBOX_CURSOR_ENV } });
