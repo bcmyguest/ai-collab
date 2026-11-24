@@ -112,7 +112,7 @@ function SheetFooter({
 }
 
 function SheetTitle({
-  className,
+  className = "",
   ...props
 }) {
   return (
@@ -128,7 +128,7 @@ function SheetTitle({
 }
 
 function SheetDescription({
-  className,
+  className = "",
   ...props
 }) {
   return (

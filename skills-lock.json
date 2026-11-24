@@ -40,6 +40,14 @@
       "skillPath": "skills/antislop-ui/SKILL.md",
       "computedHash": "5229431bc978573ab945a16b9b9677b2733202b821921886427463028dadfcb9",
       "installMode": "copy"
+    },
+    "ui-sdk": {
+      "source": "vercel-labs/ui",
+      "commit": "926dab872d1f2aa23df4bd9b5cf21c879c9abac9",
+      "sourceType": "github",
+      "skillPath": "packages/core/skills/ui-sdk/SKILL.md",
+      "computedHash": "cabe635c8f279e77b50a265c499ea2e8ebd471574b96acfc61a11a147d553e6d",
+      "installMode": "copy"
     }
   }
 }

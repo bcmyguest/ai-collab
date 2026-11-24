@@ -54,6 +54,8 @@ Then open the UI on your phone: [Quick start](https://bcmyguest.github.io/ai-col
 
 The docs source is [`docs/`](docs/); [`site/`](site/) builds it.
 
+The phone UI uses React and Next.js. New UI SDK components use TypeScript, starting with the outcome request form. The project includes the `ui-sdk` skill and package-version docs under `node_modules/@ui-sdk/react/docs/`.
+
 ## License
 
 [Apache License 2.0](LICENSE).

@@ -1,5 +1,5 @@
 import { headers } from "next/headers";
-import { Providers } from "./providers.jsx";
+import { Providers } from "./providers";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";

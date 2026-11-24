@@ -1,4 +1,4 @@
-// Loads the UI at phone width. Pass --decisions, --composer, --home-sessions, --inactive, --kanban or --project-nav.
+// Loads the UI at phone width. Pass --decisions, --composer, --home-sessions, --inactive, --kanban, --project-nav, or --ui-sdk.
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -305,6 +305,37 @@ async function checkProjectNav(page, { project }) {
   }
 }
 
+async function checkUiSdk(page, fixture) {
+  await page.goto(fixture.url + "/#project=" + fixture.project);
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await page.getByRole("button", { name: "Project actions for " + fixture.project }).click();
+  await page.getByRole("menuitem", { name: "Request an outcome" }).click();
+  const form = page.getByRole("dialog", { name: "Request an outcome" });
+  const outcomeField = form.getByRole("textbox", { name: "Requested outcome" });
+  const checkField = form.getByRole("textbox", { name: "Acceptance check" });
+  await outcomeField.waitFor();
+  await page.waitForFunction(() => window.aiCollabTestBridge, null, { timeout: 5000 });
+  const labels = await page.evaluate(() => window.aiCollabTestBridge.snapshot()
+    .filter(component => component.component === "input" && component.actions.includes("setValue"))
+    .map(component => component.label));
+  assert.deepEqual(labels.sort(), ["Acceptance check", "Requested outcome"]);
+  const outcome = "Improve signup";
+  const check = "Sign up using a phone";
+  assert.equal(await outcomeField.getAttribute("required"), "");
+  assert.equal(await outcomeField.getAttribute("maxlength"), "500");
+  const change = await page.evaluate(value => window.aiCollabTestBridge.act({
+    steps: [{ ref: "Requested outcome", action: "setValue", args: [value] }],
+  }), outcome);
+  assert.equal(change.ok, true, change.error?.message);
+  assert.equal(await outcomeField.inputValue(), outcome);
+  await checkField.fill(check);
+  const submitted = page.waitForResponse(response => response.url().endsWith("/api/request-outcome") && response.status() === 201);
+  await form.getByRole("button", { name: "Send to PM" }).click();
+  const saved = (await (await submitted).json()).outcome;
+  assert.deepEqual([saved.outcome, saved.check], [outcome, check]);
+  await form.waitFor({ state: "hidden" });
+}
+
 async function checkKanban(page, fixture) {
   await page.goto(fixture.url + "/#project=decision-first&level=tasks");
   const rail = page.getByLabel("Status columns");
@@ -388,8 +419,10 @@ try {
   const inactive = process.argv.includes("--inactive");
   const kanban = process.argv.includes("--kanban");
   const projectNav = process.argv.includes("--project-nav");
-  if (composer || decisions || homeSessions || inactive || kanban || projectNav) fixture = await phoneFixture({ homeSessions, inactive, kanban });
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, ...(composer || homeSessions || inactive || kanban || projectNav ? { isMobile: true, hasTouch: true } : {}) });
+  const uiSdk = process.argv.includes("--ui-sdk");
+  const mobile = composer || homeSessions || inactive || kanban || projectNav || uiSdk;
+  if (mobile || decisions) fixture = await phoneFixture({ homeSessions, inactive, kanban });
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
   const errors = [];
   page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
   page.on("pageerror", error => errors.push("pageerror: " + error.message));
@@ -412,11 +445,12 @@ try {
   else if (projectNav) await checkProjectNav(page, fixture);
   else if (homeSessions) await checkHomeSessions(page, fixture);
   else if (inactive) await checkInactive(page, fixture);
+  else if (uiSdk) await checkUiSdk(page, fixture);
   else if (operatorWorkflow) await checkOperatorWorkflow(page);
   else await page.waitForTimeout(6000);
   console.log(errors.slice(0, 15).join("\n") || "no errors");
   console.log("text:", (await page.innerText("body")).slice(0, 300).replace(/\n+/g, " | "));
-  if (((operatorWorkflow || kanban || projectNav) && errors.length) || /pageerror|couldn.t load/.test(errors.join("\n"))) process.exitCode = 1;
+  if (((operatorWorkflow || kanban || projectNav || uiSdk) && errors.length) || /pageerror|couldn.t load/.test(errors.join("\n"))) process.exitCode = 1;
 } finally {
   await browser.close();
   await fixture?.close();

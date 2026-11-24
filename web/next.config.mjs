@@ -13,7 +13,11 @@ let serverDistDir;
 export default (phase) => ({
   turbopack: { root },
   outputFileTracingRoot: root,
-  env: { AI_COLLAB_UI_SERVER: server, AI_COLLAB_BUILD: build },
+  env: {
+    AI_COLLAB_UI_SERVER: server,
+    AI_COLLAB_BUILD: build,
+    NEXT_PUBLIC_AI_COLLAB_TEST_BRIDGE: process.env.NEXT_PUBLIC_AI_COLLAB_TEST_BRIDGE === "1" ? "1" : "0",
+  },
   generateBuildId: () => build,
   // Pin the actual directory for this server process, even when Next loads config more than once.
   distDir: phase === PHASE_PRODUCTION_SERVER
