@@ -31,8 +31,9 @@ test("hook configs reference the wrappers and scripts that exist", () => {
   const codex = read("hooks/codex-hooks.json").hooks;
   assert.deepEqual(Object.keys(codex).sort(), ["PermissionRequest", "PostToolUse", "PreCompact", "PreToolUse", "SessionEnd", "SessionStart", "Stop", "SubagentStart", "SubagentStop", "UserPromptSubmit"]);
   const cursor = read("hooks/cursor-hooks.json").hooks;
-  assert.deepEqual(Object.keys(cursor).sort(), ["afterAgentResponse", "beforeSubmitPrompt", "postToolUse", "postToolUseFailure",
-    "preCompact", "sessionEnd", "sessionStart", "stop"]);
+  assert.deepEqual(Object.keys(cursor).sort(), ["afterAgentResponse", "beforeReadFile", "beforeShellExecution", "beforeSubmitPrompt", "postToolUse", "postToolUseFailure",
+    "preCompact", "preToolUse", "sessionEnd", "sessionStart", "stop"]);
+  for (const event of ["beforeReadFile", "beforeShellExecution", "preToolUse"]) assert.match(cursor[event][0].command, /--read-gate --host cursor$/);
   assert.equal(cursor.afterAgentThought, undefined, "thinking is never published");
   // beforeSubmitPrompt is activity-only: its documented output is { continue }, not additional_context.
   assert.match(cursor.beforeSubmitPrompt[0].command, /--activity --host cursor$/);

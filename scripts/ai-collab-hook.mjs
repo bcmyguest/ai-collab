@@ -15,6 +15,9 @@
  * In mode off a Claude or Codex prompt becomes a view-only card; PostToolUse(Failure), Stop, StopFailure, UserPromptSubmit
  * or SessionEnd of that session closes it.
  * Any failure prints {} and exits 0: the session continues unchanged. Transcripts are never read.
+ * --read-gate refuses an agent read of the task store or state dir when readsThroughRunCode is on, with the
+ * run_code recipe, and otherwise prints {}. Cursor beforeShellExecution and beforeReadFile use it so a
+ * non-matching command is not turned into an approval prompt. A human shell never runs this hook.
  * Cursor events also feed the run's OTLP trace (lib/cursor-trace.mjs); its export waits at most 1.5 s after the output.
  * Every message handed to the agent gets a read receipt, published in the background like activity.
  */
@@ -27,6 +30,8 @@ import { currentMode, operatorPrompt, takeModeNote } from "../lib/mode.mjs";
 import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.mjs";
 import { decideStop } from "../lib/stop.mjs";
 import { REQUIRE_RUN_CODE_ENV } from "../lib/code-mode.mjs";
+import { readsThroughRunCode } from "../lib/code-run.mjs";
+import { storeReadDenial } from "../lib/store-read.mjs";
 import { recordSession } from "../lib/sessions.mjs";
 import { sessionName } from "../lib/names.mjs";
 import { harnessProcess, isRunning } from "../lib/process.mjs";
@@ -197,6 +202,11 @@ async function main() {
   const key = String(msg.hook_event_name || msg.hookEventName || msg.event_name || "")
     .toLowerCase()
     .replace(/[^a-z]/g, "");
+  // File reads of the task store and state dir. Checked before config and activity so a missing project still refuses,
+  // and so Cursor's shell and read hooks return {} instead of asking. Codex and Claude PreToolUse deny here too.
+  const storeRead = storeReadDenial(host, key, msg);
+  if (storeRead && readsThroughRunCode(env)) return emit(storeRead);
+  if (argv.includes("--read-gate")) return emit({});
   // Every Cursor run, joined project or not, records its turn for the OTLP trace (lib/cursor-trace.mjs); never awaited before output.
   traced = host === "cursor" ? hookTrace(msg, { env }).catch(() => null) : null;
   const cfg = loadConfig(env, { cwd, host, session });

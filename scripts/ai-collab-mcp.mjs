@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { toolClient } from "../lib/tool-api.mjs";
 import { READ_TOOLS, readsThroughRunCode } from "../lib/code-run.mjs";
+import { runCodeReadRecipe } from "../lib/store-read.mjs";
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 const INSTRUCTIONS = "AI Collab connects this session to the human operator over a private ntfy server. "
@@ -55,9 +56,7 @@ async function handle(request) {
     const name = params?.name;
     const args = params?.arguments ?? {};
     if (runCodeFirst && READ_TOOLS.includes(name)) {
-      const text = `Call ${name} through run_code (ai-collab-code server), batching the other reads you need in one program: `
-        + `{ "code": "return await ai.${name}(${JSON.stringify(args)});", "session": "<your session label>" }. Direct reads are disabled for this session.`;
-      send({ id, result: { isError: true, content: [{ type: "text", text }] } });
+      send({ id, result: { isError: true, content: [{ type: "text", text: runCodeReadRecipe(name, args) }] } });
       return;
     }
     const controller = new AbortController();

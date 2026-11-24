@@ -35,9 +35,9 @@ test("cursor install writes our hooks into ~/.cursor/hooks.json, keeps other too
   installCursorPlugin({ home, importMetaUrl: import.meta.url, copy: true });
   const { hooks } = JSON.parse(fs.readFileSync(file, "utf8"));
   const ours = (event) => hooks[event].filter((h) => h.command.includes("ai-collab-hook"));
-  assert.deepEqual(hooks.preToolUse, [{ command: "rtk hook cursor" }]);
+  assert.equal(hooks.preToolUse[0].command, "rtk hook cursor");
   assert.equal(hooks.postToolUse[0].command, "other-tool capture");
-  for (const event of ["sessionStart", "beforeSubmitPrompt", "afterAgentResponse", "postToolUse", "stop"]) {
+  for (const event of ["sessionStart", "beforeSubmitPrompt", "afterAgentResponse", "postToolUse", "stop", "preToolUse", "beforeReadFile", "beforeShellExecution"]) {
     assert.equal(ours(event).length, 1, `${event} once after two installs`);
     assert.equal(ours(event)[0].command.startsWith(`"${cursorPluginDest(home)}/scripts/ai-collab-hook"`), true, ours(event)[0].command);
   }

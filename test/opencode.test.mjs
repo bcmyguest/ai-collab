@@ -140,14 +140,27 @@ test("opencode tool hooks: call as activity, result delivers context into the to
   await hooks["tool:execute.before"]({ tool: "bash", sessionID: ROOT, id: "call_1", input: { command: "ls" } });
   assert.deepEqual(calls[0].input, { hook_event_name: "PreToolUse", session_id: ROOT, cwd: DIR, tool_name: "bash", tool_input: { command: "ls" }, tool_use_id: "call_1" });
   assert.equal(calls[0].options.activity, true);
+  assert.equal(calls[1].options.gate, true, "the read gate runs before the tool");
   const after = { tool: "bash", sessionID: ROOT, id: "call_1", input: { command: "ls" }, status: "completed", result: { output: "a\nb", content: [{ type: "text", text: "a\nb" }] } };
   await hooks["tool:execute.after"](after);
-  assert.equal(calls[1].input.hook_event_name, "PostToolUse");
-  assert.equal(calls[1].input.tool_response, "a\nb");
-  assert.equal(calls[1].options.activity, undefined, "PostToolUse delivers");
+  assert.equal(calls[2].input.hook_event_name, "PostToolUse");
+  assert.equal(calls[2].input.tool_response, "a\nb");
+  assert.equal(calls[2].options.activity, undefined, "PostToolUse delivers");
   assert.deepEqual(after.result.content, [{ type: "text", text: "a\nb" }, { type: "text", text: "[ai-collab] message" }]);
   await hooks["tool:execute.after"]({ tool: "bash", sessionID: ROOT, id: "call_2", input: {}, status: "error", error: { message: "exit 1" } });
-  assert.deepEqual([calls[2].input.hook_event_name, calls[2].input.error, calls[2].options.activity], ["PostToolUseFailure", "exit 1", true]);
+  assert.deepEqual([calls[3].input.hook_event_name, calls[3].input.error, calls[3].options.activity], ["PostToolUseFailure", "exit 1", true]);
+  dispose();
+});
+
+test("opencode execute.before throws the run_code recipe when the read gate denies", async () => {
+  const recipe = "Call task_list through run_code (ai-collab-code server).";
+  const { hooks, dispose } = await loaded({}, (input, options) => options.gate
+    ? { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: recipe } }
+    : {});
+  await assert.rejects(
+    () => hooks["tool:execute.before"]({ tool: "read", sessionID: ROOT, id: "call_r", input: { file_path: "/home/b/.local/share/ai-collab/tasks/a.json" } }),
+    (error) => error.storeRead === true && error.message === recipe,
+  );
   dispose();
 });
 
