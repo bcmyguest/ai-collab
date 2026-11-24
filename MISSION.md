@@ -27,6 +27,7 @@ Give the operator one place to run, watch and steer a coding agents from a phone
 - The operator has approved moving eligible reviews to done while the coordinator lands their branches asynchronously. Verify origin/main before reporting a branch as shipped.
 - Every tick ends with a send_to_all status line: merged, started, running count, and what is waiting on the operator.
 - New builders: `ai-collab builder start --task <id> --harness codex --model gpt-6.2-sol --brief <file>` (operator: Codex gpt-6.2-sol for every worker for now; no Cursor or Claude builders) (OpenShell sandbox). Do not start builders on the host. Leave existing host builders alone until they finish.
+- Each tick, if `ai-collab pattern runs` shows no running review, start one with `ai-collab team start review reviewer "<task>"` on a Ready task that has a diff to review. Do not start a team for a task id ending in -wt and a number. Do not replace a builder that committed nothing.
 - Run the isolated suite in a subshell `( ... )` so its HOME/CODEX_HOME never leak into later commands like builder start.
 - Gate merges on isolated HOME: `H=$(mktemp -d); PATH=… HOME=$H CODEX_HOME=$H/.codex TMPDIR=$(mktemp -d -p /dev/shm) npm test`.
 - Update test assertions when behaviour changes; never weaken tests. No ask_question for test edits.

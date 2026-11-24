@@ -1,0 +1,6 @@
+// review: review one Ready task's diff. Each role continues as the first model of the limit chain when its own model is limited.
+digraph "review" {
+  graph [description="Review one Ready task's diff; the reviewer approves or requests changes."];
+  reviewer [agent="cursor:grok-4.7-high", prompt="Review the Ready task's diff against its acceptance criteria. Approve, or request changes with specific points. Do not edit the code.", fallback="cursor:deepseek-v41-flash-1017-high"];
+  reviewer -> done [on="reviewed", kind="pair", required=true];
+}

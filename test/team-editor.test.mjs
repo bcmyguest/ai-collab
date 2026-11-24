@@ -69,7 +69,7 @@ test("a team.dot symlink to a file outside the repo is not listed and its text i
 
 test("the shipped templates list fix-and-review with its DOT text", () => {
   const templates = teamTemplates();
-  assert.deepEqual(templates.map((item) => item.name), ["fix-and-review"]);
+  assert.deepEqual(templates.map((item) => item.name), ["fix-and-review", "review"]);
   assert.match(templates[0].text, /digraph "fix-and-review"/);
 });
 
