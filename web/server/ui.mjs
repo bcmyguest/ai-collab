@@ -28,7 +28,7 @@ import { readContext } from "../../lib/usage.mjs";
 import { parseCommand } from "../lib/slash-commands.js";
 import { startModes } from "../lib/start-mode.js";
 import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } from "../../lib/approvals.mjs";
-import { availableHarnesses, availablePlaces, defaultStartPlace, openshellHarnesses, openshellRunner, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
+import { START_HARNESSES, availableHarnesses, availablePlaces, defaultStartPlace, openshellHarnesses, openshellRunner, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
 import { codeModeDefault } from "../../lib/code-mode.mjs";
 import { cleanName } from "../../lib/names.mjs";
 import { listModels } from "../../lib/models.mjs";
@@ -37,7 +37,7 @@ import { closedProjectNames, createTeam, deleteTeam, listTeams, readProjectsFile
 import { clearFields, modelFields, sessionHistory } from "../../lib/session-events.mjs";
 import { compactionFields } from "../../lib/compaction.mjs";
 import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern, savePattern, saveTeamText, teamTemplates, teamTextOf } from "../../lib/patterns.mjs";
-import { authorTeam, saveAuthoredTeam } from "../../lib/team-author.mjs";
+import { authorModel, authorTeam, saveAuthoredTeam } from "../../lib/team-author.mjs";
 import { listOwned, readOwned } from "../../lib/owned.mjs";
 import { builderAssignment, recoverBuilder, stoppedBuilder } from "../../lib/builder.mjs";
 import { REVIEW_ACTIONS, STATUSES, TaskNotFoundError, openTasks } from "../../lib/tasks.mjs";
@@ -1096,6 +1096,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       startable: startable(project),
       // The new-session default (defaults.json startDefault, else cursor on deepseek); the form prefills it when available.
       startDefault: startDefaultSetting(env),
+      // The describe-a-team writer (AI_COLLAB_TEAM_AUTHOR_MODEL, else cursor deepseek); the composer prefills it and can override it.
+      authorDefault: authorModel(env),
       // Native code mode for new starts (defaults.json codeMode, default on); the composer prefills its toggle.
       codeModeDefault: codeModeDefault(env),
       startPlaces: startPlaces(project),
@@ -1526,10 +1528,21 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (deletePatternName) return json(201, removePattern(cfg, String(deletePatternName), env));
         // Team author: one writing-agent turn from the operator's chat text, then a save of the DOT it drafted.
         if (authorRequest !== undefined) {
+          // The composer picks the writer. An unknown harness or model is refused here, before the process starts.
+          const writerHarness = authorHarness ? String(authorHarness) : "";
+          const writerModel = authorModelName ? String(authorModelName) : "";
+          if (writerHarness && (!START_HARNESSES.includes(writerHarness) || !startable(project).includes(writerHarness))) {
+            reject(400, "That harness is not available for this project");
+          }
+          if (writerModel) {
+            const forHarness = writerHarness || authorModel(env).harness;
+            const listed = await models(cfg.stateDir, env, { peers: cfg.peers });
+            if (!listed[forHarness]?.includes(writerModel)) reject(400, "That model is not available for this harness");
+          }
           const drafted = await authorTeam(cfg, {
             request: String(authorRequest ?? ""), name: String(teamName ?? ""), scope: String(authorScope ?? "project"),
             current: String(authorCurrent ?? ""), turns: Array.isArray(authorTurns) ? authorTurns : [], peers: cfg.peers, startable: startable(project), env,
-            ...(authorHarness ? { harness: String(authorHarness) } : {}), ...(authorModelName ? { model: String(authorModelName) } : {}),
+            ...(writerHarness ? { harness: writerHarness } : {}), ...(writerModel ? { model: writerModel } : {}),
           }).catch((error) => reject(400, error.message));
           return json(201, drafted);
         }

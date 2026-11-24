@@ -1,0 +1,13 @@
+// product: propose one feature, keep the tree coherent, implement it, and prove it. Each role falls back to the first limit-chain model.
+digraph "product" {
+  graph [description="Propose one feature, keep the tree coherent, implement it, and prove it with a test."];
+  ceo [agent="cursor:grok-4.7-high", prompt="Set product direction that stays consistent with the original vision in MISSION.md: one place to run, watch, and steer coding agents from a phone. Propose one feature. Do not implement it.", fallback="cursor:deepseek-v41-flash-1017-high"];
+  "project-maintainer" [agent="cursor:grok-4.7-high", prompt="Keep the tree, the merges, and the running system coherent with the proposal. Do not invent features. Hand one change to the builder.", fallback="cursor:deepseek-v41-flash-1017-high"];
+  builder [agent="cursor:grok-4.7-high", prompt="Implement the one feature you were handed. Do not widen it. Hand the change to the tester.", fallback="cursor:deepseek-v41-flash-1017-high"];
+  tester [agent="cursor:grok-4.7-high", prompt="Prove the change with a test that fails before the fix and passes after, or an existing test that now covers the behavior. Send proven only with that proof. A claim without it goes back to the builder.", fallback="cursor:deepseek-v41-flash-1017-high"];
+  ceo -> "project-maintainer" [on="proposed", kind="pair", required=true];
+  "project-maintainer" -> builder [on="coherent", kind="pair", required=true];
+  builder -> tester [on="implemented", kind="pair", required=true];
+  tester -> builder [on="unproven", kind="pair", required=false, cap=3];
+  tester -> done [on="proven", kind="pair", required=true];
+}

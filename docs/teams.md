@@ -126,7 +126,7 @@ A writing agent turns a plain-language request into one `team.dot`; the operator
 - The name is what you typed, else the team being refined, else the digraph the agent wrote. A name typed after the draft renames the digraph on save, as the editor does. A name already in use needs the confirm, which replaces it (`authorReplace`).
 - Nothing is saved until "Save team". A project save goes through `saveTeamText`; a global save writes `<config dir>/ai-collab/teams/<name>/team.dot`. A built-in name, a legacy team name, and a save into the other scope are refused, so one file never silently shadows another.
 - "Open in DOT editor" carries the name to the editor, where the text stays editable by hand.
-- The writing agent is `AI_COLLAB_TEAM_AUTHOR_MODEL` (default `cursor:deepseek-v41-flash-1017-high`), run once with the brief as one argv element. When the project cannot run that harness, another installed one writes instead (cursor, claude, codex, opencode), with no model. A failed or empty answer writes nothing.
+- The composer picks the writing harness and model. The prefill is `AI_COLLAB_TEAM_AUTHOR_MODEL` (default `cursor:deepseek-v41-flash-1017-high`). It runs once with the brief as one argv element. When the project cannot run that harness and the operator has not picked one, another installed one writes instead (cursor, claude, codex, opencode), with no model. A failed answer includes the harness's stderr (a usage limit is printed there), and nothing is written.
 - Requests go through the `pattern` POST action (`authorRequest` for a draft, `authorDot` to save), with the same same-origin, JSON and sign-in checks as other actions.
 
 ## Limits
