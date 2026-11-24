@@ -93,11 +93,11 @@ Rows render by type: prompts as user bubbles, assistant text as Markdown, tool c
 
 `/api/file/<name>` serves a `text/plain` file only when an activity event in memory references it; chat topics still serve images only. Each file is downloaded into a local cache once and then read from disk, so reloads and extra devices cost no ntfy bandwidth ([one download per attachment](messaging.md#one-download-per-attachment)).
 
-### History and read state
+### Read state
 
-Open **History** in a conversation to browse older messages, search message text, senders, and attachment names, or mark incoming messages as read through the latest archived message. Read positions are saved per conversation and GitHub account. When GitHub sign-in is disabled, browsers share the operator's read position.
+The conversation shows the live thread. There is no History panel. Read positions are saved per conversation and GitHub account. When GitHub sign-in is disabled, browsers share the operator's read position.
 
-The UI service archives events under its state directory while it runs, including when browsers are closed. After a restart or an ntfy outage, the history panel can still search events the service already archived. The first run can recover only the events still available from ntfy. Attachment downloads follow the existing attachment cache policy.
+The UI service archives events under its state directory while it runs, including when browsers are closed. After a restart or an ntfy outage, the first run can recover only the events still available from ntfy. Attachment downloads follow the existing attachment cache policy.
 
 ### Subagents
 
