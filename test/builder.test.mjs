@@ -192,6 +192,11 @@ test("builder start runs the agent in its own sandbox and lands its commit on th
   const state = JSON.parse(readFileSync(builderPaths("smoke-task", l.env).state, "utf8"));
   assert.equal(state.phase, "finished");
   assert.equal(state.sandboxDeleted, true);
+  const journal = readFileSync(l.env.FAKE_SYSTEMD_UNIT_LOG, "utf8").split("\n");
+  assert.deepEqual(journal.filter(line => /^builder smoke-task: (collecting workspace|settled as)/.test(line)), [
+    `builder smoke-task: collecting workspace from sandbox ${SANDBOX}`,
+    "builder smoke-task: settled as review (agent exit 0, requested done, oncebitten exit 0)",
+  ]);
 });
 
 test("an interrupted standalone agent is collected without launching it again", async () => {
@@ -254,6 +259,9 @@ test("an agent that fails with no work leaves the task blocked and the sandbox d
   assert.equal((await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief)).code, 0);
   assert.equal(task(l).status, "blocked");
   assert.match(task(l).detail, /exited 3 with 0 commit\(s\) and set no status/);
+  assert.ok(readFileSync(l.env.FAKE_SYSTEMD_UNIT_LOG, "utf8").split("\n").includes(
+    "builder smoke-task: settled as blocked (agent exit 3, requested no status, oncebitten skipped)",
+  ));
   assert.deepEqual(JSON.parse(readFileSync(l.env.FAKE_OPENSHELL_STATE, "utf8")).sandboxes, []);
 });
 
