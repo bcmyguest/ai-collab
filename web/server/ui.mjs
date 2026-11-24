@@ -44,6 +44,7 @@ import { REVIEW_ACTIONS, STATUSES, openTasks } from "../../lib/tasks.mjs";
 import { priorityOf } from "../../lib/task-order.mjs";
 import { mentions, mentionedNames, mentionedTeams, startOnlyMentions, messageDestinations } from "../lib/message-routing.js";
 import { taskTags } from "../lib/task-tags.js";
+import { shippedTasks } from "./shipped.mjs";
 import { taskBoard } from "./task-board.mjs";
 import { advanceRun, listRuns, startRun } from "../../lib/pattern-runs.mjs";
 import { formatTeamOrchestrator } from "../../lib/format.mjs";
@@ -1067,6 +1068,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       messages: scope === "home" ? [] : messages(project, { harness, session }, list),
       ...(cards ? { sessions: cards } : {}),
       ...(scope === "home" ? {
+        ...(!hosted ? { shipped: shown.flatMap(item => item.failed ? [] :
+          shippedTasks(item.tasks, item.cfg.project, taskRoot(item))).sort((a, b) => b.at - a.at) } : {}),
         decisions: shown.flatMap(item => item.failed ? [] : projectDecisions(item,
           item === project ? runs : listRuns(item.cfg), item === project ? list : cards.filter(card => card.project === item.cfg.project))),
         unavailable: shown.filter(item => item.failed).map(item => item.cfg.project) } : {}),
@@ -1256,7 +1259,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           if (client.authorized && !client.authorized()) return client.disconnect();
           client.write(": keepalive\n\n");
           // A process can exit without a task or job registry write, and a build review shows a branch that can move.
-          if (client.ready && (client.hasRunningJobs || client.hasOpenTasks || client.hasReview) && clients.has(client)) push(client);
+          // Home also picks up merges that move origin/main without changing a task.
+          if (client.ready && (client.hasRunningJobs || client.hasOpenTasks || client.hasReview || (!hosted && client.scope === "home")) && clients.has(client)) push(client);
         }, KEEPALIVE_MS);
         keepalive.unref?.();
         request.signal?.addEventListener("abort", close, { once: true });
