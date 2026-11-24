@@ -46,7 +46,7 @@ test("off mode: Stop delivers a waiting operator broadcast with reply instructio
   assert.equal(r.action, "continue");
   assert.equal(r.why, "messages");
   assert.match(r.text, /body="@alice#aabbccddeeff0123 Where are we\?" This is an operator broadcast\. Answer it in the shared channel with the ai-collab send_to_all tool \(reply_to="m\d+", session="aabbccddeeff0123"/);
-  assert.match(r.text, /reply_to_operator tool/, "identity line carries the direct-reply how-to");
+  assert.doesNotMatch(r.text, /Your sender identity is/);
   assert.equal(clock.slept, 0, "off mode never waits");
 });
 
