@@ -39,10 +39,18 @@ for (const failure of [null, "checkout", "merge", "ci", "test", "changed HEAD", 
       run(file, argv, options) {
         calls.push([file, argv]);
         if (file !== "git") {
+          const deploy = argv.slice(-4).join(" ") === "run build -- --deploy-and-verify";
           assert.ok(isAbsolute(file));
           if (bundledNpm) {
             assert.equal(file, node);
             assert.equal(argv[0], npmCli);
+          }
+          if (deploy) {
+            assert.equal(failure, null);
+            assert.equal(options.cwd, hostCheckout);
+            assert.equal(options.env.HOME, env.HOME);
+            assert.equal(options.env.GIT_DIR, undefined);
+            return { status: 0 };
           }
           assert.equal(options.cwd, worktree);
           assert.ok(existsSync(options.env.HOME));
@@ -90,6 +98,10 @@ for (const failure of [null, "checkout", "merge", "ci", "test", "changed HEAD", 
     assert.equal(pushed, failure === null || failure === "push");
     if (pushed) assert.deepEqual(steps.filter((step) => ["ci", "test", "push"].includes(step)), ["ci", "test", "push"]);
     assert.equal(output.includes("merge: merged merged-sha"), failure === null);
-    if (!failure) assert.match(output, /node tools\/smoke-ui\.mjs/);
+    if (!failure) {
+      assert.match(output, /merge: merged merged-sha \(builder\/topic\); host pulled/);
+      assert.equal(calls.filter(([, argv]) => argv.at(-1) === "--deploy-and-verify").length, 1);
+      assert.doesNotMatch(output, /Next, on the host/);
+    }
   });
 }

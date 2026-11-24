@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import swc from "next/dist/build/swc/index.js";
 import { createElement } from "react";
@@ -51,6 +51,7 @@ function sandbox(t) {
     let output = "";
     let errors = "";
     const npm = [];
+    const deploys = [];
     const status = merge(["start", ...(expected ? ["--expect-tip", expected] : []), ...branches], {
       env, hostCheckout: host, tempRoot: root,
       out: { write: (message) => { output += message; } },
@@ -59,6 +60,9 @@ function sandbox(t) {
         if (file !== "git") {
           const step = argv.at(-1);
           npm.push(step);
+          if (argv.slice(-4).join(" ") === "run build -- --deploy-and-verify") {
+            deploys.push({ cwd: options.cwd, home: options.env.HOME });
+          }
           if (!gate) return { status: 0 };
           return spawnSync("/bin/sh", ["-c", `
             chunk=x
@@ -72,7 +76,7 @@ function sandbox(t) {
       },
     });
     const lines = output.trim().split("\n");
-    return { status, output, errors, npm, result: lines.find((line) => line.startsWith("merge: ")) };
+    return { status, output, errors, npm, deploys, result: lines.find((line) => line.startsWith("merge: ")) };
   }
   const worktrees = () => readdirSync(root).filter((name) => name.startsWith("ai-collab-wt-merge-"));
   return { root, host, git, write, commit, originTip, remoteMain, start, worktrees };
@@ -85,7 +89,9 @@ test("merge start lands a branch on origin/main, verifies the push, pulls the ho
   git(host, "switch", "-q", "main");
   const run = start(["builder/a"]);
   assert.equal(run.status, 0, run.errors);
-  assert.deepEqual(run.npm, ["ci", "test"]);
+  assert.deepEqual(run.npm, ["ci", "test", "--deploy-and-verify"]);
+  assert.deepEqual(run.deploys, [{ cwd: host, home: dirname(host) }]);
+  assert.doesNotMatch(run.output, /Next, on the host/);
   const merged = remoteMain();
   assert.equal(run.result, `merge: merged ${merged} (builder/a); host pulled`);
   assert.deepEqual(git(host, "rev-list", "--parents", "-n1", merged).split(" ").slice(1), [originTip, builder]);
@@ -163,6 +169,9 @@ test("local edits that block the host pull are reported and left alone", (t) => 
   assert.equal(run.status, 0, run.errors);
   const merged = remoteMain();
   assert.match(run.result, new RegExp(`^merge: merged ${merged} \\(builder/a\\); host pull skipped: `));
+  assert.match(run.output, /UI deploy skipped: host pull skipped:/);
+  assert.deepEqual(run.npm, ["ci", "test"]);
+  assert.deepEqual(run.deploys, []);
   assert.equal(git(host, "rev-parse", "main"), stale);
   assert.equal(readFileSync(join(host, "other.txt"), "utf8"), "someone else's uncommitted edit\n");
   assert.deepEqual(worktrees(), []);
@@ -263,7 +272,7 @@ test("merge start resolves mise's Node before isolating HOME when the caller has
   writeFileSync(npmCli, "");
   writeFileSync(join(root, "node-location"), installed + "\n");
   writeFileSync(join(tools, "mise"), '#!/bin/sh\ntest "$*" = "which node" && cat "$HOME/node-location"\n', { mode: 0o755 });
-  writeFileSync(installed, '#!/bin/sh\ntest ! -e "$HOME/node-location" && test -z "$AI_COLLAB_WAKE" || exit 1\nprintf "%s\\n" "$2" >> "$1"\n', { mode: 0o755 });
+  writeFileSync(installed, '#!/bin/sh\nif [ "$2" = "run" ]; then printf "%s\\n" "$2" >> "$1"; exit 0; fi\ntest ! -e "$HOME/node-location" && test -z "$AI_COLLAB_WAKE" || exit 1\nprintf "%s\\n" "$2" >> "$1"\n', { mode: 0o755 });
   git(host, "switch", "-q", "-c", "builder/quota");
   const tip = commit(host, "quota.txt", "quota\n");
   git(host, "switch", "-q", "main");
@@ -277,6 +286,6 @@ test("merge start resolves mise's Node before isolating HOME when the caller has
     hostCheckout: host, tempRoot: root, nodePath: runtime, out: stream, err: stream,
   });
   assert.equal(status, 0, output);
-  assert.equal(readFileSync(npmCli, "utf8"), "ci\ntest\n");
+  assert.equal(readFileSync(npmCli, "utf8"), "ci\ntest\nrun\n");
   assert.equal(git(host, "merge-base", "--is-ancestor", tip, remoteMain()), "");
 });
