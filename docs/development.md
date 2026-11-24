@@ -23,10 +23,10 @@ The browser runs the SDK's `snapshot()` and `act()` against the outcome form, th
 
 ```sh
 npm run build
-AI_COLLAB_BROWSER_TEST=1 node --test --test-concurrency=1 test/chat-queue-browser.test.mjs test/chat-images-browser.test.mjs
+AI_COLLAB_BROWSER_TEST=1 node --test --test-concurrency=1 test/chat-*-browser.test.mjs
 ```
 
-The checks use a 390-pixel viewport and a local ntfy fixture. They cover message routing, urgent sends, edits and cancellation in the queue, draft isolation between project and session chats, and image uploads and replies. Set `CHROME_PATH` if Chromium is outside the Playwright cache.
+The checks use a 390-pixel viewport and a local ntfy fixture. They cover message routing, urgent sends, edits and cancellation in the queue, draft isolation between project and session chats, image uploads and replies, and send confirmation during a slow team start. Set `CHROME_PATH` if Chromium is outside the Playwright cache.
 
 ### celld workflow smoke test
 

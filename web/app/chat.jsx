@@ -19,6 +19,7 @@ import { contextMeter, filesRead } from "@/lib/context-view";
 import { agentDetail } from "@/lib/agent-detail";
 import { composerDestination } from "@/lib/message-routing";
 import { quotedReply, usableReplyId } from "@/lib/reply-quote";
+import { SEND_CONFIRMATION, readSendConfirmation } from "@/lib/send-confirmation";
 import { patternMentionTargets, withMentions } from "@/lib/mentions";
 import { chatThread } from "@/lib/chat-turns";
 import { AttachImageButton, ChatImage, ImageDraft, ImagePicker } from "./chat-image";
@@ -109,10 +110,12 @@ async function api(path, payload, image) {
     form.set("image", image);
     payload = form;
   }
-  const response = await fetch("/api/" + path, image
-    ? { method: "POST", body: payload }
-    : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  const headers = new Headers();
+  if (path === "send") headers.set("Accept", SEND_CONFIRMATION);
+  if (!image) headers.set("Content-Type", "application/json");
+  const response = await fetch("/api/" + path, { method: "POST", headers, body: image ? payload : JSON.stringify(payload) });
   if (response.status === 401) window.dispatchEvent(new Event(AUTH_CHECK));
+  if (response.ok && response.headers.get("content-type")?.split(";")[0] === SEND_CONFIRMATION) return readSendConfirmation(response);
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "Request failed");
   return result;
@@ -718,6 +721,7 @@ function Console({ account }) {
   const [replyTo, setReplyTo] = useState(null);
   const [creating, setCreating] = useState("");
   const [working, setWorking] = useState(false);
+  const latestAction = useRef(0);
   const [revision, setRevision] = useState(0);
   const [now, setNow] = useState(Date.now);
   const route = useRef("");
@@ -781,6 +785,7 @@ function Console({ account }) {
       const view = streamViews.restore(nextStream);
       if (view) { setData(view.data); setActivity(view.activity); setSurfaces(view.surfaces); }
       else setActivity([]);
+      latestAction.current++;
       setReady(Boolean(view)); setLoadError(""); setNotice(""); setQuestion(""); setReplyTo(null); setNavOpen(false);
     };
     window.addEventListener("hashchange", change);
@@ -937,6 +942,7 @@ function Console({ account }) {
   // A session command: resolves true only when the session ran it or the compaction was requested (the composer clears).
   async function runCommand(body) {
     const at = requested;
+    latestAction.current++;
     setWorking(true);
     try {
       const result = await api("command", { project, target: selected.session, command: body });
@@ -947,19 +953,23 @@ function Console({ account }) {
   }
   async function action(path, payload, fallback, image) {
     const at = requested;
+    const sequence = ++latestAction.current;
+    const current = () => at === route.current && sequence === latestAction.current;
+    const show = result => {
+      if (!result || !current()) return;
+      const outcome = (result.wake && !["online", "queued"].includes(result.wake.status) && result.wake) || result.compact || (result.wake ? { status: result.status, detail: result.detail } : result);
+      const note = result.quoted ? [outcome.status || "Sent", "as plain text quoting the original"].join(" · ")
+        : [outcome.status, outcome.detail || outcome.message || outcome.reason].filter(Boolean).join(" · ");
+      setNotice(note || fallback);
+    };
     setWorking(true);
     try {
       const result = await api(path, { project, ...payload }, image);
       if (result.draftHeld) return "draftHeld";
-      if (at === route.current) {
-        // A running session needs no wake note; its message's ticks tell the rest.
-        const outcome = (result.wake && !["online", "queued"].includes(result.wake.status) && result.wake) || result.compact || (result.wake ? { status: result.status, detail: result.detail } : result);
-        // A reply the server could not link says so, with the quote it sent instead.
-        const note = result.quoted ? [outcome.status || "Sent", "as plain text quoting the original"].filter(Boolean).join(" · ") : [outcome.status, outcome.detail || outcome.message || outcome.reason].filter(Boolean).join(" · ");
-        setNotice(note || fallback);
-      }
+      show(result);
+      void result.followup?.then(show);
       return true;
-    } catch (err) { if (at === route.current) setNotice(err.message); return false; }
+    } catch (err) { if (current()) setNotice(err.message); return false; }
     finally { setWorking(false); }
   }
   // A tapped sender or @tag: a session address opens its thread, a bare harness name the session list.
@@ -1204,7 +1214,7 @@ function Console({ account }) {
           const composeHash = composeTask && location.hash;
           const sent = question ? await action("reply", { question, body }, "Reply sent")
             : await action("send", { target, body, ...(sendAnyway ? { sendAnyway: true } : {}), ...(urgent ? { urgent: true } : {}), ...(replyTo ? { replyTo: replyTo.id, quote: { sender: replyTo.sender, body: replyTo.body } } : {}) }, "Sent", image);
-          if (sent === true) {
+          if (sent === true && requested === route.current) {
             setQuestion(""); setReplyTo(null); stick.current?.scrollToBottom();
             if (composeHash && location.hash === composeHash) navigate({ project, level: "project" });
           }

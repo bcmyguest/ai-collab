@@ -1,3 +1,4 @@
+import { SEND_CONFIRMATION } from "../lib/send-confirmation.js";
 import { HOST_CHECKOUT } from "../../lib/merge-cli.mjs";
 import { landReviews, mergeReview } from "./land-reviews.mjs";
 import { isProjectPaused, PROJECT_PAUSED, setProjectPaused } from "../../lib/project-pause.mjs";
@@ -246,6 +247,27 @@ function reject(status, message) {
 
 function json(status, value) {
   return Response.json(value, { status, headers: { "Cache-Control": "no-store" } });
+}
+
+function sentStream(confirmed, complete) {
+  const encoder = new TextEncoder();
+  const line = value => encoder.encode(JSON.stringify(value) + "\n");
+  let canceled = false;
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(line(confirmed));
+      void complete().then(result => {
+        if (canceled) return;
+        controller.enqueue(line(result));
+        controller.close();
+      });
+    },
+    cancel() { canceled = true; },
+  });
+  return new Response(body, {
+    status: 201,
+    headers: { "Content-Type": SEND_CONFIRMATION, "Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no" },
+  });
 }
 
 function failure(err) {
@@ -1771,10 +1793,20 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (err.message.includes("-byte limit")) reject(400, `Message exceeds ${NTFY_MESSAGE_MAX_BYTES} encoded bytes`);
         throw err;
       }
-      if (!hosted && action === "send") notes.push(...await routeMentions(project, text, primary, by, destinations, attachment));
-      const detail = notes.length ? { status: "Sent", detail: notes.join(" · ") } : {};
-      const quoted = reply?.quoted ? { quoted: true } : {};
-      return json(201, { sent: true, ...detail, ...quoted, ...(wake ? { wake } : {}) });
+      const confirmed = { sent: true, ...(reply?.quoted ? { quoted: true } : {}), ...(wake ? { wake } : {}) };
+      const result = () => notes.length ? { ...confirmed, status: "Sent", detail: notes.join(" · ") } : confirmed;
+      if (hosted || action !== "send") return json(201, result());
+      const complete = async () => {
+        notes.push(...await routeMentions(project, text, primary, by, destinations, attachment));
+        return result();
+      };
+      if (request.headers.get("accept") === SEND_CONFIRMATION) {
+        return sentStream(result(), () => complete().catch(error => {
+          notes.push("Mention delivery failed: " + failure(error).message);
+          return result();
+        }));
+      }
+      return json(201, await complete());
     } catch (err) {
       const { status, message } = failure(err);
       return json(status, { error: message });

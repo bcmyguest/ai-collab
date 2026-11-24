@@ -10,7 +10,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright-core";
 
-export async function phoneFixture({ homeSessions = false, inactive = false, kanban = false } = {}) {
+export async function phoneFixture({ homeSessions = false, inactive = false, kanban = false, start, models, peers = "claude" } = {}) {
   const { createUi, installUi } = await import("../web/server/ui.mjs");
   const { broadcastTopic, inboxTopic, loadProjects, sessionLabel } = await import("../lib/config.mjs");
   const { addTask, taskStoreFile, writeStore } = await import("../lib/tasks.mjs");
@@ -36,7 +36,7 @@ export async function phoneFixture({ homeSessions = false, inactive = false, kan
       }
     }
     writeStore(taskStoreFile(project, env), doc);
-    return { root, project, url: fake.url, peers: "claude" };
+    return { root, project, url: fake.url, peers };
   });
   mkdirSync(join(env.XDG_CONFIG_HOME, "ai-collab"), { recursive: true });
   writeFileSync(join(env.XDG_CONFIG_HOME, "ai-collab", "projects.json"), JSON.stringify(projectsConfig));
@@ -82,7 +82,7 @@ export async function phoneFixture({ homeSessions = false, inactive = false, kan
       seenAt: Date.now() - 25 * 60 * 60_000,
     });
   }
-  const ui = installUi(createUi({ projects, env, hasDraft: async () => false,
+  const ui = installUi(createUi({ projects, env, start, models, hasDraft: async () => false,
     control: async () => ({ status: "requested" }) }));
   const next = createRequire(import.meta.url)("next");
   const app = next({ dir: fileURLToPath(new URL("../web", import.meta.url)), dev: false, hostname: "127.0.0.1" });
