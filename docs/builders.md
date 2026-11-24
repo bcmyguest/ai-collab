@@ -4,6 +4,8 @@ A builder is one agent that implements one task on its own branch. `ai-collab bu
 
 Lib: `lib/builder.mjs`. OpenShell lifecycle: `runner/sandbox.mjs`. Tests: `test/builder.test.mjs` and `test/builder-claude.test.mjs` with fake `openshell`, `systemd-run`, `systemctl`, agent and `oncebitten` from `test/helpers/`.
 
+`runner/runner.mjs` manages the durable session steps for runner-owned builders. Both supervisors use `lib/builder.mjs` to collect work, publish landing results, and clean up sandboxes. Cleanup retains an uploaded workspace until its worktree has been collected.
+
 ## What runs where
 
 | Agent | Where | How |
