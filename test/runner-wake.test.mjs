@@ -131,3 +131,38 @@ test("a closed claude session with no loaded adapter records that and leaves its
     await fake.close();
   }
 });
+
+test("the runner wakes an exited Cursor session for queued operator messages and project mentions", async () => {
+  const fake = await startFakeNtfy();
+  const ctx = setup(fake);
+  ctx.cfg.peers = [...ctx.cfg.peers, "cursor"];
+  const adapter = createFakeAdapter({ harness: "cursor" });
+  const { runner, durable } = makeRunner(ctx, [adapter], { watch: false });
+  await runner.boot();
+  try {
+    const nativeId = "00000000-abcd-1234-9876-000000000001";
+    const label = sessionLabel(nativeId);
+    const address = `cursor#${label}`;
+    const scfg = { ...ctx.cfg, peer: "cursor", session: label };
+    await recordSession(scfg, { id: nativeId, cwd: ctx.root, harness: "cursor", event: "SessionEnd" });
+
+    const send = (body, extra = {}) => fake.inject("ai-collab-demo--to--cursor", JSON.stringify({
+      v: 1, kind: "msg", from: "operator", to: "cursor", toSession: label, operatorThread: true, body, ...extra,
+    }));
+    send("phone message");
+    const mention = send(`@${address} project mention`, { mentionedIn: "all" });
+    const wakeId = `${WAKE}:${address}:${mention.id}`;
+
+    assert.deepEqual(await runner.pump(), [wakeId]);
+    await until(() => durable.status(wakeId)?.status === "SUCCESS", "Cursor wake");
+    assert.equal(adapter.calls.find(c => c.op === "resume")?.nativeId, nativeId);
+    const turns = adapter.calls.filter(c => c.op === "send");
+    assert.equal(turns.length, 1);
+    assert.match(turns[0].text, /phone message/);
+    assert.match(turns[0].text, /project mention/);
+    assert.deepEqual(await claimInbox(scfg, { commit: false }), []);
+  } finally {
+    await runner.stop();
+    await fake.close();
+  }
+});

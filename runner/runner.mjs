@@ -743,8 +743,9 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
           }
           continue;
         }
-        // Only the exact session's messages wake it: a message to the peer as a whole never does.
-        if (!PUSHED.has(session.harness) || session.seenAt < now() - SEEN_WITHIN_MS || wakes >= WAKES_PER_TICK || wakeTail.has(session.id)) continue;
+        // Resume adapters include Cursor; keep reporting missing adapters for live-push harnesses.
+        const canWake = adapters.has(session.harness) || PUSHED.has(session.harness);
+        if (!canWake || session.seenAt < now() - SEEN_WITHIN_MS || wakes >= WAKES_PER_TICK || wakeTail.has(session.id)) continue;
         const messages = await deps.claim(scfg, { commit: false, limit: WAKE_BATCH, accept: (m) => direct(m) && m.to === session.id, ...wake }).catch(() => []);
         if (!messages.length) continue;
         const adopt = { nativeId: session.sessionId, cwd: session.cwd, ...(session.model ? { model: session.model } : {}) };
