@@ -796,17 +796,19 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const shared = topic.filter(item => !(item.kind === "Reply" && answered.has(item.question)));
     const states = new Map();
     const local = new Set(agentList.filter(agent => agent.registered).map(agent => agent.id));
-    const withQueue = items => items.flatMap(item => {
-      if (!queueEntry(item)) return [item];
+    const withQueue = items => items.map(item => {
+      if (!queueEntry(item)) return item;
       if (!states.has(item.to)) {
         const [peer, session] = item.to.split("#");
         states.set(item.to, readState(statePath({ ...project.cfg, peer, session })));
       }
       const state = states.get(item.to);
       const current = queuedMessage(item, state);
-      if (!current) return [];
-      const queued = !archived && local.has(item.to) && !state.seen.includes(item.id) && !reads.get(item.id)?.has(item.to);
-      return [queued ? { ...current, queued: true } : current];
+      if (!current) return { ...item, ...state.queue[item.id], queueStatus: "Canceled" };
+      const claimed = state.seen.includes(item.id);
+      const read = reads.get(item.id)?.has(item.to);
+      if (!archived && local.has(item.to) && !claimed && !read) return { ...current, queued: true };
+      return claimed && !read ? { ...current, queueStatus: "Claimed for delivery" } : current;
     });
     let list;
     if (session) {
@@ -1165,6 +1167,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   function push(client) {
     if (client.authorized && !client.authorized()) return client.disconnect();
     const current = snapshot(client);
+    client.hasQueuedMessages = Boolean(client.session && current.messages.some(item => item.queued));
     client.hasOpenTasks = current.tasks.tasks.some(task => task.status !== "done");
     client.hasReview = current.tasks.tasks.some(task => task.review && !task.review.decision);
     client.hasRunningJobs = current.agents.some(agent => agent.runningJobs) || current.sessions?.some(agent => agent.runningJobs);
@@ -1269,7 +1272,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           client.write(": keepalive\n\n");
           // A process can exit without a task or job registry write, and a build review shows a branch that can move.
           // Home also picks up merges that move origin/main without changing a task.
-          if (client.ready && (client.hasRunningJobs || client.hasOpenTasks || client.hasReview || (!hosted && client.scope === "home")) && clients.has(client)) push(client);
+          // A local delivery claim can complete without a receipt or registry update.
+          if (client.ready && (client.hasQueuedMessages || client.hasRunningJobs || client.hasOpenTasks || client.hasReview || (!hosted && client.scope === "home")) && clients.has(client)) push(client);
         }, KEEPALIVE_MS);
         keepalive.unref?.();
         request.signal?.addEventListener("abort", close, { once: true });
@@ -1598,7 +1602,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       if (action === "queue") {
         const peer = recipient(cfg, target, true);
         if (typeof id !== "string" || !/^[a-zA-Z0-9-]{1,64}$/.test(id)) reject(400, "Invalid message ID");
-        if (!listSessions(cfg).some(session => session.id === target)) reject(409, "Queue actions require a locally registered session");
+        const registered = listSessions(cfg).find(session => session.id === target);
+        if (!registered) reject(409, "Queue actions require a locally registered session");
         const inbox = inboxOf(project, peer);
         await project.hub.open(inbox);
         await project.hub.open(project.receipts);
@@ -1615,9 +1620,16 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         else reject(400, "Unknown queue action");
         const session = target.split("#")[1];
         if (!await changeQueuedMessage({ ...cfg, peer, session }, id, change)) reject(409, "This message is no longer available to change");
-        if (change.urgent) markUrgent(operator, target);
+        let outcome = {};
+        if (change.urgent) {
+          markUrgent(operator, target);
+          const wake = wakeAgent(project, target, registered);
+          outcome = wake.status === "online" || wake.status === "queued"
+            ? { status: "Queued for the agent’s next poll" }
+            : wake;
+        }
         broadcast();
-        return json(200, {});
+        return json(200, outcome);
       }
       if (action === "dispose") {
         disposeSession(cfg, target);

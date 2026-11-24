@@ -396,7 +396,7 @@ function QueueRow({ message, disabled, change }) {
       <p className="min-w-0 flex-1 truncate" title={message.body}>{message.body}</p>
       <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => setDraft(message.body)}>Edit</Button>
       <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => change(message, "cancel")}>Cancel</Button>
-      <Button type="button" variant="ghost" size="sm" disabled={disabled || message.urgent} onClick={() => change(message, "steer")}>{message.urgent ? "Steered" : "Steer"}</Button>
+      <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => change(message, "steer")}>Retry delivery</Button>
     </> : <form className="flex w-full flex-wrap items-center gap-2" onSubmit={async event => {
       event.preventDefault();
       if (await change(message, "edit", draft)) setDraft(null);
@@ -437,8 +437,8 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
         {at > 0 && <time dateTime={new Date(at).toISOString()} title={clock.format(at)}>{ago(at, now)}</time>}
         {replyFrom && message.kind !== "Approval" && <button type="button" aria-label={"Reply to " + sender} title="Reply" onClick={() => replyFrom({ id: message.id, sender, prefill, body: message.body })}
           className="rounded-full p-0.5 hover:bg-muted hover:text-foreground"><Reply className="size-3.5"/></button>}
-        {message.scope === "all" && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">to all</Badge>}        {message.urgent && <span role="img" aria-label="Sent now" title="Sent now: delivered at the agent's next tool call" data-urgent className="text-amber-500"><Zap className="size-3.5"/></span>}
-        {outgoing && <Ticks state={message.receipt}/>}
+        {message.scope === "all" && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">to all</Badge>}        {message.urgent && !message.cancelled && <span role="img" aria-label="Sent now" title="Sent now: delivered at the agent's next tool call" data-urgent className="text-amber-500"><Zap className="size-3.5"/></span>}
+        {outgoing && (message.queueStatus ? <span>{message.queueStatus}</span> : <Ticks state={message.receipt}/>)}
         {openable && sender.includes("#") && <GoToAgent onClick={go} className="size-6"/>}
       </div>
       {message.quote && <Quote quote={message.quote} label={short(message.quote.sender)}/>}
