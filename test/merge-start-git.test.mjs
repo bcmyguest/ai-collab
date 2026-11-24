@@ -57,8 +57,16 @@ function sandbox(t) {
       err: { write: (message) => { errors += message; } },
       run(file, argv, options) {
         if (file !== "git") {
-          npm.push(argv.at(-1));
-          return { status: argv.at(-1) === "test" ? gate : 0, stdout: "" };
+          const step = argv.at(-1);
+          npm.push(step);
+          if (!gate) return { status: 0 };
+          return spawnSync("/bin/sh", ["-c", `
+            chunk=x
+            while [ "\${#chunk}" -lt 2097152 ]; do chunk=$chunk$chunk; done
+            printf 'stdout:%s\\n' "$chunk"
+            printf 'stderr: %s\\n' "$1" >&2
+            exit "$2"
+          `, "gate-fixture", step, String(step === "test" ? gate : 0)], options);
         }
         return (run ?? spawnSync)(file, argv, options);
       },
@@ -121,7 +129,13 @@ test("a red gate pushes nothing", (t) => {
   git(host, "switch", "-q", "main");
   const run = start(["builder/red"], { gate: 1 });
   assert.equal(run.status, 1);
-  assert.match(run.result, /^merge: refused: npm test failed/);
+  const logPath = run.result.match(/^merge: refused: npm test failed \(1\); nothing pushed; gate log: (.+)$/)?.[1];
+  assert.ok(logPath, run.result);
+  const log = readFileSync(logPath, "utf8");
+  assert.ok(log.length > 4 * 1024 * 1024);
+  assert.match(log, /^\n\$ npm ci\nstdout:/);
+  assert.match(log, /stderr: ci\n\n\$ npm test\nstdout:/);
+  assert.ok(log.endsWith("stderr: test\n"));
   assert.equal(remoteMain(), before);
 });
 
