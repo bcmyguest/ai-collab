@@ -30,7 +30,7 @@ export function selectionHash(next = {}) {
 const PROJECT_VIEWS = [["project", "Chat"], ["tasks", "Tasks"], ["patterns", "Patterns"]];
 
 export function projectNavigation(project, level) {
-  if (!project || !PROJECT_VIEWS.some(([view]) => view === level)) return [];
+  if (!project || !LEVELS.some(([id]) => id === level)) return [];
   return PROJECT_VIEWS.map(([view, label]) => ({
     label,
     href: "#" + selectionHash({ project, level: view }),
