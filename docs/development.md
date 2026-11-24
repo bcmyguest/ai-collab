@@ -13,8 +13,8 @@ Tests use an in-process fake ntfy server (`test/helpers/fake-ntfy.mjs`) and need
 ### UI SDK smoke test
 
 ```sh
-NEXT_PUBLIC_AI_COLLAB_TEST_BRIDGE=1 npm run build
-node tools/smoke-ui.mjs --ui-sdk
+NEXT_PUBLIC_AI_COLLAB_TEST_BRIDGE=1 AI_COLLAB_NEXT_DIST=.next-demo npm run build
+AI_COLLAB_NEXT_DIST=.next-demo node tools/smoke-ui.mjs --ui-sdk
 ```
 
 The browser runs the SDK's `snapshot()` and `act()` against the outcome form, then submits it to a local fixture. The flag exposes `window.aiCollabTestBridge` for test builds. For deployment, run `npm run build` with the flag unset.
