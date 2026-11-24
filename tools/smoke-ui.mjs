@@ -158,8 +158,7 @@ async function checkComposer(page, fixture) {
   await send("Direct session message", direct, [fixture.direct]);
   const queued = page.getByRole("region", { name: "Queued messages" });
   const row = queued.getByRole("listitem").filter({ hasText: "Direct session message" });
-  const steer = row.getByRole("button", { name: "Steer", exact: true });
-  await steer.waitFor();
+  await row.getByRole("button", { name: "Retry delivery", exact: true }).waitFor();
   await page.waitForFunction(() => document.getElementById("composer")?.value === "");
   const urgentBody = "Urgent direct session message";
   await draft.fill(urgentBody);
