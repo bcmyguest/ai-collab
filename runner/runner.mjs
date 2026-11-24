@@ -344,7 +344,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       } catch (error) {
         return { failed: error.message };
       }
-    }, { onCut: () => ({ failed: "runner restarted while staging the builder" }) });
+    });
     if (staged?.failed) {
       await wf.step("builder.fail", () => finishOwnedBuilder(builder, null, 1, env, log, staged.failed));
       return { ended: staged.failed };
@@ -374,7 +374,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         throw error;
       }
       return { nativeId: holder.live.nativeId };
-    }, { onCut: () => ({ failed: "the runner stopped while the session opened" }) });
+    }, builder ? {} : { onCut: () => ({ failed: "the runner stopped while the session opened" }) });
     if (opened.failed) {
       if (builder) await wf.step("builder.fail", () => finishOwnedBuilder(builder, staged, 1, env, log, opened.failed));
       return { ended: opened.failed };
@@ -413,7 +413,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     const finishBuilder = (finished) => wf.step("builder.finish", async () => {
       await s.live?.close().catch(() => {});
       s.live = null;
-      await finishOwnedBuilder(builder, staged, finished?.outcome === "success" ? 0 : 1, env, log, undefined, finished?.usageLimit);
+      await finishOwnedBuilder(builder, staged, finished?.outcome === "success" ? 0 : 1, env, log, undefined, finished?.usageLimit, wf.signal);
     });
     let next = { text: input.prompt, messageIds: [], system: input.system ?? Boolean(builder || patternRun) };
     for (;;) {

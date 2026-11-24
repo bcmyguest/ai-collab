@@ -436,7 +436,7 @@ test("a CODEX_HOME with no login falls back to the user's ~/.codex login", async
   assert.equal(src.codexAuth, existsSync(own) ? own : "");
 });
 
-async function ownedBuilderTest(t, prompt, { restart = false } = {}) {
+async function ownedBuilderTest(t, prompt, { restart = false, restartFallback = false } = {}) {
   const ntfy = await startFakeNtfy();
   t.after(() => ntfy.close());
   const l = lab({ AI_COLLAB_URL: ntfy.url, AI_COLLAB_PEERS: "claude,codex,operator" });
@@ -448,6 +448,7 @@ async function ownedBuilderTest(t, prompt, { restart = false } = {}) {
     AI_COLLAB_CODEX_TREE: tree,
     AI_COLLAB_RUNNER_SOCKET: path.join(l.home, "s"),
     FAKE_CODEX_LOG: path.join(l.home, "codex.log"),
+    ...(restartFallback ? { FAKE_BUILDER_MODE: "restart" } : {}),
   });
   await withTask(l);
   writeFileSync(l.brief, prompt);
@@ -495,13 +496,31 @@ async function ownedBuilderTest(t, prompt, { restart = false } = {}) {
   assert.ok(turn?.params.input[0].text.startsWith(prompt));
   assert.match(turn.params.input[0].text, /oncebitten check --base main/);
   if (prompt === "limit") {
-    while (Date.now() < deadline && runner.get(address).status !== "ended") {
+    if (restartFallback) {
+      const workspace = path.join(l.home, "sandboxes", SANDBOX, "work", path.basename(builderPaths("smoke-task", l.env).worktree), "notes.md");
+      while (Date.now() < deadline && !(existsSync(workspace) && readFileSync(workspace, "utf8").includes("pending fallback edit"))) {
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      assert.match(readFileSync(workspace, "utf8"), /pending fallback edit/);
+      await runner.stop();
+      assert.equal(task(l).status, "building");
+      runner = makeRunner();
+      await runner.boot();
+    }
+    const finishDeadline = Date.now() + 5000;
+    while (Date.now() < finishDeadline && runner.get(address).status !== "ended") {
       await new Promise(resolve => setTimeout(resolve, 20));
     }
     assert.equal(runner.get(address).status, "ended");
     assert.equal(task(l).status, "review");
     assert.match(wtGit(l, "show", "HEAD:notes.md"), /a line from the builder/);
-    assert.equal(readJsonLines(l.env.FAKE_BUILDER_LOG).length, 1);
+    const fallbackCalls = readJsonLines(l.env.FAKE_BUILDER_LOG);
+    assert.equal(fallbackCalls.length, restartFallback ? 2 : 1);
+    if (restartFallback) {
+      assert.ok(fallbackCalls[1].args.some(arg => arg.startsWith("The runner restarted")));
+      assert.match(wtGit(l, "show", "HEAD:notes.md"), /pending fallback edit\na line from the builder/);
+      assert.equal(readJsonLines(l.env.FAKE_OPENSHELL_LOG).filter(args => args[1] === "create").length, 2);
+    }
     assert.deepEqual(JSON.parse(readFileSync(l.env.FAKE_OPENSHELL_STATE, "utf8")).sandboxes, []);
     return;
   }
@@ -573,6 +592,7 @@ async function ownedBuilderTest(t, prompt, { restart = false } = {}) {
 
 test("Codex builder links its task before sending the brief", (t) => ownedBuilderTest(t, "hang"));
 test("runner restart resumes a Codex builder in its original sandbox", (t) => ownedBuilderTest(t, "hang", { restart: true }));
+test("runner restart resumes the usage-limit fallback with its pending edits", { timeout: 20000 }, (t) => ownedBuilderTest(t, "limit", { restartFallback: true }));
 test("runner-owned Codex retries a usage limit with Cursor", (t) => ownedBuilderTest(t, "limit"));
 
 test("Codex builder uses the standalone unit when the control socket is absent", async () => {

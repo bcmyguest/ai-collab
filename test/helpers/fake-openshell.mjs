@@ -111,6 +111,7 @@ if (args[0] === "sandbox" && args[1] === "exec") {
   }
   if (cwd) mkdirSync(cwd, { recursive: true });
   const child = spawn(cmd[0], cmd.slice(1), { stdio: "inherit", env, ...(cwd ? { cwd } : {}) });
+  process.once("SIGTERM", () => child.kill("SIGTERM"));
   child.on("exit", (code) => {
     if (process.env.FAKE_BUILDER_CUT_AFTER_AGENT && cmd[0] === process.env.FAKE_SANDBOX_CURSOR_BIN) {
       process.kill(process.ppid, "SIGKILL");
