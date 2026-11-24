@@ -40,7 +40,7 @@ import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern
 import { authorTeam, saveAuthoredTeam } from "../../lib/team-author.mjs";
 import { listOwned, readOwned } from "../../lib/owned.mjs";
 import { builderAssignment, recoverBuilder, stoppedBuilder } from "../../lib/builder.mjs";
-import { REVIEW_ACTIONS, STATUSES, openTasks } from "../../lib/tasks.mjs";
+import { REVIEW_ACTIONS, STATUSES, TaskNotFoundError, openTasks } from "../../lib/tasks.mjs";
 import { priorityOf } from "../../lib/task-order.mjs";
 import { mentions, mentionedNames, mentionedTeams, startOnlyMentions, messageDestinations } from "../lib/message-routing.js";
 import { taskTags } from "../lib/task-tags.js";
@@ -933,18 +933,28 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     if (taskId !== undefined) {
       if (hosted) reject(403, "Skip task questions on the agent machine");
       if (!project.tasks || typeof taskId !== "string") reject(400, "Give the task id");
+      const result = { status: "Skipped", detail: taskId };
       let task;
-      try { task = project.tasks.get(taskId); } catch (err) { reject(404, err.message); }
+      try { task = project.tasks.get(taskId); }
+      catch (err) {
+        if (err instanceof TaskNotFoundError) return result;
+        reject(404, err.message);
+      }
       if (!task.question || task.question.answer) reject(409, "This task has no open question");
       try { await project.tasks.update(taskId, { ask: null, progress: { by: who, text: SKIPPED_PROGRESS } }); }
-      catch (err) { reject(400, err.message); }
+      catch (err) {
+        if (err instanceof TaskNotFoundError) return result;
+        reject(400, err.message);
+      }
       broadcast();
-      return { status: "Skipped", detail: taskId };
+      return result;
     }
     if (typeof id !== "string" || !APPROVAL_ID.test(id)) reject(400, "Invalid decision");
-    await resolveDecision(project, id, async (events, replies) => {
-      const items = events.map(entry);
-      if (items.some(e => e?.kind === "Approval" && e.approval.id === id)) {
+    const items = project.hub.events(project.topic).map(entry);
+    const hasApproval = items.some(e => e?.kind === "Approval" && e.approval.id === id);
+    if (!hasApproval && !items.some(e => e?.kind === "Question" && e.question === id)) return { status: "Skipped" };
+    await resolveDecision(project, id, async (_events, replies) => {
+      if (hasApproval) {
         const approval = findApproval(project, id);
         if (approval.owned) reject(409, "A runner session has no terminal prompt; answer this request");
         if (replies.some(value => replyDecision(approval, value))) reject(409, "This request has closed");
@@ -953,10 +963,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           const result = await skipLimit(project.cfg, id);
           if (result.status !== "skipped") reject(409, result.detail);
         }
-      } else {
-        if (!items.some(e => e?.kind === "Question" && e.question === id)) reject(404, "Unknown decision");
-        if (replies.length) reject(409, "This question has closed");
-      }
+      } else if (replies.length) reject(409, "This question has closed");
       const end = encodeEnvelope("approval-end", { from: "operator", id, reason: "skipped", ...(by ? { by } : {}), ts: new Date().toISOString() }, project.cfg.wire);
       await publish(project.cfg, project.topic, end, { title: "ai-collab approval skipped", priority: 1, onPublished: project.hub.record });
     });

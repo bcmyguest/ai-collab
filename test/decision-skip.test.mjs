@@ -1,13 +1,13 @@
 // The UI's Skip action: closes an open approval, choice, question, limit card or task question without answering it.
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import { broadcastTopic, loadProjects } from "../lib/config.mjs";
-import { alertLimit, chooseLimit, readCard } from "../lib/limit-alert.mjs";
-import { addTask, askTask, readStore, taskStoreFile, writeStore } from "../lib/tasks.mjs";
+import { alertLimit, cardFile, chooseLimit, readCard } from "../lib/limit-alert.mjs";
+import { addTask, askTask, openTasks, readStore, taskStoreFile, writeStore } from "../lib/tasks.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
@@ -74,7 +74,6 @@ test("Skip closes a permission request and a question with a skipped end, and se
   assert.equal((await post("skip", { id: QUESTION })).status, 409);
   assert.equal((await post("reply", { question: QUESTION, body: "Yes" })).status, 409);
   assert.equal((await post("skip", { id: OWNED })).status, 409, "a runner session has no terminal prompt to fall back on");
-  assert.equal((await post("skip", { id: "ffffffffffff" })).status, 404);
   assert.equal((await post("skip", { id: "nope" })).status, 400);
 
   const home = await stateWhere("view=home", (d) => d.decisions?.length === 1);
@@ -93,8 +92,36 @@ test("Skip clears a task question with a progress line and posts nothing to the 
   assert.deepEqual([alpha.progress.at(-1).by, alpha.progress.at(-1).text], ["operator", "Skipped by operator"]);
   assert.equal((await post("skip", { taskId: "alpha" })).status, 409, "the question is gone");
   assert.equal((await post("skip", { taskId: "beta" })).status, 409, "a task with no question has nothing to skip");
-  assert.equal((await post("skip", { taskId: "missing" })).status, 404);
   assert.equal(fake.state.publishes.length, sent);
+});
+
+test("Skip succeeds without publishing or writing progress when the decision record is gone", async (t) => {
+  const { fake, env, post } = await setup(t);
+  await openTasks("demo", env).remove("alpha");
+  const before = readStore(taskStoreFile("demo", env));
+  const sent = fake.state.publishes.length;
+  const decision = await post("skip", { id: QUESTION });
+  assert.equal(decision.status, 201);
+  assert.deepEqual(await decision.json(), { status: "Skipped" });
+  const task = await post("skip", { taskId: "alpha" });
+  assert.equal(task.status, 201);
+  assert.deepEqual(await task.json(), { status: "Skipped", detail: "alpha" });
+  assert.deepEqual(readStore(taskStoreFile("demo", env)), before);
+  assert.equal(fake.state.publishes.length, sent);
+});
+
+test("Skip closes a visible limit card whose stored record was removed", async (t) => {
+  const { fake, cfg, post, stateWhere } = await setup(t);
+  const deps = { listed: async () => ({ claude: ["sonnet"] }), available: () => ["claude", "codex"] };
+  const limit = { window: null, windowName: null, resetsAt: null, wording: true, verified: true, source: "test" };
+  const card = await alertLimit({ ...cfg, peer: "codex", session: SESSION }, { harness: "codex", limit, ...deps });
+  await stateWhere("view=home", (d) => d.decisions?.some((x) => x.key === card.id));
+  unlinkSync(cardFile(cfg, card.id));
+  const response = await post("skip", { id: card.id });
+  assert.equal(response.status, 201);
+  assert.deepEqual(await response.json(), { status: "Skipped" });
+  assert.equal(readCard(cfg, card.id), null);
+  assert.deepEqual(ends(fake).map((m) => [m.id, m.reason]), [[card.id, "skipped"]]);
 });
 
 test("Skip closes a limit card: no pick is possible afterwards, and the next report opens a fresh card", async (t) => {
