@@ -83,7 +83,7 @@ A role with `count` N runs N live instances; each has its own session and its br
 
 - `pair`: instance i of the source hands to instance i of the target. Both roles need the same count.
 - `broadcast`: the handoff activates every instance of the target.
-- `fan-in`: the handoff waits until every live instance of the source has advanced on this event, then activates the target.
+- `fan-in`: the handoff waits until every instance of the source role advances on this event, then activates the target.
 
 `pattern start <name> "<task>"` creates a run with the entry role live and starts its sessions with the task and its allowed events. `pattern advance <run> "<event>" ["note"]` takes the handoff named by the event from the calling live instance. The next role receives an ai-collab message; a role with no session yet starts one.
 
@@ -92,6 +92,23 @@ DOT patterns start through the local runner. It checkpoints the compiled graph a
 Each new DOT run shares one OpenShell sandbox and worktree across all its roles. Every role needs an OpenShell-capable adapter (currently Cursor). A role requests a handoff by ending its reply with `PATTERN_ADVANCE {"event":"<event>","note":"<optional note>"}`. The runner verifies that the session belongs to a live role. Operators can advance or confirm handoffs from the UI.
 
 The runner stores run state in `<stateDir>/runner/pattern-runs/<project>/<run>.json` and still reads earlier project run records. `pattern status <run>` lists the role sessions, notes and handoff log.
+
+## Verify a pattern without launching agents
+
+The graph declares the available moves. A trace supplies the events agents would emit. The product team trace below reaches `done` after the three required handoffs fire.
+
+| Event | Role that emitted it | Next role |
+|---|---|---|
+| `in vision` | PM | Engineer |
+| `built` | Engineer | Review |
+| `reported` | Review | PM |
+| `task closed` | PM | Done |
+
+`compileTrace` records `enter`, `event`, and `leave` entries using the same transition rules as the runner. A string outcome uses the first live instance. For parallel roles, pass an event with its source instance, such as `{ event: "built", role: "worker", index: 1 }`. Indexes start at 0. The trace refuses outcomes from inactive instances and events after completion.
+
+In a real run, the runner stores the starting graph and checkpoints each step. Once a leave is recorded, recovery can use its result to enter the next role without applying the handoff again. During recovery from an interrupted enter, a first visit's recorded session address confirms launch. For a reused session, an address from an earlier visit cannot confirm delivery of the current brief, so the run fails with the interrupted-enter reason.
+
+`node --test test/pattern-compiler.test.mjs test/pattern-caller-and-revisit.test.mjs test/pattern-workflow.test.mjs` checks graph transitions and restart behavior without model calls. The tests exercise the graph rules and recorded outcomes. Agent output quality is a separate check. [Lean proof proposal](research/dot-to-durable-workflows.md#the-compiler-is-the-part-that-can-be-proved)
 
 ## Storage
 
