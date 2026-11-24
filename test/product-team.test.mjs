@@ -32,18 +32,19 @@ test("the product team validates and each role names one limit-chain fallback", 
   const { env, cfg } = await fixture(t);
   const checked = checkTeamText(cfg, "product", text);
   assert.equal(checked.ok, true, checked.error);
-  assert.deepEqual(checked.pattern.roles.map((role) => role.id), ["ceo", "project-maintainer", "builder", "tester"]);
+  assert.deepEqual(checked.pattern.roles.map((role) => role.id), ["pm", "engineer", "review", "ceo"]);
   assert.ok(checked.pattern.roles.every((role) => role.fallback === FALLBACK));
-  for (const id of ["ceo", "project-maintainer"]) {
+  for (const id of ["pm", "ceo"]) {
     const role = checked.pattern.roles.find((item) => item.id === id);
     assert.equal(`${role.harness}:${role.model}`, GROK);
   }
   assert.ok(checked.pattern.roles.every((role) => `${role.harness}:${role.model}` !== role.fallback));
-  assert.equal(checked.pattern.handoffs.find((item) => item.on === "unproven").to, "builder");
-  assert.equal(checked.pattern.handoffs.find((item) => item.on === "proven").to, "done");
+  assert.equal(checked.pattern.handoffs.find((item) => item.on === "reported").to, "pm");
+  assert.equal(checked.pattern.handoffs.find((item) => item.on === "several tasks").required, false);
+  assert.equal(checked.pattern.handoffs.find((item) => item.on === "task closed").to, "done");
 
   const calls = [];
-  const started = await teamStart(cfg, "product", "ceo", "Propose one feature consistent with the mission.", env, {
+  const started = await teamStart(cfg, "product", "pm", "Check this task against the product vision.", env, {
     start: async (_cfg, options) => {
       calls.push(options);
       return { status: "started", session: `${options.harness}#0123456789abcdef`, detail: "ok" };
@@ -53,6 +54,6 @@ test("the product team validates and each role names one limit-chain fallback", 
   assert.equal(started.status, "running");
   assert.equal(calls.length, 1);
   assert.equal(calls[0].model, "grok-4.7-high");
-  assert.match(calls[0].prompt, /role "ceo"/);
+  assert.match(calls[0].prompt, /role "pm"/);
   assert.match(calls[0].prompt, new RegExp(`This session continues as ${FALLBACK.replace(/[.]/g, "\\.")}`));
 });
