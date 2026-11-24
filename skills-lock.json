@@ -1,0 +1,45 @@
+{
+  "version": 2,
+  "skills": {
+    "antislop": {
+      "source": "miqdadbadjuber/anti-slop",
+      "commit": "7f6a03df2931c12cb244dc4ab14ee4866b0ac2ba",
+      "sourceType": "github",
+      "skillPath": "skills/antislop/SKILL.md",
+      "computedHash": "4a8c036c102dee114053f3336c65a8350b056401a82dc75ed2c78e6f7861de30",
+      "installMode": "copy"
+    },
+    "antislop-code": {
+      "source": "miqdadbadjuber/anti-slop",
+      "commit": "7f6a03df2931c12cb244dc4ab14ee4866b0ac2ba",
+      "sourceType": "github",
+      "skillPath": "skills/antislop-code/SKILL.md",
+      "computedHash": "3a37bb0fa15b32e18d37433f82f89096417305225e101b98e2d2d286a1df60b3",
+      "installMode": "copy"
+    },
+    "antislop-human": {
+      "source": "miqdadbadjuber/anti-slop",
+      "commit": "7f6a03df2931c12cb244dc4ab14ee4866b0ac2ba",
+      "sourceType": "github",
+      "skillPath": "skills/antislop-human/SKILL.md",
+      "computedHash": "66ed1e4300691119c006f92b1718d0c6264ce59edf7a3c372b9fb6d6aa2442a2",
+      "installMode": "copy"
+    },
+    "antislop-layoutmobile": {
+      "source": "miqdadbadjuber/anti-slop",
+      "commit": "7f6a03df2931c12cb244dc4ab14ee4866b0ac2ba",
+      "sourceType": "github",
+      "skillPath": "skills/antislop-layoutmobile/SKILL.md",
+      "computedHash": "0501e57615835681bab79eab7cda2231762e660548d25c07c8a00535bebaf1b8",
+      "installMode": "copy"
+    },
+    "antislop-ui": {
+      "source": "miqdadbadjuber/anti-slop",
+      "commit": "7f6a03df2931c12cb244dc4ab14ee4866b0ac2ba",
+      "sourceType": "github",
+      "skillPath": "skills/antislop-ui/SKILL.md",
+      "computedHash": "5229431bc978573ab945a16b9b9677b2733202b821921886427463028dadfcb9",
+      "installMode": "copy"
+    }
+  }
+}
