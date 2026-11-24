@@ -202,11 +202,13 @@ function Decision({ task, decide, skip, compose, fullId }) {
   return <li className="flex min-w-0 flex-col gap-2 rounded-xl border border-amber-500/50 bg-amber-500/5 p-3 text-sm">
     <TaskMetadata task={task} fullId={fullId}/>
     <button type="button" onClick={() => compose(task.id)} className="w-full text-left font-medium leading-snug wrap-break-word hover:underline">{task.title}</button>
-    <p className="break-words">{q.text}</p>
+    <p className="wrap-anywhere">{q.text}</p>
     <p className="text-xs text-muted-foreground">asked by <span className="font-mono">{q.by}</span></p>
-    {q.options?.length > 0 && <div role="group" aria-label="Choices" className="flex flex-wrap gap-2">
+    {q.options?.length > 0 && <div role="group" aria-label="Choices" className="grid gap-2">
       {q.options.map(option => <Button key={option} type="button" size="sm" variant="outline" disabled={busy}
-        className="h-auto min-h-8 whitespace-normal rounded-full text-left" onClick={() => send(option)}>{option}</Button>)}
+        className="h-auto min-h-11 min-w-0 justify-start rounded-lg py-2 text-left text-sm whitespace-normal" onClick={() => send(option)}>
+        <span className="min-w-0 wrap-anywhere">{option}</span>
+      </Button>)}
     </div>}
     <form className="flex gap-2" onSubmit={event => { event.preventDefault(); send(text); }}>
       <input value={text} onChange={event => setText(event.target.value)} maxLength={500} aria-label={`Answer for ${task.title}`}
