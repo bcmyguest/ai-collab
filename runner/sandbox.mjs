@@ -140,11 +140,12 @@ async function mustRun(openshell, args, { env, timeoutMs }, what) {
 }
 
 /** Uploads a host directory into a sandbox; the directory's basename becomes the last path segment. */
-export async function uploadTree({ openshell, env, sandbox, local, remote }) {
+export async function uploadTree({ openshell, env, sandbox, local, remote, gitIgnore = true }) {
   const args = uploadArgv({ openshell, sandbox, local, remote }).slice(1);
+  if (!gitIgnore) args.push("--no-git-ignore");
   const out = await runTool(openshell, args, { env, timeoutMs: SYNC_TIMEOUT_MS });
   // Inside a work tree openshell drops .gitignore matches, and a tree with no tracked files uploads nothing.
-  if (out.code !== 0 && /Git filtering selected no files/i.test(out.stderr)) {
+  if (gitIgnore && out.code !== 0 && /Git filtering selected no files/i.test(out.stderr)) {
     return mustRun(openshell, [...args.slice(0, 2), "--no-git-ignore", ...args.slice(2)], { env, timeoutMs: SYNC_TIMEOUT_MS }, "sandbox upload");
   }
   if (out.code !== 0) throw new Error(`openshell sandbox upload failed: ${out.stderr.trim() || `exit ${out.code}`}`);
