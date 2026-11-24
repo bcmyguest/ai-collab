@@ -36,6 +36,7 @@
     "web/*.json"
   ],
   "scripts": {
+    "lint": "oxlint .",
     "test": "node --test",
     "build": "node deploy/build-ui.mjs",
     "runner": "node runner/main.mjs",
@@ -72,9 +73,12 @@
     "zod-v3": "npm:zod@^3.25.76"
   },
   "devDependencies": {
+    "@cloudflare/oxlint-config": "^0.2.0",
     "gifenc": "^1.0.3",
+    "oxlint": "^1.95.0",
     "playwright-core": "1.65.1",
-    "sharp": "^0.35.5"
+    "sharp": "^0.35.5",
+    "tsrs": "^7.1.0-beta.tsrs5"
   },
   "repository": {
     "type": "git",
