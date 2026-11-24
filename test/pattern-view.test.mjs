@@ -37,6 +37,7 @@ test("delete is offered only for removable entries; built-in and global patterns
   assert.equal(canDelete({ source: "built-in" }), false);
   assert.equal(canCopy("built-in"), true);
   assert.equal(canCopy("global"), true);
+  assert.equal(canCopy("other"), true);
   assert.equal(canCopy("project"), false);
 });
 

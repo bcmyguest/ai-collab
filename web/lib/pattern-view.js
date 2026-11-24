@@ -1,14 +1,14 @@
 // Pattern list, inspect and run views: which actions a listed entry allows, and what a run can take next.
-export const SCOPE_LABELS = { "built-in": "built-in", global: "global", project: "project", team: "team" };
+export const SCOPE_LABELS = { "built-in": "built-in", global: "global", project: "project", team: "team", other: "other project" };
 
 /** Delete is offered for the project's own patterns and teams: the server's removable flag (global teams live in teams.json). */
 export function canDelete(pattern) {
   return pattern.removable === true;
 }
 
-/** Built-in and global patterns copy into the project. */
+/** Built-in, global, and another project's team copy into this project. */
 export function canCopy(source) {
-  return source === "built-in" || source === "global";
+  return source === "built-in" || source === "global" || source === "other";
 }
 
 /** The events the active role of a run can send, in handoff order. Empty once the run is not running. */

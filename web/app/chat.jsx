@@ -19,7 +19,7 @@ import { contextMeter, filesRead } from "@/lib/context-view";
 import { agentDetail } from "@/lib/agent-detail";
 import { composerDestination } from "@/lib/message-routing";
 import { quotedReply, usableReplyId } from "@/lib/reply-quote";
-import { withMentions } from "@/lib/mentions";
+import { patternMentionTargets, withMentions } from "@/lib/mentions";
 import { chatThread } from "@/lib/chat-turns";
 import { NewAgentComposer } from "./new-session";
 import { PatternsPage } from "./patterns-page";
@@ -426,6 +426,7 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
   const options = [...agents.map(agent => ({ id: agent.id, name: agent.name, lastMessageAt: agent.lastMessageAt, activeAt: agent.activeAt, online: agent.online, live: isLive(agent, now) })),
     ...harnesses.map(harness => ({ id: harness.id, lastMessageAt: harness.lastMessageAt, activeAt: harness.activeAt, harness: true })),
     ...(teams || []).map(team => ({ id: team.id, team: true, members: team.members })),
+    ...patternMentionTargets(routing.patterns).filter(option => !(teams || []).some(team => team.id === option.id)),
     ...startable.flatMap(harness => modelsOf(models, harness).map(model => ({ id: harness + ":" + model, harness, model }))),
     // Open subagent runs of the project's sessions, tagged @session/run.
     ...agents.flatMap(agent => (agent.subagents || []).filter(run => run.open).map(run => ({ id: agent.id + "/" + run.run, owner: agent.id, run: true,
@@ -534,7 +535,7 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
         <span className="flex min-w-0 flex-1 flex-col">{option.run ? <span className="truncate text-xs text-foreground/80">{option.label}</span> : <span className="truncate font-mono text-xs">@{option.id}</span>}
           {option.run ? null : option.model ? <span className="truncate text-xs text-foreground/80">{(HARNESS_NAMES[option.harness] || option.harness) + " · " + option.model}</span> : option.team ? <span className="truncate text-xs text-foreground/80">{(option.members || []).join(", ")}</span> : <SessionName agent={option}/>}</span>
         {!option.harness && !option.run && !option.team && <Dot online={option.live === true}/>}
-        <span className="shrink-0 text-xs text-muted-foreground">{option.run ? "subagent" : option.team ? "team" : option.model ? "new session" : (option.harness ? "harness · " : "") + seen(option, now)}</span>
+        <span className="shrink-0 text-xs text-muted-foreground">{option.run ? "subagent" : option.pattern ? "pattern" : option.team ? "team" : option.model ? "new session" : (option.harness ? "harness · " : "") + seen(option, now)}</span>
       </button>)}
     </div>}
     <div onKeyDownCapture={event => {
