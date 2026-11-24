@@ -1,0 +1,12 @@
+{
+  "name": "ai-collab-celld-spike",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-08-18",
+  "workflows": [
+    {
+      "binding": "PATTERNS",
+      "name": "pattern",
+      "class_name": "PatternWorkflow"
+    }
+  ]
+}

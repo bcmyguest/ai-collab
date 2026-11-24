@@ -29,6 +29,18 @@ AI_COLLAB_BROWSER_TEST=1 node --test test/chat-queue-browser.test.mjs
 
 The checks use a 390-pixel viewport and a local ntfy fixture. They cover message routing, urgent sends, edits and cancellation in the queue, and draft isolation between project and session chats. Set `CHROME_PATH` if Chromium is outside the Playwright cache.
 
+### celld workflow smoke test
+
+With `celld` and `esbuild` on PATH, run:
+
+```sh
+node tools/smoke-celld.mjs
+```
+
+Set `CELLD_BIN` to use a specific binary. The smoke test runs the product DOT interpreter in [local celld development mode](https://celld.dev/docs/#develop-an-application-locally) with temporary storage and a loopback fake role gateway. It kills celld after the gateway accepts a role launch and before the workflow records the result, restarts celld, delivers a duplicate handoff event, and checks the completed trace against the compiler. It runs without a bucket, model, credentials or production services.
+
+[celld replays an uncommitted step](https://celld.dev/docs/services/workflows/#replay). The fake gateway deduplicates the retry in memory while celld restarts. A production adapter would have to persist those launch keys across host restarts before taking live traffic.
+
 ## Owned-session runner
 
 `runner/` holds the `ai-collab-runner` service skeleton: the adapter contract, a SQLite workflow log, the control socket and a fake adapter. Adapters code against [the owned-sessions contract](owned-sessions-contract.md). Run it with `npm run runner`; `deploy/ai-collab-runner.service` is the user-unit template.
