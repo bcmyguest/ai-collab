@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { stateDir } from "../lib/config.mjs";
@@ -307,6 +307,9 @@ test("a node_modules symlink alone is removable and its target survives", async 
   const linkOnly = path.join(wt, "linkonly");
   git(repo, ["worktree", "add", "-q", "-b", "linkonly", linkOnly, "main"]);
   symlinkSync(target, path.join(linkOnly, "node_modules"));
+  // node_modules/ (directory-only) ignores the real directory but not the symlink.
+  mkdirSync(path.join(repo, ".git", "info"), { recursive: true });
+  appendFileSync(path.join(repo, ".git", "info", "exclude"), "node_modules/\n");
   const realDir = path.join(wt, "realdir");
   git(repo, ["worktree", "add", "-q", "-b", "realdir", realDir, "main"]);
   mkdirSync(path.join(realDir, "node_modules", "pkg"), { recursive: true });
@@ -320,13 +323,15 @@ test("a node_modules symlink alone is removable and its target survives", async 
   const dry = await pruneRepo({ env, root: repo, olderThanMs: WEEK, apply: false, now: NOW });
   const decided = outcomes(dry);
   assert.equal(decided["worktree:linkonly"], "remove");
-  assert.equal(decided["worktree:realdir"], "dirty: 2 changed or untracked file(s)");
+  assert.equal(decided["worktree:realdir"], "remove");
   assert.equal(decided["worktree:linkplus"], "dirty: 1 changed or untracked file(s)");
   assert.ok(existsSync(linkOnly));
   const applied = await pruneRepo({ env, root: repo, olderThanMs: WEEK, apply: true, now: NOW });
   assert.equal(outcomes(applied)["worktree:linkonly"], "remove");
+  assert.equal(outcomes(applied)["worktree:realdir"], "remove");
   assert.ok(!existsSync(linkOnly));
-  assert.ok(existsSync(realDir) && existsSync(linkPlus));
+  assert.ok(!existsSync(realDir), "git worktree remove deletes ignored-only worktrees without --force");
+  assert.ok(existsSync(linkPlus));
   assert.deepEqual(readdirSync(target, { recursive: true }).sort(), before);
   assert.equal(readFileSync(path.join(target, "pkg", "index.js"), "utf8"), "export {};\n");
 });
