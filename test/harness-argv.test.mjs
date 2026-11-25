@@ -7,6 +7,7 @@ import { codexRequiredRunCodeArgs } from "../lib/code-mode.mjs";
 import { authorCommand } from "../lib/team-author.mjs";
 import { pushSession } from "../lib/deliver-push.mjs";
 import { acpArgs } from "../runner/adapters/cursor.mjs";
+import { argv } from "../lib/harness.ts";
 import { WAKE_PROMPT } from "../lib/mode.mjs";
 
 // Pinned from the per-harness sites before they moved into lib/harness.ts; each row is what that site returned.
@@ -78,6 +79,16 @@ test("queue argv is the codex queue call; other harnesses take none", async () =
   const run = async (file, args) => { calls.push([file, args]); return 0; };
   await pushSession({ harness: "codex", sessionId: UUID }, "hello there", { urgent: false, ids: [] }, { run, env: {} });
   assert.deepEqual(calls, [["codex", ["queue", "--thread", UUID, "--message", "hello there", "--resume"]]]);
+});
+
+test("argv is the one owner: interrupt and the kinds a harness lacks return null", () => {
+  assert.deepEqual(argv("codex", "interrupt", {}), ["codex", ["app-server", "proxy"]]);
+  for (const harness of ["claude", "cursor", "opencode"]) assert.equal(argv(harness, "interrupt", {}), null);
+  assert.equal(argv("claude", "queue", { id: UUID, text: "x" }), null);
+  assert.equal(argv("codex", "compact", { id: UUID }), null);
+  assert.equal(argv("opencode", "acp", {}), null);
+  assert.deepEqual(argv("cursor", "wake", { id: "ses-1", prompt: "WAKE", path: "" }), ["agent", ["--print", "--resume", "ses-1", "WAKE"]]);
+  assert.deepEqual(argv("codex", "wake", { id: "ses-1", prompt: "WAKE", requireRunCode: true }), ["codex", ["exec", ...codexRequiredRunCodeArgs(), "resume", "ses-1", "WAKE"]]);
 });
 
 test("acp argv", () => {

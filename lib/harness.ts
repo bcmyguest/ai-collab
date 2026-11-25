@@ -1,14 +1,18 @@
 /**
- * Harness names, their binaries, the `harness:model` text form and the fallback model. A leaf module: start, controls,
- * config, limit alerts, teams, patterns, DOT and team authoring all take these from here.
+ * Harness names, their binaries, the `harness:model` text form, the fallback model and every per-harness command line.
+ * A leaf module: start, controls, builder, team authoring, delivery, interrupt and the Cursor runner take them from here.
  */
 import { accessSync, constants } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, dirname, isAbsolute, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { modeFlags } from "../web/lib/start-mode.js";
 
 export const HARNESSES = ["claude", "codex", "cursor", "opencode"] as const;
 export type Harness = (typeof HARNESSES)[number];
 export type HarnessModel = { harness: Harness; model: string };
+export type Command = [file: string, args: string[]];
+export type BuilderSandbox = { tools: string; claudeTools: string; mcpIn: string; settingsIn: string };
 
 // The Cursor model every built-in default and fallback uses.
 export const FALLBACK_MODEL = "deepseek-v41-flash-1017-high";
@@ -18,6 +22,12 @@ export const MODEL_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._:[\]-]{0,79}$/;
 export const OPENCODE_MODEL_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,39}\/[a-zA-Z0-9][a-zA-Z0-9._:@/[\]-]{0,119}(#[a-zA-Z0-9._-]{1,40})?$/;
 // Cursor renamed its CLI to `agent`; `cursor-agent` is kept as the fallback for installs that predate it.
 export const CURSOR_BINARIES: readonly string[] = ["agent", "cursor-agent"];
+// The executable each harness starts as on a host; the Cursor name on a given PATH is cursorBinary's.
+export const LAUNCH_BINARY: Readonly<Record<Harness, string>> = { claude: "claude", codex: "codex", cursor: "cursor-agent", opencode: "opencode" };
+// Lets `codex exec` run plugin hooks without persisted trust, which only the interactive `/hooks` review writes.
+export const CODEX_HOOK_TRUST = "--dangerously-bypass-hook-trust";
+export const REQUIRE_RUN_CODE_ENV = "AI_COLLAB_REQUIRE_RUN_CODE";
+export const CODEX_CODE_MODE_KEY = "features.code_mode";
 // The harness each agent binary runs as, by the binary's name. A Map, so a name like "constructor" finds nothing.
 const BINARY_HARNESS = new Map<string, Harness>([
   ["agent", "cursor"],
@@ -26,6 +36,18 @@ const BINARY_HARNESS = new Map<string, Harness>([
   ["codex", "codex"],
   ["opencode", "opencode"],
 ]);
+
+export type ArgvOpts = {
+  start: { root: string; prompt: string; worktree?: string; model?: string; mode?: string; codeMode?: boolean; requireRunCode?: boolean };
+  wake: { id: string; prompt: string; requireRunCode?: boolean; path?: string };
+  compact: { id: string };
+  queue: { id: string; text: string };
+  interrupt: Record<string, never>;
+  builder: { model: string; brief: string; workdir: string; launcher?: string; builderCode?: boolean; sandbox: BuilderSandbox };
+  author: { prompt: string; model?: string };
+  acp: { force?: boolean; model?: string };
+};
+export type ArgvKind = keyof ArgvOpts;
 
 /** Whether a name is one of the four harnesses. */
 export function isHarness(name: unknown): name is Harness {
@@ -57,6 +79,20 @@ export function formatHarnessModel({ harness, model }: HarnessModel): string {
   return model ? `${harness}:${model}` : harness;
 }
 
+/** `-c` arguments for a Codex CLI child. */
+export function codexCodeModeArgs(on: boolean): string[] {
+  return ["-c", `${CODEX_CODE_MODE_KEY}=${on ? "true" : "false"}`];
+}
+
+/** Register the local MCP scripts for tagged Codex starts, with the session folder as their cwd. */
+export function codexRequiredRunCodeArgs(): string[] {
+  const script = (name: string) => JSON.stringify(fileURLToPath(new URL(`../scripts/${name}-mcp.mjs`, import.meta.url)));
+  return [
+    "-c", `mcp_servers.ai-collab={command="node",args=[${script("ai-collab")},"codex"],env_vars=["${REQUIRE_RUN_CODE_ENV}"]}`,
+    "-c", `mcp_servers.ai-collab-code={command="node",args=[${script("ai-collab-code")},"codex"],tool_timeout_sec=150}`,
+  ];
+}
+
 /** The child's PATH: the caller's first, then node's directory and ~/.local/bin. */
 export function childPath(env: NodeJS.ProcessEnv = process.env, execPath = process.execPath): string {
   return [env.PATH, dirname(execPath), join(env.HOME || homedir(), ".local", "bin")].filter(Boolean).join(delimiter);
@@ -76,4 +112,104 @@ export function cursorBinary(path = ""): string {
 /** The Cursor binary a start or wake runs: the name cursorBinary finds on `path`. */
 export function cursorCommandFor({ path = "" }: { path?: string } = {}): string {
   return cursorBinary(path);
+}
+
+// A start's argv: the mode flags, Codex code mode, and the model after the mode flags. Null for a model or mode it cannot pass.
+function startArgv(harness: Harness, o: ArgvOpts["start"]): Command | null {
+  if (o.model !== undefined && !modelShape(harness, o.model)) return null;
+  const chosen = modeFlags(harness, o.mode ?? "agent");
+  if (!chosen) return null;
+  const flag = (name: string) => (o.model === undefined ? [] : [name, o.model]);
+  switch (harness) {
+    case "claude": return [LAUNCH_BINARY.claude, ["--bg", ...(o.worktree ? ["--worktree", o.worktree] : []), ...chosen, ...flag("--model"), o.prompt]];
+    // Codex code mode is a feature flag; Claude --bg refuses code mode (background job), so it gets nothing.
+    case "codex": return [LAUNCH_BINARY.codex, ["exec", "--json", CODEX_HOOK_TRUST, ...(typeof o.codeMode === "boolean" ? codexCodeModeArgs(o.codeMode) : []), ...(o.requireRunCode ? codexRequiredRunCodeArgs() : []), ...chosen, ...flag("-m"), o.prompt]];
+    case "cursor": return [LAUNCH_BINARY.cursor, ["-p", "--trust", "--output-format", "stream-json", "--workspace", o.root, ...chosen, ...flag("--model"), o.prompt]];
+    // `opencode run` works in its cwd (the project root or a worktree); --format json prints one event per line.
+    case "opencode": return [LAUNCH_BINARY.opencode, ["run", "--format", "json", ...chosen, ...flag("-m"), o.prompt]];
+    default: return null;
+  }
+}
+
+// A wake resumes a saved session with the wake prompt; Cursor's binary is the one cursorBinary finds on the wake's PATH.
+function wakeArgv(harness: Harness, o: ArgvOpts["wake"]): Command | null {
+  switch (harness) {
+    case "claude": return [LAUNCH_BINARY.claude, ["--print", "--resume", o.id, o.prompt]];
+    case "codex": return [LAUNCH_BINARY.codex, ["exec", ...(o.requireRunCode ? codexRequiredRunCodeArgs() : []), "resume", o.id, o.prompt]];
+    case "cursor": return [cursorBinary(o.path ?? ""), ["--print", "--resume", o.id, o.prompt]];
+    case "opencode": return [LAUNCH_BINARY.opencode, ["run", "--session", o.id, o.prompt]];
+    default: return null;
+  }
+}
+
+// OpenCode's server compacts a session through its API, running or not (operation session.compact).
+function compactArgv(harness: Harness, o: ArgvOpts["compact"]): Command | null {
+  if (harness !== "opencode") return null;
+  return [LAUNCH_BINARY.opencode, ["api", "session.compact", "--param", `sessionID=${o.id}`, "--data", "{}"]];
+}
+
+// The one queued message `codex queue` takes for a thread; other harnesses deliver through their own API.
+function queueArgv(harness: Harness, o: ArgvOpts["queue"]): Command | null {
+  if (harness !== "codex") return null;
+  return [LAUNCH_BINARY.codex, ["queue", "--thread", o.id, "--message", o.text, "--resume"]];
+}
+
+// The app-server proxy a Codex interrupt runs over; `codex queue` has no interrupt.
+function interruptArgv(harness: Harness): Command | null {
+  if (harness !== "codex") return null;
+  return [LAUNCH_BINARY.codex, ["app-server", "proxy"]];
+}
+
+// Argv that runs the harness inside the sandbox; the outer sandbox is the isolation, so the harness's own is off.
+// Variadic flags (--tools, --mcp-config) would swallow the prompt, so --settings comes last before it.
+function builderArgv(harness: Harness, o: ArgvOpts["builder"]): Command | null {
+  const s = o.sandbox;
+  switch (harness) {
+    case "cursor": return [LAUNCH_BINARY.cursor, ["-p", "--force", "--trust", "--sandbox", "disabled", "--model", o.model, ...(o.builderCode ? ["--approve-mcps", "--output-format", "stream-json"] : []), o.brief]];
+    case "opencode": return [LAUNCH_BINARY.opencode, ["run", "--standalone", "--auto", "--format", "json", "--model", o.model, o.brief]];
+    case "codex": return [LAUNCH_BINARY.codex, ["exec", "-m", o.model, "--dangerously-bypass-approvals-and-sandbox", CODEX_HOOK_TRUST, "--skip-git-repo-check", "-C", o.workdir, o.brief]];
+    case "claude": return [
+      o.launcher || `${s.tools}/bin/claude`, ["-p", "--model", o.model, "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose",
+        "--tools", s.claudeTools, "--strict-mcp-config", "--mcp-config", s.mcpIn, "--disable-slash-commands", "--no-chrome",
+        "--setting-sources", "", "--settings", s.settingsIn, o.brief],
+    ];
+    default: return null;
+  }
+}
+
+// One non-interactive writing-agent turn; the prompt is one element, so no shell quoting applies.
+function authorArgv(harness: Harness, o: ArgvOpts["author"]): Command | null {
+  const model = o.model ?? "";
+  const flag = model ? ["--model", model] : [];
+  switch (harness) {
+    case "cursor": return [LAUNCH_BINARY.cursor, ["-p", "--trust", ...flag, o.prompt]];
+    case "claude": return [LAUNCH_BINARY.claude, ["-p", ...flag, o.prompt]];
+    case "codex": return [LAUNCH_BINARY.codex, ["exec", ...(model ? ["-m", model] : []), o.prompt]];
+    case "opencode": return [LAUNCH_BINARY.opencode, ["run", ...(model ? ["-m", model] : []), o.prompt]];
+    default: return null;
+  }
+}
+
+// The Cursor ACP server, the runner's own protocol: `acp`, then `--force` when the mode asks for it, then `--model` when one is named.
+function acpArgv(harness: Harness, o: ArgvOpts["acp"]): Command | null {
+  if (harness !== "cursor") return null;
+  return [LAUNCH_BINARY.cursor, ["acp", ...(o.force ? ["--force"] : []), ...(o.model ? ["--model", o.model] : [])]];
+}
+
+/**
+ * The argv one harness takes for one kind of run: [file, args], or null when that harness has no such run or the
+ * options name a model or mode it cannot pass. The one owner of per-harness command lines.
+ */
+export function argv<K extends ArgvKind>(harness: Harness, kind: K, opts: ArgvOpts[K]): Command | null {
+  switch (kind) {
+    case "start": return startArgv(harness, opts as ArgvOpts["start"]);
+    case "wake": return wakeArgv(harness, opts as ArgvOpts["wake"]);
+    case "compact": return compactArgv(harness, opts as ArgvOpts["compact"]);
+    case "queue": return queueArgv(harness, opts as ArgvOpts["queue"]);
+    case "interrupt": return interruptArgv(harness);
+    case "builder": return builderArgv(harness, opts as ArgvOpts["builder"]);
+    case "author": return authorArgv(harness, opts as ArgvOpts["author"]);
+    case "acp": return acpArgv(harness, opts as ArgvOpts["acp"]);
+    default: return null;
+  }
 }

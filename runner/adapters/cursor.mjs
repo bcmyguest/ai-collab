@@ -8,6 +8,7 @@ import { EventType } from "@ag-ui/core";
 import { autoDefaults, sessionLabel } from "../../lib/config.mjs";
 import { exportSpans, otlpEndpoint, runRecorder } from "../../lib/cursor-trace.mjs";
 import { cursorBinary, findExecutable } from "../../lib/start.mjs";
+import { argv, LAUNCH_BINARY } from "../../lib/harness.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, permissionSettings } from "../contract.mjs";
 import { builderPolicy } from "../../lib/builder.mjs";
 import {
@@ -31,7 +32,7 @@ const SANDBOX_BIN = "/sandbox/bin";
 const NTFY_URL = "http://host.openshell.internal:8794";
 const TOKEN_IN = `${SANDBOX_HOME}/.config/ai-collab/ntfy-token`;
 // The name the CLI is launched by inside a sandbox, whatever it is called on the host.
-const SANDBOX_LAUNCHER = "cursor-agent";
+const SANDBOX_LAUNCHER = LAUNCH_BINARY.cursor;
 // The CLI marks itself non-dumpable unless this is set; OpenShell then cannot read its /proc/<pid>/exe and denies its sockets (lib/builder.mjs).
 const SANDBOX_CURSOR_ENV = { CURSOR_AGENT_ALLOW_PROCESS_INSPECTION: "1" };
 const GIT_TIMEOUT_MS = 120_000;
@@ -41,7 +42,7 @@ export const sandboxName = (project) => sandboxNameFor(project);
 
 /** Argv of the ACP server: `acp`, then `--force` when the mode asks for it, then `--model` when one is named. */
 export function acpArgs({ force = false, model } = {}) {
-  return ["acp", ...(force ? ["--force"] : []), ...(model ? ["--model", model] : [])];
+  return argv("cursor", "acp", { force, model })[1];
 }
 
 /**
@@ -49,7 +50,7 @@ export function acpArgs({ force = false, model } = {}) {
  * marker, and the CLI's home (so it reads the auth file written there) . The CLI name defaults to `cursor-agent`,
  * the name inside the sandbox image, not the host's.
  */
-export function execArgv({ openshell, sandbox, args, binary = "cursor-agent", workdir, env = {} }) {
+export function execArgv({ openshell, sandbox, args, binary = LAUNCH_BINARY.cursor, workdir, env = {} }) {
   return sandboxExecArgv({
     openshell, sandbox, workdir, command: [binary, ...args],
     env: { AI_COLLAB_OWNED: "cursor", ...env },
