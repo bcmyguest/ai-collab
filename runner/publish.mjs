@@ -1,7 +1,7 @@
 // Publishes runner activity as AG-UI and sends status, approvals, receipts and alerts on their existing topics.
 import { contentToText, EventType } from "@ag-ui/core";
 import { broadcastTopic } from "../lib/config.mjs";
-import { encodeEnvelope } from "../lib/agui.mjs";
+import { approvalEnd } from "../lib/operator.ts";
 import { publish } from "../lib/transport.mjs";
 import { publishStatus } from "../lib/inbox.mjs";
 import { publishActivity } from "../lib/activity.mjs";
@@ -75,7 +75,7 @@ export function ownedApprovalMessage(cfg, harness, { id, tool, summary, question
 }
 
 export function approvalEndMessage(cfg, id, reason) {
-  return encodeEnvelope("approval-end", { from: cfg.peer, session: cfg.session, id, reason, owned: true, ts: new Date().toISOString() }, cfg.wire);
+  return approvalEnd(cfg, id, reason, { session: cfg.session, owned: true });
 }
 
 /** Publishes the owned approval card on the broadcast topic; throws when it cannot fit or publish. */
