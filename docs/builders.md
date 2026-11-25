@@ -254,6 +254,20 @@ UNVERIFIED:
   - Every activity signal is older than the cutoff: HEAD commit, directory and file mtimes (the scan skips `node_modules` and `.next`, and keeps the worktree past 50,000 entries), index, HEAD reflog, and any session seen inside. A session record that is live (process running or a job running) and inside the worktree keeps it at once; an unreadable registry record keeps every worktree.
 - A detached HEAD goes to `refs/ai-collab/archive/wt-<name>` before removal. Removal locks the worktree, re-checks every rule, then runs `git worktree remove` without `--force`. A refused removal unlinks only the `node_modules` symlink, retries, and restores the link if the retry fails. Missing worktrees are pruned after kept ones are locked. Branches are never deleted.
 
+To run prune daily, add one entry to `~/.config/ai-collab/schedules.json` (the operator adds it; nothing enables it by default):
+
+```json
+{
+  "name": "prune",
+  "everyMinutes": 1440,
+  "cwd": "/home/b/ai-collab",
+  "command": ["ai-collab", "prune", "--older-than", "7d", "--apply", "--json"],
+  "timeoutSec": 1800
+}
+```
+
+`cwd` is the registered project root, which selects the project. The runner gives the command `~/.local/bin` and its own node directory on PATH, so `ai-collab` resolves to the checkout that `~/.local/bin/ai-collab` links to. That link points at `/home/b/ai-collab`, so the entry runs the code on the main branch until feat/prune merges. Each run ends with one stderr line, for example `prune applied: reclaimed 21.52 GB; builders 13 (clone 13, staged 1); worktrees 0; archives 13; skipped 240 (...)`, which the schedule record keeps as its output tail.
+
 Builders hold no harness transcript on the host. Claude, Codex and OpenCode write their output to the unit's journal, Cursor streams to OTLP, and the sandbox session directories are destroyed at cleanup.
 
 ## Calling tools from sandbox programs
