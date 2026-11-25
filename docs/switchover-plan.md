@@ -2,7 +2,9 @@
 
 Status: proposed 2026-11-25. Decisions D1 and D2 need the operator. Batches start after both are answered.
 
-## 1. Review of the uncommitted ntfy-removal work (opencode#79f30a4e46706223)
+## 1. Review of the ntfy-removal work
+
+opencode#79f30a4e46706223 (qwen) committed the bus as 7abcb758 on main. By its account the runner boot sweep and the refactor-plan batches are another session's uncommitted work; that author is not yet identified.
 
 Measured on the working copy of `~/ai-collab` main, 2026-11-25.
 
@@ -20,7 +22,7 @@ Findings, most severe first:
 4. About 119 files sit uncommitted on main, staged and unstaged mixed, while the bus service runs from that checkout.
 5. Two stores (memory and SQLite) duplicate the query logic; tests mostly run the memory one.
 
-Fixes 1-4 are assigned to opencode#79f30a4e46706223 (message 281).
+Fixes 1-4 went to opencode#79f30a4e46706223 (message 281). 7abcb758 still contains findings 2 and 3. Finding 1 needs the sweep's author.
 
 ## 2. Research
 
@@ -89,17 +91,87 @@ Confirmed duplication:
 
 Conclusion: the code is mostly product logic. Libraries and merges remove roughly 1,500-2,000 lines (estimate); the size problem is concentrated in `lib/builder.mjs` (1,326) and `runner/runner.mjs` (1,409).
 
+### 2.4 Durable engines with Postgres allowed
+
+| Option | Licence | Processes | Fit for `lib/durable.mjs` | Source |
+|---|---|---|---|---|
+| DBOS Transact TS 5.7.0 | MIT | app + Postgres; Conductor optional | High: `durable.mjs` copies its model | https://github.com/dbos-inc/dbos-transact-ts |
+| Absurd | Apache-2.0 | Postgres + worker | Medium-high; no tagged release found | https://github.com/earendil-works/absurd |
+| Temporal | MIT | dev server + worker; production adds services | Medium; heavy | https://github.com/temporalio/temporal |
+| Hatchet | MIT | server + Postgres | Medium | https://github.com/hatchet-dev/hatchet |
+| Restate | BSL 1.1 | one binary | Medium; HTTP push model | https://github.com/restatedev/restate |
+| Inngest | SSPL server | `inngest start` | Low-medium | https://www.inngest.com/docs/self-hosting |
+| pg-boss | MIT | Postgres | Low: jobs only, no step replay or send/recv | https://github.com/timgit/pg-boss |
+
+`lib/durable.mjs` mapped to DBOS (https://docs.dbos.dev/typescript/reference/methods):
+
+| durable.mjs | DBOS |
+|---|---|
+| `startWorkflow`, `startWorkflowOnce` | `DBOS.startWorkflow(fn, {workflowID})`; the id is the idempotency key |
+| `wf.step` | `DBOS.runStep(fn, {name, retriesAllowed, maxAttempts})` |
+| `send`, `recv` | `DBOS.send(dest, msg, topic, idempotencyKey)`, `DBOS.recv(topic, {timeout})` |
+| recovery | automatic at `DBOS.launch()` |
+| `cancel`, `status`, `listNamed` | `cancelWorkflow`, `retrieveWorkflow`, `listWorkflows` |
+| `scheduled({everyMs})` | `DBOS.createSchedule` (cron, backfill) |
+| `drain`, `pendingCount`, `prune` | no equivalent found; to verify in batch 2 |
+
+Nothing found built on celld. Cloudflare's 2026-10-09 post (https://blog.cloudflare.com/deno-joins-cloudflare/) says Deno is joining Cloudflare and celld's ideas will be ported into workerd.
+
+### 2.5 Duplication inside the domain code
+
+One Opus pass read the code by concept. Line references are to `main` at 5897fbf7. Two claims spot-checked (marked ✓).
+
+| Concept | Copies | Kind | Removable (est.) |
+|---|---|---|---|
+| Per-harness command lines | `lib/start.mjs:76`, `lib/builder.mjs:179`, `lib/controls.mjs:40`, `lib/team-author.mjs:221`, `lib/deliver-push.mjs:42`, `lib/interrupt.mjs:18` | Divergent: Cursor runs as `agent` in controls, `cursor-agent` in builder ✓ | 50 |
+| `harness:model` parsing | 8 places across config, builder, limit-alert, teams, patterns, dot, team-author | Divergent validation | 40 |
+| Fallback model literal | 6 copies | Same constant | 10 |
+| Limit detection | `lib/limits.mjs:125,158`; `lib/builder.mjs:600-622` own regex and state file | Divergent | 30 |
+| Phone reply matching | `lib/approvals.mjs:138`, `lib/questions.mjs:176,243` | Same loop 3 times | 60 |
+| Approval cards | `lib/approvals.mjs:93` fits size; `lib/questions.mjs:222`, `lib/limit-alert.mjs:238` skip it | Divergent | 28 |
+| Deadline wait loops | `lib/agents.mjs:46,78,101,124`, `lib/waiter.mjs:57`, `lib/stop.mjs` | Same skeleton 6 times | 50 |
+| Push delivery | `runner/delivery.mjs:24` (durable) vs `web/server/dispatch.mjs:63-210` (in memory) | Two engines | 120 |
+| Codex JSON-RPC client | `lib/codex-compact.mjs:13`, `runner/adapters/codex.mjs:49` | Same | 35 |
+| Sandbox operations | `runner/sandbox.mjs`, `runner/sandbox-run.mjs`, `lib/builder.mjs` | Same, drifting | 130 |
+| `projects.json` writes | `lib/teams.mjs:59,66,195,208` write without `underProjectsLock` (`lib/patterns.mjs:326`) ✓ | **Race: concurrent edits lose updates** | 35 |
+| JSON file writers | 8 writers; 2 non-atomic, 2 without mode 0600 | Divergent | 60 |
+| CLI vs MCP surfaces | `lib/cli.mjs:416` vs `lib/tool-api.mjs:277`; task fields differ | Parallel, divergent | 50 |
+
+About 800 lines, and three behaviour bugs (Cursor binary, the `projects.json` race, oversized approval cards).
+
+Proposed segmentation, 12 modules:
+
+| Module | Owns | Folds in |
+|---|---|---|
+| `store` | atomic JSON, locks, state paths | `state`, writers in builder/tasks/alerts/teams/limit-alert |
+| `harness` | one descriptor per harness: binary, argv by kind, model parsing, limit classifier | argv parts of start/controls/builder/team-author, `models`, `limits`, `idle`, codex RPC |
+| `messaging` | send, claim, inbox, respond, one `waitUntil` | `inbox`, `agents`, `receipts`, `waiter`, stop's waiting |
+| `delivery` | pushing into live sessions | `deliver-push`, `claude-socket`, `runner/delivery`, `web/server/dispatch` |
+| `operator` | questions, approvals, AFK, one reply matcher | `questions`, `approvals`, `mode`, stop's policy |
+| `sessions` | registry, launch, interrupt, controls | `sessions`, `owned`, `start`, `interrupt`, `controls`, `names`, `scope` |
+| `limits` | detection, fallback chain, limit cards | `limit-alert`, `start-limit`, `fallback`, builder's retry |
+| `sandbox` | OpenShell create, upload, land, destroy | `runner/sandbox`, `sandbox-run`, builder staging, code-run setup |
+| `builder` | builder lifecycle only | rest of `lib/builder.mjs` |
+| `workflows` | durable runs, schedules, tasks | `durable` (or DBOS), `pattern-runs`, `pattern-workflow`, `schedules`, `tasks` |
+| `catalog` | teams, patterns, DOT | `patterns`, `teams`, `team-files`, `dot`, `pattern-compiler`, `team-author` |
+| `surfaces` | one operation table rendered as CLI, MCP and control socket | `tool-api`, `cli`, `*-cli`, MCP scripts, `runner/control` |
+
 ## 3. Decisions for the operator
 
 ### D1. Durable layer and bus
 
-| Option | New processes | Cost | Risk |
-|---|---|---|---|
-| **A. Keep SQLite `lib/bus.mjs` + `lib/durable.mjs`, fix findings** | 0 (bus service exists) | Low: batch 0 | Hand-rolled engine stays ours to maintain (about 770 lines) |
-| B. celld for pattern runs only (extend the spike) | celld + bucket (MinIO) + gateway | Medium | Beta runtime, upgrades need full stop, unauthenticated admin API |
-| C. celld for bus and durable | same as B | High: rewrite ntfy wire as a Worker | All of B, plus 60 s stream expiry for long subscriptions |
+Revised 2026-11-25 after the operator allowed Postgres. See 2.4.
 
-Recommendation: A now. Revisit B when celld reaches 1.0 or multi-machine ownership becomes a requirement.
+| Option | New processes | Removes | Risk |
+|---|---|---|---|
+| **A. DBOS Transact TS on Postgres for workflows; keep `lib/bus.mjs` on SQLite** | Postgres | `lib/durable.mjs` (372) and ~100-200 lines of schedule and delivery plumbing | Every `durable.status`/`drain` call site becomes async (38 references in `runner/runner.mjs`); runner tests need rework; Postgres becomes a hard dependency |
+| B. Absurd on Postgres | Postgres + worker | same as A | Young, no tagged release found; send/recv map onto events |
+| C. Keep SQLite `lib/durable.mjs` | 0 | nothing | ~770 hand-rolled lines stay ours |
+| D. celld | celld + S3-style bucket + host gateway | durable and possibly bus | Beta; nothing found built on it; Cloudflare is porting its features into workerd (blog, 2026-10-09) |
+
+The bus stays on SQLite in A-C: sandboxes, hooks and the phone need its plain HTTP surface, and no Postgres option provides one without another adapter.
+
+Recommendation: A.
 
 ### D2. Language for the core
 
@@ -117,11 +189,11 @@ Every batch: implementer works on its own branch, runs the gate, commits with th
 
 | # | Work | Implementer | Gate |
 |---|---|---|---|
-| 0 | Review fixes 1-4 above; commit the ntfy-removal work per refactor-plan batch | qwen | `node --test test/sandbox-cap.test.mjs test/bus.test.mjs`, then full suite |
-| 1 | Merge duplicates in the table above | qwen; Haiku per file | full suite |
-| 2 | MCP servers on `@modelcontextprotocol/sdk`; CLI flags on `parseArgs` | Haiku | `node --test test/mcp*.test.mjs test/cli*.test.mjs` + full suite |
-| 3 | TS foundation: core `tsconfig` (`noEmit`, `allowImportingTsExtensions`, `erasableSyntaxOnly`), `tsc --noEmit` in CI; convert `config`, `transport`, `bus`, `durable`, `inbox` | qwen | `npx tsc --noEmit -p tsconfig.core.json` + full suite |
-| 4 | Convert remaining files, leaf modules first, 10-15 files per batch | Haiku per file, qwen integrates | same |
-| 5 | Split `runner/runner.mjs` and `lib/builder.mjs` by responsibility | qwen | full suite |
+| 0 | Review fixes 1-4 above | qwen | `node --test test/sandbox-cap.test.mjs test/bus.test.mjs`, then full suite |
+| 1 | Bug fixes from 2.5: `projects.json` lock, one Cursor binary, sized approval cards; each with a failing test first | qwen | new tests + full suite |
+| 2 | TS foundation: core `tsconfig` (`noEmit`, `allowImportingTsExtensions`, `erasableSyntaxOnly`), `tsc --noEmit` in CI; create `store` and `harness` modules in `.ts` | qwen | `npx tsc --noEmit -p tsconfig.core.json` + full suite |
+| 3 | Segment by module, one module per batch, in order: `store`, `harness`, `sandbox`, `limits`, `operator`, `messaging`, `delivery`, `sessions`, `catalog`, `surfaces`, `builder`. Each batch moves code into one `.ts` module and deletes the copies | Haiku per file, qwen integrates | same |
+| 4 | `workflows` on DBOS: Postgres user service, port `lib/durable.mjs` call sites, schedules, delivery, pattern runs | qwen | runner and pattern tests + a kill-and-recover test |
+| 5 | Libraries at the `surfaces` edge: `@modelcontextprotocol/sdk`, `parseArgs` | Haiku | `node --test test/mcp*.test.mjs` + full suite |
 
 Review: one Opus subagent per batch, briefed with the branch and this document, never with the implementer's summary.
