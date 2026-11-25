@@ -48,8 +48,13 @@ async function prompt(id, sessionId, text) {
 }
 
 let buffer = "";
+// Exits after this long with no stdin, so a session a failed test left open cannot keep the test file running.
+const IDLE_EXIT_MS = 60_000;
+let idle = setTimeout(() => process.exit(0), IDLE_EXIT_MS);
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
+  clearTimeout(idle);
+  idle = setTimeout(() => process.exit(0), IDLE_EXIT_MS);
   buffer += chunk;
   for (let i = buffer.indexOf("\n"); i >= 0; i = buffer.indexOf("\n")) {
     const line = buffer.slice(0, i);
