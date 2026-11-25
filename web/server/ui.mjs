@@ -201,7 +201,7 @@ function baseEntry(event) {
     const to = envelope.toSession ? `${envelope.to}#${envelope.toSession}` : envelope.to;
     const by = !system && envelope.from === "operator" && isGithubLogin(envelope.by) ? { by: envelope.by } : {};
     // A reply to a message names it as replyOf; replyTo stays the answer link to a question.
-    return { id, time, kind: "Message", sender, from: sender, to, body: envelope.body, thread: envelope.operatorThread === true, ...(system ? { system: true } : {}), ...(envelope.urgent === true ? { urgent: true } : {}), ...(envelope.startOnly === true ? { startOnly: true } : {}), ...(typeof envelope.replyTo === "string" && envelope.replyTo ? { replyOf: envelope.replyTo } : {}), ...by };
+    return { id, time, kind: "Message", sender, from: sender, to, body: envelope.body, thread: envelope.operatorThread === true, ...(system ? { system: true } : {}), ...(envelope.urgent === true ? { urgent: true } : {}), ...(envelope.startOnly === true ? { startOnly: true } : {}), ...(typeof envelope.replyTo === "string" && envelope.replyTo ? { replyOf: envelope.replyTo } : {}), ...(typeof envelope.mentionedIn === "string" ? { mentionedIn: envelope.mentionedIn } : {}), ...by };
   }
   const reply = parsePhoneReply(message);
   const by = replyBy(event);
@@ -923,7 +923,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const inbox = [...peers].flatMap(peer => entries(events, inboxOf(project, peer), () => true));
       const sent = [...topic, ...withQueue(inbox)];
       // Inbox direct sends stay in session threads; they only suppress terminal echoes here.
-      list = [...shared, ...answers.map(answerMessage), ...terminalPrompts(activity(), sent)];
+      // An agent's answer to a project-chat @mention (mentionedIn "all") also shows here, quoting the post it answers.
+      const mentions = new Map(inbox.filter(item => item.from === "operator" && item.mentionedIn === "all").map(item => [item.id, item]));
+      // Only the mention's addressee answers it here; a reply from another session stays out.
+      const mentionReplies = inbox.filter(item => item.thread && item.to === "operator" && mentions.has(item.replyOf) && item.from === mentions.get(item.replyOf).to)
+        .map(item => ({ ...item, quote: { id: item.replyOf, sender: "operator", body: String(mentions.get(item.replyOf).body || "").slice(0, QUOTE_MAX) } }));
+      list = [...shared, ...mentionReplies, ...answers.map(answerMessage), ...terminalPrompts(activity(), sent)];
     }
     const { ends, replies, senders } = outcomes(sharedEvents);
     // A reply carries its replied message's sender and opening text, even when that message is off the page.
