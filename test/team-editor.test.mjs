@@ -1,15 +1,18 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
 import { checkTeamText, createPattern, listPatterns, saveTeamText, teamTemplates, teamTextOf } from "../lib/patterns.mjs";
-import { projectTeamsDir, teamFilePath } from "../lib/team-files.mjs";
 import { readProjectsFile, setProjectClosed } from "../lib/teams.mjs";
 import { renameTeam, sourceLine } from "../web/lib/team-editor.js";
 
 const MODELS = { claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] };
+const execFileAsync = promisify(execFile);
 
 function setup() {
   const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-team-editor-"));
@@ -106,17 +109,33 @@ test("an edit save keeps the operator's comments and removes the JSON pattern it
   assert.equal(projects[0].patterns?.pipe, undefined, "the JSON entry is gone");
 });
 
-test("a team save holds no projects.json lock while it waits on its team file", async () => {
-  const { env, cfg, root } = setup();
-  const file = teamFilePath(projectTeamsDir(root), "pipe");
-  mkdirSync(`${file}.lock`, { recursive: true });
-  const release = setTimeout(() => rmSync(`${file}.lock`, { recursive: true, force: true }), 400);
-  const pending = saveTeamText(cfg, "pipe", TEXT, env, MODELS);
-  await new Promise((resolve) => setTimeout(resolve, 50));
+test("an async team save and a sync projects write both succeed within 200 ms", async () => {
+  const { env, cfg } = setup();
   const started = Date.now();
+  const pending = saveTeamText(cfg, "pipe", TEXT, env, MODELS);
   setProjectClosed(env, "demo", true);
-  assert.ok(Date.now() - started < 200, `the sync write waited ${Date.now() - started} ms on the save`);
   await pending;
-  clearTimeout(release);
+  assert.ok(Date.now() - started < 200, `took ${Date.now() - started} ms`);
   assert.equal(readProjectsFile(env)[0].closed, true);
+});
+
+test("two concurrent creates of one team name: one saves, the other says it exists", async () => {
+  const { env } = setup();
+  const base = pathToFileURL(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "lib")).href;
+  const child = (name, startAt) => execFileAsync(process.execPath, ["--input-type=module", "-e", `
+    const { loadConfig } = await import(${JSON.stringify(`${base}/config.mjs`)});
+    const { saveTeamText } = await import(${JSON.stringify(`${base}/patterns.mjs`)});
+    const env = ${JSON.stringify(env)};
+    const text = ${JSON.stringify(TEXT.replaceAll("pipe", name))};
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, ${startAt} - Date.now())));
+    try { await saveTeamText(loadConfig(env), ${JSON.stringify(name)}, text, env, ${JSON.stringify(MODELS)}, { create: true }); console.log("saved"); }
+    catch (error) { console.log(error.message); }
+  `]).then((out) => out.stdout.trim());
+  for (let trial = 0; trial < 12; trial += 1) {
+    const name = `race${trial}`;
+    const startAt = Date.now() + 300;
+    const [a, b] = await Promise.all([child(name, startAt), child(name, startAt)]);
+    assert.equal([a, b].filter((line) => line === "saved").length, 1, `trial ${trial}: ${a} | ${b}`);
+    assert.match([a, b].find((line) => line !== "saved"), /already exists/);
+  }
 });
