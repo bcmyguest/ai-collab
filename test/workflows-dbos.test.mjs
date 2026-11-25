@@ -38,6 +38,13 @@ const t = test("dbos engine", { skip: pgUp ? false : "no Postgres on 127.0.0.1:5
     assert.equal(await wf.send(`wait-${stamp}`, "inbox", "hello", { dedupe: `d-${stamp}` }), false);
     assert.equal(await waiting, "hello");
 
+    // a failed send must not spend the dedupe key: the retry after the destination exists must deliver
+    const ghost = `ghost-${stamp}`;
+    await assert.rejects(wf.send(ghost, "inbox", "late", { dedupe: `late-${stamp}` }));
+    assert.equal(await wf.startWorkflowOnce("t.wait", ghost, {}), true);
+    assert.equal(await wf.send(ghost, "inbox", "late", { dedupe: `late-${stamp}` }), true);
+    assert.equal(await wf.result(ghost), "late");
+
     // listNamed returns newest first with parsed fields
     const rows = await wf.listNamed("t.add", 10);
     assert.ok(rows.some((r) => r.id === `add-${stamp}` && r.status === "SUCCESS"));

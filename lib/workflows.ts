@@ -134,8 +134,9 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { 
   const pool = new pg.Pool({ connectionString: pgUrl, max: 5 });
   await pool.query(`CREATE SCHEMA IF NOT EXISTS ai_collab;
     CREATE TABLE IF NOT EXISTS ai_collab.kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS ai_collab.started (id TEXT PRIMARY KEY);
-    CREATE TABLE IF NOT EXISTS ai_collab.dedupe (key TEXT PRIMARY KEY, created_at BIGINT NOT NULL);`);
+    CREATE TABLE IF NOT EXISTS ai_collab.started (id TEXT PRIMARY KEY, created_at BIGINT NOT NULL);
+    ALTER TABLE ai_collab.started ADD COLUMN IF NOT EXISTS created_at BIGINT;
+    DROP TABLE IF EXISTS ai_collab.dedupe;`);
 
   const registry = new Map<string, WfFn>();
   const dbosFns = new Map<string, (input: Json) => Promise<WfValue>>();
@@ -148,7 +149,9 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { 
     if (!launched) {
       launched = (async () => {
         for (const name of registry.keys()) if (!dbosFns.has(name)) registerDbos(name);
-        DBOS.setConfig({ name: "ai-collab", systemDatabaseUrl: pgUrl });
+        // DBOS hashes registered functions into the app version by default; our registrations are one wrapper whose
+        // count changes with the code, which would orphan PENDING workflows on every deploy. Pin it instead.
+        DBOS.setConfig({ name: "ai-collab", systemDatabaseUrl: pgUrl, applicationVersion: "ai-collab-1" });
         await DBOS.launch();
       })();
     }
@@ -226,11 +229,13 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { 
 
   async function startOnce(name: string, id: string, input: Json): Promise<boolean> {
     await ready();
-    const { rowCount } = await pool.query("INSERT INTO ai_collab.started(id) VALUES ($1) ON CONFLICT DO NOTHING", [id]);
-    if (!rowCount) return false;
+    // Start first: DBOS dedupes by workflowID (a repeat start returns the first run's handle), so no guard row
+    // can strand a message when a crash lands between the guard and the start. The pre-check only informs the
+    // boolean; two racing callers both reporting "started" is harmless because the workflow itself runs once.
+    const existed = Boolean(await statusRow(id));
     const h = await DBOS.startWorkflow(dbosFn(name), { workflowID: id })({ ...input, __id: id });
     h.getResult().catch(() => {});
-    return true;
+    return !existed;
   }
 
   async function pendingIds(): Promise<string[]> {
@@ -342,13 +347,18 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { 
     },
     async send(workflowId, topic, value, { dedupe = null } = {}) {
       await ready();
+      // DBOS dedupes a repeat send by idempotencyKey itself, so a failed send never spends the key and a crash
+      // after the send cannot lose the message. The boolean is a presence probe on the notification the key
+      // names; if the internal schema ever moves, the probe degrades to "fresh" and delivery stays exactly-once.
       if (dedupe) {
-        const { rowCount } = await pool.query("INSERT INTO ai_collab.dedupe(key, created_at) VALUES ($1, $2) ON CONFLICT DO NOTHING", [dedupe, now()]);
-        if (!rowCount) return false;
+        try {
+          const { rows } = await pool.query("SELECT 1 FROM dbos.notifications WHERE message_uuid = $1", [`${dedupe}::${workflowId}`]);
+          if (rows.length) return false;
+        } catch { /* unknown schema: let idempotencyKey enforce dedupe and report fresh */ }
       }
       // A send racing its own workflow start: DBOS rejects unknown destinations, so retry briefly.
       for (let attempt = 0; ; attempt++) {
-        try { await DBOS.send(workflowId, value, topic); break; }
+        try { await DBOS.send(workflowId, value, topic, dedupe ?? undefined); break; }
         catch (error) {
           const code = (error as { dbosErrorCode?: number } | null)?.dbosErrorCode;
           if (code !== 16 || attempt >= 20) throw error;
@@ -379,6 +389,8 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { 
     async prune(names, before) {
       const rows = await DBOS.listWorkflows({ workflowName: names, status: ["SUCCESS", "ERROR", "CANCELLED"], completedBefore: new Date(before).toISOString() });
       if (rows.length) await DBOS.deleteWorkflows(rows.map((r) => r.workflowID));
+      // The started guard rows outlive the workflows they guarded; drop the old ones so the table stays small.
+      await pool.query("DELETE FROM ai_collab.started WHERE created_at < $1", [before]);
       return rows.length;
     },
     async drain(workflowId, topic) {
