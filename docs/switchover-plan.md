@@ -1,6 +1,6 @@
 # Switchover plan: durable layer, language, and cleanup
 
-Status: proposed 2026-11-25. Decisions D1 and D2 need the operator. Batches start after both are answered.
+Status: decided 2026-11-25. D1-A (DBOS Transact TS on Postgres; bus stays on SQLite) and D2-A (TypeScript in place, by module). Batches below are the work order.
 
 ## 1. Review of the ntfy-removal work
 
