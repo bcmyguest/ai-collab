@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, lstatSync, lutimesSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { stateDir } from "../lib/config.mjs";
@@ -34,6 +34,36 @@ function commitOld(cwd, file) {
 
 function setOld(target) {
   utimesSync(target, OLD / 1000, OLD / 1000);
+}
+
+// Ages every entry under a worktree (not .git) so the newest-file scan sees nothing recent.
+function ageTree(target) {
+  for (const name of readdirSync(target)) {
+    if (name === ".git") continue;
+    const full = path.join(target, name);
+    const info = lstatSync(full);
+    if (info.isSymbolicLink()) lutimesSync(full, OLD / 1000, OLD / 1000);
+    else if (info.isDirectory()) { ageTree(full); setOld(full); }
+    else setOld(full);
+  }
+}
+
+// Ages the admin dir: reflog timestamps, index, and gitdir files.
+function ageAdmin(repo, name) {
+  const admin = path.join(repo, ".git", "worktrees", name);
+  const log = path.join(admin, "logs", "HEAD");
+  if (existsSync(log)) {
+    writeFileSync(log, readFileSync(log, "utf8").replace(/\d{10} [+-]\d{4}/g, `${OLD / 1000} +0000`));
+  }
+  for (const file of ["index", "HEAD", "gitdir", "commondir", "logs/HEAD"]) {
+    if (existsSync(path.join(admin, file))) setOld(path.join(admin, file));
+  }
+}
+
+function ageWorktree(repo, target) {
+  ageTree(target);
+  ageAdmin(repo, path.basename(target));
+  setOld(target);
 }
 
 function fixtureEnv(home) {
@@ -87,7 +117,7 @@ function makeWorktrees(home, repo) {
   writeFileSync(path.join(paths.recent, "now.txt"), "now\n");
   git(paths.recent, ["add", "now.txt"]);
   git(paths.recent, ["commit", "-q", "-m", "now"]);
-  for (const name of ["merged", "unmerged", "dirty", "untracked", "locked", "detached", "busy"]) setOld(paths[name]);
+  for (const name of ["merged", "unmerged", "dirty", "untracked", "locked", "detached", "busy"]) ageWorktree(repo, paths[name]);
   return { paths, detachedSha: git(paths.detached, ["rev-parse", "HEAD"]) };
 }
 
@@ -180,7 +210,7 @@ const EXPECTED_OUTCOMES = {
   "builder:recent": "newer than cutoff",
   "builder:broken": "unreadable: state.json unreadable",
   "worktree:repo": "main worktree",
-  "worktree:merged": "remove",
+  "worktree:merged": "ignored outside allowlist: cache.log",
   "worktree:unmerged": "remove",
   "worktree:detached": "remove",
   "worktree:dirty": "dirty: 1 changed or untracked file(s)",
@@ -202,7 +232,7 @@ test("parseAge reads s, m, h and d and rejects anything else", () => {
 
 test("parsePruneArgs defaults to a 7 day dry run and rejects unknown flags", () => {
   assert.deepEqual(parsePruneArgs([]), { apply: false, json: false, olderThan: "7d", olderThanMs: WEEK });
-  assert.deepEqual(parsePruneArgs(["--apply", "--older-than", "12h", "--json"]), { apply: true, json: true, olderThan: "12h", olderThanMs: 12 * 3_600_000 });
+  assert.deepEqual(parsePruneArgs(["--apply", "--older-than", "48h", "--json"]), { apply: true, json: true, olderThan: "48h", olderThanMs: 48 * 3_600_000 });
   assert.equal(parsePruneArgs(["--bogus"]), null);
   assert.equal(parsePruneArgs(["--older-than", "x"]), null);
   assert.equal(parsePruneArgs(["--older-than"]), null);
@@ -264,15 +294,15 @@ test("builderDecision removes settled builders past the cutoff and keeps everyth
   assert.equal(builderDecision({ ...base, error: "bad" }, CUTOFF).action, "keep");
 });
 
-test("builderDecision archives unlanded commits from the clone before removal", () => {
-  const base = { id: "x", error: "", phase: "finished", commits: 2, landed: false, root: "/r", mtimeMs: OLD, unitActive: "inactive",
-    pidAlive: false, bytes: 100, backSha: "b1", archiveRef: "refs/ai-collab/archive/x", archiveSha: null };
-  assert.deepEqual(builderDecision(base, CUTOFF), { action: "remove", reason: "finished", archive: { ref: "refs/ai-collab/archive/x", sha: "b1" } });
-  assert.equal(builderDecision({ ...base, archiveSha: "b1" }, CUTOFF).archive, null);
-  assert.equal(builderDecision({ ...base, archiveSha: "b0" }, CUTOFF).reason, "archive ref differs from clone");
-  assert.equal(builderDecision({ ...base, backSha: null }, CUTOFF).reason, "unpreserved commits: no clone");
+test("builderDecision archives any clone before removal, state.json aside", () => {
+  const base = { id: "x", error: "", phase: "finished", commits: 0, landed: false, root: "/r", mtimeMs: OLD, unitActive: "inactive",
+    pidAlive: false, taskOpen: false, bytes: 100, backExists: true, backRepo: "/b/back/w", backSha: "b1", archiveHead: null, archiveDiverged: false };
+  assert.deepEqual(builderDecision(base, CUTOFF), { action: "remove", reason: "finished", archive: { id: "x", backRepo: "/b/back/w" } });
+  assert.equal(builderDecision({ ...base, archiveDiverged: true }, CUTOFF).reason, "archive ref differs from clone");
   assert.equal(builderDecision({ ...base, root: null }, CUTOFF).reason, "unpreserved commits: no project root");
-  assert.equal(builderDecision({ ...base, landed: true }, CUTOFF).archive, null);
+  assert.equal(builderDecision({ ...base, backExists: false, commits: 2 }, CUTOFF).reason, "unpreserved commits: no clone");
+  assert.equal(builderDecision({ ...base, backExists: false, commits: 2, archiveHead: "a1" }, CUTOFF).action, "remove");
+  assert.equal(builderDecision({ ...base, taskOpen: true }, CUTOFF).reason, "task open");
 });
 
 test("treeBytes counts disk blocks and each inode once", (t) => {
@@ -318,7 +348,7 @@ test("a node_modules symlink alone is removable and its target survives", async 
   git(repo, ["worktree", "add", "-q", "-b", "linkplus", linkPlus, "main"]);
   symlinkSync(target, path.join(linkPlus, "node_modules"));
   writeFileSync(path.join(linkPlus, "scratch.txt"), "scratch\n");
-  for (const p of [linkOnly, realDir, linkPlus]) setOld(p);
+  for (const p of [linkOnly, realDir, linkPlus]) ageWorktree(repo, p);
   const before = readdirSync(target, { recursive: true }).sort();
   const dry = await pruneRepo({ env, root: repo, olderThanMs: WEEK, apply: false, now: NOW });
   const decided = outcomes(dry);
@@ -361,7 +391,7 @@ test("prune apply removes only the decided copies and keeps every commit reachab
   assert.ok(summary.reclaimedBytes >= 2 * MB * summary.builders.length);
   assert.deepEqual(summary.builders.map((b) => b.id).sort(), ["fail-old", "fin-clean", "landed", "stop-old", "unlanded"]);
 
-  assert.equal(git(f.repo, ["rev-parse", "refs/ai-collab/archive/unlanded"]), unlandedHead);
+  assert.equal(git(f.repo, ["rev-parse", "refs/ai-collab/archive/unlanded/HEAD"]), unlandedHead);
   assert.equal(git(f.repo, ["rev-parse", "refs/ai-collab/archive/wt-detached"]), f.detachedSha);
   assert.ok(git(f.repo, ["rev-list", "--all"]).split("\n").includes(unlandedHead));
   assert.ok(git(f.repo, ["rev-list", "--all"]).split("\n").includes(f.detachedSha));
@@ -382,7 +412,7 @@ test("prune apply removes only the decided copies and keeps every commit reachab
   assert.ok(existsSync(path.join(stateOf("running"), "stage")));
   assert.ok(existsSync(path.join(stateOf("broken"), "state.json")));
 
-  assert.ok(!existsSync(f.paths.merged));
+  assert.ok(existsSync(f.paths.merged));
   assert.ok(!existsSync(f.paths.unmerged));
   assert.ok(!existsSync(f.paths.detached));
   assert.ok(existsSync(f.paths.dirty));
