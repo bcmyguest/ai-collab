@@ -97,6 +97,8 @@ function walk(dir, rel = "", out = []) {
 function normalize(value, home) {
   const text = JSON.stringify(value)
     .split(home).join("<HOME>")
+    .split(os.tmpdir()).join("<TMP>")
+    .replace(/\/tmp\b/g, "<TMP>")
     .replace(/(ai-collab-(sandbox-run-auth|builder-auth|sandbox-secret|golden)-|sandbox-run-|download-)[A-Za-z0-9]{6}/g, "$1<R>")
     .replace(/s-pm-[0-9a-f]{6}/g, "s-pm-<H>")
     .replace(/sandbox\/pm-\d{8}T\d{6}Z/g, "sandbox/pm-<STAMP>")

@@ -2,7 +2,7 @@
 
 A builder is one agent that implements one task on its own branch. `ai-collab builder start` runs each new builder inside its own OpenShell sandbox. Codex uses a runner-owned session when the runner is reachable. Cursor, Claude, and OpenCode use a transient systemd user unit. Codex uses the same fallback when the runner is unavailable. Builders started by hand before this command existed run on the host and are left alone.
 
-Lib: `lib/builder.mjs`. OpenShell lifecycle: `runner/sandbox.mjs`. Tests: `test/builder.test.mjs` and `test/builder-claude.test.mjs` with fake `openshell`, `systemd-run`, `systemctl`, agent and `oncebitten` from `test/helpers/`.
+Lib: `lib/builder.mjs`. OpenShell lifecycle: `lib/sandbox.ts`. Tests: `test/builder.test.mjs` and `test/builder-claude.test.mjs` with fake `openshell`, `systemd-run`, `systemctl`, agent and `oncebitten` from `test/helpers/`.
 
 `runner/runner.mjs` manages the durable session steps for runner-owned builders. Both supervisors use `lib/builder.mjs` to collect work, publish landing results, and clean up sandboxes. Cleanup retains an uploaded workspace until its worktree has been collected.
 
@@ -218,7 +218,7 @@ UNVERIFIED:
 |---|---|
 | `lib/builder.mjs` | `builder start/run/list/stop` |
 | `lib/cli.mjs` | `ai-collab builder` wiring |
-| `runner/sandbox.mjs` | OpenShell list, create, upload, download, exec argv, delete |
+| `lib/sandbox.ts` | OpenShell list, create, upload, download, exec argv, delete, staged upload |
 | `test/builder.test.mjs` | end to end against the fakes |
 | `test/builder-claude.test.mjs`, `test/helpers/fake-claude-builder.mjs` | the lean Claude builder against the fakes |
 | `test/helpers/fake-systemd-run.mjs` | fake `systemd-run` (runs the unit in the foreground) and `systemctl` |

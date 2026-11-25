@@ -480,6 +480,8 @@ Measured facts that shaped the code:
 - The CLI install tree is 539 MB unpacked; the upload takes about 3 s, so it is done once per sandbox, not once per session.
 - **SIGTERM to the local `exec` client does stop the remote command** (a `node -e` process that would have written a marker at +8 s never did). Only a command that detached itself (`nohup ... &`) survives, and the sandbox delete is what ends that one. The local client cannot be relied on for this alone: after `kill()` the ACP pipes stay open behind it, which is the hang the adapter now avoids by destroying them.
 - `host.openshell.internal` is the host; `127.0.0.1:8794` inside a sandbox is not.
+- Egress is policy-brokered: a network policy must name the host and the real path of the binary that connects (`readlink -f`); only hostnames route.
+- There is no host bind mount. The docker driver mounts only its own channel volume and refuses raw bind mounts while resource admission is on; caller `driver_config` is off by default. Sync is upload before the run and download after it.
 
 Still unsolved:
 
@@ -556,7 +558,7 @@ entry points, see [Live OpenShell bootstrap smoke](sandbox-smoke.md).
 | `runner/adapters/claude.mjs` | Claude adapter: Agent SDK `query()` with an input queue, `canUseTool` → approval cards |
 | `runner/adapters/opencode.mjs` | OpenCode adapter: local OpenCode 2 HTTP service and its `/api/event` SSE stream |
 | `runner/adapters/cursor.mjs` | Cursor adapter: ACP over stdio, optional OpenShell sandbox (staged CLI, auth, worktree sync) |
-| `runner/sandbox.mjs` | OpenShell lifecycle shared by adapters: ensure, upload, download, delete, and the argv builders |
+| `lib/sandbox.ts` | OpenShell lifecycle shared by adapters and builders: ensure, upload, download, delete, and the argv builders (`runner/sandbox.mjs` re-exports it) |
 | `test/runner-adapter-cursor.test.mjs`, `test/helpers/fake-cursor-agent.mjs`, `test/helpers/fake-openshell.mjs` | Cursor adapter tests; fake ACP child and fake openshell |
 | `test/cursor-sandbox.test.mjs`, `test/runner-sandbox.test.mjs` | Sandbox staging (CLI tree, auth, worktree round trip, release on failure) and the sandbox module's argv and lifecycle |
 | `runner/delivery.mjs` | Delivery workflow: reserve, push, confirm, mark or release, expect-reply redelivery |

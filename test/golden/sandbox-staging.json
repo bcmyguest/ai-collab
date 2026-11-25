@@ -67,7 +67,7 @@
         "sandbox",
         "upload",
         "b-smoke-ta-d39a55",
-        "/tmp/ai-collab-builder-auth-<R>/auth.json",
+        "<TMP>/ai-collab-builder-auth-<R>/auth.json",
         "/sandbox/home/.config/cursor/",
         "--no-git-ignore"
       ],
@@ -75,7 +75,7 @@
         "sandbox",
         "upload",
         "b-smoke-ta-d39a55",
-        "/tmp/ai-collab-builder-auth-<R>/ntfy-token",
+        "<TMP>/ai-collab-builder-auth-<R>/ntfy-token",
         "/sandbox/home/.config/ai-collab/",
         "--no-git-ignore"
       ],
@@ -94,7 +94,7 @@
         "--env",
         "PATH=/sandbox/tools/bin:/sandbox/tools/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
         "--env",
-        "TMPDIR=/tmp",
+        "TMPDIR=<TMP>",
         "--env",
         "AI_COLLAB_PROJECT=demo",
         "--env",
@@ -123,7 +123,7 @@
         "--approve-mcps",
         "--output-format",
         "stream-json",
-        "Add one line to notes.md.\n\n## Builder sandbox\nYou run inside an OpenShell sandbox. Your worktree is /sandbox/work/ai-collab-wt-smoke-task on branch builder/smoke-task; main is the base.\ngit, node, npm and oncebitten are on PATH. Commit your work on this branch with git; the host copies your commits back after you exit.\n`ai-collab task set|progress` are recorded and applied on the host when you exit; `ai-collab task show smoke-task` prints a snapshot. Nothing else of ai-collab works here.\nUse TMPDIR=$(mktemp -d -p /tmp) for the test suite: /dev/shm is not writable here.\nBefore marking the task done, run `oncebitten check --base main` and fix what fires.\nFinish with `ai-collab task set smoke-task status=done`, or status=blocked detail=<reason>.\n\nUse ai-collab-code run_code to batch related sh, read, grep and edit operations. Check command exit codes and return only the findings needed for your next decision."
+        "Add one line to notes.md.\n\n## Builder sandbox\nYou run inside an OpenShell sandbox. Your worktree is /sandbox/work/ai-collab-wt-smoke-task on branch builder/smoke-task; main is the base.\ngit, node, npm and oncebitten are on PATH. Commit your work on this branch with git; the host copies your commits back after you exit.\n`ai-collab task set|progress` are recorded and applied on the host when you exit; `ai-collab task show smoke-task` prints a snapshot. Nothing else of ai-collab works here.\nUse TMPDIR=$(mktemp -d -p <TMP>) for the test suite: /dev/shm is not writable here.\nBefore marking the task done, run `oncebitten check --base main` and fix what fires.\nFinish with `ai-collab task set smoke-task status=done`, or status=blocked detail=<reason>.\n\nUse ai-collab-code run_code to batch related sh, read, grep and edit operations. Check command exit codes and return only the findings needed for your next decision."
       ],
       [
         "sandbox",
@@ -181,7 +181,7 @@
         ],
         "read_write": [
           "/sandbox",
-          "/tmp",
+          "<TMP>",
           "/dev/null"
         ]
       },
@@ -493,7 +493,7 @@
         "sandbox",
         "upload",
         "b-smoke-ta-d39a55",
-        "/tmp/ai-collab-builder-auth-<R>/.credentials.json",
+        "<TMP>/ai-collab-builder-auth-<R>/.credentials.json",
         "/sandbox/home/.claude/",
         "--no-git-ignore"
       ],
@@ -501,7 +501,7 @@
         "sandbox",
         "upload",
         "b-smoke-ta-d39a55",
-        "/tmp/ai-collab-builder-auth-<R>/ntfy-token",
+        "<TMP>/ai-collab-builder-auth-<R>/ntfy-token",
         "/sandbox/home/.config/ai-collab/",
         "--no-git-ignore"
       ],
@@ -520,7 +520,7 @@
         "--env",
         "PATH=/sandbox/tools/bin:/sandbox/tools/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
         "--env",
-        "TMPDIR=/tmp",
+        "TMPDIR=<TMP>",
         "--env",
         "AI_COLLAB_PROJECT=demo",
         "--env",
@@ -583,7 +583,7 @@
         "",
         "--settings",
         "/sandbox/home/.claude/builder-settings.json",
-        "Add one line to notes.md.\n\n## Builder sandbox\nYou run inside an OpenShell sandbox. Your worktree is /sandbox/work/ai-collab-wt-smoke-task on branch builder/smoke-task; main is the base.\ngit, node, npm and oncebitten are on PATH. Commit your work on this branch with git; the host copies your commits back after you exit.\n`ai-collab task set|progress` are recorded and applied on the host when you exit; `ai-collab task show smoke-task` prints a snapshot. Nothing else of ai-collab works here.\nUse TMPDIR=$(mktemp -d -p /tmp) for the test suite: /dev/shm is not writable here.\nBefore marking the task done, run `oncebitten check --base main` and fix what fires.\nFinish with `ai-collab task set smoke-task status=done`, or status=blocked detail=<reason>.\n"
+        "Add one line to notes.md.\n\n## Builder sandbox\nYou run inside an OpenShell sandbox. Your worktree is /sandbox/work/ai-collab-wt-smoke-task on branch builder/smoke-task; main is the base.\ngit, node, npm and oncebitten are on PATH. Commit your work on this branch with git; the host copies your commits back after you exit.\n`ai-collab task set|progress` are recorded and applied on the host when you exit; `ai-collab task show smoke-task` prints a snapshot. Nothing else of ai-collab works here.\nUse TMPDIR=$(mktemp -d -p <TMP>) for the test suite: /dev/shm is not writable here.\nBefore marking the task done, run `oncebitten check --base main` and fix what fires.\nFinish with `ai-collab task set smoke-task status=done`, or status=blocked detail=<reason>.\n"
       ],
       [
         "sandbox",
@@ -641,7 +641,7 @@
         ],
         "read_write": [
           "/sandbox",
-          "/tmp",
+          "<TMP>",
           "/dev/null"
         ]
       },
@@ -901,7 +901,7 @@
         "sandbox",
         "upload",
         "s-pm-<H>",
-        "/tmp/ai-collab-sandbox-run-auth-<R>/auth.json",
+        "<TMP>/ai-collab-sandbox-run-auth-<R>/auth.json",
         "/sandbox/home/.config/cursor/",
         "--no-git-ignore"
       ],
@@ -909,7 +909,7 @@
         "sandbox",
         "upload",
         "s-pm-<H>",
-        "/tmp/ai-collab-sandbox-secret-<R>/.credentials.json",
+        "<TMP>/ai-collab-sandbox-secret-<R>/.credentials.json",
         "/sandbox/home/.claude/",
         "--no-git-ignore"
       ],
@@ -917,7 +917,7 @@
         "sandbox",
         "upload",
         "s-pm-<H>",
-        "/tmp/ai-collab-sandbox-run-auth-<R>/ntfy-token",
+        "<TMP>/ai-collab-sandbox-run-auth-<R>/ntfy-token",
         "/sandbox/home/.config/ai-collab/",
         "--no-git-ignore"
       ],
@@ -940,7 +940,7 @@
         "--env",
         "PATH=/sandbox/tools/bin:/sandbox/tools/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
         "--env",
-        "TMPDIR=/tmp",
+        "TMPDIR=<TMP>",
         "--env",
         "AI_COLLAB_SANDBOX_OUT=/sandbox/out",
         "--env",
@@ -1212,7 +1212,7 @@
         "sandbox",
         "upload",
         "s-pm-<H>",
-        "/tmp/ai-collab-sandbox-run-auth-<R>/.credentials.json",
+        "<TMP>/ai-collab-sandbox-run-auth-<R>/.credentials.json",
         "/sandbox/home/.claude/",
         "--no-git-ignore"
       ],
@@ -1220,7 +1220,7 @@
         "sandbox",
         "upload",
         "s-pm-<H>",
-        "/tmp/ai-collab-sandbox-secret-<R>/.credentials.json",
+        "<TMP>/ai-collab-sandbox-secret-<R>/.credentials.json",
         "/sandbox/home/.claude/",
         "--no-git-ignore"
       ],
@@ -1228,7 +1228,7 @@
         "sandbox",
         "upload",
         "s-pm-<H>",
-        "/tmp/ai-collab-sandbox-run-auth-<R>/ntfy-token",
+        "<TMP>/ai-collab-sandbox-run-auth-<R>/ntfy-token",
         "/sandbox/home/.config/ai-collab/",
         "--no-git-ignore"
       ],
@@ -1251,7 +1251,7 @@
         "--env",
         "PATH=/sandbox/tools/bin:/sandbox/tools/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
         "--env",
-        "TMPDIR=/tmp",
+        "TMPDIR=<TMP>",
         "--env",
         "AI_COLLAB_SANDBOX_OUT=/sandbox/out",
         "--env",
@@ -1482,7 +1482,7 @@
         "sandbox",
         "upload",
         "s-pm-<H>",
-        "/tmp/ai-collab-sandbox-run-auth-<R>/auth.json",
+        "<TMP>/ai-collab-sandbox-run-auth-<R>/auth.json",
         "/sandbox/home/.codex/",
         "--no-git-ignore"
       ],
@@ -1490,7 +1490,7 @@
         "sandbox",
         "upload",
         "s-pm-<H>",
-        "/tmp/ai-collab-sandbox-secret-<R>/.credentials.json",
+        "<TMP>/ai-collab-sandbox-secret-<R>/.credentials.json",
         "/sandbox/home/.claude/",
         "--no-git-ignore"
       ],
@@ -1498,7 +1498,7 @@
         "sandbox",
         "upload",
         "s-pm-<H>",
-        "/tmp/ai-collab-sandbox-run-auth-<R>/ntfy-token",
+        "<TMP>/ai-collab-sandbox-run-auth-<R>/ntfy-token",
         "/sandbox/home/.config/ai-collab/",
         "--no-git-ignore"
       ],
@@ -1521,7 +1521,7 @@
         "--env",
         "PATH=/sandbox/tools/bin:/sandbox/tools/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
         "--env",
-        "TMPDIR=/tmp",
+        "TMPDIR=<TMP>",
         "--env",
         "AI_COLLAB_SANDBOX_OUT=/sandbox/out",
         "--env",
