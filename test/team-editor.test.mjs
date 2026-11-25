@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
 import { checkTeamText, createPattern, listPatterns, saveTeamText, teamTemplates, teamTextOf } from "../lib/patterns.mjs";
-import { readProjectsFile, setProjectClosed } from "../lib/teams.mjs";
+import { projectTeamsDir, teamFilePath } from "../lib/team-files.mjs";
 import { renameTeam, sourceLine } from "../web/lib/team-editor.js";
 
 const MODELS = { claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] };
@@ -109,14 +109,15 @@ test("an edit save keeps the operator's comments and removes the JSON pattern it
   assert.equal(projects[0].patterns?.pipe, undefined, "the JSON entry is gone");
 });
 
-test("an async team save and a sync projects write both succeed within 200 ms", async () => {
-  const { env, cfg } = setup();
+test("a team save whose team file stays locked fails busy within a second and releases projects.json", async () => {
+  const { env, cfg, root } = setup();
+  const file = teamFilePath(projectTeamsDir(root), "pipe");
+  mkdirSync(`${file}.lock`, { recursive: true });
   const started = Date.now();
-  const pending = saveTeamText(cfg, "pipe", TEXT, env, MODELS);
-  setProjectClosed(env, "demo", true);
-  await pending;
-  assert.ok(Date.now() - started < 200, `took ${Date.now() - started} ms`);
-  assert.equal(readProjectsFile(env)[0].closed, true);
+  await assert.rejects(saveTeamText(cfg, "pipe", TEXT, env, MODELS), /busy/);
+  assert.ok(Date.now() - started < 1000, `waited ${Date.now() - started} ms`);
+  assert.equal(existsSync(path.join(env.XDG_CONFIG_HOME, "ai-collab", "projects.json.lock")), false, "the projects.json lock is released");
+  rmSync(`${file}.lock`, { recursive: true, force: true });
 });
 
 test("two concurrent creates of one team name: one saves, the other says it exists", async () => {
