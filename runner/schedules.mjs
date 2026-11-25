@@ -7,7 +7,7 @@ import { configDir, listProjects, stateDir } from "../lib/config.mjs";
 import { MISSION_FILE, withMission } from "../lib/mission.mjs";
 import { refreshPmWorkspace } from "../lib/pm-workspace.mjs";
 import { withReview } from "../lib/pm-review.mjs";
-import { isProjectPaused, PROJECT_PAUSED } from "../lib/project-pause.mjs";
+import { isProjectPaused, PROJECT_PAUSED } from "../lib/project-pause.ts";
 import { harnessOfCommand, projectOfFolder, sessionOfCommand } from "../lib/schedule-session.mjs";
 import { childEnv } from "../lib/start.mjs";
 import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.mjs";

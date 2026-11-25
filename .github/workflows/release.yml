@@ -104,10 +104,11 @@ jobs:
           registry-url: https://registry.npmjs.org
       # Trusted publishing needs npm 11.5.1 or later.
       - run: npm install -g npm@11
+      - run: npm ci && npm run build:package
       # A rerun of a published version skips instead of failing.
       - run: |
           set -euo pipefail
           v=$(jq -r .version package.json)
           if npm view "ai-collab@$v" version >/dev/null 2>&1; then echo "ai-collab@$v is already on npm"; exit 0; fi
           # Verbose logs show whether the OIDC exchange ran (npm logs "oidc" lines) when a publish is refused.
-          npm publish --access public --loglevel verbose
+          npm publish ./dist --access public --loglevel verbose

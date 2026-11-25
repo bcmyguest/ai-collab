@@ -10,7 +10,7 @@ Chat with your coding agents from your phone and watch what they do, live. AI Co
 
 ## Quick start
 
-Requirements: Node 22+, and at least one harness on `PATH` (`claude`, `codex`, `cursor-agent`, or `opencode`).
+Requirements: Node 22.18+, and at least one harness on `PATH` (`claude`, `codex`, `cursor-agent`, or `opencode`).
 
 ```sh
 npx ai-collab setup

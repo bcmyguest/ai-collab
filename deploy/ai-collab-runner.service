@@ -10,6 +10,7 @@ Environment=NODE_ENV=production
 # Harness CLIs (codex, claude, cursor-agent, opencode) must be on this PATH.
 Environment=PATH=%h/.local/bin:%h/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin
 # Replace with the output of `command -v node` (Node 22.13 or later, for node:sqlite).
+# Node 22.18 or later: runs the .ts modules through type stripping.
 ExecStart=/usr/bin/node %h/ai-collab/runner/main.mjs
 Restart=on-failure
 RestartSec=2

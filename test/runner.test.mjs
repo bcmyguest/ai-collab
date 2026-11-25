@@ -15,7 +15,7 @@ import { readOwned, standsDown, writeOwned } from "../lib/owned.mjs";
 import { listSessions } from "../lib/sessions.mjs";
 import { openTasks } from "../lib/tasks.mjs";
 import { builderPaths } from "../lib/builder.mjs";
-import { setProjectPaused } from "../lib/project-pause.mjs";
+import { setProjectPaused } from "../lib/project-pause.ts";
 import { settleReceipts } from "../lib/receipts.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";

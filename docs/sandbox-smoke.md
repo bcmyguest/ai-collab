@@ -1,6 +1,6 @@
 # Live OpenShell bootstrap smoke
 
-Run on a Linux host with Node 22+, the repository dependencies, Git, oncebitten,
+Run on a Linux host with Node 22.18+, the repository dependencies, Git, oncebitten,
 and a working disposable OpenShell gateway. Use a disposable host account with
 a running systemd user manager and readable user journal for the standalone
 builder cases. Install the real harness binaries on PATH in the layouts
