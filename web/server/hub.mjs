@@ -8,7 +8,7 @@ const RETRY_MIN_MS = 1000;
 const RETRY_MAX_MS = 60_000;
 const RATE_LIMIT_MS = 30_000;
 
-// One ntfy streaming subscription shared by every browser: history is fetched once per topic, then kept live.
+// One bus streaming subscription shared by every browser: history is fetched once per topic, then kept live.
 export function createHub(cfg, { keep = () => false } = {}) {
   const history = openHistory(cfg);
   const topics = new Map();

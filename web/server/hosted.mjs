@@ -12,10 +12,10 @@ export function createHostedUi({ auth, projects, stateDir, origin, createUi }) {
   const credentials = new Map();
   const names = new Set();
   for (const cfg of projects) {
-    if (!isGithubLogin(cfg.owner) || !cfg.token) throw new Error("Hosted projects require an owner and a dedicated ntfy token");
+    if (!isGithubLogin(cfg.owner) || !cfg.token) throw new Error("Hosted projects require an owner and a dedicated bus token");
     const owner = cfg.owner.toLowerCase();
     if (credentials.has(cfg.token) && credentials.get(cfg.token) !== owner) {
-      throw new Error("Hosted users must not share ntfy tokens");
+      throw new Error("Hosted users must not share bus tokens");
     }
     if (names.has(cfg.project)) throw new Error("Hosted projects require unique topic namespaces");
     names.add(cfg.project);

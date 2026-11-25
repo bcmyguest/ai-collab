@@ -99,7 +99,7 @@ const IMPORTANT_PREFIX = "IMPORTANT, the agent waits for this answer: ";
 const PUSH_ACTIONS = ["key", "subscribe", "test"];
 // A review diff is plain text in one response; past this it is a download, not a phone view.
 const DIFF_MAX_BYTES = 4 * 1024 * 1024;
-// A question or approval reply the UI sent for a signed-in user names them in its ntfy title.
+// A question or approval reply the UI sent for a signed-in user names them in its reply title.
 const REPLY_TITLE = /^Reply from operator \(([^)]+)\)$/;
 const encoder = new TextEncoder();
 const runFile = promisify(execFile);
@@ -178,7 +178,7 @@ function activityFrame(source) {
   return cached.frame;
 }
 
-// One chat entry per ntfy event; status and alert envelopes are skipped.
+// One chat entry per bus event; status and alert envelopes are skipped.
 function entry(event) {
   const item = baseEntry(event);
   const attachment = item && attachmentOf(event);
@@ -1479,7 +1479,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
         return json(201, { status: "AFK " + mode, detail: "Sent to " + projects.size + (projects.size === 1 ? " project" : " projects") });
       }
-      // Close hides a project from the sidebar and Home; Delete drops its registry entry only (repo, worktrees, ntfy history stay).
+      // Close hides a project from the sidebar and Home; Delete drops its registry entry only (repo, worktrees, message history stay).
       if (action === "close" || action === "reopen") {
         setProjectClosed(env, name, action === "close");
         return json(200, { status: action === "close" ? "Closed" : "Reopened", detail: name });

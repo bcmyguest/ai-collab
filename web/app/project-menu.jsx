@@ -2,7 +2,7 @@ import { MoreHorizontal, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
-/** A project's Close and Delete actions; Delete keeps the repo, worktrees and ntfy history. */
+/** A project's Close and Delete actions; Delete keeps the repo, worktrees and message history. */
 export function ProjectMenu({ project, act }) {
   return <DropdownMenu>
     <DropdownMenuTrigger asChild>

@@ -68,5 +68,5 @@ test("hosted UI rejects missing owners, missing tokens and shared credentials", 
   const create = projects => createHostedUi({ auth, projects, stateDir: "/unused", origin, createUi });
   assert.throws(() => create([{ token: "token" }]), /owner/);
   assert.throws(() => create([{ owner: "alice" }]), /token/);
-  assert.throws(() => create([{ owner: "alice", token: "token" }, { owner: "bob", token: "token" }]), /share ntfy tokens/);
+  assert.throws(() => create([{ owner: "alice", token: "token" }, { owner: "bob", token: "token" }]), /share bus tokens/);
 });

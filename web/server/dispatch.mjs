@@ -124,7 +124,7 @@ export function createDispatcher({
   }
 
   // The text a session receives. An attachment is cached first, so the session reads this machine's copy
-  // instead of downloading the file from ntfy again. The sender-identity paragraph is SessionStart only.
+  // instead of downloading the file from the bus again. The sender-identity paragraph is SessionStart only.
   const textFor = async (scfg, messages) => {
     const shown = await cacheAttachmentsWithin(scfg, messages, { budgetMs: ATTACHMENT_BUDGET_MS });
     return formatInbox(shown, { session: scfg.session, peer: scfg.peer });
