@@ -5,7 +5,7 @@
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.18"
   },
   "bin": {
     "ai-collab": "scripts/ai-collab.mjs"
@@ -37,6 +37,8 @@
   ],
   "scripts": {
     "lint": "oxlint .",
+    "typecheck": "tsc -p tsconfig.core.json",
+    "build:package": "node tools/build-package.mjs",
     "test": "node --test",
     "build": "node deploy/build-ui.mjs",
     "runner": "node runner/main.mjs",

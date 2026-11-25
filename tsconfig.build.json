@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.core.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": ".",
+    "outDir": "dist"
+  },
+  "include": ["lib/**/*", "runner/**/*", "scripts/*.mjs", "web/server/**/*.mjs"]
+}

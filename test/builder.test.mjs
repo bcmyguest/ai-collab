@@ -19,7 +19,7 @@ import { saveTeamText } from "../lib/patterns.mjs";
 import { loadConfig } from "../lib/config.mjs";
 import { toolClient } from "../lib/tool-api.mjs";
 import { hostCaller } from "../lib/code-run.mjs";
-import { setProjectPaused } from "../lib/project-pause.mjs";
+import { setProjectPaused } from "../lib/project-pause.ts";
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";

@@ -8,6 +8,10 @@ H=$(mktemp -d); HOME=$H CODEX_HOME=$H/.codex npm test
 npm run build
 ```
 
+## Publish build
+
+`npm run build:package` (`tools/build-package.mjs`) writes `dist/`, a complete package with the same paths. It copies the `files` entries, then `tsc -p tsconfig.build.json` replaces each `.ts` module's importers with `.js` and emits the `.mjs` code. Node refuses to strip types under `node_modules`, so the published tarball holds no `.ts` file. The release workflow publishes `./dist`, and `npm pack ./dist` builds the same tarball locally.
+
 Tests use an in-process fake ntfy server (`test/helpers/fake-ntfy.mjs`) and need no network or API access. The empty `HOME` keeps them away from your agent configs, as CI does.
 
 ### UI SDK smoke test

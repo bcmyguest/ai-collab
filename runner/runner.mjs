@@ -1,5 +1,5 @@
 // Runner core: one durable "session" workflow per owned session; control calls and ntfy input become durable messages.
-import { isProjectPaused, PROJECT_PAUSED } from "../lib/project-pause.mjs";
+import { isProjectPaused, PROJECT_PAUSED } from "../lib/project-pause.ts";
 import { randomBytes, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";

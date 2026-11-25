@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { PROJECT_PAUSED, setProjectPaused } from "../lib/project-pause.mjs";
+import { PROJECT_PAUSED, setProjectPaused } from "../lib/project-pause.ts";
 import { openDurable } from "../runner/durable.mjs";
 import { listenControl, route } from "../runner/control.mjs";
 import { runnerRequest, runnerClient } from "../runner/client.mjs";
