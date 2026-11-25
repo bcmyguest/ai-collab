@@ -209,6 +209,9 @@ Review: one Opus subagent per batch, briefed with the branch and this document, 
 | 0-2 merged | `integrate/batches-0-2` | 595849e4 | typecheck clean; full suite baseline only | waiting to fast-forward `main` (blocked by another session's uncommitted files in `~/ai-collab`) |
 | 3: store | `feat/store` (on the integration branch) | 3f602e5c, 330acdc7, 614d0db7 (reverted by be44846f), 88f568c6, 1e9287bd | Opus, 3 rounds: 614d0db7 rejected (reproduced double holders); redo approved: 0 violations in 48,000 stress acquisitions, old and new code mixed | done; residual race only when a holder is suspended past 10 × staleMs |
 | fix | `fix/mention-reply-in-channel` | 1ac5cf7d | 3 tests red→green | replies to project-chat @mentions show in the project chat |
+| 3: harness part 1 | `feat/harness` (on `feat/store`) | 0954e389, c8dd2399, 08b54efc | Opus: binary map approved; parser commit needed one fix (a stale `teams.json` member broke every pattern), fixed red→green | done; argv by kind is part 2 |
+| fix | `fix/expect-reply-redelivery` | c483dc3e, 876f3d85 | root cause from live runner.db/bus.db: an OpenCode target busy ~100 min got 5 queued copies 10 min apart and answered each; redelivery now waits while the target is busy, in the runner and the UI dispatcher (one helper) | done; one extra copy is still possible if the target answers while busy |
+| 4a | `feat/workflows-dbos` (qwen, `~/ai-collab-wt-dbos`) | in progress | — | Postgres 17 in Docker (operator choice), DBOS engine behind the `durable` interface, `workflowEngine` switch defaulting to sqlite |
 
 Baseline on `main` (2f1db8e8, Opus re-measured, each file alone, twice): `activity` "UI streams activity…", `operator-messages` "project and session chats show terminal prompts…", `pm-workspace` "a dirty PM clone…" (global git `push.pushOption` leaks into the test remote) fail; "session chat shows typed terminal prompts…" fails in full runs.
 
