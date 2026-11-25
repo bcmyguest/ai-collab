@@ -140,7 +140,7 @@ function classifyOpenCode(event: Event): Limit | null {
 }
 
 // Explicit limit wording a Cursor error may use about the plan's own window (not a bare "rate limited").
-const CURSOR_LIMIT_TEXT = /usage limit|plan limit|reached your (usage|limit|quota)/i;
+const CURSOR_LIMIT_TEXT = /usage limit|plan limit|monthly quota|quota exhausted|reached your (usage|limit|quota)/i;
 // Structured ACP/error codes that name a usage limit. UNVERIFIED: no local schema names them.
 const CURSOR_LIMIT_CODES = /usage_?limit|rate_?limit|limit_?exceeded|quota|insufficient_quota|429/i;
 // A bare HTTP 429 counts only with limit wording beside it, so an ordinary throttled request does not open a card.
@@ -196,7 +196,12 @@ export function limitFromRunError(harness: string, message: string, metadata: Ev
 export function detectLimit(harness: string, errorOrText: string | Event): DetectedLimit | null {
   const found = typeof errorOrText === "string" ? limitFromRunError(harness, errorOrText) : classifyLimit(harness, errorOrText);
   if (!found) return null;
-  return { ...found, kind: found.wording || found.window || found.resetsAt ? "limit" : "rate" };
+  return { ...found, kind: isBlockingLimit(found) ? "limit" : "rate" };
+}
+
+/** Whether a limit stops the work and starts the fallback: wording, a window or a reset. A bare rate limit does not. Every path uses this. */
+export function isBlockingLimit(limit: Limit | null | undefined): boolean {
+  return Boolean(limit && (limit.wording || limit.window || limit.resetsAt));
 }
 
 // Cursor names the end of its monthly cycle in a limit line; the limit lasts through the day after it.

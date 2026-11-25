@@ -29,7 +29,7 @@ import { parseCodeMode, resolveCodeMode } from "../lib/code-mode.mjs";
 import { openTasks } from "../lib/tasks.mjs";
 import { listOwned, ownedFile, readOwned, writeOwned } from "../lib/owned.mjs";
 import { modelFields } from "../lib/session-events.mjs";
-import { limitFromRunError } from "../lib/limits.ts";
+import { isBlockingLimit, limitFromRunError } from "../lib/limits.ts";
 import { alertLimit } from "../lib/limit-alert.mjs";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, LIMIT, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, OPENSHELL_PERMISSION, permissionSettings } from "./contract.mjs";
 import { sessionOfCommand } from "../lib/schedule-session.mjs";
@@ -174,7 +174,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         r.run = null;
         for (const card of [...r.approvals]) closeApproval(s, card.id, "cancelled");
         save(s);
-        if (e.type === EventType.RUN_ERROR) s.finished.set(e.metadata.aiCollab.runId, { outcome: "error", message: e.message, ...(r.builder && limit?.wording ? { usageLimit: true } : {}) });
+        if (e.type === EventType.RUN_ERROR) s.finished.set(e.metadata.aiCollab.runId, { outcome: "error", message: e.message, ...(r.builder && isBlockingLimit(limit) ? { usageLimit: true } : {}) });
         else {
           const outcome = e.outcome?.type ?? "success";
           const handoff = outcome === "success" ? patternHandoff(s.patternReply?.text) : undefined;

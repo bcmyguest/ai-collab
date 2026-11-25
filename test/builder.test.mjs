@@ -693,8 +693,11 @@ for (const line of [
 }
 
 test("a harness found only in a home bin directory is not retried: the chain moves on", async () => {
-  // claude lives in ~/.local/bin, which the staging lookup does not search; "none" hides any host claude on the test PATH.
-  const l = lab({ AI_COLLAB_OPENCODE_BIN: AGENT, FAKE_SANDBOX_OPENCODE_BIN: AGENT, AI_COLLAB_CLAUDE_BIN: "none" });
+  const l = lab({ AI_COLLAB_OPENCODE_BIN: AGENT, FAKE_SANDBOX_OPENCODE_BIN: AGENT });
+  // The test PATH has no claude: the binary below sits in ~/.local/bin, which childPath searches and the staging lookup does not.
+  const systemPath = ["/usr/local/bin", "/usr/bin", "/bin"].filter((dir) => !existsSync(path.join(dir, "claude"))).join(":");
+  symlinkSync(process.execPath, path.join(l.home, "bin", "node"));
+  l.env.PATH = `${path.join(l.home, "bin")}:${systemPath}`;
   l.env.AI_COLLAB_RUNNER_SOCKET = path.join(l.home, "missing.sock");
   const tree = path.join(l.home, "codex-release");
   mkdirSync(path.join(tree, "bin"), { recursive: true });
@@ -711,6 +714,34 @@ test("a harness found only in a home bin directory is not retried: the chain mov
   const launches = readJsonLines(l.env.FAKE_BUILDER_LOG);
   assert.ok(launches.some((row) => row.args.includes("deepseek-v41-flash-1017-high")), JSON.stringify(launches));
 });
+
+for (const [label, lines, retries] of [
+  ["a rate line and a reset line in separate places do not make a limit", [
+    "stream error: rate limit exceeded; retrying 1/5",
+    "working on the next step",
+    "note: try again at 2:00 AM",
+  ], false],
+  ["one line carrying the rate and the reset is a limit", [
+    "error: rate limit exceeded, try again at 2:00 AM",
+  ], true],
+]) {
+  test(`Codex stderr: ${label}`, async () => {
+    const l = lab();
+    l.env.AI_COLLAB_RUNNER_SOCKET = path.join(l.home, "missing.sock");
+    const tree = path.join(l.home, "codex-release");
+    mkdirSync(path.join(tree, "bin"), { recursive: true });
+    const codex = path.join(tree, "bin", "codex");
+    writeFileSync(codex, `#!/bin/sh\n${lines.map((line) => `echo "${line}" >&2`).join("\n")}\nexit 1\n`, { mode: 0o755 });
+    symlinkSync(codex, path.join(l.home, "bin", "codex"));
+    l.env.AI_COLLAB_CODEX_TREE = tree;
+    writeFileSync(path.join(l.env.XDG_CONFIG_HOME, "ai-collab", "defaults.json"), JSON.stringify({ builderOrder: ["codex"] }));
+    await withTask(l);
+    const res = await l.cli("builder", "start", "--task", "smoke-task", "--brief", l.brief);
+    assert.equal(res.code, 0, res.err);
+    const launches = existsSync(l.env.FAKE_BUILDER_LOG) ? readJsonLines(l.env.FAKE_BUILDER_LOG) : [];
+    assert.equal(launches.some((row) => row.args.includes("deepseek-v41-flash-1017-high")), retries, JSON.stringify(launches));
+  });
+}
 
 for (const [label, stream, failDownload] of [
   ["carries edits forward after a stderr limit", "stderr", false],
