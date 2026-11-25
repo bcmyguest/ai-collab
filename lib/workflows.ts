@@ -12,20 +12,22 @@ import pg from "pg";
 import { openDurable } from "./durable.mjs";
 
 type Json = Record<string, unknown>;
+/** A workflow's result, kv value, or message: the JSON the engines checkpoint verbatim. */
+type WfValue = Json | string | number | boolean | null | undefined | WfValue[];
 type NowFn = () => number;
-type WfFn = (wf: Json, input: Json) => Promise<unknown>;
+type WfFn = (wf: Json, input: Json) => Promise<WfValue>;
 type Schedule = { name: string; everyMs: number; firstStep: string | null; timer: ReturnType<typeof setTimeout> | null };
 type StepRow = { functionID: number; name: string; output: unknown; error: Error | null };
 
 export interface Workflows {
   register(name: string, fn: WfFn): void;
-  scheduled(name: string, opts: { everyMs: number; firstStep?: string | null }, fn: (scheduled: Date, actual: Date, wf: Json) => Promise<unknown>): void;
+  scheduled(name: string, opts: { everyMs: number; firstStep?: string | null }, fn: (scheduled: Date, actual: Date, wf: Json) => Promise<WfValue>): void;
   startSchedules(): Promise<void>;
   hasSchedule(name: string): boolean;
   runScheduled(name: string): Promise<{ id: string | null; status: string } | null>;
   schedules(): Promise<Json[]>;
   scheduleRuns(name: string, limit?: number): Promise<Json[]>;
-  startWorkflow(name: string, id: string, input: Json): Promise<unknown>;
+  startWorkflow(name: string, id: string, input: Json): Promise<WfValue>;
   /** True when this call started the workflow; false when the id already had a run. */
   startWorkflowOnce(name: string, id: string, input: Json): Promise<boolean>;
   /** Set on engines returned by openWorkflows; createRunner uses it to skip re-adapting a raw sqlite log. */
@@ -35,10 +37,10 @@ export interface Workflows {
   recover(): Promise<string[]>;
   send(workflowId: string, topic: string, value: unknown, opts?: { dedupe?: string | null }): Promise<boolean>;
   status(id: string): Promise<Json | null>;
-  result(id: string): Promise<unknown>;
+  result(id: string): Promise<WfValue>;
   cancel(id: string): Promise<void>;
   steps(id: string): Promise<Json[]>;
-  getKv(key: string): Promise<unknown>;
+  getKv(key: string): Promise<WfValue>;
   setKv(key: string, value: unknown): Promise<void>;
   prune(names: string[], before: number): Promise<number>;
   drain(workflowId: string, topic: string): Promise<unknown[]>;
@@ -48,30 +50,33 @@ export interface Workflows {
 
 /** Opens the engine named by `engine`: "sqlite" (default) or "dbos". */
 export async function openWorkflows(opts: { engine?: string; file?: string; pgUrl?: string; now?: NowFn; log?: (m: string) => void }): Promise<Workflows> {
-  if ((opts.engine || "sqlite") === "sqlite") return adaptSqlite(openDurable(opts.file!, { now: opts.now }));
+  if ((opts.engine || "sqlite") === "sqlite") {
+    if (!opts.file) throw new Error("openWorkflows: the sqlite engine needs a file");
+    return adaptSqlite(openDurable(opts.file, { now: opts.now }));
+  }
   return await openDbosEngine(opts);
 }
 
 // The sync surface of lib/durable.mjs as the adapter needs it; tsc infers the .mjs exports too loosely to use directly.
 type SqliteDurable = {
   register(name: string, fn: WfFn): void;
-  scheduled(name: string, opts: { everyMs: number; firstStep?: string | null }, fn: (scheduled: Date, actual: Date, wf: Json) => Promise<unknown>): void;
+  scheduled(name: string, opts: { everyMs: number; firstStep?: string | null }, fn: (scheduled: Date, actual: Date, wf: Json) => Promise<WfValue>): void;
   hasSchedule(name: string): boolean;
   startSchedules(): void;
   runScheduled(name: string): { id: string | null; status: string } | null;
   schedules(): Json[];
   scheduleRuns(name: string, limit?: number): Json[];
-  startWorkflow(name: string, id: string, input: Json): unknown;
-  startWorkflowOnce(name: string, id: string, input: Json): Promise<unknown> | null;
+  startWorkflow(name: string, id: string, input: Json): WfValue;
+  startWorkflowOnce(name: string, id: string, input: Json): Promise<WfValue> | null;
   listNamed(name: string, limit?: number): Json[];
   pending(): string[];
   recover(): string[];
   send(workflowId: string, topic: string, value: unknown, opts?: { dedupe?: string | null }): boolean;
   status(id: string): Json | null;
-  result(id: string): unknown;
+  result(id: string): WfValue;
   cancel(id: string): void;
   steps(id: string): Json[];
-  getKv(key: string): unknown;
+  getKv(key: string): WfValue;
   setKv(key: string, value: unknown): void;
   prune(names: string[], before: number): number;
   drain(workflowId: string, topic: string): unknown[];
@@ -80,8 +85,8 @@ type SqliteDurable = {
 };
 
 /** Wraps the sync sqlite durable log so both engines expose one async interface; awaiting a sync value is a no-op. */
-export function adaptSqlite(raw: ReturnType<typeof openDurable>): Workflows {
-  const d = raw as unknown as SqliteDurable;
+export function adaptSqlite(raw: unknown): Workflows {
+  const d = raw as SqliteDurable;
   return {
     isAsync: true,
     register: (name, fn) => d.register(name, fn),
@@ -91,7 +96,7 @@ export function adaptSqlite(raw: ReturnType<typeof openDurable>): Workflows {
     async runScheduled(name) { return d.runScheduled(name); },
     async schedules() { return d.schedules(); },
     async scheduleRuns(name, limit) { return d.scheduleRuns(name, limit); },
-    async startWorkflow(name, id, input) { return await d.startWorkflow(name, id, input); },
+    async startWorkflow(name, id, input) { return d.startWorkflow(name, id, input); },
     async startWorkflowOnce(name, id, input) {
       const run = d.startWorkflowOnce(name, id, input);
       if (run === null) return false;
@@ -103,7 +108,7 @@ export function adaptSqlite(raw: ReturnType<typeof openDurable>): Workflows {
     async recover() { return d.recover(); },
     async send(workflowId, topic, value, o) { return d.send(workflowId, topic, value, o); },
     async status(id) { return d.status(id); },
-    async result(id) { return await d.result(id); },
+    async result(id) { return d.result(id); },
     async cancel(id) { d.cancel(id); },
     async steps(id) { return d.steps(id); },
     async getKv(key) { return d.getKv(key); },
@@ -133,7 +138,7 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { 
     CREATE TABLE IF NOT EXISTS ai_collab.dedupe (key TEXT PRIMARY KEY, created_at BIGINT NOT NULL);`);
 
   const registry = new Map<string, WfFn>();
-  const dbosFns = new Map<string, (input: Json) => Promise<unknown>>();
+  const dbosFns = new Map<string, (input: Json) => Promise<WfValue>>();
   const schedules = new Map<string, Schedule>();
   const closing = new AbortController();
   let launched: Promise<void> | null = null;
@@ -150,7 +155,7 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { 
     return launched;
   }
 
-  function registerDbos(name: string): (input: Json) => Promise<unknown> {
+  function registerDbos(name: string): (input: Json) => Promise<WfValue> {
     const wf = registry.get(name);
     if (!wf) throw new Error(`no workflow named ${name}`);
     const fn = DBOS.registerWorkflow(async (input: Json) => await wf(makeContext(String(asJson(input).__id ?? ""), input), input), { name });
@@ -158,11 +163,11 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { 
     return fn;
   }
 
-  function makeContext(id: string, input: Json): Json {
+  function makeContext(id: string, input: Json) {
     return {
       id, input, signal: closing.signal,
       get replaying() { return false; },
-      step: async (name: string, fn: () => Promise<unknown>) => await DBOS.runStep(fn, { name }),
+      step: async (name: string, fn: () => Promise<WfValue>) => await DBOS.runStep(fn, { name }),
       recv: async (topic: string, { all = false } = {}) => {
         if (!all) {
           const first = await DBOS.recv(topic, { timeoutSeconds: 0 });
@@ -191,7 +196,7 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { 
     };
   }
 
-  function dbosFn(name: string): (input: Json) => Promise<unknown> {
+  function dbosFn(name: string): (input: Json) => Promise<WfValue> {
     const fn = dbosFns.get(name);
     if (fn) return fn;
     if (launched) throw new Error(`workflow ${name} registered after launch; register before the first async call`);
@@ -203,7 +208,7 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { 
     return rows[0].n as number;
   }
 
-  function mapStatus(r: WorkflowStatus): Json {
+  function mapStatus(r: WorkflowStatus) {
     return {
       id: r.workflowID, name: r.workflowName, status: r.status,
       output: r.output,
@@ -355,7 +360,7 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { 
     status: statusRow,
     async result(id) {
       await ready();
-      const h = await DBOS.retrieveWorkflow(id);
+      const h = await DBOS.retrieveWorkflow<WfValue>(id);
       return await h.getResult();
     },
     async cancel(id) { await ready(); await DBOS.cancelWorkflow(id); },
