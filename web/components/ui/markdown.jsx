@@ -108,4 +108,9 @@ function MarkdownComponent({
 const Markdown = memo(MarkdownComponent)
 Markdown.displayName = "Markdown"
 
-export { Markdown }
+/** The remark plugin list for a task-link map, shared with the assistant-ui bubble renderer. */
+export function remarkPluginsFor(taskLinks) {
+  return taskLinks ? [remarkGfm, remarkBreaks, [remarkTaskLinks, taskLinks]] : [remarkGfm, remarkBreaks]
+}
+
+export { Markdown, INITIAL_COMPONENTS as MARKDOWN_COMPONENTS }

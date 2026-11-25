@@ -2,7 +2,7 @@
 
 The operator UI is a Next.js (App Router) app in `web/`. [`setup`](quick-start.md) builds it and runs it as the `ai-collab-ui` systemd user service on `http://127.0.0.1:8795`. To run it by hand, see [Install](install.md#the-ui-by-hand).
 
-The server serves every project in `~/.config/ai-collab/projects.json`, each resolved from its own `root` with its own URL, token file, and peers, plus every auto-joined repo (see [Configuration](configuration.md#auto-join-every-repo-defaultsjson)). It keeps ntfy tokens and raw harness session IDs server-side. The browser sees only public `peer#label` identities.
+The server serves every project in `~/.config/ai-collab/projects.json`, each resolved from its own `root` with its own URL, token file, and peers, plus every auto-joined repo (see [Configuration](configuration.md#auto-join-every-repo-defaultsjson)). It keeps the bus token and raw harness session IDs server-side. The browser sees only public `peer#label` identities.
 
 ## UI settings
 
@@ -40,7 +40,7 @@ Run `npm ci && npm run build` in the checkout before `systemctl --user restart a
 
 ## Live updates
 
-The browser reads one AG-UI SSE stream from `/api/events` using `@ag-ui/client`. A `STATE_SNAPSHOT` refreshes the chat and session view. In an Activity view (`view=activity`), the same stream replays activity events and then sends new ones as they arrive. See the [AG-UI event protocol](ag-ui.md). The server holds a single ntfy streaming subscription (`/<topic1>,<topic2>/json`) shared by all browsers and by every project on the same ntfy server and account. It fetches cached events (`poll=1&since=all`) when it loads a project and reconnects from the last observed timestamp with a one-second overlap, backing off 30 seconds on HTTP 429. The activity topic's history keeps the newest 3 MB of the cache, and the hub keeps 500 events per topic.
+The browser reads one AG-UI SSE stream from `/api/events` using `@ag-ui/client`. A `STATE_SNAPSHOT` refreshes the chat and session view. In an Activity view (`view=activity`), the same stream replays activity events and then sends new ones as they arrive. See the [AG-UI event protocol](ag-ui.md). The server holds a single bus streaming subscription (`/<topic1>,<topic2>/json`) shared by all browsers and by every project on the same bus. It fetches stored events (`poll=1&since=all`) when it loads a project and reconnects from the last observed timestamp with a one-second overlap. The activity topic's history keeps the newest 3 MB of stored events, and the hub keeps 500 events per topic.
 
 On a phone, drag the list down from its top, or up from its bottom, past 70 px to refresh: the app reconnects its stream like **Retry** and shows the same toasts. The gesture uses touch events only and is ignored while text is selected or the composer has focus; the page keeps `overscroll-none`, so the browser's own reload never fires.
 
@@ -83,7 +83,7 @@ Tapping a message's sender avatar or name, or an `@peer#session` tag, opens that
 
 A session that holds a live role shows that team and role on the card, in the sidebar, and on its row in the project chat (`product · pm`). The label comes from a running pattern: the session address on that role. A session with no live role shows neither.
 
-Each session card shows **where it runs** after its address: `folder` (the project root), `worktree <name>` (under `<root>/.claude/worktrees/` or any other `worktrees/<name>` path), `sandbox` (a registry entry with a `sandbox` field; no hook writes one yet), else the cwd with `~` for home (`sessionPlace` in `lib/sessions.mjs`). A **⋯** menu on each card has **Dispose**, enabled only for an offline session with a registry file. It posts `/api/dispose`; the server checks the address (`peer#16-hex`), that the session belongs to the project and that its recorded process is not running, then deletes `<stateDir>/<project>/registry/<address>.json` (`disposeSession`). A session that still has messages in ntfy history can reappear as an offline card without a registry entry.
+Each session card shows **where it runs** after its address: `folder` (the project root), `worktree <name>` (under `<root>/.claude/worktrees/` or any other `worktrees/<name>` path), `sandbox` (a registry entry with a `sandbox` field; no hook writes one yet), else the cwd with `~` for home (`sessionPlace` in `lib/sessions.mjs`). A **⋯** menu on each card has **Dispose**, enabled only for an offline session with a registry file. It posts `/api/dispose`; the server checks the address (`peer#16-hex`), that the session belongs to the project and that its recorded process is not running, then deletes `<stateDir>/<project>/registry/<address>.json` (`disposeSession`). A session that still has messages in bus history can reappear as an offline card without a registry entry.
 
 A **Go to agent** button sits on every Home card, its "started by" parent, each subagent run (in threads, the overview and on cards), and each overview row's agent. In chat, tap the agent's name to open its session. A session started by another shows **Back to parent** under its title; a subagent run's view has **Back to parent** to its session's thread.
 
@@ -95,13 +95,13 @@ Rows render by type: prompts as user bubbles, assistant text as Markdown, tool c
 
 Use **Attach image** in the chat composer to preview and send a PNG, JPEG, GIF, or WebP image up to 15 MB, with an optional caption. Chat displays images inline in both directions. Tap a filename to open the full image. Use a text message to start a new agent or team with a tag.
 
-`/api/file/<name>` serves a `text/plain` file only when an activity event in memory references it; chat topics still serve images only. Each file is downloaded into a local cache once and then read from disk, so reloads and extra devices cost no ntfy bandwidth ([one download per attachment](messaging.md#one-download-per-attachment)).
+`/api/file/<name>` serves a `text/plain` file only when an activity event in memory references it; chat topics still serve images only. Each file is downloaded into a local cache once and then read from disk, so reloads and extra devices cost no refetch ([one download per attachment](messaging.md#one-download-per-attachment)).
 
 ### Read state
 
 The conversation shows the live thread. There is no History panel. Read positions are saved per conversation and GitHub account. When GitHub sign-in is disabled, browsers share the operator's read position.
 
-The UI service archives events under its state directory while it runs, including when browsers are closed. After a restart or an ntfy outage, the first run can recover only the events still available from ntfy. Attachment downloads follow the existing attachment cache policy.
+The UI service archives events under its state directory while it runs, including when browsers are closed. After a restart or a bus outage, the first run can recover only the events still available from the bus. Attachment downloads follow the existing attachment cache policy.
 
 ### Subagents
 
@@ -190,7 +190,7 @@ The server validates the place against that list; a failed `git worktree add` st
 | Codex | no: falls back to the folder | the adapter runs in OpenShell only as a tracked builder; `$CODEX_HOME/auth.json` is already copied into every session sandbox |
 | OpenCode | no: falls back to the folder | no sandbox launcher in its adapter; OpenCode free hits `provider.free-limit` inside builders |
 
-**Unverified.** Only fake executables were run (`test/start-places.test.mjs`, and the 390 px browser check). Whether `claude --bg --worktree` works together, whether the sandbox has the project at the same path, and whether hooks inside the sandbox reach `projects.json` and ntfy were not checked. Whether `claude --bg` prints the session ID that its hooks report, and whether `cursor-agent -p` runs in a workspace it has not trusted, were not checked.
+**Unverified.** Only fake executables were run (`test/start-places.test.mjs`, and the 390 px browser check). Whether `claude --bg --worktree` works together, whether the sandbox has the project at the same path, and whether hooks inside the sandbox reach `projects.json` and the bus were not checked. Whether `claude --bg` prints the session ID that its hooks report, and whether `cursor-agent -p` runs in a workspace it has not trusted, were not checked.
 
 ## Wake, compact, and context alerts
 
@@ -304,7 +304,7 @@ Where detection runs:
 - The owned-session runner (`runner/runner.mjs`) covers Claude's `rate_limit_event` and every harness's run error.
 - Detached `codex exec`, `opencode run` and `cursor-agent -p` sessions started from the phone have no error hook, so no card appears for them.
 
-A reply typed in the ntfy app does nothing. Answer the card in the web UI, where the pick starts the replacement.
+A phone post as a plain reply does nothing. Answer the card in the web UI, where the pick starts the replacement.
 
 ## Compaction map
 
@@ -409,19 +409,19 @@ A session row shows **N running** when it has running subagents, and the session
 
 The session view's **Working now** line names each agent running now: the session with an open tool call (`harness#label (session)`) and each running subagent (`<kind> subagent in <address>`). The activity data carries no model name, so the line shows no `:model`. Timeline groups and texts show the address of the agent that produced them.
 
-Each project has a **⋯** menu. **Close** hides the project from the sidebar and Home; **Closed projects** lists them with **Reopen**. A closed project is a `"closed": true` flag on its `projects.json` entry. **Delete** asks first and removes the entry only; repo files, worktrees and ntfy history stay. The UI hides a deleted project until it restarts. Projects found by auto-join have no entry, so they cannot be closed or deleted here.
+Each project has a **⋯** menu. **Close** hides the project from the sidebar and Home; **Closed projects** lists them with **Reopen**. A closed project is a `"closed": true` flag on its `projects.json` entry. **Delete** asks first and removes the entry only; repo files, worktrees and bus history stay. The UI hides a deleted project until it restarts. Projects found by auto-join have no entry, so they cannot be closed or deleted here.
 
 **Scheduled** lists the runner's schedules read-only: name, interval, command, last run, next run; tap a job for its recent runs. With no runner socket it shows **runner offline**.
 
 A reply shows the replied message as a quote above its body (sender and the first 80 characters); tap it to scroll to the original. The composer shows the same quote with a × to cancel. A plain @mention shows no quote.
 
-Notifications carry a link: ntfy's `click` field, built from `AI_COLLAB_UI_URL` (`lib/deep-link.mjs`). Without that variable no link is sent. An agent's reply opens its session thread; questions, approvals and broadcasts open the project chat.
+Notifications carry a link: the `click` field, built from `AI_COLLAB_UI_URL` (`lib/deep-link.mjs`). Without that variable no link is sent. An agent's reply opens its session thread; questions, approvals and broadcasts open the project chat.
 
-**Phone alerts** (the bell in the header) chooses which notifications buzz: **All**, **Questions and direct replies**, **Questions only**, or **None**. The level is stored in `alerts.json` in the config directory, so hooks, the runner and the UI read the same setting. It applies only on the host where it was set: the file is local and is not published over ntfy, so a level set on one machine does not change alerts from sessions on another. A message the level silences still arrives; its ntfy priority is 1 (listed, no sound) and its Web Push is not sent. Questions cover `ask_question`, terminal question mirrors and approvals; direct replies are agent replies to the operator.
+**Phone alerts** (the bell in the header) chooses which notifications buzz: **All**, **Questions and direct replies**, **Questions only**, or **None**. The level is stored in `alerts.json` in the config directory, so hooks, the runner and the UI read the same setting. It applies only on the host where it was set: the file is local and is not published over the bus, so a level set on one machine does not change alerts from sessions on another. A message the level silences still arrives; its priority is 1 (listed, no sound) and its Web Push is not sent. Questions cover `ask_question`, terminal question mirrors and approvals; direct replies are agent replies to the operator.
 
 ## Look and feel
 
-The UI uses [shadcn/ui](https://ui.shadcn.com/docs) components with Tailwind CSS v4 and the [prompt-kit](https://www.prompt-kit.com/docs) chat components (`chat-container`, `message`, `prompt-input`, `scroll-button`), copied into `web/components/ui/` by the shadcn CLI. `web/app/shadcn.css` vendors the shadcn style's Tailwind variants. Code is highlighted with [shiki](https://shiki.style/guide/regex-engines#javascript-regexp-engine) through prompt-kit's `CodeBlockCode`: fenced blocks in chat Markdown, tool inputs (a shell command as bash, other input as JSON), and tool results whose language is clear (a diff, shell output, a read file by extension, JSON). Shiki loads on first use with its JavaScript regex engine, which needs no `'wasm-unsafe-eval'` in the CSP, and fetches each of its 12 languages (js, ts, jsx, tsx, json, bash, python, diff, markdown, yaml, css, html) on demand. Light and dark colours follow the theme. Only expanded blocks are highlighted, and blocks over 20 KB stay plain text. The theme defaults to dark; the header toggle switches to light or the system setting.
+The UI uses [shadcn/ui](https://ui.shadcn.com/docs) components with Tailwind CSS v4, and [assistant-ui](https://www.assistant-ui.com) (`@assistant-ui/react`, `@assistant-ui/react-markdown`) for the chat thread: an external-store runtime in `web/components/chat/thread.jsx` feeds the feed's thread entries (chat messages interleaved with activity rows), and bubbles render through `MessagePrimitive` with assistant-ui's maintained markdown text primitive. The prompt-kit `prompt-input` is gone; the composer is a plain form. The prompt-kit scroll wrappers (`chat-container`, `scroll-button`) remain for the feed's scroll container, and `message.jsx` keeps only `MessageContent`, the bubble the cards and activity rows render outside a chat message. `web/app/shadcn.css` vendors the shadcn style's Tailwind variants. Code is highlighted with [shiki](https://shiki.style/guide/regex-engines#javascript-regexp-engine) through `CodeBlockCode`: fenced blocks in chat Markdown, tool inputs (a shell command as bash, other input as JSON), and tool results whose language is clear (a diff, shell output, a read file by extension, JSON). Shiki loads on first use with its JavaScript regex engine, which needs no `'wasm-unsafe-eval'` in the CSP, and fetches each of its 12 languages (js, ts, jsx, tsx, json, bash, python, diff, markdown, yaml, css, html) on demand. Light and dark colours follow the theme. Only expanded blocks are highlighted, and blocks over 20 KB stay plain text. The theme defaults to dark; the header toggle switches to light or the system setting.
 
 ## Project views: the rail and the phone's bar
 

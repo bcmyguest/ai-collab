@@ -1,17 +1,20 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "next-themes";
+import { MessagePrimitive, ThreadPrimitive, getExternalStoreMessages } from "@assistant-ui/react";
 import { HarnessLogo, hasLogo } from "./logos";
 import { Activity, Square, ArrowLeft, ArrowUp, AtSign, Bot, Check, CheckCheck, CircleCheck, Coffee, CornerLeftUp, FolderGit2, LoaderCircle, Menu, Minimize2, Monitor, Moon, Plus, Reply, RotateCw, Sun, VolumeX, X, Zap } from "lucide-react";
+import { Avatar as BaseAvatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { BubbleContext, BubbleText, ChatRuntimeProvider } from "@/components/chat/thread";
 import { Button } from "@/components/ui/button";
 import { ChatContainerContent, ChatContainerRoot, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Message, MessageAvatar, MessageContent } from "@/components/ui/message";
-import { PromptInput, PromptInputAction, PromptInputActions, PromptInputTextarea } from "@/components/ui/prompt-input";
+import { remarkPluginsFor } from "@/components/ui/markdown";
 import { ScrollButton } from "@/components/ui/scroll-button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { fuzzyRank } from "@/lib/fuzzy";
 import { commandFor, matchCommands } from "@/lib/slash-commands";
@@ -164,7 +167,7 @@ export function Avatar({ address, className, by }) {
   const peer = peerOf(address);
   const label = by ? by.slice(0, 2).toUpperCase() : peer === "operator" ? "You" : peer === "system" ? "Sys" : peer.slice(0, 2).toUpperCase();
   const fallback = !by && hasLogo(peer) ? <HarnessLogo peer={peer} className="size-[55%]"/> : label;
-  return <MessageAvatar fallback={fallback} className={cn("size-8 text-[11px] font-semibold [&_[data-slot=avatar-fallback]]:text-white", colorOf(address), className)}/>;
+  return <BaseAvatar className={cn("size-8 shrink-0 text-[11px] font-semibold [&_[data-slot=avatar-fallback]]:text-white", colorOf(address), className)}><AvatarFallback>{fallback}</AvatarFallback></BaseAvatar>;
 }
 
 function Dot({ online }) {
@@ -207,7 +210,7 @@ function ThemeToggle() {
 
 // The session's human name after its address, when the harness or its first prompt gives one.
 function SessionName({ agent }) {
-  return agent?.name ? <span className="block min-w-0 truncate text-xs text-foreground/80" title={agent.name}>{agent.name}</span> : null;
+  return agent?.name ? <span className="block min-w-0 truncate text-xs text-muted-foreground" title={agent.name}>{agent.name}</span> : null;
 }
 
 // One session row in the sidebar: its name, address, running count, waiting dot and last activity.
@@ -369,6 +372,7 @@ function QueueRow({ message, disabled, change }) {
 }
 
 function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, answer, skip, disabled, detail, taskLinks }) {
+  const bubble = useMemo(() => ({ plugins: remarkPluginsFor(taskLinks) }), [taskLinks]);
   const sender = message.from || message.sender || "ntfy";
   const outgoing = sender === operator;
   // A signed-in family member's message names them; the viewer's own stays "You".
@@ -382,7 +386,7 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
   const prefill = openable ? "@" + sender + " " : "";
   // The asking agent's avatar and name, the header row of an A2UI card.
   const cardHead = <><Avatar address={sender} by={other} className="size-6 text-[10px]"/><span className="truncate">{short(sender)}</span></>;
-  return <Message data-message-id={message.id} className={cn("max-w-full", outgoing && "flex-row-reverse")}
+  return <MessagePrimitive.Root data-message-id={message.id} className={cn("flex max-w-full gap-3", outgoing && "flex-row-reverse")}
     onClick={event => { const tag = event.target.closest?.("[data-mention]"); if (tag) open(tag.textContent.replace(/^@/, "").split(/[:/]/)[0]); }}>
     {openable ? <button type="button" aria-label={"Open avatar " + sender} tabIndex={-1} className="shrink-0 self-start rounded-full" onClick={go}><Avatar address={sender}/></button> : <Avatar address={sender} by={other}/>}
     <div className={cn("flex min-w-0 max-w-[82%] flex-col gap-1", outgoing ? "items-end" : "items-start")}>
@@ -390,7 +394,7 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
         {openable ? <button type="button" aria-label={"Open " + sender} title={sender} onClick={go}
           className="font-medium text-foreground underline-offset-2 hover:underline">{label}</button>
           : <span className="font-medium text-foreground" title={message.by ? sender + " · " + message.by : sender}>{outgoing ? other || "You" : label}</span>}
-        {detail && <span data-agent-detail className="text-[11px] text-muted-foreground/80">{"· " + detail}</span>}
+        {detail && <span data-agent-detail className="text-[11px] text-muted-foreground">{"· " + detail}</span>}
         {message.to && message.to !== "all" && <span title={message.to}>→ {short(message.to)}</span>}
         {message.terminal && <Badge variant="outline" data-terminal title="Typed in the agent's terminal" className="h-4 px-1.5 text-[10px]">terminal</Badge>}
         {message.replyTo && <Badge variant="outline" data-answer title={"Answers question " + message.replyTo} className="h-4 px-1.5 text-[10px]">answer</Badge>}
@@ -398,19 +402,21 @@ function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, 
         {replyFrom && message.kind !== "Approval" && <button type="button" aria-label={"Reply to " + sender} title="Reply" onClick={() => replyFrom({ id: message.id, sender, prefill, body: message.body })}
           className="rounded-full p-0.5 hover:bg-muted hover:text-foreground"><Reply className="size-3.5"/></button>}
         {message.scope === "all" && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">to all</Badge>}
-        {message.urgent && !message.cancelled && <span role="img" aria-label="Sent now" title="Sent now: delivered at the agent's next tool call" data-urgent className="text-amber-500"><Zap className="size-3.5"/></span>}
+        {message.urgent && !message.cancelled && <span role="img" aria-label="Sent now" title="Sent now: delivered at the agent's next tool call" data-urgent className="text-amber-700 dark:text-amber-400"><Zap className="size-3.5"/></span>}
         {outgoing && (message.queueStatus ? <span>{message.queueStatus}</span> : <Ticks state={message.receipt}/>)}
       </div>
       {message.quote && <Quote quote={message.quote} label={short(message.quote.sender)}/>}
       {message.kind === "Approval" ? <ApprovalCard approval={message.approval} now={now} disabled={disabled} act={act} skip={skip} head={cardHead}/>
         : message.kind === "Question" && message.question ? <QuestionCard question={message.question} body={withMentions(message.body)} taskLinks={taskLinks} answer={message.answer} by={message.answeredBy} skipped={message.skipped} disabled={disabled} onAnswer={body => answer(message.question, body)} skip={skip} head={cardHead}/>
-        : (message.body || !message.attachment) && <MessageContent markdown taskLinks={taskLinks} className={cn("bubble max-w-full rounded-2xl px-3.5 py-2 text-[15px] leading-relaxed shadow-xs [overflow-wrap:anywhere]",
+        : (message.body || !message.attachment) && <BubbleContext.Provider value={bubble}>
+          <div className={cn("bubble max-w-full rounded-2xl px-3.5 py-2 text-[15px] leading-relaxed shadow-xs [overflow-wrap:anywhere]",
         outgoing ? "rounded-tr-md border border-primary/25 bg-primary/10 text-foreground" : "rounded-tl-md border bg-card text-card-foreground",
-        message.kind === "Question" && "border-amber-500/50")}>{withMentions(message.body)}</MessageContent>}
+        message.kind === "Question" && "border-amber-500/50")}><MessagePrimitive.Content components={{ Text: BubbleText }}/></div>
+        </BubbleContext.Provider>}
       {message.attachment && <ChatImage attachment={message.attachment}/>}
       {message.kind === "Question" && message.question && !message.answer && <Button variant="ghost" size="sm" className="rounded-full text-xs" onClick={() => reply(message.question)}>Reply from the composer</Button>}
     </div>
-  </Message>;
+  </MessagePrimitive.Root>;
 }
 
 // Starts a headless agent session in the current project's registered folder; the result stays until closed.
@@ -443,6 +449,9 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
   const picked = useRef(new Set());
   const pending = useRef(false);
   const prefillFocused = useRef(false);
+  const textarea = useRef(null);
+  // The composer grows with its draft up to 240px, like the prompt input it replaces.
+  useLayoutEffect(() => { const el = textarea.current; if (!el) return; el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 240) + "px"; }, [draft]);
   const mention = mentionAt(draft);
   const options = [...agents.map(agent => ({ id: agent.id, name: agent.name, lastMessageAt: agent.lastMessageAt, activeAt: agent.activeAt, online: agent.online, live: isLive(agent, now) })),
     ...harnesses.map(harness => ({ id: harness.id, lastMessageAt: harness.lastMessageAt, activeAt: harness.activeAt, harness: true })),
@@ -545,9 +554,9 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
         title={command.reason} onMouseDown={event => event.preventDefault()} onClick={() => command.status !== "unsupported" && insertCommand(command)}
         className={cn("flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm", i === commandChosen && "bg-accent text-accent-foreground", command.status === "unsupported" && "opacity-50")}>
         <span className="flex min-w-0 flex-1 flex-col"><span className="font-mono text-xs">/{command.name}{command.args ? " " + command.args : ""}</span>
-          <span className="truncate text-xs text-foreground/80">{command.summary}</span></span>
-        {command.status === "partial" && <span className="shrink-0 rounded-full border px-1.5 text-[10px] text-amber-600">partial</span>}
-        {command.status === "unverified" && <span className="shrink-0 rounded-full border px-1.5 text-[10px] text-amber-600">unverified</span>}
+          <span className="truncate text-xs text-muted-foreground">{command.summary}</span></span>
+        {command.status === "partial" && <span className="shrink-0 rounded-full border px-1.5 text-[10px] text-amber-700 dark:text-amber-400">partial</span>}
+        {command.status === "unverified" && <span className="shrink-0 rounded-full border px-1.5 text-[10px] text-amber-700 dark:text-amber-400">unverified</span>}
         {command.status === "unsupported" && <span className="shrink-0 text-xs text-muted-foreground">unsupported</span>}
       </button>)}
     </div>}
@@ -557,8 +566,8 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
         onMouseDown={event => event.preventDefault()} onClick={() => insert(option)}
         className={cn("flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm", i === chosen && "bg-accent text-accent-foreground")}>
         <Avatar address={option.run ? option.owner : option.model ? option.harness : option.team ? "operator" : option.id} className="size-6 text-[9px]"/>
-        <span className="flex min-w-0 flex-1 flex-col">{option.run ? <span className="truncate text-xs text-foreground/80">{option.label}</span> : <span className="truncate font-mono text-xs">@{option.id}</span>}
-          {option.run ? null : option.model ? <span className="truncate text-xs text-foreground/80">{(HARNESS_NAMES[option.harness] || option.harness) + " · " + option.model}</span> : option.team ? <span className="truncate text-xs text-foreground/80">{(option.members || []).join(", ")}</span> : <SessionName agent={option}/>}</span>
+        <span className="flex min-w-0 flex-1 flex-col">{option.run ? <span className="truncate text-xs text-muted-foreground">{option.label}</span> : <span className="truncate font-mono text-xs">@{option.id}</span>}
+          {option.run ? null : option.model ? <span className="truncate text-xs text-muted-foreground">{(HARNESS_NAMES[option.harness] || option.harness) + " · " + option.model}</span> : option.team ? <span className="truncate text-xs text-muted-foreground">{(option.members || []).join(", ")}</span> : <SessionName agent={option}/>}</span>
         {!option.harness && !option.run && !option.team && <Dot online={option.live === true}/>}
         <span className="shrink-0 text-xs text-muted-foreground">{option.run ? "subagent" : option.pattern ? "pattern" : option.team ? "team" : option.model ? "new session" : (option.harness ? "harness · " : "") + seen(option, now)}</span>
       </button>)}
@@ -583,32 +592,47 @@ function Composer({ conversation, agents, harnesses, teams = [], startable = [],
       event.preventDefault(); event.stopPropagation();
     }}>
       <ImagePicker files={images} onChange={selectImages} onError={setImageError} disabled={busy || Boolean(question)}>
-        <PromptInput value={draft} onValueChange={change} onSubmit={() => send()} disabled={busy} className="rounded-3xl bg-card shadow-sm">
+        <form onSubmit={event => { event.preventDefault(); send(); }} onClick={() => { if (!busy) textarea.current?.focus(); }}
+          className={cn("cursor-text rounded-3xl border bg-card p-2 shadow-sm focus-within:ring-2 focus-within:ring-ring/50", busy && "cursor-not-allowed opacity-60")}>
           {image && <ImageDraft file={image} disabled={busy} remove={() => { selectImages([]); focus(); }}/>}
           {!question && imageError && <p role="alert" className="px-3 text-sm text-destructive">{imageError}</p>}
           <div id="composer-destination" aria-live="polite" className="max-h-[20dvh] overflow-y-auto break-words px-3 pt-1 text-xs font-medium text-muted-foreground">
             {destination}
           </div>
-          <PromptInputTextarea id="composer" aria-label="Message" aria-describedby="composer-destination" placeholder={placeholder} className="text-[15px]"/>
-          <PromptInputActions className="justify-between px-1 pt-1">
-            <div className="flex items-center gap-1">
-              {!question && <AttachImageButton replacing={Boolean(image)}/>}
-              <PromptInputAction tooltip="Mention an agent">
-                <Button type="button" variant="ghost" size="sm" className="rounded-full" aria-expanded={picking} disabled={busy}
-                  onClick={() => { setShowPicker(!showPicker); setActiveIndex(0); focus(); }}><AtSign/>Mention</Button>
-              </PromptInputAction>
+          <textarea ref={textarea} id="composer" aria-label="Message" aria-describedby="composer-destination" placeholder={placeholder} rows={1} disabled={busy}
+            value={draft} onChange={event => change(event.target.value)}
+            onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !window.matchMedia?.("(pointer: coarse)").matches) { event.preventDefault(); send(); } }}
+            className="min-h-[44px] w-full resize-none border-none bg-transparent px-3 text-[15px] text-foreground shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0"/>
+          <TooltipProvider>
+            <div className="flex items-center justify-between px-1 pt-1">
+              <div className="flex items-center gap-1">
+                {!question && <AttachImageButton replacing={Boolean(image)}/>}
+                <Tooltip>
+                  <TooltipTrigger asChild disabled={busy} onClick={event => event.stopPropagation()}>
+                    <Button type="button" variant="ghost" size="sm" className="rounded-full" aria-expanded={picking} disabled={busy}
+                      onClick={() => { setShowPicker(!showPicker); setActiveIndex(0); focus(); }}><AtSign/>Mention</Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Mention an agent</TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center gap-1">
+                {urgentable && !command && <Tooltip>
+                  <TooltipTrigger asChild disabled={busy} onClick={event => event.stopPropagation()}>
+                    <Button type="button" variant={urgent ? "secondary" : "ghost"} size="sm" className={cn("rounded-full", urgent && "text-amber-700 dark:text-amber-400")} aria-pressed={routing.session ? undefined : urgent} disabled={busy || (routing.session && !canSend)}
+                      onClick={() => routing.session ? send(false, true) : setUrgent(!urgent)}><Zap/>Send now</Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Deliver at the agent&apos;s next tool call instead of its next turn</TooltipContent>
+                </Tooltip>}
+                <Tooltip>
+                  <TooltipTrigger asChild disabled={busy} onClick={event => event.stopPropagation()}>
+                    <Button type="submit" size="icon" className="rounded-full" aria-label={sendName} disabled={busy || !canSend}><ArrowUp/></Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">{sendName}</TooltipContent>
+                </Tooltip>
+              </div>
             </div>
-            <div className="flex items-center gap-1">
-              {urgentable && !command && <PromptInputAction tooltip="Deliver at the agent's next tool call instead of its next turn">
-                <Button type="button" variant={urgent ? "secondary" : "ghost"} size="sm" className={cn("rounded-full", urgent && "text-amber-500")} aria-pressed={routing.session ? undefined : urgent} disabled={busy || (routing.session && !canSend)}
-                  onClick={() => routing.session ? send(false, true) : setUrgent(!urgent)}><Zap/>Send now</Button>
-              </PromptInputAction>}
-              <PromptInputAction tooltip={sendName}>
-                <Button type="button" size="icon" className="rounded-full" aria-label={sendName} disabled={busy || !canSend} onClick={() => send()}><ArrowUp/></Button>
-              </PromptInputAction>
-            </div>
-          </PromptInputActions>
-        </PromptInput>
+          </TooltipProvider>
+        </form>
       </ImagePicker>
     </div>
   </div>;
@@ -619,7 +643,7 @@ function ContextChip({ context, rows }) {
   const meter = contextMeter(context);
   const loaded = context.files || [];
   const read = filesRead(rows);
-  const tone = meter.level === "full" ? "border-destructive text-destructive" : meter.level === "warn" ? "border-amber-500 text-amber-600" : "text-muted-foreground";
+  const tone = meter.level === "full" ? "border-destructive text-destructive" : meter.level === "warn" ? "border-amber-500 text-amber-700 dark:text-amber-400" : "text-muted-foreground";
   const warning = meter.level === "full" ? " · full" : meter.level === "warn" ? " · near full" : "";
   const [open, setOpen] = useState(false);
   // A sheet fits any phone width; a popover anchored to the chip ran off the left edge at 390px.
@@ -653,7 +677,7 @@ function ContextChip({ context, rows }) {
 function CompletionRow({ row, when, open }) {
   return <button type="button" data-type="completion" onClick={() => open(row.agent)} title={row.agent}
     className="flex min-w-0 items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent">
-    <CircleCheck className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400"/>
+    <CircleCheck className="size-4 shrink-0 text-emerald-700 dark:text-emerald-400"/>
     <span className="min-w-0 flex-1 truncate"><span className="font-mono text-foreground">{short(row.agent)}</span>{row.seat && " · " + row.seat} finished{row.turns > 1 ? " " + row.turns + " turns" : ""}{row.text && " · " + row.text}</span>
     {row.time > 0 && <time className="shrink-0 text-xs" dateTime={new Date(row.time * 1000).toISOString()}>{when(row.time * 1000)}</time>}
   </button>;
@@ -1176,15 +1200,23 @@ function Console({ account }) {
             pick={run => navigate({ ...selected, project, tab: "subagents", run })}/>}
           {!home && !listing && !subagents && (!ready || (thread.length + live.length === 0 && (raw || queue.length === 0))) && <p className="py-16 text-center text-sm text-muted-foreground">
             {ready ? (raw ? "No activity yet." : "No messages yet.") : loadError ? "" : watching ? "Loading project chat…" : "Loading conversation…"}</p>}
-          {ready && !home && !listing && !subagents && thread.map(({ message, activity: row }) => row
-            ? row.type === "completion" ? <CompletionRow key={row.id} row={{ ...row, seat: seatOf(data.agents, row.agent) }} when={at => ago(at, now)} open={openAddress}/>
-              : <ActivityRow key={row.id} row={row} when={at => ago(at, now)} now={now} goRun={goRun}/>
-            : <ChatMessage key={message.id} message={message} operator={data.operator} me={account.user?.login} now={now} open={openAddress} disabled={!ready || working} taskLinks={taskLinks}
-              detail={agentDetail(data.agents.find(agent => agent.id === message.from))}
-              act={payload => action("approve", payload, "Sent")} answer={(id, body) => action("reply", { question: id, body }, "Reply sent")}
-              skip={payload => action("skip", payload, "Skipped")}
-              reply={id => { setQuestion(id); setNotice(""); document.getElementById("composer")?.focus(); }}
-              replyFrom={target => setReplyTo(target)}/>)}
+          {ready && !home && !listing && !subagents && <ChatRuntimeProvider entries={thread} operator={data.operator}>
+            <ThreadPrimitive.Messages>
+              {({ message }) => {
+                const [entry] = getExternalStoreMessages(message) || [];
+                if (!entry) return null;
+                if (entry.activity) return entry.activity.type === "completion"
+                  ? <CompletionRow row={{ ...entry.activity, seat: seatOf(data.agents, entry.activity.agent) }} when={at => ago(at, now)} open={openAddress}/>
+                  : <ActivityRow row={entry.activity} when={at => ago(at, now)} now={now} goRun={goRun}/>;
+                return <ChatMessage message={entry.message} operator={data.operator} me={account.user?.login} now={now} open={openAddress} disabled={!ready || working} taskLinks={taskLinks}
+                  detail={agentDetail(data.agents.find(agent => agent.id === entry.message.from))}
+                  act={payload => action("approve", payload, "Sent")} answer={(id, body) => action("reply", { question: id, body }, "Reply sent")}
+                  skip={payload => action("skip", payload, "Skipped")}
+                  reply={id => { setQuestion(id); setNotice(""); document.getElementById("composer")?.focus(); }}
+                  replyFrom={target => setReplyTo(target)}/>;
+              }}
+            </ThreadPrimitive.Messages>
+          </ChatRuntimeProvider>}
           {ready && watching && live.map(row => <LiveRow key={row.id} row={{ ...row, seat: seatOf(data.agents, row.agent) }} open={openAddress}/>)}
           {ready && inline && <Working rows={rows} now={now}/>}
           <ChatContainerScrollAnchor/>
