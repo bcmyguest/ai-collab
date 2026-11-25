@@ -64,6 +64,8 @@ export function deliveryWorkflow(deps) {
         await wf.step("mark", () => deps.markDelivered(scfg, [id]));
         return "delivered";
       }
+      // A redelivery re-checks the answer before reserving, so an answer seen while waiting never gets a copy.
+      if (attemptNo > 1 && !wf.replaying && await deps.acked(project, address, message)) return "answered";
       const got = await wf.step("reserve", () => deps.reserve(scfg, [id], { owner, allowSeen }));
       if (got.busy) return "failed";
       if (!got.owned.length) return "skipped";

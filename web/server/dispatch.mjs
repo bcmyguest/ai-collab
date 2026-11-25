@@ -202,6 +202,13 @@ export function createDispatcher({
           delete entries[id];
           counts.dropped += 1;
         } else if (due && session && !cooling(session, id) && !busyWithPush(session, active) && await ready(session, active)) {
+          // Re-check the answer right before redelivering, so one that arrived during the awaits above gets no copy.
+          await refreshAcks(cfg, { [id]: e });
+          if (acked(id, e.address)) {
+            delete entries[id];
+            counts.dropped += 1;
+            continue;
+          }
           const scfg = { ...cfg, peer: session.peer, session: session.session };
           const again = { ...e.message, attempt: e.attempts + 1, attempts: MAX_ATTEMPTS };
           // Redelivery reserves an id that is already seen, so the seen list can be trimmed without exposing it.

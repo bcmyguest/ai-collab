@@ -288,8 +288,8 @@ test("delivery workflow matches the model under random commands on a fake clock"
 // The fix waits for operator approval, so they stay todo; C runs and guards the busy-wait ack check.
 const KNOWN_BUG = "push after an answer observed while busy or not ready; fix pending operator approval";
 const SCENARIOS = [
-  { name: "ack during a busy wait, busy cleared before the next poll", todo: KNOWN_BUG, commands: () => [new NewMessage(), new Tick(1000), new SetBusy(true), new Tick(REDELIVER_MS), new Ack(0, "reply"), new SetBusy(false), new Tick(60_000)] },
-  { name: "ack while not ready, ready before the next poll", todo: KNOWN_BUG, commands: () => [new NewMessage(), new Tick(1000), new SetReady(false), new Tick(REDELIVER_MS), new Ack(0, "reply"), new SetReady(true), new Tick(60_000)] },
+  { name: "ack during a busy wait, busy cleared before the next poll", commands: () => [new NewMessage(), new Tick(1000), new SetBusy(true), new Tick(REDELIVER_MS), new Ack(0, "reply"), new SetBusy(false), new Tick(60_000)] },
+  { name: "ack while not ready, ready before the next poll", commands: () => [new NewMessage(), new Tick(1000), new SetReady(false), new Tick(REDELIVER_MS), new Ack(0, "reply"), new SetReady(true), new Tick(60_000)] },
   { name: "ack during a busy wait, still busy at the next poll", commands: () => [new NewMessage(), new Tick(1000), new SetBusy(true), new Tick(REDELIVER_MS), new Ack(0, "reply"), new Tick(READY_POLL_MS), new SetBusy(false), new Tick(60_000)] },
 ];
 
