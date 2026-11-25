@@ -1,15 +1,20 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { chmodSync, mkdirSync, mkdtempSync, rmdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
 import { runCli } from "../lib/cli.mjs";
-import { listTeams, createTeam, deleteTeam, teamStatus, teamStart, parseMember, readGlobalTeams, writeGlobalTeams } from "../lib/teams.mjs";
+import { listTeams, createTeam, deleteTeam, teamStatus, teamStart, parseMember, readGlobalTeams, writeGlobalTeams, readProjectsFile, removeProject, setProjectClosed } from "../lib/teams.mjs";
 import { recordSession } from "../lib/sessions.mjs";
 import { sessionLabel } from "../lib/config.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+
+const execFileAsync = promisify(execFile);
 
 test("parseMember accepts harness and harness:model", () => {
   assert.equal(parseMember("claude"), "claude");
@@ -84,4 +89,35 @@ test("createTeam rejects unknown models", async () => {
   const env = { HOME: home, AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "operator", AI_COLLAB_PEERS: "codex" };
   const cfg = loadConfig(env);
   await assert.rejects(createTeam(cfg, "bad", ["codex:unknown"], env, { codex: ["gpt-5"] }), /unknown model/);
+});
+
+test("projects.json writes wait for the projects.json lock", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-projects-"));
+  const env = { HOME: home, XDG_CONFIG_HOME: path.join(home, ".config") };
+  const dir = path.join(env.XDG_CONFIG_HOME, "ai-collab");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, "projects.json"), JSON.stringify(["alpha", "beta"].map((project) => ({ root: path.join(home, project), project }))));
+  const held = path.join(dir, "projects.json.lock");
+  mkdirSync(held);
+  assert.throws(() => setProjectClosed(env, "alpha", true), /busy/, "a write does not bypass a held lock");
+  rmdirSync(held);
+  setProjectClosed(env, "alpha", true);
+  removeProject(env, "beta");
+  assert.deepEqual(readProjectsFile(env).map((entry) => [entry.project, entry.closed]), [["alpha", true]]);
+});
+
+test("concurrent updates to different projects both persist", async () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-projects-"));
+  const env = { HOME: home, XDG_CONFIG_HOME: path.join(home, ".config") };
+  const dir = path.join(env.XDG_CONFIG_HOME, "ai-collab");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, "projects.json"), JSON.stringify(["alpha", "beta"].map((project) => ({ root: path.join(home, project), project }))));
+  const teamsUrl = pathToFileURL(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../lib/teams.mjs")).href;
+  const child = (project) => execFileAsync(process.execPath, ["--input-type=module", "-e", `
+    const { setProjectClosed } = await import(${JSON.stringify(teamsUrl)});
+    const env = ${JSON.stringify(env)};
+    for (let i = 0; i < 40; i += 1) { setProjectClosed(env, ${JSON.stringify(project)}, false); setProjectClosed(env, ${JSON.stringify(project)}, true); }
+  `]);
+  await Promise.all([child("alpha"), child("beta")]);
+  assert.deepEqual(readProjectsFile(env).map((entry) => [entry.project, entry.closed]), [["alpha", true], ["beta", true]]);
 });
