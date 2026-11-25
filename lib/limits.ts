@@ -1,7 +1,10 @@
 // Usage and plan limits: detects a limit in a harness error or event, and owns the fallback chain a limit starts.
 // Typed sources: sdk.d.ts (Claude SDK 0.3.330). Text patterns are UNVERIFIED: no type or source here names them.
-import { autoDefaults } from "./config.mjs";
+import { createHash } from "node:crypto";
+import { join } from "node:path";
+import { autoDefaults, stateDir } from "./config.mjs";
 import { FALLBACK_MODEL, HARNESSES, modelShape, parseHarnessModel } from "./harness.ts";
+import { readJson, withLock, writeJson } from "./store.ts";
 
 export type Event = Record<string, any>;
 export type Limit = {
@@ -194,6 +197,40 @@ export function detectLimit(harness: string, errorOrText: string | Event): Detec
   const found = typeof errorOrText === "string" ? limitFromRunError(harness, errorOrText) : classifyLimit(harness, errorOrText);
   if (!found) return null;
   return { ...found, kind: found.wording || found.window || found.resetsAt ? "limit" : "rate" };
+}
+
+// Cursor names the end of its monthly cycle in a limit line; the limit lasts through the day after it.
+const CURSOR_MONTHLY = /monthly cycle ends on (\d{1,2})\/(\d{1,2})\/(\d{4})/i;
+// A Cursor limit with no usable cycle date lasts this long.
+const CURSOR_UNKNOWN_LIMIT_MS = 5 * 3600_000;
+
+/** The reset (ms) a Cursor limit line names, or null when it names none or the date has passed. */
+export function cursorResetFrom(line: string, now = Date.now()): number | null {
+  const found = CURSOR_MONTHLY.exec(line);
+  if (!found) return null;
+  const at = Date.UTC(Number(found[3]), Number(found[1]) - 1, Number(found[2]) + 1);
+  return at > now ? at : null;
+}
+
+// Cursor's limit record per model: builder-limits/cursor-<sha256 of the lower-case model>.json, holding {until} in ms.
+export function cursorLimitFile(model: string, env: NodeJS.ProcessEnv = process.env): string {
+  const key = createHash("sha256").update(model.toLowerCase()).digest("hex");
+  return join(stateDir(env), "builder-limits", `cursor-${key}.json`);
+}
+
+/** The time (ms) a Cursor model is limited until, or 0. A missing or unreadable record is no limit. */
+export function cursorLimitUntil(model: string, env: NodeJS.ProcessEnv = process.env): number {
+  const record = readJson<{ until?: unknown }>(cursorLimitFile(model, env));
+  return typeof record?.until === "number" && Number.isFinite(record.until) ? record.until : 0;
+}
+
+/** Records a Cursor model's limit from its limit line, lasting to the cycle end or 5 hours; keeps the later of old and new. */
+export async function recordCursorLimit(model: string, line: string, { env = process.env, now = Date.now() }: { env?: NodeJS.ProcessEnv; now?: number } = {}): Promise<void> {
+  const file = cursorLimitFile(model, env);
+  await withLock(file, async () => {
+    const until = cursorResetFrom(line, now) ?? now + CURSOR_UNKNOWN_LIMIT_MS;
+    writeJson(file, { until: Math.max(until, cursorLimitUntil(model, env)) });
+  });
 }
 
 // A role's fallback as {harness, model}, or null; read defensively, since the attribute is optional.

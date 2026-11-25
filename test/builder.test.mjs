@@ -10,7 +10,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { runCli } from "../lib/cli.mjs";
 import {
-  briefNotes, builderPaths, builderAssignment, builderSandbox, builderPolicy, captureHooks, harnessCommand, hostCaptureEvents, parseRecordedCall, replayable, sharedLibs, toolSources,
+  briefNotes, builderPaths, builderAssignment, builderSandbox, builderPolicy, captureHooks, cursorLimitPath, harnessCommand, hostCaptureEvents, parseRecordedCall, replayable, sharedLibs, toolSources,
 } from "../lib/builder.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { listOwned } from "../lib/owned.mjs";
@@ -639,6 +639,26 @@ test("a Cursor plan limit with no usage-limit wording blocks the task like a usa
   assert.equal(started.code, 0, started.err);
   assert.equal(task(l).status, "blocked");
   assert.match(task(l).detail, /reached its usage limit/);
+});
+
+test("a corrupt Cursor limit record is no limit: a Codex retry still reaches Cursor", async () => {
+  const l = lab({ AI_COLLAB_OPENCODE_BIN: AGENT, FAKE_SANDBOX_OPENCODE_BIN: AGENT });
+  l.env.AI_COLLAB_RUNNER_SOCKET = path.join(l.home, "missing.sock");
+  const tree = path.join(l.home, "codex-release");
+  mkdirSync(path.join(tree, "bin"), { recursive: true });
+  const codex = path.join(tree, "bin", "codex");
+  writeFileSync(codex, '#!/bin/sh\necho "Usage limit reached" >&2\nexit 1\n', { mode: 0o755 });
+  symlinkSync(codex, path.join(l.home, "bin", "codex"));
+  l.env.AI_COLLAB_CODEX_TREE = tree;
+  writeFileSync(path.join(l.env.XDG_CONFIG_HOME, "ai-collab", "defaults.json"), JSON.stringify({ builderOrder: ["codex"] }));
+  const record = cursorLimitPath("deepseek-v41-flash-1017-high", l.env).state;
+  mkdirSync(path.dirname(record), { recursive: true });
+  writeFileSync(record, "{not json");
+  await withTask(l);
+  const res = await l.cli("builder", "start", "--task", "smoke-task", "--brief", l.brief);
+  assert.equal(res.code, 0, res.err);
+  const [retry] = readJsonLines(l.env.FAKE_BUILDER_LOG);
+  assert.ok(retry.args.includes("deepseek-v41-flash-1017-high"), JSON.stringify(retry.args));
 });
 
 for (const [label, stream, failDownload] of [
