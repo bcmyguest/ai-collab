@@ -43,7 +43,7 @@ function useWide() {
 
 function Counts({ added, removed, className }) {
   return <span className={cn("shrink-0 font-mono", className)}>
-    <span className="text-emerald-600 dark:text-emerald-400">+{added}</span>{" "}
+    <span className="text-emerald-700 dark:text-emerald-400">+{added}</span>{" "}
     <span className="text-red-600 dark:text-red-400">−{removed}</span>
   </span>;
 }

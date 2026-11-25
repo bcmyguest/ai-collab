@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 const ICONS = { project: MessageSquare, tasks: ListChecks, patterns: Users };
 
 /**
- * A picked project's own views — Chat, Tasks and Teams — as its one navigation.
+ * A picked project's own views (Chat, Tasks and Teams) as its one navigation.
  * A computer gets a rail down the left edge beside the sidebar; a phone gets a tab bar under the composer.
  * The Tasks link's badge is the number of tasks waiting on a decision, else the project's task count, and turns amber
  * while something waits; the Teams link's badge is its pattern count.

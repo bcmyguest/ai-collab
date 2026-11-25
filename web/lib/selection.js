@@ -32,8 +32,8 @@ const PROJECT_VIEWS = [["project", "Chat"], ["tasks", "Tasks"], ["patterns", "Te
 
 /**
  * The links for a project's views: Chat, Tasks and Teams, scoped to that project.
- * A picked project keeps all three at every level inside it — a project view, a session, its subagents, the compaction
- * map — so the rail and the phone's bar never come and go. `level` marks the matching view current; inside a session none
+ * A picked project keeps all three at every level inside it (a project view, a session, its subagents, the compaction
+ * map) so the rail and the phone's bar never come and go. `level` marks the matching view current; inside a session none
  * is, because a session is not one of them. Home, the inbox and no project have no project views.
  * `counts` adds each view's badge: Tasks its task count with `waiting` tasks to decide, Teams its pattern count.
  */

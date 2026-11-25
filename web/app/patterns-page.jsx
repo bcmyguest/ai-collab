@@ -207,7 +207,7 @@ export function PatternsPage({ data, project, selected, navigate, call, disabled
             <Tag>{SCOPE_LABELS[pattern.source] ?? pattern.source}</Tag>
             {pattern.invalid && <Tag tone="border-destructive text-destructive">invalid</Tag>}
           </span>
-          <span className={cn("truncate text-xs", pattern.description || pattern.legacy ? "text-muted-foreground" : "italic text-muted-foreground/70")}>{describe(pattern)}</span>
+          <span className={cn("truncate text-xs", pattern.description || pattern.legacy ? "text-muted-foreground" : "italic text-muted-foreground")}>{describe(pattern)}</span>
           <span className="font-mono text-[11px] text-muted-foreground">{pattern.roles.map(role => role.id).join(" → ")}</span>
         </button>
       </li>)}
@@ -250,7 +250,7 @@ function RunView({ run, data, go, act, busy, disabled, notice }) {
             <span className="font-mono font-semibold">{role.id}</span>
             {run.active === role.id && run.status === "running" && <Tag tone="border-primary text-primary">active</Tag>}
             <span className="font-mono text-muted-foreground">{shortAddress(address)}</span>
-            {address && <span className={agent?.online ? "text-emerald-600" : "text-muted-foreground"}>{agent?.online ? "online" : "offline"}</span>}
+            {address && <span className={agent?.online ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"}>{agent?.online ? "online" : "offline"}</span>}
             <span className="ml-auto text-muted-foreground">entered {entered}</span>
           </li>;
         })}

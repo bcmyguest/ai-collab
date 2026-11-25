@@ -92,7 +92,7 @@ export function LegacyApprovalCard({ approval, now, disabled, act }) {
   return <div className={cn(CARD, "flex flex-col gap-2", open && "border-amber-500/50")} data-card="approval" data-terminal={terminal || undefined}>
     <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><ShieldQuestion className="size-3.5"/>{approval.harness} asks permission · {approval.tool}</p>
     {approval.summary && <pre className="max-h-40 overflow-auto rounded-lg border bg-muted/50 px-2 py-1.5 font-mono text-xs whitespace-pre-wrap">{approval.summary}</pre>}
-    {open && terminal ? <p className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400"><SquareTerminal className="size-3.5 shrink-0"/>{IN_TERMINAL}<span className="font-normal text-muted-foreground">· {terminalHint(approval.mode)}</span></p>
+    {open && terminal ? <p className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400"><SquareTerminal className="size-3.5 shrink-0"/>{IN_TERMINAL}<span className="font-normal text-muted-foreground">· {terminalHint(approval.mode)}</span></p>
       : open ? <div className="flex gap-2">
       <Button size="sm" className="rounded-full" disabled={disabled} onClick={() => act({ id: approval.id, decision: "allow" })}><Check/>Allow</Button>
       <Button size="sm" variant="outline" className="rounded-full" disabled={disabled} onClick={() => act({ id: approval.id, decision: "deny" })}><X/>Deny</Button>

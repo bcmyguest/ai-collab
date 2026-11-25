@@ -12,9 +12,9 @@ import { TaskGraph } from "./task-graph";
 const DOT = { open: "bg-muted-foreground", decided: "bg-sky-500", building: "bg-amber-500", review: "bg-violet-500", blocked: "bg-destructive", done: "bg-emerald-500" };
 const PRIORITY_BADGE = {
   P0: "border-destructive/40 bg-destructive/10 text-destructive",
-  P1: "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  P1: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400",
   P2: "border-border bg-muted text-muted-foreground",
-  P3: "border-border bg-transparent text-muted-foreground/70",
+  P3: "border-border bg-transparent text-muted-foreground",
 };
 const VIEWS = [["board", "Board"], ["graph", "Graph"]];
 const CARD = "flex w-full min-w-0 flex-col gap-1.5 rounded-xl border bg-card p-3 text-left text-sm";
@@ -35,7 +35,7 @@ function ReviewLine({ review }) {
     <span>{plural(review.files?.length ?? 0, "file")}{review.more > 0 && ` +${review.more}`}</span>
     {review.check?.code !== 0 && <span className="text-destructive">check failed</span>}
     {decision ? <span>{decision.action === "accept" ? "accepted" : "returned"}</span>
-      : review.stale ? <span className="text-amber-600 dark:text-amber-400">branch moved</span>
+      : review.stale ? <span className="text-amber-700 dark:text-amber-400">branch moved</span>
         : <span className="text-violet-600 dark:text-violet-400">waiting for you</span>}
   </p>;
 }
@@ -67,8 +67,8 @@ function ReviewTask({ task, review, decide }) {
     {decided ? <p className="text-xs">
       <span className="text-muted-foreground">{decided.action === "accept" ? "Accepted" : "Returned"} by </span>
       <span className="font-mono">{decided.by}</span>
-      {decided.note && <span className="text-muted-foreground"> — {decided.note}</span>}
-    </p> : review.stale ? <p className="text-xs text-amber-600 dark:text-amber-400">
+      {decided.note && <span className="text-muted-foreground"> ({decided.note})</span>}
+    </p> : review.stale ? <p className="text-xs text-amber-700 dark:text-amber-400">
       The branch moved past this commit, so this packet can no longer be decided. Queue the task for a fresh build.
     </p> : <>
       <form className="flex gap-2" onSubmit={event => { event.preventDefault(); send("return", note); }}>
@@ -339,7 +339,7 @@ export function TaskBoard({ project, board, now, open, compose, decide, skip, re
         {landControl}
         {outcomeControls && <OutcomeCards outcomes={board?.outcomes} tasks={tasks} inspect={inspect} controls={outcomeControls}/>}
         {waiting.length > 0 && decide && <section aria-label="Needs your decision" className="flex flex-col gap-2">
-          <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-amber-600 dark:text-amber-400">
+          <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-amber-700 dark:text-amber-400">
             <span aria-hidden className="inline-block size-2 rounded-full bg-amber-500"/>Needs you · {waiting.length}
           </h2>
           <ul className="flex flex-col gap-2 md:grid md:grid-cols-2">{waiting.map(item => <Decision key={item.id} task={item} decide={decide} skip={skip} compose={message}/>)}</ul>

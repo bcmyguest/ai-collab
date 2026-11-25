@@ -98,7 +98,7 @@ function SessionCard({ node, now, open, openAddress, act, answer, skip, dispose,
             {showProject && <span>· {node.project}</span>}
             {activity && <span>· active {activity}</span>}
             {meter.text && <span data-context={meter.level} title="Context used"
-              className={cn(meter.level === "full" && "text-destructive", meter.level === "warn" && "text-amber-600")}>· context {meter.text}</span>}
+              className={cn(meter.level === "full" && "text-destructive", meter.level === "warn" && "text-amber-700 dark:text-amber-400")}>· context {meter.text}</span>}
             {label && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]" title="Running subagents">{label}</Badge>}
           </span>
         </span>
@@ -109,7 +109,7 @@ function SessionCard({ node, now, open, openAddress, act, answer, skip, dispose,
       {compact && detailsOpen && <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
         <span className="break-all font-mono">{node.id}</span>
         {meter.text && <span data-context={meter.level} title="Context used"
-          className={cn(meter.level === "full" && "text-destructive", meter.level === "warn" && "text-amber-600")}>Context {meter.text}</span>}
+          className={cn(meter.level === "full" && "text-destructive", meter.level === "warn" && "text-amber-700 dark:text-amber-400")}>Context {meter.text}</span>}
         {node.owner && <span title="Agent owner">@{node.owner}</span>}
         {node.harness && <span title="Agent type">{HARNESS_LABELS[node.harness] || node.harness}</span>}
         {node.team && <span title="Team and role">{node.team} · {node.role}</span>}

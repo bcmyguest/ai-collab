@@ -129,7 +129,7 @@ export function TeamAuthor({ templates, pattern = null, project, call, go, disab
       </ul>
       <pre className="overflow-x-auto rounded-xl border bg-muted/40 p-3 font-mono text-xs leading-relaxed">{dotText}</pre>
       {draft.warnings?.length > 0 && <p className="text-xs text-muted-foreground">Ignored: {draft.warnings.map(item => `${item.message}`).join("; ")}</p>}
-      <p className="text-xs text-muted-foreground">Saves <span className="font-mono">{target}/team.dot</span>{scope === "global" ? " in the global teams folder" : " in this project"}{replaces ? " — this name is in use, so saving replaces it." : "."}</p>
+      <p className="text-xs text-muted-foreground">Saves <span className="font-mono">{target}/team.dot</span>{scope === "global" ? " in the global teams folder" : " in this project"}{replaces ? ". This name is in use, so saving replaces it." : "."}</p>
       <div className="flex flex-wrap gap-2">
         {replaces || replaceAsk
           ? <ConfirmButton label="Replace and save" question={`Replace the existing team ${target}?`} confirmLabel="Replace" disabled={disabled || Boolean(busy)} onConfirm={save}/>
