@@ -10,6 +10,8 @@
 
 In mode `on` or `quiet`, permission prompts also go to the phone; see [Approvals](approvals.md#phone-approvals). In mode `off`, Claude Code and Codex prompts (`AskUserQuestion` included) show in the UI as view-only cards labelled "Answer in the terminal", while the terminal asks as usual; see [View-only cards](approvals.md#view-only-cards-afk-off).
 
+**Why AFK sessions use `default` permission mode.** Claude Code's `auto` mode lets a classifier deny risky tool calls outright, and the operator cannot approve a denial from the phone. In `default` mode the same call becomes a permission prompt, which ai-collab sends to the phone as an approval card ([Approvals](approvals.md#phone-approvals)). Claude sessions start in `default` by default ([`claudePermissionMode`](configuration.md)); the `auto-afk` value does so only while AFK is `on`, and `inherit` leaves the user's own mode.
+
 ## Entry points
 
 | Harness | Command | Mechanism |
