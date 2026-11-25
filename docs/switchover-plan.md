@@ -204,7 +204,7 @@ Review: one Opus subagent per batch, briefed with the branch and this document, 
 
 | Batch | Branch | Commits | Review | State |
 |---|---|---|---|---|
-| 0 + 1 | `fix/domain-bugs` | cb93af16, 4be640d6, a162a7cf, 993bc68f | Opus: lock commit REQUEST CHANGES (the sync lock blocks the UI event loop up to 2 s behind an async holder); others approve with nits | fixes in progress |
+| 0 + 1 | `fix/domain-bugs` | cb93af16 … 44b22410 (12 commits) | Opus, 3 rounds. Round 1: the sync lock blocked the UI event loop behind an async holder. Round 2: start and wake disagreed on the Cursor binary in sandboxes; one test was tautological. Round 3: approve; start's Cursor resolution restored to main's | ready to merge; 55/55 targeted tests, full suite baseline only |
 | 2 | `feat/ts-core` | 55b06744, 9776494f | Opus: approve with nits, both fixed (`.ts` specifier scan in the publish build, Node 22.18+ in docs) | ready to merge |
 
 Deferred to the `store` module (batch 3), predates this work: a lock left by a dead process blocks writers for up to 40 s (`staleMs`), and two waiters can both judge it stale and remove each other's lock (`lib/state.mjs`). Fix: record the owner pid in the lock and treat it as stale only when that pid is gone.
