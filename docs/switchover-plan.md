@@ -179,7 +179,7 @@ Recommendation: A.
 
 | Option | Cost | Gains | Losses |
 |---|---|---|---|
-| **A. TypeScript in place** | File-by-file; Node 26.13 runs `.ts` directly (verified) | Official SDKs for Claude, AG-UI, MCP stay; types shared with `web/`; no build step | Types checked by `tsc --noEmit`, not at runtime |
+| **A. TypeScript in place** | File-by-file; Node 26.13 runs `.ts` directly (verified), except under `node_modules`, so the npm package needs a publish build (see batch 2) | Official SDKs for Claude, AG-UI, MCP stay; types shared with `web/`; no build step | Types checked by `tsc --noEmit`, not at runtime |
 | B. Rust rewrite | Port 19,246 lines; tests become fixtures | One static binary, fast hook start, compile-time types; `rmcp`, `clap`, `apalis-sqlite` | No official Claude agent or AG-UI crate; two languages (Rust core, TS web) |
 | C. Rust for hooks and the bus only | Port `scripts/ai-collab-hook.mjs`, `lib/bus.mjs` and their imports | Fast hook start where it matters | Shared logic split across two languages |
 
@@ -193,7 +193,7 @@ Every batch: implementer works on its own branch, runs the gate, commits with th
 |---|---|---|---|
 | 0 | Review fixes 1-4 above | qwen | `node --test test/sandbox-cap.test.mjs test/bus.test.mjs`, then full suite |
 | 1 | Bug fixes from 2.5: `projects.json` lock, one Cursor binary, sized approval cards; each with a failing test first | qwen | new tests + full suite |
-| 2 | TS foundation: core `tsconfig` (`noEmit`, `allowImportingTsExtensions`, `erasableSyntaxOnly`), `tsc --noEmit` in CI; create `store` and `harness` modules in `.ts` | qwen | `npx tsc --noEmit -p tsconfig.core.json` + full suite |
+| 2 | TS foundation: `tsconfig.core.json` (`noEmit`, `allowImportingTsExtensions`, `erasableSyntaxOnly`), `npm run typecheck` in CI, `engines` to `>=22.18` (first Node with type stripping on by default), and a publish build: Node refuses to strip types under `node_modules` (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, reproduced), so `npx ai-collab` needs `tsc` output (`rewriteRelativeImportExtensions`) in the packed tarball. Prove with one converted leaf module | Haiku | `npm run typecheck`; `npm pack` + `npx ./ai-collab-*.tgz --help` from a temp dir; full suite |
 | 3 | Segment by module, one module per batch, in order: `store`, `harness`, `sandbox`, `limits`, `operator`, `messaging`, `delivery`, `sessions`, `catalog`, `surfaces`, `builder`. Each batch moves code into one `.ts` module and deletes the copies | Haiku per file, qwen integrates | same |
 | 4 | `workflows` on DBOS: Postgres user service, port `lib/durable.mjs` call sites, schedules, delivery, pattern runs | qwen | runner and pattern tests + a kill-and-recover test |
 | 5 | Libraries at the `surfaces` edge: `@modelcontextprotocol/sdk`, `parseArgs` | Haiku | `node --test test/mcp*.test.mjs` + full suite |
