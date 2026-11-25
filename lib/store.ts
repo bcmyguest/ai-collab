@@ -12,6 +12,7 @@ type Owner = { pid: number; host: string; token: string; start: number | null };
 const SLEEP_CELL = new Int32Array(new SharedArrayBuffer(4));
 const OWNER_FILE = "owner.json";
 const BREAKER_SUFFIX = ".break";
+const RELEASE_SUFFIX = ".rel.";
 const BREAKER_STALE_MS = 5000;
 const CEILING_FACTOR = 10;
 
@@ -114,7 +115,7 @@ function takeLock(lock: string, token: string): boolean {
   return true;
 }
 
-/** Removes a breaker dir left by a crashed breaker; its mtime is the only clock. */
+/** Removes a breaker dir left by a crashed breaker; its mtime is the only clock. Accepted: a race needs a crash inside the ~1 ms .break window. */
 function clearOldBreaker(breaker: string): void {
   try {
     if (Date.now() - fs.statSync(breaker).mtimeMs > BREAKER_STALE_MS) fs.rmdirSync(breaker);
@@ -132,7 +133,7 @@ function reclaimStale(lock: string, staleMs: number): boolean {
   try {
     fs.mkdirSync(breaker);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "EEXIST") clearOldBreaker(breaker);
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") clearOldBreaker(breaker); // accepted race: see clearOldBreaker
     return false;
   }
   let removed = false;
@@ -140,6 +141,7 @@ function reclaimStale(lock: string, staleMs: number): boolean {
     if (isStale(lock, staleMs)) {
       fs.rmSync(lock, { recursive: true, force: true });
       removed = true;
+      clearOldTombs(lock, staleMs);
     }
   } catch { /* vanished */ } finally {
     try { fs.rmdirSync(breaker); } catch { /* already gone */ }
@@ -151,12 +153,41 @@ function attemptLock(lock: string, token: string, staleMs: number): boolean {
   return takeLock(lock, token) || (reclaimStale(lock, staleMs) && takeLock(lock, token));
 }
 
-/** Removes the lock only while this process owns it; logs instead of throwing, since it runs in a finally. */
+/** Removes release tombs named before staleMs ago: a releaser that crashed mid-release left them. */
+function clearOldTombs(lock: string, staleMs: number): void {
+  const dir = path.dirname(lock);
+  const prefix = `${path.basename(lock)}${RELEASE_SUFFIX}`;
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (!name.startsWith(prefix)) continue;
+    const releasedAt = Number(name.slice(prefix.length).split(".")[1]);
+    if (Date.now() - releasedAt > staleMs) fs.rmSync(path.join(dir, name), { recursive: true, force: true });
+  }
+}
+
+/**
+ * Removes the lock only while it holds our token. The lock is renamed to a tomb first, so an
+ * unlink never lands on another owner's dir; a tomb that is not ours goes back to the lock path.
+ */
 function releaseLock(lock: string, token: string): void {
   try {
     if (readOwner(lock)?.token !== token) return;
-    fs.unlinkSync(path.join(lock, OWNER_FILE));
-    fs.rmdirSync(lock);
+    const tomb = `${lock}${RELEASE_SUFFIX}${process.pid}.${Date.now()}.${randomBytes(4).toString("hex")}`;
+    fs.renameSync(lock, tomb);
+    if (readOwner(tomb)?.token === token) {
+      fs.rmSync(tomb, { recursive: true, force: true });
+      return;
+    }
+    try {
+      fs.renameSync(tomb, lock);
+    } catch (error) {
+      process.stderr.write(`store: left ${tomb} after a release race: ${(error as Error).message}\n`);
+    }
   } catch (error) {
     process.stderr.write(`store: could not release ${lock}: ${(error as Error).message}\n`);
   }

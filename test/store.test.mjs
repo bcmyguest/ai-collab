@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import fs, { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -80,7 +80,7 @@ test("a lock whose owner pid is dead is taken at once, not after staleMs", async
   assert.ok(Date.now() - started < 1000, "waited for staleMs");
 });
 
-test("a lock held by a live pid is not broken before staleMs", async () => {
+test("a live owner's lock is not broken before the ceiling", async () => {
   const file = path.join(tempDir(), "live-owner.json");
   // 2 x staleMs: older than staleMs, younger than the 10 x staleMs ceiling.
   const lock = makeLock(file, { pid: process.pid }, 120_000);
@@ -150,6 +150,63 @@ test("callers after a holder releases while its process lingers still acquire", 
   assert.deepEqual(result.results, ["B true", "C true", "E true"]);
   assert.equal(result.maxHolders, 1);
   assert.deepEqual(result.leftover, []);
+});
+
+test("a live owner older than 10 x staleMs is broken at the ceiling", () => {
+  const file = path.join(tempDir(), "ceiling.json");
+  makeLock(file, { pid: process.pid }, 60_000);
+  assert.deepEqual(withLockSync(file, () => "ok", { waitMs: 500, staleMs: 100 }), { locked: true, value: "ok" });
+});
+
+test("an owner whose start time differs from its live pid is broken at once", { skip: !existsSync("/proc/self/stat") }, () => {
+  const file = path.join(tempDir(), "reused-pid.json");
+  makeLock(file, { pid: process.pid, start: -1 });
+  const started = Date.now();
+  assert.deepEqual(withLockSync(file, () => "ok", { waitMs: 2000 }), { locked: true, value: "ok" });
+  assert.ok(Date.now() - started < 1000, "waited for the breaker");
+});
+
+test("a crashed breaker older than 5 s is cleared and the lock taken", () => {
+  const file = path.join(tempDir(), "crashed-breaker.json");
+  makeLock(file, { pid: deadPid() });
+  const breaker = `${file}.lock.break`;
+  mkdirSync(breaker);
+  const past = (Date.now() - 10_000) / 1000;
+  utimesSync(breaker, past, past);
+  assert.deepEqual(withLockSync(file, () => "ok", { waitMs: 2000 }), { locked: true, value: "ok" });
+  assert.equal(existsSync(breaker), false);
+});
+
+test("a release after the ceiling broke its lock leaves the new owner's lock in place", () => {
+  const file = path.join(tempDir(), "released.json");
+  const lock = `${file}.lock`;
+  const ownerFile = path.join(lock, "owner.json");
+  const realRename = fs.renameSync;
+  const realUnlink = fs.unlinkSync;
+  let taken = false;
+  // The ceiling breaker and a new owner run between the holder's owner check and its removal.
+  const takeOver = () => {
+    if (taken) return;
+    taken = true;
+    fs.rmSync(lock, { recursive: true, force: true });
+    fs.mkdirSync(lock);
+    fs.writeFileSync(ownerFile, JSON.stringify({ pid: process.pid, host: os.hostname(), token: "new-owner", start: null }));
+  };
+  fs.renameSync = (from, to, ...rest) => {
+    if (from === lock) takeOver();
+    return realRename(from, to, ...rest);
+  };
+  fs.unlinkSync = (target, ...rest) => {
+    if (target === ownerFile) takeOver();
+    return realUnlink(target, ...rest);
+  };
+  try {
+    withLockSync(file, () => "held");
+  } finally {
+    fs.renameSync = realRename;
+    fs.unlinkSync = realUnlink;
+  }
+  assert.equal(readJson(ownerFile)?.token, "new-owner");
 });
 
 test("6 old-code and 6 new-code workers on one lock never overlap", async () => {
