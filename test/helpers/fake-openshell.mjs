@@ -18,6 +18,11 @@ const nameArg = (argv) => {
   const i = argv.indexOf("-n") >= 0 ? argv.indexOf("-n") + 1 : argv.indexOf("--name") + 1;
   return argv[i];
 };
+// Every `--label key=value` on a create, as the sandbox record reports them; a sandbox without labels reports {}.
+const labelsOf = (argv) => Object.fromEntries(argv.flatMap((arg, i) => (arg === "--label" ? [argv[i + 1]] : [])).map((pair) => {
+  const at = pair.indexOf("=");
+  return [pair.slice(0, at), pair.slice(at + 1)];
+}));
 // The fake sandbox filesystem: a real directory per sandbox, so upload and download move real bytes. It sits
 // beside the fake's state file (the test's own temp dir), never in the directory the test runs from.
 const root = () => process.env.FAKE_OPENSHELL_ROOT
@@ -37,7 +42,7 @@ if (args[0] === "sandbox" && args[1] === "create") {
   const state = load();
   const name = nameArg(args);
   rmSync(inside(name), { recursive: true, force: true });
-  state.sandboxes.push({ name, phase: "Ready" });
+  state.sandboxes.push({ name, phase: "Ready", labels: labelsOf(args) });
   save(state);
   process.exit(0);
 }

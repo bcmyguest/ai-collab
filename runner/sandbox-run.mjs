@@ -15,7 +15,7 @@ import { agentHarness } from "../lib/agent-guard.mjs";
 import { listProjects, stateDir } from "../lib/config.mjs";
 import { builderPolicy, replayable, parseRecordedCall, sharedLibs, toolSources } from "../lib/builder.mjs";
 import { projectOfFolder } from "../lib/schedule-session.mjs";
-import { destroySandbox, execArgv, executables, gitIn, HOME_IN, hostTokenFile, landBranch, must, NTFY_TOKEN_IN, OUT, runTool, sandboxCapRefusal, SANDBOX, stageAndUpload, TOOLS, UPLOAD_TIMEOUT_MS, WORK } from "../lib/sandbox.ts";
+import { destroyOwnedSandboxes, execArgv, executables, gitIn, HOME_IN, hostTokenFile, labelArgs, landBranch, must, NTFY_TOKEN_IN, OUT, runTool, sandboxCapRefusal, sandboxLabels, SANDBOX, stageAndUpload, TOOLS, UPLOAD_TIMEOUT_MS, WORK } from "../lib/sandbox.ts";
 
 const APP_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const CLI = join(APP_ROOT, "scripts", "ai-collab.mjs");
@@ -166,10 +166,10 @@ export async function sandboxRun({ name, cwd, project, command }, { env = proces
   const inner = sandboxCommand(command);
   if (!existsSync(join(cwd, ".git"))) throw new Error(`${cwd} is not a git work tree; a sandboxed run needs one to land its commits`);
   const openshell = env.AI_COLLAB_OPENSHELL_BIN || "openshell";
-  // Over the cap a tick is skipped, not failed: the next tick tries again.
-  const capped = await sandboxCapRefusal({ openshell, env });
-  if (capped) { log(`skipped: ${capped}; the next tick tries again`); return 0; }
   const proj = project || projectOfFolder(cwd, listProjects(env));
+  // Over the cap a tick is skipped, not failed: the next tick tries again.
+  const capped = await sandboxCapRefusal({ openshell, env, project: proj, log });
+  if (capped) { log(`skipped: ${capped}; the next tick tries again`); return 0; }
   mkdirSync(stateDir(env), { recursive: true, mode: 0o700 });
   const dir = mkdtempSync(join(stateDir(env), "sandbox-run-"));
   let keep = false;
@@ -182,7 +182,7 @@ export async function sandboxRun({ name, cwd, project, command }, { env = proces
   let created = false;
   try {
     const staged = await stage({ cwd, project: proj, harness, dir: join(dir, "stage"), env, log });
-    await must(openshell, ["sandbox", "create", "--name", sandbox, "--no-tty", "--detach", "--policy", staged.policy], { env, timeoutMs: UPLOAD_TIMEOUT_MS, what: "sandbox create", errorPrefix: "", stdoutFallback: true });
+    await must(openshell, ["sandbox", "create", "--name", sandbox, "--no-tty", "--detach", "--policy", staged.policy, ...labelArgs(sandboxLabels({ project: proj, kind: "run", owner: name }))], { env, timeoutMs: UPLOAD_TIMEOUT_MS, what: "sandbox create", errorPrefix: "", stdoutFallback: true });
     created = true;
     log(`sandbox ${sandbox} created`);
     await stageAndUpload({
@@ -214,7 +214,7 @@ export async function sandboxRun({ name, cwd, project, command }, { env = proces
     process.removeListener("SIGINT", onTerm);
     if (created && keep) log(`sandbox ${sandbox} kept so its work is not lost; delete it with: openshell sandbox delete ${sandbox}`);
     else if (created) {
-      const gone = await destroySandbox({ openshell, env, name: sandbox });
+      const gone = await destroyOwnedSandboxes({ openshell, env, project: proj, kind: "run", owner: name, legacyNames: [sandbox] });
       log(gone.ok ? `sandbox ${sandbox} deleted` : `sandbox delete failed: ${gone.detail}`);
     }
     if (!keep) rmSync(dir, { recursive: true, force: true });

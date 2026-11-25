@@ -18,7 +18,10 @@ export type Staged = {
   clone: string; tools: string; home: string; workdir: string;
   node?: string; gitCore?: string; npm?: string; nodeModules?: string; ntfyToken?: string;
 };
-export type SandboxRecord = { name?: string; phase?: string; state?: string; status?: unknown };
+export type SandboxRecord = { name?: string; phase?: string; state?: string; status?: unknown; labels?: Record<string, string> };
+export type SandboxKind = "builder" | "run" | "code" | "team" | "session";
+export type SandboxLabels = Record<string, string>;
+export type ManagedSandbox = { name: string; labels: SandboxLabels; legacy: boolean };
 export type UploadArgs = {
   openshell: string; env: Env; sandbox: string; log: (line: string) => void;
   staged: Staged; layout: Layout; style: Style; authMissing: string;
@@ -43,6 +46,14 @@ export const SYNC_TIMEOUT_MS = 600_000;
 export const UPLOAD_TIMEOUT_MS = 900_000;
 // run_code's shared sandbox and its per-call read sandboxes (lib/code-run.mjs) sit outside the cap.
 const CAP_EXEMPT = /^(ai-collab-code$|aic-ro-)/;
+const MANAGED_LABEL = "ai-collab.managed";
+const PROJECT_LABEL = "ai-collab.project";
+const KIND_LABEL = "ai-collab.kind";
+const OWNER_LABEL = "ai-collab.owner";
+const VERSION_LABEL = "ai-collab.version";
+// The names ai-collab gave sandboxes before labels; only an unlabelled sandbox is matched by these.
+const LEGACY_NAME = /^(ai-collab-|team-[0-9a-f]{14}$|b-|s-)/;
+const PACKAGE_VERSION: string = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
 /** Lowercase DNS-label-safe sandbox name for a project. */
 export function sandboxName(project: string): string {
@@ -127,14 +138,31 @@ export function parseSandboxList(stdout: string): SandboxRecord[] {
   return Array.isArray(parsed?.sandboxes) ? parsed.sandboxes : [];
 }
 
+/** The labels every ai-collab sandbox is created with: the managed mark, its project, kind, owner and package version. */
+export function sandboxLabels({ project, kind, owner }: { project: string; kind: SandboxKind; owner: string }): SandboxLabels {
+  return { [MANAGED_LABEL]: "true", [PROJECT_LABEL]: project, [KIND_LABEL]: kind, [OWNER_LABEL]: owner, [VERSION_LABEL]: PACKAGE_VERSION };
+}
+
+/** The `--label key=value` pairs for `sandbox create`. */
+export function labelArgs(labels: SandboxLabels): string[] {
+  return Object.entries(labels).flatMap(([key, value]) => ["--label", `${key}=${value}`]);
+}
+
+/** The labels a sandbox record reports; a sandbox created without labels reports none. */
+export function labelsOf(sandbox: SandboxRecord | undefined): SandboxLabels {
+  return sandbox?.labels && typeof sandbox.labels === "object" ? sandbox.labels : {};
+}
+
 /**
  * Lists sandboxes once, then creates the named one when it is missing, starts or resumes it when its
  * phase says so. Throws an Error whose message the operator can act on; never prints a secret.
  */
-export async function ensureSandbox({ openshell, env, name, policy, recreateBroken = false }: { openshell: string; env?: Env; name: string; policy?: string; recreateBroken?: boolean }): Promise<string> {
+export async function ensureSandbox({ openshell, env, name, policy, labels = {}, recreateBroken = false }: { openshell: string; env?: Env; name: string; policy?: string; labels?: SandboxLabels; recreateBroken?: boolean }): Promise<string> {
   const list = await runTool(openshell, ["sandbox", "list", "-o", "json"], { env });
   if (list.code !== 0) throw new Error(`openshell sandbox list failed: ${list.stderr.trim() || `exit ${list.code}`}`);
   let found: SandboxRecord | undefined = parseSandboxList(list.stdout).find((s) => s?.name === name);
+  const foundProject = labelsOf(found)[PROJECT_LABEL];
+  if (found && foundProject && labels[PROJECT_LABEL] && foundProject !== labels[PROJECT_LABEL]) throw new Error(`sandbox ${name} belongs to project ${foundProject}; it is not reused`);
   // A sandbox in Error never becomes ready; a caller whose sandbox holds no work (run_code) replaces it.
   if (found && recreateBroken && /error|fail/i.test(sandboxPhase(found))) {
     await must(openshell, ["sandbox", "delete", name], { env, timeoutMs: SYNC_TIMEOUT_MS, what: "sandbox delete" });
@@ -149,6 +177,7 @@ export async function ensureSandbox({ openshell, env, name, policy, recreateBrok
   await must(openshell, [
     "sandbox", "create", "--name", name, "--no-tty", "--detach",
     ...(policy ? ["--policy", policy] : []),
+    ...labelArgs(labels),
   ], { env, timeoutMs: SYNC_TIMEOUT_MS, what: "sandbox create" });
   return name;
 }
@@ -205,18 +234,76 @@ export function countedSandboxes(names: unknown[]): string[] {
 }
 
 /**
- * Why a new sandbox named `name` may not start, or "" when it may: the cap counts builders, runner sessions and schedule
- * ticks alike. A name already listed is a reuse, not a new sandbox. A failed list is left to the create step to report.
+ * The sandboxes the cap counts: this project's managed ones but run_code's, plus an unlabelled sandbox whose name
+ * matches an ai-collab name (logged as legacy). Unmanaged and other-project sandboxes are never counted.
  */
-export async function sandboxCapRefusal({ openshell, env, name = "" }: { openshell: string; env?: Env; name?: string }): Promise<string> {
+export function capCounted(records: SandboxRecord[], project: string, log: (line: string) => void = () => {}): string[] {
+  return records.flatMap((s) => {
+    const name = s?.name ?? "";
+    const labels = labelsOf(s);
+    if (labels[MANAGED_LABEL] === "true") return labels[PROJECT_LABEL] === project && labels[KIND_LABEL] !== "code" ? [name] : [];
+    if (Object.keys(labels).length === 0 && LEGACY_NAME.test(name) && !CAP_EXEMPT.test(name)) {
+      log(`sandbox ${name} has no labels; the cap counts it by its legacy name`);
+      return [name];
+    }
+    return [];
+  });
+}
+
+/**
+ * Why a new sandbox named `name` may not start, or "" when it may: the cap counts this project's builders, runner
+ * sessions and schedule ticks. A name already listed is a reuse, not a new sandbox. A failed list is left to the create step.
+ */
+export async function sandboxCapRefusal({ openshell, env, name = "", project, log }: { openshell: string; env?: Env; name?: string; project: string; log?: (line: string) => void }): Promise<string> {
   const list = await runTool(openshell, ["sandbox", "list", "-o", "json"], { env });
   if (list.code !== 0) return "";
-  let names: unknown[];
-  try { names = parseSandboxList(list.stdout).map((s) => s?.name); } catch { return ""; }
-  if (name && names.includes(name)) return "";
-  const counted = countedSandboxes(names);
+  let records: SandboxRecord[];
+  try { records = parseSandboxList(list.stdout); } catch { return ""; }
+  if (name && records.some((s) => s?.name === name)) return "";
+  const counted = capCounted(records, project, log);
   const cap = maxSandboxes(env);
   return counted.length >= cap ? `${counted.length} OpenShell sandboxes are running (${counted.join(", ")}); the cap is ${cap} (defaults.json maxSandboxes)` : "";
+}
+
+/**
+ * The sandboxes ai-collab created for a project, kind and owner, read from their labels. An unlabelled sandbox is
+ * selected only when its name is in legacyNames (the name it had before labels), and is logged as legacy.
+ */
+export async function listManagedSandboxes({ openshell, env, project, kind, owner, legacyNames = [], log = () => {} }: {
+  openshell: string; env?: Env; project: string; kind: SandboxKind; owner: string; legacyNames?: string[]; log?: (line: string) => void;
+}): Promise<ManagedSandbox[]> {
+  const list = await runTool(openshell, ["sandbox", "list", "-o", "json"], { env });
+  if (list.code !== 0) throw new Error(`openshell sandbox list failed: ${list.stderr.trim() || `exit ${list.code}`}`);
+  return parseSandboxList(list.stdout).flatMap((s): ManagedSandbox[] => {
+    const name = s?.name ?? "";
+    const labels = labelsOf(s);
+    if (labels[MANAGED_LABEL] === "true") {
+      return labels[PROJECT_LABEL] === project && labels[KIND_LABEL] === kind && labels[OWNER_LABEL] === owner ? [{ name, labels, legacy: false }] : [];
+    }
+    if (Object.keys(labels).length === 0 && legacyNames.includes(name)) {
+      log(`sandbox ${name} has no labels; selected by its legacy name`);
+      return [{ name, labels, legacy: true }];
+    }
+    return [];
+  });
+}
+
+/** Deletes the sandboxes listManagedSandboxes selects; never throws, so a failed cleanup cannot mask the session's own error. */
+export async function destroyOwnedSandboxes({ openshell, env, project, kind, owner, legacyNames, log }: {
+  openshell: string; env?: Env; project: string; kind: SandboxKind; owner: string; legacyNames?: string[]; log?: (line: string) => void;
+}): Promise<{ ok: boolean; detail: string; names: string[] }> {
+  let selected: ManagedSandbox[];
+  try {
+    selected = await listManagedSandboxes({ openshell, env, project, kind, owner, legacyNames, log });
+  } catch (error) {
+    return { ok: false, detail: (error as Error).message, names: [] };
+  }
+  const failed: string[] = [];
+  for (const sandbox of selected) {
+    const out = await destroySandbox({ openshell, env, name: sandbox.name });
+    if (!out.ok) failed.push(`${sandbox.name}: ${out.detail}`);
+  }
+  return { ok: failed.length === 0, detail: failed.join("; "), names: selected.map((s) => s.name) };
 }
 
 /**

@@ -807,7 +807,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     checkOpenShellLaunch(harness, place, builder);
     // A builder passed the cap at `builder start`; any other OpenShell start that would add a sandbox is checked here.
     if (place === "openshell" && !builder) {
-      const capped = await sandboxCapRefusal({ openshell: env.AI_COLLAB_OPENSHELL_BIN || "openshell", env, name: patternRun ? teamSandboxName(project, patternRun) : sandboxName(project) });
+      const capped = await sandboxCapRefusal({ openshell: env.AI_COLLAB_OPENSHELL_BIN || "openshell", env, project, name: patternRun ? teamSandboxName(project, patternRun) : sandboxName(project) });
       if (capped) fail(409, capped);
     }
     if (!patternRun && !builder && now() - lastStartAt < startGapMs) fail(429, "Wait 10 seconds between starts");
