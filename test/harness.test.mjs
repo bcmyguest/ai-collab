@@ -5,9 +5,10 @@ import path from "node:path";
 import { test } from "node:test";
 import { agentHarness } from "../lib/agent-guard.mjs";
 import { limitFallback } from "../lib/builder.mjs";
-import { START_DEFAULT, startDefaultSetting } from "../lib/config.mjs";
+import { loadConfig, START_DEFAULT, startDefaultSetting } from "../lib/config.mjs";
 import { CURSOR_FALLBACK } from "../lib/limit-alert.mjs";
 import { FALLBACK_MODEL, formatHarnessModel, harnessOfBinary, parseHarnessModel } from "../lib/harness.ts";
+import { getPattern, listPatterns } from "../lib/patterns.mjs";
 import { harnessOfCommand } from "../lib/schedule-session.mjs";
 import { parseMember } from "../lib/teams.mjs";
 
@@ -65,6 +66,28 @@ test("the fallback model is one constant that every built-in default reuses", ()
   assert.equal(FALLBACK_MODEL, "deepseek-v41-flash-1017-high");
   assert.equal(START_DEFAULT, `cursor:${FALLBACK_MODEL}`);
   assert.deepEqual(CURSOR_FALLBACK, { harness: "cursor", model: FALLBACK_MODEL });
+});
+
+test("a stale team with an unparseable member is marked invalid and breaks no other pattern", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-stale-team-"));
+  const env = { HOME: home, XDG_CONFIG_HOME: path.join(home, ".config") };
+  const root = path.join(home, "repo");
+  mkdirSync(root);
+  mkdirSync(path.join(env.XDG_CONFIG_HOME, "ai-collab"), { recursive: true });
+  writeFileSync(path.join(env.XDG_CONFIG_HOME, "ai-collab", "projects.json"), JSON.stringify([
+    { root, project: "demo", url: "http://127.0.0.1:9", peers: "claude,codex" },
+  ]));
+  writeFileSync(path.join(env.XDG_CONFIG_HOME, "ai-collab", "teams.json"), JSON.stringify({ old: ["gemini", "cursor:auto"] }));
+  const cfg = loadConfig({ ...env, AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "operator" });
+  try {
+    const patterns = listPatterns(cfg, env);
+    assert.match(patterns.old.invalid, /gemini/);
+    assert.deepEqual(patterns.old.roles, []);
+    assert.equal(getPattern(cfg, "review", env).name, "review");
+    assert.throws(() => getPattern(cfg, "old", env), /invalid/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test("startDefault and limitFallback keep their built-in defaults for invalid values", () => {
