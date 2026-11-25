@@ -691,8 +691,10 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       if (!e || typeof e !== "object" || !e.message || typeof e.address !== "string") continue;
       const id = `${DELIVERY}:${e.address}:${msgId}`;
       const run = await durable.startWorkflowOnce(DELIVERY, id, { project: cfg.project, address: e.address, message: e.message, redeliver: { pushes: e.attempts ?? 1, firstAt: e.firstAt } });
-      if (run) { deliveryIds.add(id); started.push(id); }
-      if (run || await durable.status(id)) delete left[msgId];
+      // Any existing run (cut, expired or skipped) counts: the ledger entry is spent and the pump must stop re-claiming it.
+      const known = run || Boolean(await durable.status(id));
+      if (known) { deliveryIds.add(id); delete left[msgId]; }
+      if (run) started.push(id);
     }
     if (Object.keys(left).length !== Object.keys(entries).length) writeDispatchLedger(cfg, left);
   }
@@ -753,8 +755,11 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
           const messages = await deps.claim(scfg, { commit: false, limit: CLAIM_LIMIT, accept: (m) => direct(m) && fresh(m), ...live }).catch(() => []);
           for (const message of messages) {
             const id = `${DELIVERY}:${session.id}:${message.id}`;
+            // A false return means the id already has a run (cut, expired or skipped): remember it too, or the same
+            // messages are re-claimed every tick and starve the session once they leave the boot seed window.
             const startedNow = await durable.startWorkflowOnce(DELIVERY, id, { project: cfg.project, address: session.id, message });
-            if (startedNow) { deliveryIds.add(id); started.push(id); }
+            deliveryIds.add(id);
+            if (startedNow) started.push(id);
           }
           continue;
         }
