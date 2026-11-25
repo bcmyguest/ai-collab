@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadConfig } from "../lib/config.mjs";
+import { MESSAGE_MAX_BYTES, loadConfig } from "../lib/config.mjs";
 import { LIMIT_TOOL, WAIT_LABEL, alertLimit, handoffPrompt, limitLine, replacementOptions, resetClock, roleFallback } from "../lib/limit-alert.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
@@ -166,4 +166,14 @@ test("a session in a pattern run puts its role's fallback first on the card", as
   const [card] = cards(fake);
   assert.deepEqual(card.questions[0].options.map((o) => o.label), ["codex:gpt-5", "cursor:auto", WAIT_LABEL]);
   assert.equal(card.questions[0].options[0].description, "Role fallback");
+});
+
+test("a limit card joined by 200 sessions still fits MESSAGE_MAX_BYTES", async (t) => {
+  const { fake, cfg } = await setup(t);
+  const deps = { now: FIVE_HOUR.resetsAt - 60_000, listed: async () => LISTED, available: () => ["claude", "codex"] };
+  for (let i = 0; i < 200; i += 1) {
+    await alertLimit({ ...cfg, session: i.toString(16).padStart(16, "0") }, { harness: "claude", limit: FIVE_HOUR, ...deps });
+  }
+  const last = fake.state.publishes.at(-1);
+  assert.ok(Buffer.byteLength(last.message) <= MESSAGE_MAX_BYTES, `card is ${Buffer.byteLength(last.message)} bytes`);
 });

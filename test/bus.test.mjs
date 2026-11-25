@@ -147,3 +147,11 @@ test("the bus accepts a 5 KB message, so the 4095 client cap is policy, not the 
   const res = await fetch(`${b.url}/`, { method: "POST", headers: { authorization: `Bearer ${TOKEN}` }, body });
   assert.equal(res.status, 200);
 });
+
+test("the production server keeps no request log and no fault knobs", async (t) => {
+  const b = await bus();
+  t.after(() => b.close());
+  await publish(b.cfg, "t", "a");
+  await pollCached(b.cfg, "t", "all");
+  assert.equal(b.server.state, undefined, "no per-request arrays on the production server");
+});

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
 import { runCli } from "../lib/cli.mjs";
-import { listTeams, createTeam, deleteTeam, teamStatus, teamStart, parseMember, readGlobalTeams, writeGlobalTeams } from "../lib/teams.mjs";
+import { listTeams, createTeam, deleteTeam, teamStatus, teamStart, parseMember, readGlobalTeams, writeGlobalTeams, readProjectsFile, removeProject, setProjectClosed } from "../lib/teams.mjs";
 import { recordSession } from "../lib/sessions.mjs";
 import { sessionLabel } from "../lib/config.mjs";
 import { peerEnv } from "./helpers/env.mjs";
@@ -84,4 +84,19 @@ test("createTeam rejects unknown models", async () => {
   const env = { HOME: home, AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "operator", AI_COLLAB_PEERS: "codex" };
   const cfg = loadConfig(env);
   await assert.rejects(createTeam(cfg, "bad", ["codex:unknown"], env, { codex: ["gpt-5"] }), /unknown model/);
+});
+
+test("projects.json writes wait for the projects.json lock", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-projects-"));
+  const env = { HOME: home, XDG_CONFIG_HOME: path.join(home, ".config") };
+  const dir = path.join(env.XDG_CONFIG_HOME, "ai-collab");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, "projects.json"), JSON.stringify(["alpha", "beta"].map((project) => ({ root: path.join(home, project), project }))));
+  const held = path.join(dir, "projects.json.lock");
+  mkdirSync(held);
+  assert.throws(() => setProjectClosed(env, "alpha", true), /busy/, "a write does not bypass a held lock");
+  rmdirSync(held);
+  setProjectClosed(env, "alpha", true);
+  removeProject(env, "beta");
+  assert.deepEqual(readProjectsFile(env).map((entry) => [entry.project, entry.closed]), [["alpha", true]]);
 });
