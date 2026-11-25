@@ -4,6 +4,8 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { controlSession, harnessCommand, runnerFromEnv } from "../lib/controls.mjs";
+import { childPath } from "../lib/harness.mjs";
+import { childEnv, resolveStartBinary } from "../lib/start.mjs";
 import { sessionLabel } from "../lib/config.mjs";
 
 const sessionId = "00000000-abcd-1234-9876-000000000001";
@@ -41,7 +43,19 @@ test("the cursor wake command uses the Cursor binary on the given PATH", () => {
   assert.equal(harnessCommand("wake", "cursor", sessionId, false, { path: dir })[0], "cursor-agent");
   writeFileSync(path.join(dir, "agent"), "#!/bin/sh\n", { mode: 0o755 });
   assert.equal(harnessCommand("wake", "cursor", sessionId, false, { path: dir })[0], "agent");
-  assert.equal(harnessCommand("wake", "cursor", sessionId, false, { path: dir, sandbox: true })[0], "cursor-agent", "a runner sandbox links the CLI as cursor-agent");
+});
+
+test("start and wake pick the same Cursor binary in each place", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-cursor-"));
+  writeFileSync(path.join(dir, "agent"), "#!/bin/sh\n", { mode: 0o755 });
+  writeFileSync(path.join(dir, "cursor-agent"), "#!/bin/sh\n", { mode: 0o755 });
+  const env = { PATH: dir, HOME: dir };
+  for (const place of ["folder", "worktree", "openshell"]) {
+    const started = resolveStartBinary("cursor", ["cursor-agent"], childEnv(env).PATH, place)[0];
+    const woke = harnessCommand("wake", "cursor", sessionId, false, { path: childPath(env), place })[0];
+    assert.equal(started, place === "openshell" ? "cursor-agent" : "agent", `${place} starts with`);
+    assert.equal(woke, started, `${place} wakes with the binary it started with`);
+  }
 });
 
 test("a running session, or a PID reused by another process, is never resumed", async () => {
