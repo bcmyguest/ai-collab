@@ -168,7 +168,7 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
       case "session.execution.interrupted":
         return ours(s, data) && endRun(s, (runId) => ({ type: EventType.RUN_FINISHED, threadId: s.threadId, runId, outcome: { type: "cancelled" } }));
       case "session.execution.failed": {
-        // The provider's HTTP status rides in the RUN_ERROR metadata, so lib/limits.mjs can classify a bare 429 (UNVERIFIED field names).
+        // The provider's HTTP status rides in the RUN_ERROR metadata, so lib/limits.ts can classify a bare 429 (UNVERIFIED field names).
         const status = statusOf(data);
         return ours(s, data) && endRun(s, (runId) => ({ type: EventType.RUN_ERROR, message: errorText(data), metadata: { aiCollab: { runId, ...(status ? { status } : {}) } } }));
       }

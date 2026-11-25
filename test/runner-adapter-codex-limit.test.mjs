@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { EventType } from "@ag-ui/core";
 import codexAdapter, { APP_SERVER_ARGS } from "../runner/adapters/codex.mjs";
 import { eventProblem, permissionSettings } from "../runner/contract.mjs";
-import { limitFromRunError } from "../lib/limits.mjs";
+import { limitFromRunError } from "../lib/limits.ts";
 
 const FAKE = fileURLToPath(new URL("./helpers/fake-codex-app-server.mjs", import.meta.url));
 

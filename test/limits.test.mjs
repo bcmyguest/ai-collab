@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { classifyLimit } from "../lib/limits.mjs";
+import { classifyLimit } from "../lib/limits.ts";
 
 const HARNESSES = ["claude", "codex", "opencode", "cursor"];
 const fixtures = (harness) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/limits/${harness}.json`, import.meta.url)), "utf8"));

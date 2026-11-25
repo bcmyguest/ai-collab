@@ -5,7 +5,7 @@ import { EventType } from "@ag-ui/core";
 import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import { sessionLabel } from "../../lib/config.mjs";
 import { childEnv, findExecutable } from "../../lib/start.mjs";
-import { classifyLimit } from "../../lib/limits.mjs";
+import { classifyLimit } from "../../lib/limits.ts";
 import { claudeCodeModeSettings } from "../../lib/code-mode.mjs";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, LIMIT, PERMISSION_MODES, permissionSettings } from "../contract.mjs";
 
@@ -161,7 +161,7 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
       const { trigger, pre_tokens: tokensBefore, post_tokens: tokensAfter } = msg.compact_metadata ?? {};
       ctx.emit({ type: EventType.STEP_FINISHED, stepName: "compact", metadata: { aiCollab: { compaction: { trigger, phase: "finished", tokensBefore, tokensAfter } } } });
     } else if (msg.type === "rate_limit_event") {
-      // sdk.d.ts:6224; only a rejected window is a limit (lib/limits.mjs).
+      // sdk.d.ts:6224; only a rejected window is a limit (lib/limits.ts).
       const limit = classifyLimit("claude", { kind: "rate_limit_event", rate_limit_info: msg.rate_limit_info });
       if (limit) ctx.emit({ type: EventType.CUSTOM, name: LIMIT, value: limit, ...attribution });
     } else if (msg.type === "result") {

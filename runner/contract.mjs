@@ -14,7 +14,7 @@ export const APPROVAL_REQUESTED = "ai-collab.approval-requested";
 export const APPROVAL_RESOLVED = "ai-collab.approval-resolved";
 export const NOTICE = "ai-collab.notice";
 export const ERROR = "ai-collab.error";
-// A harness limit: value is a lib/limits.mjs classification. The runner alerts once per session and window.
+// A harness limit: value is a lib/limits.ts classification. The runner alerts once per session and window.
 export const LIMIT = "ai-collab.limit";
 export const RESOLVE_REASONS = ["allowed", "denied", "answered", "cancelled"];
 export const STATE_PATHS = ["/contextTokens", "/contextWindow", "/model", "/permissionMode"];

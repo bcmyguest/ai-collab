@@ -6,7 +6,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { fallbackAttempts, limitFallback } from "../lib/builder.mjs";
 import { fallbackChain, replacementOptions } from "../lib/limit-alert.mjs";
-import { classifyLimit, limitFromRunError } from "../lib/limits.mjs";
+import { classifyLimit, limitFromRunError } from "../lib/limits.ts";
 
 const summary = (found) => found && { window: found.window, windowName: found.windowName, wording: found.wording, verified: found.verified };
 

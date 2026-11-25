@@ -1,4 +1,4 @@
-// The Cursor adapter keeps an ACP error's code and data and the child's stderr tail, and lib/limits.mjs classifies them.
+// The Cursor adapter keeps an ACP error's code and data and the child's stderr tail, and lib/limits.ts classifies them.
 // A fake cursor-agent speaks ACP; no real CLI, account or sandbox runs.
 import assert from "node:assert/strict";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
@@ -8,7 +8,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { EventType } from "@ag-ui/core";
 import cursorAdapter, { errorText } from "../runner/adapters/cursor.mjs";
-import { limitFromRunError } from "../lib/limits.mjs";
+import { limitFromRunError } from "../lib/limits.ts";
 import { eventProblem } from "../runner/contract.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));

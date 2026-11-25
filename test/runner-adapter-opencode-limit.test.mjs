@@ -1,10 +1,10 @@
-// A bare provider 429 reaches the limit classifier: the OpenCode adapter forwards the HTTP status, lib/limits.mjs reads it.
+// A bare provider 429 reaches the limit classifier: the OpenCode adapter forwards the HTTP status, lib/limits.ts reads it.
 // The adapter drives the scripted fake service only; no OpenCode process runs.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EventType } from "@ag-ui/core";
 import { createOpenCodeAdapter } from "../runner/adapters/opencode.mjs";
-import { limitFromRunError } from "../lib/limits.mjs";
+import { limitFromRunError } from "../lib/limits.ts";
 import { eventProblem } from "../runner/contract.mjs";
 import { fakeOpencodeService } from "./helpers/fake-opencode-service.mjs";
 

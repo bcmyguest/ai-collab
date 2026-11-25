@@ -29,7 +29,7 @@ import { parseCodeMode, resolveCodeMode } from "../lib/code-mode.mjs";
 import { openTasks } from "../lib/tasks.mjs";
 import { listOwned, ownedFile, readOwned, writeOwned } from "../lib/owned.mjs";
 import { modelFields } from "../lib/session-events.mjs";
-import { limitFromRunError } from "../lib/limits.mjs";
+import { limitFromRunError } from "../lib/limits.ts";
 import { alertLimit } from "../lib/limit-alert.mjs";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, LIMIT, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, OPENSHELL_PERMISSION, permissionSettings } from "./contract.mjs";
 import { sessionOfCommand } from "../lib/schedule-session.mjs";

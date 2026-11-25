@@ -1,7 +1,18 @@
-// Subscription and usage-limit detection: classifies a harness error or event as a limit, or null.
+// Usage and plan limits: detects a limit in a harness error or event, and owns the fallback chain a limit starts.
 // Typed sources: sdk.d.ts (Claude SDK 0.3.330). Text patterns are UNVERIFIED: no type or source here names them.
+import { autoDefaults } from "./config.mjs";
+import { FALLBACK_MODEL, HARNESSES, modelShape, parseHarnessModel } from "./harness.ts";
 
-export const LIMIT_WINDOW_NAMES = {
+export type Event = Record<string, any>;
+export type Limit = {
+  harness: string; window: string | null; windowName: string | null; resetsAt: number | null;
+  wording: boolean; verified: boolean; source: string;
+};
+// kind is "limit" for a plan or usage limit (window, reset or wording shown), else "rate" for a bare HTTP 429.
+export type DetectedLimit = Limit & { kind: "limit" | "rate" };
+export type Pick = { label: string; harness: string; model: string; description?: string };
+
+export const LIMIT_WINDOW_NAMES: Record<string, string> = {
   five_hour: "5-hour", seven_day: "weekly", seven_day_opus: "weekly Opus", seven_day_sonnet: "weekly Sonnet",
   seven_day_overage_included: "weekly overage", overage: "overage",
 };
@@ -9,7 +20,7 @@ export const LIMIT_WINDOW_NAMES = {
 const LIMIT_TEXT = /usage limit|plan limit|rate limit|quota/i;
 // Explicit subscription wording. "Rate limit" alone is not enough to call the card a limit.
 const LIMIT_WORDING = /usage limit|plan limit|quota|5[- ]?hour|weekly|7[- ]?day/i;
-const WINDOW_TEXT = [[/5[- ]?hour/i, "five_hour"], [/weekly|7[- ]?day/i, "seven_day"]];
+const WINDOW_TEXT: [RegExp, string][] = [[/5[- ]?hour/i, "five_hour"], [/weekly|7[- ]?day/i, "seven_day"]];
 // Codex error code for a plan limit. UNVERIFIED: the name is not in any type definition in this repo.
 const CODEX_LIMIT_INFO = "usageLimitExceeded";
 const CODEX_LIMIT_INFO_ROLLOUT = "usage_limit_exceeded";
@@ -18,30 +29,40 @@ const CODEX_LIMIT_INFO_ROLLOUT = "usage_limit_exceeded";
 const MIN_WINDOW_MS = 5 * 60_000;
 const MS_THRESHOLD = 1e12;
 
-function limit(harness, { window = null, resetsAt = null, wording = false, verified, source }) {
+// The replacement a limit starts when nobody has named one: Cursor DeepSeek, then the free OpenCode model.
+export const CURSOR_FALLBACK = { harness: "cursor", model: FALLBACK_MODEL };
+export const OPENCODE_FALLBACK = { harness: "opencode", model: "opencode/deepseek-v4.1-flash-free" };
+export const REPLACEMENT_MAX = 4;
+
+/** "harness:model" when the model is known, else the harness. */
+export const who = (harness: string, model?: string): string => (model ? `${harness}:${model}` : harness);
+
+function limit(harness: string, { window = null, resetsAt = null, wording = false, verified, source }: {
+  window?: string | null; resetsAt?: number | null; wording?: boolean; verified: boolean; source: string;
+}): Limit {
   return { harness, window, windowName: window ? LIMIT_WINDOW_NAMES[window] ?? window : null, resetsAt, wording, verified, source };
 }
 
 // Window named in free text, e.g. "5-hour limit reached"; null when the text names none.
-function windowFromText(text) {
-  return WINDOW_TEXT.find(([pattern]) => pattern.test(text))?.[1] ?? null;
+function windowFromText(text: unknown): string | null {
+  return WINDOW_TEXT.find(([pattern]) => pattern.test(String(text ?? "")))?.[1] ?? null;
 }
 
-function resetMs(value, now = Date.now()) {
-  if (!Number.isFinite(value) || value <= 0) return null;
+function resetMs(value: unknown, now = Date.now()): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
   const ms = value > MS_THRESHOLD ? value : value * 1000;
   return Math.max(ms, now + MIN_WINDOW_MS);
 }
 
 // Overage that is allowed or in use: the request runs on overage credit, so the plan window did not block it (sdk.d.ts:6243-6246).
 // A rejected overage is not on overage, whatever the other flags say: overageEnabled only means the account may buy overage.
-function onOverage(info) {
+function onOverage(info: Event): boolean {
   if (info.overageStatus === "rejected") return false;
   return info.isUsingOverage === true || info.overageInUse === true || info.overageEnabled === true
     || info.overageStatus === "allowed" || info.overageStatus === "allowed_warning";
 }
 
-function classifyClaude(event) {
+function classifyClaude(event: Event): Limit | null {
   switch (event?.kind) {
     // sdk.d.ts:6224 SDKRateLimitEvent; status 'rejected' means the limit blocked the request (sdk.d.ts:6238).
     case "rate_limit_event": {
@@ -55,7 +76,7 @@ function classifyClaude(event) {
     // sdk.d.ts:10502 StopFailureHookInput; error 'rate_limit' is in the enum at sdk.d.ts:3995. Also returns for API 429s, not only plan limits.
     case "stop_failure": {
       if (event.error !== "rate_limit") return null;
-      const details = event.error_details ?? "";
+      const details = String(event.error_details ?? "");
       return limit("claude", {
         window: windowFromText(details), wording: LIMIT_WORDING.test(details), verified: true, source: "sdk.d.ts:10502 StopFailure error=rate_limit",
       });
@@ -74,13 +95,13 @@ const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "
 const CODEX_RESET = /try again at (?:([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\s+)?(\d{1,2}):(\d{2})\s*([AP]M)/i;
 
 /** The reset time (ms) a Codex limit message names, or null. A bare clock time is the next such time, not a past one. */
-export function codexResetFrom(message, now = Date.now()) {
+export function codexResetFrom(message: unknown, now = Date.now()): number | null {
   const found = CODEX_RESET.exec(String(message ?? ""));
   if (!found) return null;
-  const [, month, day, year, hourText, minute, meridiem] = found;
+  const [, month, day, year, hourText, minute, meridiem] = found as unknown as string[];
   const hour = (Number(hourText) % 12) + (/^p/i.test(meridiem) ? 12 : 0);
   if (Number(hourText) < 1 || Number(hourText) > 12 || Number(minute) > 59) return null;
-  let at;
+  let at: Date;
   if (year) {
     const index = MONTHS.indexOf(month.slice(0, 3).toLowerCase());
     if (index < 0) return null;
@@ -93,7 +114,7 @@ export function codexResetFrom(message, now = Date.now()) {
   return Number.isFinite(at.getTime()) ? resetMs(at.getTime(), now) : null;
 }
 
-function classifyCodex(event) {
+function classifyCodex(event: Event): Limit | null {
   if (event?.kind !== "turn_error") return null;
   const message = event.message ?? "";
   // UNVERIFIED: the codexErrorInfo code, from Codex's app-server protocol (not in node_modules or docs/).
@@ -106,7 +127,7 @@ function classifyCodex(event) {
     : null;
 }
 
-function classifyOpenCode(event) {
+function classifyOpenCode(event: Event): Limit | null {
   if (event?.kind !== "run_error") return null;
   // UNVERIFIED: OpenCode's provider error carries an HTTP status; runner/adapters/opencode.mjs forwards it in RUN_ERROR metadata.
   if (event.status === 429) return limit("opencode", { verified: false, source: "UNVERIFIED HTTP 429 from provider" });
@@ -122,7 +143,7 @@ const CURSOR_LIMIT_CODES = /usage_?limit|rate_?limit|limit_?exceeded|quota|insuf
 // A bare HTTP 429 counts only with limit wording beside it, so an ordinary throttled request does not open a card.
 const HAS_429 = /(^|\D)429(\D|$)/;
 
-function classifyCursor(event) {
+function classifyCursor(event: Event): Limit | null {
   if (event?.kind !== "run_error") return null;
   const message = String(event.message ?? "");
   // The adapter joins the ACP error code, its data and the child's stderr tail into the message, so one text covers them all.
@@ -144,7 +165,7 @@ function classifyCursor(event) {
 }
 
 /** The limit an event reports, {harness, window, windowName, resetsAt (ms|null), wording, verified, source}, or null. */
-export function classifyLimit(harness, event) {
+export function classifyLimit(harness: string, event: Event): Limit | null {
   switch (harness) {
     case "claude": return classifyClaude(event);
     case "codex": return classifyCodex(event);
@@ -155,7 +176,7 @@ export function classifyLimit(harness, event) {
 }
 
 /** The limit a runner RUN_ERROR reports: its message, and for Codex its metadata codexErrorInfo; the kind follows the adapter's error source. */
-export function limitFromRunError(harness, message, metadata = {}) {
+export function limitFromRunError(harness: string, message: string, metadata: Event = {}): Limit | null {
   const kind = harness === "claude" ? "result_error" : harness === "codex" ? "turn_error" : "run_error";
   // An adapter that saw an HTTP status (OpenCode's provider error) or an ACP error code (Cursor) forwards it here.
   const status = Number.isInteger(metadata.status) && metadata.status > 0 ? metadata.status : undefined;
@@ -163,4 +184,74 @@ export function limitFromRunError(harness, message, metadata = {}) {
     kind, text: message, message, codexErrorInfo: metadata.codexErrorInfo,
     ...(status ? { status } : {}), ...(metadata.code !== undefined ? { code: metadata.code } : {}),
   });
+}
+
+/**
+ * The one detector for an error: a text (classified as the harness's run error) or a structured event.
+ * Returns the limit with kind, or null when the text or event is not a limit.
+ */
+export function detectLimit(harness: string, errorOrText: string | Event): DetectedLimit | null {
+  const found = typeof errorOrText === "string" ? limitFromRunError(harness, errorOrText) : classifyLimit(harness, errorOrText);
+  if (!found) return null;
+  return { ...found, kind: found.wording || found.window || found.resetsAt ? "limit" : "rate" };
+}
+
+// A role's fallback as {harness, model}, or null; read defensively, since the attribute is optional.
+function fallbackOf(fallback: unknown): { harness: string; model: string } | null {
+  const parsed = parseHarnessModel(fallback);
+  return parsed?.model ? parsed : null;
+}
+
+/**
+ * Models to try after a limit, in order: the configured fallback first (a different model on the same harness is allowed),
+ * then Cursor DeepSeek, then the free OpenCode model, then the first listed model of each other available harness.
+ * Harness `harness` is the one that stopped; `fallback` defaults to defaults.json limitFallback.
+ */
+export function fallbackChain({ harness, model = "", fallback, models = {}, available = [], env }: {
+  harness: string; model?: string; fallback?: unknown; models?: Record<string, string[]>; available?: string[]; env?: NodeJS.ProcessEnv;
+}): Pick[] {
+  const picks: Pick[] = [];
+  const add = (item: { harness: string; model: string } | null, description?: string, { sameHarness = false } = {}) => {
+    if (!item || !(HARNESSES as readonly string[]).includes(item.harness) || !modelShape(item.harness, item.model)) return;
+    if (item.harness === harness && !(sameHarness && model && item.model !== model)) return;
+    const label = who(item.harness, item.model);
+    if (picks.some((pick) => pick.label === label) || picks.length >= REPLACEMENT_MAX) return;
+    picks.push({ label, harness: item.harness, model: item.model, ...(description ? { description } : {}) });
+  };
+  const configured = fallback ?? (env ? (autoDefaults(env) as { limitFallback?: unknown } | null)?.limitFallback : undefined);
+  add(fallbackOf(configured), "Configured fallback", { sameHarness: true });
+  add(CURSOR_FALLBACK, "Cursor fallback");
+  add(OPENCODE_FALLBACK, "Free fallback");
+  for (const other of available) {
+    if (other === harness || !(HARNESSES as readonly string[]).includes(other)) continue;
+    const first = (models[other] ?? []).find((name) => modelShape(other, name));
+    if (first) add({ harness: other, model: first });
+  }
+  return picks;
+}
+
+/**
+ * Manual limit card options: the role's fallback first, then the first listed model of each other available harness, at most REPLACEMENT_MAX.
+ * Returns [{label, harness, model, description?}]; the caller appends its wait option.
+ */
+export function replacementOptions({ harness, model = "", fallback, models = {}, available = [] }: {
+  harness: string; model?: string; fallback?: unknown; models?: Record<string, string[]>; available?: string[];
+}): Pick[] {
+  const picks: { harness: string; model: string; description?: string }[] = [];
+  const fb = fallbackOf(fallback);
+  if (fb) picks.push({ ...fb, description: "Role fallback" });
+  for (const other of available) {
+    if (other === harness || !(HARNESSES as readonly string[]).includes(other)) continue;
+    const first = (models[other] ?? []).find((name) => modelShape(other, name));
+    if (first) picks.push({ harness: other, model: first });
+  }
+  const seen = new Set([who(harness, model)]);
+  const out: Pick[] = [];
+  for (const pick of picks) {
+    const label = who(pick.harness, pick.model);
+    if (seen.has(label) || out.length >= REPLACEMENT_MAX) continue;
+    seen.add(label);
+    out.push({ label, harness: pick.harness, model: pick.model, ...(pick.description ? { description: pick.description } : {}) });
+  }
+  return out;
 }

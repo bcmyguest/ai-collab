@@ -12,7 +12,7 @@ import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { resetClock } from "../lib/limit-alert.mjs";
 import { setProjectPaused } from "../lib/project-pause.ts";
 import { recordSession } from "../lib/sessions.mjs";
-import { codexResetFrom, classifyLimit, limitFromRunError } from "../lib/limits.mjs";
+import { codexResetFrom, classifyLimit, limitFromRunError } from "../lib/limits.ts";
 import { limitEndNotice, readStartLog } from "../lib/start-limit.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
