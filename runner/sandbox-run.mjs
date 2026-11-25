@@ -168,7 +168,7 @@ export async function sandboxRun({ name, cwd, project, command }, { env = proces
   const openshell = env.AI_COLLAB_OPENSHELL_BIN || "openshell";
   const proj = project || projectOfFolder(cwd, listProjects(env));
   // Over the cap a tick is skipped, not failed: the next tick tries again.
-  const capped = await sandboxCapRefusal({ openshell, env, project: proj, log });
+  const capped = await sandboxCapRefusal({ openshell, env, log });
   if (capped) { log(`skipped: ${capped}; the next tick tries again`); return 0; }
   mkdirSync(stateDir(env), { recursive: true, mode: 0o700 });
   const dir = mkdtempSync(join(stateDir(env), "sandbox-run-"));

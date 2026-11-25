@@ -234,14 +234,14 @@ export function countedSandboxes(names: unknown[]): string[] {
 }
 
 /**
- * The sandboxes the cap counts: this project's managed ones but run_code's, plus an unlabelled sandbox whose name
- * matches an ai-collab name (logged as legacy). Unmanaged and other-project sandboxes are never counted.
+ * The sandboxes the cap counts, across every project on the gateway: each managed one but run_code's, plus an unlabelled
+ * sandbox whose name matches an ai-collab name (logged as legacy). Unmanaged sandboxes are never counted.
  */
-export function capCounted(records: SandboxRecord[], project: string, log: (line: string) => void = () => {}): string[] {
+export function capCounted(records: SandboxRecord[], log: (line: string) => void = () => {}): string[] {
   return records.flatMap((s) => {
     const name = s?.name ?? "";
     const labels = labelsOf(s);
-    if (labels[MANAGED_LABEL] === "true") return labels[PROJECT_LABEL] === project && labels[KIND_LABEL] !== "code" ? [name] : [];
+    if (labels[MANAGED_LABEL] === "true") return labels[KIND_LABEL] !== "code" ? [name] : [];
     if (Object.keys(labels).length === 0 && LEGACY_NAME.test(name) && !CAP_EXEMPT.test(name)) {
       log(`sandbox ${name} has no labels; the cap counts it by its legacy name`);
       return [name];
@@ -251,16 +251,16 @@ export function capCounted(records: SandboxRecord[], project: string, log: (line
 }
 
 /**
- * Why a new sandbox named `name` may not start, or "" when it may: the cap counts this project's builders, runner
- * sessions and schedule ticks. A name already listed is a reuse, not a new sandbox. A failed list is left to the create step.
+ * Why a new sandbox named `name` may not start, or "" when it may: the cap is machine-wide and counts every project's
+ * builders, runner sessions and schedule ticks. A name already listed is a reuse, not a new sandbox. A failed list is left to the create step.
  */
-export async function sandboxCapRefusal({ openshell, env, name = "", project, log }: { openshell: string; env?: Env; name?: string; project: string; log?: (line: string) => void }): Promise<string> {
+export async function sandboxCapRefusal({ openshell, env, name = "", log }: { openshell: string; env?: Env; name?: string; log?: (line: string) => void }): Promise<string> {
   const list = await runTool(openshell, ["sandbox", "list", "-o", "json"], { env });
   if (list.code !== 0) return "";
   let records: SandboxRecord[];
   try { records = parseSandboxList(list.stdout); } catch { return ""; }
   if (name && records.some((s) => s?.name === name)) return "";
-  const counted = capCounted(records, project, log);
+  const counted = capCounted(records, log);
   const cap = maxSandboxes(env);
   return counted.length >= cap ? `${counted.length} OpenShell sandboxes are running (${counted.join(", ")}); the cap is ${cap} (defaults.json maxSandboxes)` : "";
 }

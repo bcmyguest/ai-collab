@@ -57,16 +57,15 @@ test("ensureSandbox passes the full label set on create", async () => {
   }]);
 });
 
-test("the cap counts this project's managed sandboxes and ignores other projects and unmanaged ones", async () => {
-  const otherProject = [1, 2, 3, 4, 5, 6].map((n) => record(`x-${n}`, managed("other", "builder", "b1")));
+test("the cap is machine-wide: sandboxes of two projects together reach it; unmanaged and run_code ones do not count", async () => {
   const unmanaged = record("b-zz-000001", { "ai-collab.owner": "someone" });
-  const l = lab([...otherProject, unmanaged, record("ai-collab-code", { "ai-collab.managed": "true", "ai-collab.kind": "code" })]);
-  assert.equal(await sandboxCapRefusal({ openshell: OPENSHELL, env: l.env, name: "new", project: "demo" }), "");
+  const codeSandbox = record("ai-collab-code", { "ai-collab.managed": "true", "ai-collab.kind": "code" });
+  const below = lab([...[1, 2, 3].map((n) => record(`a-${n}`, managed("alpha", "builder", `b${n}`))), ...[1, 2].map((n) => record(`c-${n}`, managed("beta", "builder", `b${n}`))), unmanaged, codeSandbox]);
+  assert.equal(await sandboxCapRefusal({ openshell: OPENSHELL, env: below.env, name: "new" }), "", "five counted sandboxes leave one slot");
 
-  const mine = [1, 2, 3, 4, 5, 6].map((n) => record(`m-${n}`, managed("demo", "builder", `b${n}`)));
-  const full = lab([...otherProject, ...mine]);
-  const refusal = await sandboxCapRefusal({ openshell: OPENSHELL, env: full.env, name: "new", project: "demo" });
-  assert.match(refusal, /6 OpenShell sandboxes are running \(m-1, m-2, m-3, m-4, m-5, m-6\); the cap is 6/);
+  const full = lab([...[1, 2, 3].map((n) => record(`a-${n}`, managed("alpha", "builder", `b${n}`))), ...[1, 2, 3].map((n) => record(`c-${n}`, managed("beta", "builder", `b${n}`))), unmanaged, codeSandbox]);
+  const refusal = await sandboxCapRefusal({ openshell: OPENSHELL, env: full.env, name: "new" });
+  assert.match(refusal, /6 OpenShell sandboxes are running \(a-1, a-2, a-3, c-1, c-2, c-3\); the cap is 6/);
 });
 
 test("listManagedSandboxes selects by project, kind and owner; a legacy name is used only when unlabelled", async () => {
