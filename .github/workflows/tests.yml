@@ -27,6 +27,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm run build:package && node dist/scripts/ai-collab.mjs --help
       # Isolated HOME: tests never read the runner's agent configs; fake-ntfy replaces a server.
       - name: npm test
         run: |
