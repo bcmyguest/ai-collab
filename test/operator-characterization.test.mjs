@@ -107,29 +107,29 @@ test("approval stream: a reconnect resumes from the last event id after the back
 test("poll path: a reply by id answers, a free-text question takes any non-blank reply", async (t) => {
   const { fake, cfg } = await setup(t);
   fake.inject(ALL, `reply ${ID_A} yes please`);
-  assert.deepEqual(await waitForAnswer(cfg, ID_A, { seconds: 2, intervalMs: 20 }), {
-    id: ID_A, answer: "yes please", status: "answered", source: "unverified channel broadcast",
-  });
+  const r = await waitForAnswer(cfg, ID_A, { seconds: 2, intervalMs: 20 });
+  assert.equal(JSON.stringify(r), `{"id":"${ID_A}","answer":"yes please","status":"answered","source":"unverified channel broadcast"}`);
 });
 
 test("poll path: a skip returns skipped", async (t) => {
   const { fake, cfg } = await setup(t);
   fake.inject(ALL, JSON.stringify({ v: 1, kind: "approval-end", from: "operator", id: ID_B, reason: "skipped", ts: Date.now() }));
-  assert.deepEqual(await waitForAnswer(cfg, ID_B, { seconds: 2, intervalMs: 20 }), { id: ID_B, status: "skipped" });
+  const r = await waitForAnswer(cfg, ID_B, { seconds: 2, intervalMs: 20 });
+  assert.equal(JSON.stringify(r), `{"id":"${ID_B}","status":"skipped"}`);
 });
 
 test("poll path: a choice answer matches a label case-insensitively and returns the selected labels", async (t) => {
   const { fake, cfg } = await setup(t);
   fake.inject(ALL, `reply ${ID_C} vue`);
-  assert.deepEqual(await waitForAnswer(cfg, ID_C, { seconds: 2, intervalMs: 20, questions: CHOICE }), {
-    id: ID_C, status: "answered", answer: "Vue", selected: ["Vue"], source: "unverified channel broadcast",
-  });
+  const r = await waitForAnswer(cfg, ID_C, { seconds: 2, intervalMs: 20, questions: CHOICE });
+  assert.equal(JSON.stringify(r), `{"id":"${ID_C}","status":"answered","answer":"Vue","selected":["Vue"],"source":"unverified channel broadcast"}`);
 });
 
 test("poll path: a blank reply is malformed and leaves the question pending", async (t) => {
   const { fake, cfg } = await setup(t);
   fake.inject(ALL, `reply ${ID_A}   `);
-  assert.deepEqual(await waitForAnswer(cfg, ID_A, { seconds: 0 }), { id: ID_A, status: "pending" });
+  const r = await waitForAnswer(cfg, ID_A, { seconds: 0 });
+  assert.equal(JSON.stringify(r), `{"id":"${ID_A}","status":"pending"}`);
 });
 
 test("poll path: an invalid id or a wait over 45 seconds is refused", async (t) => {
