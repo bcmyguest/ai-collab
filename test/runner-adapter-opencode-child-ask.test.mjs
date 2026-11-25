@@ -43,3 +43,41 @@ test("opencode surfaces a subagent ask that carries no parentID by reading the c
     await svc.close();
   }
 });
+
+test("opencode resolves a child's owner once, so repeat asks from the child cost no parent lookups", async () => {
+  const svc = await fakeOpencodeService({ parents: { [CHILD]: SID } });
+  const events = [];
+  const ctx = { events, emit: (e) => events.push(e), log: () => {}, signal: new AbortController().signal };
+  const adapter = createOpenCodeAdapter({ env: svc.env, retryMs: 20 });
+  const handle = await adapter.open({ cwd: "/work", permission: { autoReply: [], reply: "once" } }, ctx);
+  try {
+    await until(() => svc.streams.length, "event stream");
+    svc.emit({ type: "permission.asked", data: { id: "per_c1", sessionID: CHILD, action: "bash", resources: ["ls"] } });
+    await until(() => cards(ctx, "per_c1").length, "first child ask");
+    svc.emit({ type: "permission.asked", data: { id: "per_c2", sessionID: CHILD, action: "bash", resources: ["pwd"] } });
+    await until(() => cards(ctx, "per_c2").length, "second child ask");
+    assert.equal(svc.count("GET", `/api/session/${CHILD}`), 1, "the child was looked up more than once");
+    await handle.close();
+  } finally {
+    await adapter.shutdown();
+    await svc.close();
+  }
+});
+
+test("opencode surfaces a grandchild's ask when the event names an unowned parent", async () => {
+  const GRAND = "ses_grand";
+  const svc = await fakeOpencodeService({ parents: { [CHILD]: SID, [GRAND]: CHILD } });
+  const events = [];
+  const ctx = { events, emit: (e) => events.push(e), log: () => {}, signal: new AbortController().signal };
+  const adapter = createOpenCodeAdapter({ env: svc.env, retryMs: 20 });
+  const handle = await adapter.open({ cwd: "/work", permission: { autoReply: [], reply: "once" } }, ctx);
+  try {
+    await until(() => svc.streams.length, "event stream");
+    svc.emit({ type: "permission.asked", data: { id: "per_g", sessionID: GRAND, parentID: CHILD, action: "bash", resources: ["ls"] } });
+    await until(() => cards(ctx, "per_g").length, "approval card for the grandchild ask");
+    await handle.close();
+  } finally {
+    await adapter.shutdown();
+    await svc.close();
+  }
+});

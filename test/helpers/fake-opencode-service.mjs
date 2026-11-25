@@ -8,6 +8,9 @@ export const PASSWORD = "test-password";
 export const AUTH = `Basic ${Buffer.from(`opencode:${PASSWORD}`).toString("base64")}`;
 const SESSION = "ses_test"; // the id POST /api/session returns
 
+// The OpenCode 2.2.6 Session.Info shape: no status field, the turn state lives in time.busy and time.idle.
+const timeOf = (state) => (state === "busy" ? { created: 1, updated: 2, busy: 2 } : { created: 1, updated: 2, busy: 1, idle: 2 });
+
 /**
  * status: session id -> "idle" | "busy" (read on GET /api/session/:id); permissions: session id -> listed asks.
  * parents: child session id -> parent id, read on GET /api/session/:id.
@@ -39,7 +42,7 @@ export async function fakeOpencodeService({ status = {}, permissions = {}, paren
     if (!session) return send(404, { error: "unscripted route" });
     const id = decodeURIComponent(session[1]);
     const rest = session[2] ?? "";
-    if (req.method === "GET" && rest === "") return send(200, { data: { id, status: status[id] ?? "idle", ...(parents[id] ? { parentID: parents[id] } : {}) } });
+    if (req.method === "GET" && rest === "") return send(200, { data: { id, time: timeOf(status[id] ?? "idle"), ...(parents[id] ? { parentID: parents[id] } : {}) } });
     if (req.method === "GET" && rest === "/permission") return send(200, { data: permissions[id] ?? [] });
     if (req.method === "POST" && rest === "/prompt") return send(200, { data: { id: "msg_1" } });
     if (req.method === "POST" && /^\/permission\/[^/]+\/reply$/.test(rest)) {
