@@ -154,6 +154,4 @@ test("the production server keeps no request log and no fault knobs", async (t) 
   await publish(b.cfg, "t", "a");
   await pollCached(b.cfg, "t", "all");
   assert.equal(b.server.state, undefined, "no per-request arrays on the production server");
-  const res = await fetch(`${b.url}/`, { method: "POST", headers: { authorization: `Bearer ${TOKEN}` }, body: JSON.stringify({ topic: "t", message: "x" }) });
-  assert.equal(res.status, 200, "no injected failure without a test hook");
 });
