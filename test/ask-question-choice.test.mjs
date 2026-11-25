@@ -6,6 +6,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { loadConfig } from "../lib/config.mjs";
+import { MESSAGE_MAX_BYTES } from "../lib/config.mjs";
 import { askQuestion, openQuestions, waitRequestedAt } from "../lib/questions.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
@@ -95,4 +96,15 @@ test("ask_question returns skipped and clears the wait when the operator skips a
   assert.deepEqual(await pending, { id, status: "skipped" });
   assert.deepEqual(openQuestions(cfg), []);
   assert.equal(waitRequestedAt(cfg), 0);
+});
+
+test("an oversized choice card shrinks its descriptions to fit MESSAGE_MAX_BYTES", async (t) => {
+  const { fake, cfg } = await setup(t);
+  const choices = ["A", "B", "C", "D", "E", "F"].map((c) => ({ label: `${c}${"é".repeat(90)}`, description: "é".repeat(300) }));
+  const pending = askQuestion(cfg, "é".repeat(500), { seconds: 5, intervalMs: 20, choices });
+  const asked = await published(fake, "approval");
+  const [card] = fake.state.publishes;
+  assert.ok(Buffer.byteLength(card.message) <= MESSAGE_MAX_BYTES, `card is ${Buffer.byteLength(card.message)} bytes`);
+  fake.inject(ALL, `reply ${asked.id} ${choices[0].label}`);
+  assert.equal((await pending).status, "answered");
 });
