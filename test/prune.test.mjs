@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { stateDir } from "../lib/config.mjs";
 import {
-  builderDecision, parseAge, parsePruneArgs, parseWorktreeList, pruneRepo, readLiveCwds, treeBytes, worktreeDecision,
+  builderDecision, isProtectedCheckout, parseAge, parsePruneArgs, parseWorktreeList, pruneRepo, readLiveCwds, treeBytes, worktreeDecision,
 } from "../lib/prune.mjs";
 
 const NOW = Date.parse("2026-11-25T00:00:00Z");
@@ -231,6 +231,13 @@ test("worktreeDecision keeps main, protected, locked, dirty, in-use and recent w
   assert.equal(worktreeDecision({ ...base, inUse: true }, CUTOFF).reason, "in use: a live process has its cwd inside");
   assert.equal(worktreeDecision({ ...base, lastActivityMs: NOW }, CUTOFF).reason, "newer than cutoff");
   assert.equal(worktreeDecision({ ...base, error: "boom" }, CUTOFF).action, "keep");
+});
+
+test("isProtectedCheckout matches the checkout itself, not worktrees under it", () => {
+  assert.equal(isProtectedCheckout("/home/b/ai-collab", "/home/b/ai-collab"), true);
+  assert.equal(isProtectedCheckout("/home/b/ai-collab-serving", "/tmp/elsewhere"), true);
+  assert.equal(isProtectedCheckout("/home/b/ai-collab/.claude/worktrees/agent-x", "/home/b/ai-collab"), false);
+  assert.equal(isProtectedCheckout("/home/b/ai-collab-wt-x", "/home/b/ai-collab"), false);
 });
 
 test("worktreeDecision removes clean branch worktrees and archives detached HEADs first", () => {
