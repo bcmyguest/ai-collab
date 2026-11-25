@@ -231,12 +231,24 @@ UNVERIFIED:
 |---|---|
 | `lib/builder.mjs` | `builder start/run/list/stop` |
 | `lib/cli.mjs` | `ai-collab builder` wiring |
+| `lib/prune.mjs` | `ai-collab prune`: builder copies and worktrees |
+| `test/prune.test.mjs` | prune decisions, archive refs and reachability against temp repos |
 | `lib/sandbox.ts` | OpenShell list, create, upload, download, exec argv, delete, staged upload |
 | `test/builder.test.mjs` | end to end against the fakes |
 | `test/builder-claude.test.mjs`, `test/helpers/fake-claude-builder.mjs` | the lean Claude builder against the fakes |
 | `test/helpers/fake-systemd-run.mjs` | fake `systemd-run` (runs the unit in the foreground) and `systemctl` |
 | `test/helpers/fake-builder-agent.mjs` | fake agent: commits, fires a capture hook, records task calls |
 | `test/helpers/fake-oncebitten.mjs` | fake `oncebitten capture` and `check` |
+
+## Prune copies
+
+`ai-collab prune [--apply] [--older-than 7d] [--json]` is a dry run unless `--apply` is given. It removes:
+
+- Builder dirs in a settled phase (`finished`, `failed`, `stopped`) whose `state.json` is older than the cutoff, with the unit inactive and no live pid. It deletes `back/` (clone), `stage/` (staged tree and `tools/`), `download-*` and `*.log` files over 1 MiB. It keeps `state.json`, `brief.md`, `policy.yaml`, the `workflow-*.db` journal, `out/` (ai-collab call records and oncebitten payloads) and smaller logs.
+- Unlanded commits (`commits > 0`, `landed` false) are archived first: the clone's HEAD goes to `refs/ai-collab/archive/<builder-id>` in the project repo. A builder with unlanded commits and no clone is kept.
+- Linked worktrees of the project repo, except the main worktree and protected checkouts. A worktree goes only when it has no uncommitted or untracked-but-not-ignored files, is not locked, no live process has its cwd inside it, and its last commit or directory mtime is older than the cutoff. A detached HEAD goes to `refs/ai-collab/archive/wt-<name>` before `git worktree remove`. Branches are never deleted.
+
+Builders hold no harness transcript on the host. Claude, Codex and OpenCode write their output to the unit's journal, Cursor streams to OTLP, and the sandbox session directories are destroyed at cleanup.
 
 ## Calling tools from sandbox programs
 
