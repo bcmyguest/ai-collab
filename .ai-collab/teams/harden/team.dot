@@ -1,0 +1,8 @@
+digraph "harden" {
+  graph [description="Two worker pairs each take one Ready hardening task; each reviewer promotes or declines its own worker's change. No cross-role chatter."];
+  worker   [agent="cursor", count=2, prompt="Take exactly one Ready task handed to you, never a second one. Make the smallest change that satisfies the task's verify criteria, and add or run the unit test that proves it. Hand your paired reviewer the branch, the diff, the test command, and its full output. Do not message any other role; the handoff note is the only channel."];
+  reviewer [agent="cursor", count=2, prompt="Review exactly the change your paired worker handed you, against that task's verify criteria. Re-run the named test yourself. Promote when the test passes and the change matches the task; decline with the specific fix needed. Do not edit code and do not message any other role; the handoff note is the only channel."];
+  worker   -> reviewer [on="ready for review", kind="pair", required=true];
+  reviewer -> worker   [on="declined", kind="pair", required=false, cap=2];
+  reviewer -> done     [on="promoted", kind="pair", required=true];
+}
