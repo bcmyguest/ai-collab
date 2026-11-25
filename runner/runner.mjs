@@ -631,6 +631,8 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       return (cfg && listSessions(cfg).find((s) => s.id === address && s.online)) || null;
     },
     ready: async (session) => readySession(session, session.harness === "opencode" ? await openCodeActive() : null, { env, idle: sessionIdleState }),
+    // An OpenCode session with a running turn queues a push behind its earlier copies.
+    busy: async (session) => session.harness === "opencode" && Boolean((await openCodeActive())?.has(session.sessionId)),
     reserve: (scfg, ids, { owner, allowSeen = false }) => reserveOwned(scfg, ids, { owner, allowSeen, ttlMs: reserveTtlMs }),
     release: (scfg, ids, owner) => releaseOwned(scfg, ids, owner),
     markDelivered: (scfg, ids) => markDelivered(scfg, ids),

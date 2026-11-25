@@ -12,7 +12,7 @@ export function backoffMs(failures) {
 
 /**
  * Builds the workflow function over deps (injectable; the live set is in runner/runner.mjs):
- *   now(); scfgOf(project, session); sessionOf(project, address) -> live session or null; ready(session) -> bool;
+ *   now(); scfgOf(project, session); sessionOf(project, address) -> live session or null; ready(session) -> bool; busy?(session) -> bool (still working on an earlier push);
  *   reserve(scfg, ids, {owner, allowSeen}) -> {owned, busy}; release(scfg, ids, owner); markDelivered(scfg, ids);
  *   snapshot(session) -> JSON; push(session, {text, urgent, ids}) -> {status}; awaitConfirm(id, session, snapshot) -> bool;
  *   waitConfirmed(session, ids, snapshot) -> bool after the full confirm window; confirmedSince(session, ids, snapshot) -> bool;
@@ -35,18 +35,19 @@ export function deliveryWorkflow(deps) {
     let snap;
 
     // Waits, without a checkpoint, until the target is live and ready; resolves null once the TTL passes.
-    async function target() {
+    // A redelivery also waits while the target works on an earlier push, so busy sessions do not queue stale copies.
+    async function target(redelivery) {
       for (;;) {
         if (expired()) return null;
         const session = deps.sessionOf(project, address);
-        if (session && await deps.ready(session)) return session;
+        if (session && await deps.ready(session) && !(redelivery && await deps.busy?.(session))) return session;
         await wf.pause(readyPollMs);
       }
     }
 
     // One push attempt. Resolves "delivered", "failed" (retry after backoff), "cut" (never sent again), "skipped" or "expired".
     async function attempt(attemptNo, { allowSeen }) {
-      const session = await target();
+      const session = await target(attemptNo > 1);
       if (!session) return "expired";
       const scfg = deps.scfgOf(project, session);
       if (snap === undefined) snap = await wf.step("snapshot", () => deps.snapshot(session));
