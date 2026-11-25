@@ -97,11 +97,11 @@ Why a clone rather than committing on the host after a plain file copy: builders
 
 | Harness | Copied in | API hosts allowed |
 |---|---|---|
-| Cursor | `~/.config/cursor/auth.json` (or `~/.cursor/auth.json`) to `/sandbox/home/.config/cursor/`, and the ntfy token from `defaults.json` `tokenFile` to `/sandbox/home/.config/ai-collab/ntfy-token` | `api2`, `api3`, `api4.cursor.sh`, `agentn.global.api5.cursor.sh`, `cursor.com` |
+| Cursor | `~/.config/cursor/auth.json` (or `~/.cursor/auth.json`) to `/sandbox/home/.config/cursor/`, and the bus token from `defaults.json` `tokenFile` to `/sandbox/home/.config/ai-collab/bus-token` | `api2`, `api3`, `api4.cursor.sh`, `agentn.global.api5.cursor.sh`, `cursor.com` |
 | Codex | `$CODEX_HOME/auth.json` to `/sandbox/home/.codex/` | `chatgpt.com`, `api.openai.com`, `auth.openai.com`, `ab.chatgpt.com` (UNVERIFIED list) |
-| Claude | `$CLAUDE_CONFIG_DIR/.credentials.json` (default `~/.claude/`) to `/sandbox/home/.claude/`, and the ntfy token from `defaults.json` `tokenFile` to `/sandbox/home/.config/ai-collab/ntfy-token` | `api.anthropic.com` (the only host a lean run contacted), `platform.claude.com` (OAuth refresh) and `claude.ai` (account auth), per [network-config](https://code.claude.com/docs/en/network-config.md) |
+| Claude | `$CLAUDE_CONFIG_DIR/.credentials.json` (default `~/.claude/`) to `/sandbox/home/.claude/`, and the bus token from `defaults.json` `tokenFile` to `/sandbox/home/.config/ai-collab/bus-token` | `api.anthropic.com` (the only host a lean run contacted), `platform.claude.com` (OAuth refresh) and `claude.ai` (account auth), per [network-config](https://code.claude.com/docs/en/network-config.md) |
 
-Each secret goes through a 0600 temp copy and a single-file upload; it never appears in argv, `--env` or a log. Every builder sandbox gets the ntfy token, for the ai-collab MCP server. The sandbox `defaults.json` `tokenFile` is `/sandbox/home/.config/ai-collab/ntfy-token`, the path that was uploaded. Nothing else is copied: no SSH keys, no host config. When Claude refreshes its OAuth login inside, the unit copies the new credentials back to the host (0600, atomic rename) unless the host file changed during the run; whether a refresh rotates the refresh token is not documented. The policy (`policy.yaml`, JSON, which is YAML) allows the harness hosts on 443 and `host.openshell.internal:8794` (the host's ntfy) for the executables of the harness tree and the uploaded node; every other host is denied. The policy keeps `/sandbox`, `/tmp` and `/dev/null` writable, so the suite needs `TMPDIR` under `/tmp`.
+Each secret goes through a 0600 temp copy and a single-file upload; it never appears in argv, `--env` or a log. Every builder sandbox gets the bus token, for the ai-collab MCP server. The sandbox `defaults.json` `tokenFile` is the uploaded path. Nothing else is copied: no SSH keys, no host config. When Claude refreshes its OAuth login inside, the unit copies the new credentials back to the host (0600, atomic rename) unless the host file changed during the run; whether a refresh rotates the refresh token is not documented. The policy (`policy.yaml`, JSON, which is YAML) allows the harness hosts on 443 and `host.openshell.internal:8794` (the host's bus) for the executables of the harness tree and the uploaded node; every other host is denied. The policy keeps `/sandbox`, `/tmp` and `/dev/null` writable, so the suite needs `TMPDIR` under `/tmp`.
 
 The login shell of `sandbox exec` sets `SSL_CERT_FILE` to the CA OpenShell terminates TLS with, so the unit never overrides it.
 
@@ -203,7 +203,7 @@ Why Cursor failed (measured 2026-11-22, CLI 2026.11.22-e9042b2): about 230 ms af
 UNVERIFIED:
 
 - Claude OAuth refresh inside a sandbox and the copy-back: no smoke run needed a refresh, so only the fakes cover it.
-- ntfy from inside: the ai-collab MCP server connected and `list_agents` answered, but no message was sent through `host.openshell.internal:8794`.
+- bus from inside: the ai-collab MCP server connected and `list_agents` answered, but no message was sent through `host.openshell.internal:8794`.
 - `--setting-sources ""` loading nothing is observed behaviour, not documented.
 
 - The full test suite inside a sandbox (node now starts there; no builder has run `npm test`).
@@ -243,7 +243,7 @@ const { agents } = await tools.callTool("list_agents");
 The client executes in the sandbox process. OpenShell's filesystem and
 network policy applies to every call. The operator configures access when
 setting up the sandbox, and the client uses the regular AI Collab project,
-peer, and session settings in that environment. For ntfy-backed tools, set
+peer, and session settings in that environment. For bus-backed tools, set
 `AI_COLLAB_URL` to the policy-allowed endpoint (for example,
 `http://host.openshell.internal:8794` under the builder policy), and provide
 credentials inside the sandbox if the endpoint requires them. Tools that

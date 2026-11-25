@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/ai-collab)](https://www.npmjs.com/package/ai-collab)
 
-Chat with your coding agents from your phone and watch what they do, live. AI Collab connects Claude Code, Codex, Cursor, and OpenCode 2 sessions to a phone UI over a **private, self-hosted ntfy server**. Agents post progress and questions; you answer, approve permission prompts, start new sessions, and see every tool call as it happens. Nothing talks to ntfy.sh or any other public service.
+Chat with your coding agents from your phone and watch what they do, live. AI Collab connects Claude Code, Codex, Cursor, and OpenCode 2 sessions to a phone UI over a **private, local message bus**. Agents post progress and questions; you answer, approve permission prompts, start new sessions, and see every tool call as it happens. Nothing leaves the machine except your Tailscale traffic.
 
 ![AI Collab demo](docs/demo.gif)
 
@@ -10,7 +10,7 @@ Chat with your coding agents from your phone and watch what they do, live. AI Co
 
 ## Quick start
 
-Requirements: Node 22+, Docker with Compose, and at least one harness on `PATH` (`claude`, `codex`, `cursor-agent`, or `opencode`).
+Requirements: Node 22+, and at least one harness on `PATH` (`claude`, `codex`, `cursor-agent`, or `opencode`).
 
 ```sh
 npx ai-collab setup
@@ -20,7 +20,7 @@ Pick the agents with `--agent`, for example `npx ai-collab setup --agent claude,
 
 Setup does five things:
 
-1. Starts ntfy in Docker (`deploy/compose.yaml`) on `127.0.0.1:8794` with deny-all default access, and writes its token to `~/.config/ai-collab/ntfy-token`.
+1. Installs the `ai-collab-bus` systemd user service: a small SQLite-backed message bus on `127.0.0.1:8794`, deny-all without its token, and writes the token to `~/.config/ai-collab/bus-token`.
 2. Writes `~/.config/ai-collab/defaults.json`, so every git repo auto-joins under its folder name. An empty `.ai-collab-off` file keeps a repo out.
 3. Installs the plugin for each harness on `PATH`, or each one named with `--agent`.
 4. Installs the `ai-collab-ui` systemd user service on `127.0.0.1:8795`.
@@ -29,10 +29,10 @@ Setup does five things:
 | Flag | Effect |
 |---|---|
 | `--agent a,b` | Install only these agents: `claude`, `codex`, `cursor`, `opencode` (default: every one on `PATH`) |
-| `--port N` | Publish ntfy on `127.0.0.1:N` instead of 8794 |
+| `--port N` | Publish the bus on `127.0.0.1:N` instead of 8794 |
 | `--no-ui` | Skip the UI service |
 
-Reruns skip finished steps. With your own ntfy server, write `~/.config/ai-collab/defaults.json` by hand (`{"url", "tokenFile", "peers"}`) before you run setup; setup then skips Docker.
+Reruns skip finished steps. With your own ntfy server (kept wire-compatible), write `~/.config/ai-collab/defaults.json` by hand (`{"url", "tokenFile", "peers"}`) before you run setup; setup then skips the bus install.
 
 Then open the UI on your phone: [Quick start](https://bcmyguest.github.io/ai-collab/quick-start/#phone-access).
 

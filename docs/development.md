@@ -26,7 +26,7 @@ npm run build
 AI_COLLAB_BROWSER_TEST=1 node --test --test-concurrency=1 test/chat-*-browser.test.mjs
 ```
 
-The checks use a 390-pixel viewport and a local ntfy fixture. They cover message routing, urgent sends, edits and cancellation in the queue, draft isolation between project and session chats, image uploads and replies, and send confirmation during a slow team start. Set `CHROME_PATH` if Chromium is outside the Playwright cache.
+The checks use a 390-pixel viewport and the in-process bus fixture. They cover message routing, urgent sends, edits and cancellation in the queue, draft isolation between project and session chats, image uploads and replies, and send confirmation during a slow team start. Set `CHROME_PATH` if Chromium is outside the Playwright cache.
 
 ### celld workflow smoke test
 
@@ -130,4 +130,4 @@ npm ci
 npm run demo                  # next build web, then scripts/demo/record.mjs → docs/demo.gif
 ```
 
-`scripts/demo/record.mjs` runs the built UI against the in-process fake ntfy (`test/helpers/fake-ntfy.mjs`) with a throwaway `HOME` and project `calc-demo`, so it touches no real topic, config or session. Real hook processes (`scripts/ai-collab-hook.mjs` with fake payloads) and `sendMessage` drive `scripts/demo/scenario.mjs`; a screenshot loop records a 390×844 dark phone viewport at 2× and `scripts/demo/encode.mjs` adds captions, zooms and 3× fast-forward and writes the GIF (10 fps, changed pixels only). Beats the UI lacks (approval card, Home) are skipped and listed. Options: `node scripts/demo/record.mjs --out /tmp/demo.gif --keep` keeps the frames; `node scripts/demo/encode.mjs <frames-dir> out.gif --stills 5,12` re-encodes them and writes PNG stills to check. Set `DEMO_CHROME` to pick a Chromium binary; by default it uses `~/.cache/ms-playwright/chromium-*`.
+`scripts/demo/record.mjs` runs the built UI against the in-process bus (`test/helpers/fake-ntfy.mjs`) with a throwaway `HOME` and project `calc-demo`, so it touches no real topic, config or session. Real hook processes (`scripts/ai-collab-hook.mjs` with fake payloads) and `sendMessage` drive `scripts/demo/scenario.mjs`; a screenshot loop records a 390×844 dark phone viewport at 2× and `scripts/demo/encode.mjs` adds captions, zooms and 3× fast-forward and writes the GIF (10 fps, changed pixels only). Beats the UI lacks (approval card, Home) are skipped and listed. Options: `node scripts/demo/record.mjs --out /tmp/demo.gif --keep` keeps the frames; `node scripts/demo/encode.mjs <frames-dir> out.gif --stills 5,12` re-encodes them and writes PNG stills to check. Set `DEMO_CHROME` to pick a Chromium binary; by default it uses `~/.cache/ms-playwright/chromium-*`.

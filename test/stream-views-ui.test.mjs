@@ -5,7 +5,7 @@ import { publishActivity } from "../lib/activity.mjs";
 import { approvalMessage } from "../lib/approvals.mjs";
 import { broadcastTopic, loadConfig } from "../lib/config.mjs";
 import { sendMessage } from "../lib/inbox.mjs";
-import { publish } from "../lib/ntfy.mjs";
+import { publish } from "../lib/transport.mjs";
 import { createStreamViews } from "../web/lib/stream-views.js";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";

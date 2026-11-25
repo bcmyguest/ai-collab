@@ -4,10 +4,10 @@ Configuration lives in `${XDG_CONFIG_HOME:-~/.config}/ai-collab/`. Keep the toke
 
 ## Auto-join every repo (defaults.json)
 
-`defaults.json` holds the shared keys. [`setup`](quick-start.md) writes it; with your own ntfy server, write it by hand:
+`defaults.json` holds the shared keys. [`setup`](quick-start.md) writes it; with your own bus or ntfy server, write it by hand:
 
 ```json
-{ "url": "http://127.0.0.1:8794", "tokenFile": "/absolute/path/to/private/ntfy/token", "peers": "claude,codex,cursor" }
+{ "url": "http://127.0.0.1:8794", "tokenFile": "/absolute/path/to/private/bus/token", "peers": "claude,codex,cursor" }
 ```
 
 `defaults.json` also takes `"codeMode": false` to turn native code mode off for every session ai-collab starts (default on; see [Code mode](code-mode.md)). `"limitFallback": "harness:model"` is the replacement a usage limit starts without asking (default Cursor DeepSeek). A builder whose Codex run hits its limit retries with it, then Cursor DeepSeek, then `opencode:opencode/deepseek-v4.1-flash-free`. A session that is not a builder starts the same chain in place and does not raise a choice card. `"readsThroughRunCode": true` makes agents batch the ai-collab read tools through `run_code` instead of calling them one by one, and makes the CLI read commands exit 3 with the `run_code` program for an agent session; `AI_COLLAB_DIRECT_READS=1` bypasses this machine default for CLI reads. New sessions launched by chat tags require code reads (see [Code mode](code-mode.md#run_code)). `"startPlace": "folder" | "worktree" | "openshell"` is where a session starts when the caller names no place (default `openshell`; a harness that cannot run in OpenShell gets the folder; see [Start a session from the phone](phone-ui.md#start-a-session-from-the-phone)). `"maxSandboxes": N` caps the OpenShell sandboxes on the machine (default 6). It counts every sandbox `openshell sandbox list` shows except `run_code`'s shared `ai-collab-code` and its per-call `aic-ro-*` read sandboxes, which are short-lived tool plumbing. At the cap, `builder start` and a runner OpenShell start that would add a sandbox are refused with an error naming the running sandboxes, and a sandboxed schedule tick is skipped with the reason in its log ([Scheduled workflows](owned-sessions-contract.md#scheduled-workflows)).
@@ -26,7 +26,7 @@ A session in a git repo without a `projects.json` entry then joins under a proje
     "root": "/absolute/path/to/project",
     "project": "demo",
     "url": "http://127.0.0.1:8794",
-    "tokenFile": "/absolute/path/to/private/ntfy/token",
+    "tokenFile": "/absolute/path/to/private/bus/token",
     "peers": "claude,codex,cursor"
   }
 ]
@@ -40,7 +40,7 @@ Hooks use the most specific configured workspace and assign a peer name from the
 
 ## Sessions and routing
 
-Each session gets a separate inbox cursor and a stable, short sender label derived from its harness session ID. The raw ID stays local. The session hook supplies the exact CLI prefix for sending replies, and the CLI attaches the label to the message. Direct messages to a harness name reach sessions sharing that name. Use `peer#session-label` to target one session. This routing uses the shared ntfy topics and does not define separate access permissions.
+Each session gets a separate inbox cursor and a stable, short sender label derived from its harness session ID. The raw ID stays local. The session hook supplies the exact CLI prefix for sending replies, and the CLI attaches the label to the message. Direct messages to a harness name reach sessions sharing that name. Use `peer#session-label` to target one session. This routing uses the shared topics and does not define separate access permissions.
 
 Cursor shell commands use the conversation identity exported by Cursor, so `ai-collab send` automatically identifies the session within a configured workspace.
 
@@ -50,7 +50,7 @@ Cursor shell commands use the conversation identity exported by Cursor, so `ai-c
 |---|---|---|
 | `AI_COLLAB_PROJECT` | (required) | Project scope. 1-24 chars of `a-z 0-9` and single hyphens. Topics are scoped by it. |
 | `AI_COLLAB_PEER` | Harness name in configured hooks | This agent's peer name. Same rules as the project name, and not `all`. |
-| `AI_COLLAB_URL` | `http://127.0.0.1:8794` | Base URL of your private ntfy server. Must be http(s). |
+| `AI_COLLAB_URL` | `http://127.0.0.1:8794` | Base URL of the message bus (or your own ntfy server). Must be http(s). |
 | `AI_COLLAB_TOKEN` | unset | Sent as `Authorization: Bearer <token>` when set. |
 | `AI_COLLAB_PEERS` | unset | Shared, comma-separated peer list, e.g. `alice,bob,carol`. Used for `peers` and to reject `send` to unknown names. Same value on every machine. There is no network discovery. |
 | `AI_COLLAB_TIMEOUT_MS` | `2000` | Per-request timeout (200-15000). |
@@ -60,7 +60,7 @@ Cursor shell commands use the conversation identity exported by Cursor, so `ai-c
 | `AI_COLLAB_STATE_DIR` | `$XDG_STATE_HOME/ai-collab` or `~/.local/state/ai-collab` | Cursors, dedup ids, and the lock directory. |
 | `AI_COLLAB_AFK_WAIT_S` | `600` (or `afkWaitSeconds` in `projects.json`) | How long the Stop hook waits for operator messages in AFK mode `on`, after the agent asks with `ask_question` or `wait_for_operator` (0-86400). |
 | `AI_COLLAB_STOP_CAP` | `5` | Consecutive Stop continuations for messages before the agent is let stop (0-50). |
-| `AI_COLLAB_STOP_POLL_MS` | `5000` | First retry delay when the Stop hook's ntfy stream fails; doubles to 60 s. |
+| `AI_COLLAB_STOP_POLL_MS` | `5000` | First retry delay when the Stop hook's bus stream fails; doubles to 60 s. |
 | `AI_COLLAB_IMPORTANT_MAX_S` | `86400` | Oldest important question the Stop hook still holds for. |
 | `AI_COLLAB_ACTIVITY` | `on` (or `"activity": "off"` in `projects.json`) | `off`, `0`, `false`, or `no` stops hooks from publishing [activity](activity.md). The environment overrides `projects.json`. |
 | `AI_COLLAB_APPROVAL_S` | `540` | How long a permission hook waits for the phone in AFK mode (0-570; 0 turns [phone approvals](approvals.md#phone-approvals) off). The hooks are registered with a 600-second timeout. |

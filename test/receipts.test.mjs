@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { publishActivity } from "../lib/activity.mjs";
-import { loadConfig, NTFY_MESSAGE_MAX_BYTES, receiptsTopic, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, MESSAGE_MAX_BYTES, receiptsTopic, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, publishStatus, sendMessage } from "../lib/inbox.mjs";
 import { readReceipts, receiptMessages, sendReceipts, settleReceipts } from "../lib/receipts.mjs";
 import { runCli } from "../lib/cli.mjs";
@@ -33,7 +33,7 @@ test("receipt envelopes batch ids under ntfy's byte cap", () => {
   const ids = Array.from({ length: 300 }, (_, i) => `id-${String(i).padStart(60, "0")}`);
   const messages = receiptMessages(cfg, ids, "2026-01-01T00:00:00.000Z");
   assert.ok(messages.length > 1);
-  for (const m of messages) assert.ok(Buffer.byteLength(m) <= NTFY_MESSAGE_MAX_BYTES);
+  for (const m of messages) assert.ok(Buffer.byteLength(m) <= MESSAGE_MAX_BYTES);
   const parsed = messages.map(parseWireEnvelope);
   assert.deepEqual(parsed.flatMap((m) => m.ids), ids);
   assert.deepEqual(Object.keys(parsed[0]), ["v", "kind", "from", "session", "ids", "state", "ts"]);
@@ -48,7 +48,7 @@ test("a hook delivery publishes one read receipt for the delivered ids", async (
   const bob = loadConfig(peerEnv(fake, { peer: "bob" }));
   await sendMessage(bob, "alice", "one");
   await sendMessage(bob, "all", "@alice two");
-  const ids = fake.state.publishes.map((_, i) => `m${String(i + 1).padStart(8, "0")}`);
+  const ids = fake.state.publishes.map((p) => p.id);
   const r = await runHook({ hook_event_name: "SessionStart", session_id: "s-1", cwd: "/tmp" }, env);
   assert.equal(r.code, 0);
   assert.match(JSON.parse(r.out).hookSpecificOutput.additionalContext, /body="@alice two"/);
@@ -81,7 +81,7 @@ test("the CLI inbox publishes a read receipt", async (t) => {
   let out = "";
   assert.equal(await runCli(["inbox"], { env, stdout: { write: (s) => { out += s; } }, stderr: { write() {} } }), 0);
   assert.match(out, /cli/);
-  assert.deepEqual(receipts(fake).map((r) => [r.from, r.ids]), [["alice", ["m00000001"]]]);
+  assert.deepEqual(receipts(fake).map((r) => [r.from, r.ids]), [["alice", [fake.state.publishes[0].id]]]);
 });
 
 test("UI ticks: a direct message goes sent then read; a broadcast sent, delivered (some read), read", async (t) => {

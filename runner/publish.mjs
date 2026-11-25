@@ -2,7 +2,7 @@
 import { contentToText, EventType } from "@ag-ui/core";
 import { broadcastTopic } from "../lib/config.mjs";
 import { encodeEnvelope } from "../lib/agui.mjs";
-import { publish } from "../lib/ntfy.mjs";
+import { publish } from "../lib/transport.mjs";
 import { publishStatus } from "../lib/inbox.mjs";
 import { publishActivity } from "../lib/activity.mjs";
 import { compactionFields } from "../lib/compaction.mjs";

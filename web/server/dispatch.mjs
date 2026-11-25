@@ -17,7 +17,7 @@ import { formatInbox } from "../../lib/format.mjs";
 import { sessionIdleState } from "../../lib/idle.mjs";
 import { claimInbox, ATTACHMENT_BUDGET_MS, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery, reservedMessage } from "../../lib/inbox.mjs";
 import { cacheAttachmentsWithin } from "../../lib/attachment-cache.mjs";
-import { pollCached } from "../../lib/ntfy.mjs";
+import { pollCached } from "../../lib/transport.mjs";
 import { opencodeRequest } from "../../lib/opencode-api.mjs";
 import { readReceipts } from "../../lib/receipts.mjs";
 import { listSessions } from "../../lib/sessions.mjs";

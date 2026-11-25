@@ -7,9 +7,9 @@ flowchart LR
   Harness --> Hooks
   Harness --> Adapter
   Adapter --> Runner
-  Hooks --> ntfy
-  Runner --> ntfy
-  ntfy --> UI[UI server]
+  Hooks --> bus
+  Runner --> bus
+  bus --> UI[UI server]
   UI -- AG-UI SSE --> Browser
 ```
 
@@ -19,8 +19,8 @@ flowchart LR
 |---|---|
 | `RUN_STARTED` | `threadId`, `runId`, and the user message in `input.messages` when available |
 | `RUN_FINISHED`, `RUN_ERROR` | Finish carries `threadId`, `runId`, and `outcome` (`success` or `cancelled`). Failure carries `message` and optional `code`. An interruption reason and run correlation on multiplexed streams go in AI Collab metadata. |
-| `TEXT_MESSAGE_*` | `messageId`, `role`, `delta`. ntfy can carry a completed item as `TEXT_MESSAGE_CHUNK`. |
-| `TOOL_CALL_*` | `toolCallId`, `toolCallName`, argument `delta`, and result `messageId`, `content`, `role`. ntfy can carry a completed call as `TOOL_CALL_CHUNK`. |
+| `TEXT_MESSAGE_*` | `messageId`, `role`, `delta`. the bus can carry a completed item as `TEXT_MESSAGE_CHUNK`. |
+| `TOOL_CALL_*` | `toolCallId`, `toolCallName`, argument `delta`, and result `messageId`, `content`, `role`. the bus can carry a completed call as `TOOL_CALL_CHUNK`. |
 | `STEP_STARTED`, `STEP_FINISHED`, `STATE_DELTA` | `stepName` for compaction and JSON Patch `delta` for runner state such as context usage |
 | `CUSTOM` | `name` under `ai-collab.` and a `value` object. Names cover `msg`, `receipt`, `approval`, `approval-view`, `approval-end`, `question`, `mode`, `status`, and `alert`. |
 
@@ -28,12 +28,12 @@ Approvals and questions can suspend harness work within the same turn. The appro
 
 ## Rollout
 
-Structured ntfy publishers default to AG-UI. Readers accept AG-UI and legacy `{v:1, kind, ...}` messages, including cached history. Plain questions and `reply <id> <answer>` stay human-readable in the ntfy app in either mode.
+Structured bus publishers default to AG-UI. Readers accept AG-UI and legacy `{v:1, kind, ...}` messages, including cached history. Plain questions and `reply <id> <answer>` stay human-readable in either mode.
 
 1. Before deploying the AG-UI default, deploy 0.11.0 or later to the UI, runner, and every plugin reader. Restart or retire sessions that still run older plugin code.
 2. To keep or restore legacy publishing during rollout, set `"wire": "legacy"` on the project in `projects.json`, or set `AI_COLLAB_WIRE=legacy` in the publisher environment. The environment overrides the project setting. Reload affected publishers after changing their configuration. Each publish uses one wire format.
 
-On connect, the UI sends one legacy `event: state` frame so older tabs can detect the new build and offer a reload. Current phone clients receive AG-UI `data:` frames. `STATE_SNAPSHOT` refreshes view state. Activity frames carry the ntfy ID, time, and any attachment in `metadata.aiCollabUi`. A `CUSTOM` event named `ai-collab.activity-batch` commits the preceding activity frames as a history reset or an append. The browser projects activity into the timeline, turns, and project feed.
+On connect, the UI sends one legacy `event: state` frame so older tabs can detect the new build and offer a reload. Current phone clients receive AG-UI `data:` frames. `STATE_SNAPSHOT` refreshes view state. Activity frames carry the bus event ID, time, and any attachment in `metadata.aiCollabUi`. A `CUSTOM` event named `ai-collab.activity-batch` commits the preceding activity frames as a history reset or an append. The browser projects activity into the timeline, turns, and project feed.
 
 ## A2UI surfaces
 

@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
-import { claimInbox, NTFY_MESSAGE_MAX_BYTES, sendMessage } from "../lib/inbox.mjs";
+import { claimInbox, MESSAGE_MAX_BYTES, sendMessage } from "../lib/inbox.mjs";
 import { operatorPrompt, WAKE_PROMPT } from "../lib/mode.mjs";
 import { askQuestion, requestWait } from "../lib/questions.mjs";
 import { lastOperatorPromptAt, recordSession } from "../lib/sessions.mjs";
@@ -172,18 +172,18 @@ test("a session waiting in AFK releases when the mode turns off elsewhere", asyn
   assert.equal(clock.slept, 60_000, "stops when the off envelope arrives, not after 10 minutes");
 });
 
-test("sendMessage rejects an envelope of exactly 4096 bytes, which the ntfy server answers with HTTP 500", async (t) => {
+test("sendMessage rejects an envelope over the 4095-byte wire cap", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
   const cfg = loadConfig(peerEnv(fake, { peer: "alice" }));
-  assert.equal(NTFY_MESSAGE_MAX_BYTES, 4095);
+  assert.equal(MESSAGE_MAX_BYTES, 4095);
   await sendMessage(cfg, "all", "x");
   const overhead = Buffer.byteLength(fake.state.publishes[0].message) - 1;
   // Two-byte characters reach the byte cap within the 4000-character body limit.
   const body = (bytes) => "é".repeat(1000) + "x".repeat(bytes - overhead - 2000);
   await sendMessage(cfg, "all", body(4095));
   assert.equal(Buffer.byteLength(fake.state.publishes[1].message), 4095);
-  await assert.rejects(sendMessage(cfg, "all", body(4096)), /4095-byte limit/);
+  await assert.rejects(sendMessage(cfg, "all", body(4096)), /4095-byte wire limit/);
 });
 
 test("task notifications and agent hand-backs are not operator prompts", () => {

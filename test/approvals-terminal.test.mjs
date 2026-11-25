@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { NTFY_MESSAGE_MAX_BYTES, loadConfig, sessionLabel } from "../lib/config.mjs";
+import { MESSAGE_MAX_BYTES, loadConfig, sessionLabel } from "../lib/config.mjs";
 import { closeTerminalCards, decideApproval } from "../lib/approvals.mjs";
 import { currentModeKnown } from "../lib/mode.mjs";
 import { createUi } from "../web/server/ui.mjs";
@@ -70,7 +70,7 @@ test("AFK off: the view-only card reuses the ON-mode cleaning and size limit", a
   const big = [{ question: "Pick\u0007 one", header: "H", options: Array.from({ length: 9 }, (_, i) => ({ label: "L" + i, description: "d".repeat(400), preview: "p".repeat(3000) })) }];
   await decideApproval(cfg, { host: "claude", key: "permissionrequest", input: { tool_name: "AskUserQuestion", tool_input: { questions: big } } });
   const [card] = envelopes(fake, "approval-view");
-  assert.ok(Buffer.byteLength(card.raw) <= NTFY_MESSAGE_MAX_BYTES);
+  assert.ok(Buffer.byteLength(card.raw) <= MESSAGE_MAX_BYTES);
   assert.equal(card.questions[0].question, "Pick one");
   assert.equal(card.questions[0].options.length, 6);
   assert.ok(card.questions[0].options.every(o => (o.preview || "").length <= 2000 && (o.description || "").length <= 300));

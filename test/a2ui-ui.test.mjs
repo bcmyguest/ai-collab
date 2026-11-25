@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { approvalMessage } from "../lib/approvals.mjs";
 import { broadcastTopic, loadConfig } from "../lib/config.mjs";
-import { publish } from "../lib/ntfy.mjs";
+import { publish } from "../lib/transport.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

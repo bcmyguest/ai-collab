@@ -15,10 +15,10 @@ import { buzzes, readAlertLevel, writeAlertLevel } from "../../lib/alerts.mjs";
 import { loadConfig, loadProjects, activityTopic, startDefaultSetting, startPlaceSetting, broadcastTopic, configDir, stateDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.mjs";
 import { ACTIVITY_TYPES } from "../../lib/activity.mjs";
 import { stripControl } from "../../lib/format.mjs";
-import { NTFY_MESSAGE_MAX_BYTES, latestStatuses, changeQueuedMessage, queuedMessage, markUrgent, parseEnvelope, sendMessage } from "../../lib/inbox.mjs";
+import { MESSAGE_MAX_BYTES, latestStatuses, changeQueuedMessage, queuedMessage, markUrgent, parseEnvelope, sendMessage } from "../../lib/inbox.mjs";
 import { ATTACHMENT_MAX_BYTES, imageAttachment } from "../../lib/attachment.mjs";
 import { IMAGE_FILE, TEXT_FILE, attachmentOf, ensureAttachment, cachedAttachment, readAttachmentFile } from "../../lib/attachment-cache.mjs";
-import { publish } from "../../lib/ntfy.mjs";
+import { publish } from "../../lib/transport.mjs";
 import { parsePhoneReply, parseQuestionText } from "../../lib/questions.mjs";
 import { disposeSession, listSessions, sessionPlace, worktreeGone } from "../../lib/sessions.mjs";
 import { readState, statePath } from "../../lib/state.mjs";
@@ -273,7 +273,7 @@ function sentStream(confirmed, complete) {
 
 function failure(err) {
   const status = err.status || ([401, 403].includes(err.ntfyStatus) ? 403 : err.ntfyStatus === 429 ? 429 : 502);
-  const message = err.status ? err.message : status === 403 ? "The ntfy account cannot access that channel"
+  const message = err.status ? err.message : status === 403 ? "The bus token cannot access that channel"
     : status === 429 ? "The messaging service is rate limiting requests; try again shortly" : "Messaging service unavailable";
   return { status, message };
 }
@@ -1094,7 +1094,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const text = answer.body.trim();
     if (!/^[a-f0-9]{12}$/.test(answer.question) || !text || text.length > 2000) reject(400, "Enter 1–2000 characters");
     const reply = `reply ${answer.question} ${text}`;
-    if (Buffer.byteLength(reply) > NTFY_MESSAGE_MAX_BYTES) reject(400, "Reply exceeds the size limit");
+    if (Buffer.byteLength(reply) > MESSAGE_MAX_BYTES) reject(400, "Reply exceeds the size limit");
     await publishDecision(project, answer.question, reply, by);
     return { sent: true };
   }
@@ -1791,7 +1791,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (attachment) reject(400, "Question replies require text");
         if (typeof question !== "string" || !/^[a-f0-9]{12}$/.test(question) || (target && target !== "all")) reject(400, "Invalid question");
         const reply = `reply ${question} ${body.trim()}`;
-        if (body.trim().length > 2000 || Buffer.byteLength(reply) > NTFY_MESSAGE_MAX_BYTES) reject(400, "Reply exceeds the size limit");
+        if (body.trim().length > 2000 || Buffer.byteLength(reply) > MESSAGE_MAX_BYTES) reject(400, "Reply exceeds the size limit");
         await publishDecision(project, question, reply, by);
         return json(201, { sent: true });
       }
@@ -1832,7 +1832,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           if (tagged.length) notes.push(to === "all" ? "Project chat" : "To " + to);
         }
       } catch (err) {
-        if (err.message.includes("-byte limit")) reject(400, `Message exceeds ${NTFY_MESSAGE_MAX_BYTES} encoded bytes`);
+        if (err.message.includes("-byte limit")) reject(400, `Message exceeds ${MESSAGE_MAX_BYTES} encoded bytes`);
         throw err;
       }
       const confirmed = { sent: true, ...(reply?.quoted ? { quoted: true } : {}), ...(wake ? { wake } : {}) };

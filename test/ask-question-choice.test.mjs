@@ -43,7 +43,7 @@ test("ask_question with options publishes a choice card and returns the chosen l
   assert.equal(asked.harness, "claude");
   assert.equal(asked.expiresAt, 0);
   fake.inject(ALL, `reply ${asked.id} Unit, Other`);
-  assert.deepEqual(await pending, { id: asked.id, status: "answered", answer: "Unit, Other", selected: ["Unit", "Other"], source: "unverified ntfy broadcast" });
+  assert.deepEqual(await pending, { id: asked.id, status: "answered", answer: "Unit, Other", selected: ["Unit", "Other"], source: "unverified channel broadcast" });
 });
 
 test("a single choice answers with JSON or plain text and returns one label", async (t) => {
@@ -80,7 +80,7 @@ test("MCP ask_question takes options and multi_select over stdio and returns the
   assert.equal(asked.questions[0].multiSelect, true);
   fake.inject(ALL, `reply ${asked.id} ${JSON.stringify({ "Which tests?": "E2E, Unit" })}`);
   const result = JSON.parse(JSON.parse((await lines.next()).value).result.content[0].text);
-  assert.deepEqual(result, { id: asked.id, status: "answered", answer: "E2E, Unit", selected: ["E2E", "Unit"], source: "unverified ntfy broadcast" });
+  assert.deepEqual(result, { id: asked.id, status: "answered", answer: "E2E, Unit", selected: ["E2E", "Unit"], source: "unverified channel broadcast" });
   assert.deepEqual(openQuestions(cfg), []);
   assert.equal(waitRequestedAt(cfg), 0);
 });

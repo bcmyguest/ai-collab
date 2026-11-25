@@ -24,13 +24,13 @@ In AFK mode `on` or `quiet`, a permission prompt becomes a card in the UI and a 
 
 OpenCode runs `evaluate` before it shows its prompt, so while the phone wait lasts (AFK `on` or `quiet` only) the terminal shows no prompt; after `AI_COLLAB_APPROVAL_S` it shows OpenCode's own.
 
-The hook publishes an approval card in the project’s [ntfy wire format](ag-ui.md) to the broadcast topic (titled with the session, tool, and summary; ntfy priority 4) and holds one streaming subscription. **Allow** or **Deny** in the UI posts `reply <id> allow|deny`; a choice posts `reply <id> {"<question>":"<answer>",…}`. From the ntfy app, post `reply <id> allow` (also `yes`, `ok`) or `reply <id> deny` (`no`); a single-question choice accepts a label or free text. The hook reads the first usable reply, publishes a read receipt for it, and closes the request with an approval-end record carrying the card ID and reason (priority 1), where reason is `allowed`, `denied`, `answered`, `timeout`, `afk-off`, `cancelled`, `terminal`, or `skipped`.
+The hook publishes an approval card in the project’s [wire format](ag-ui.md) to the broadcast topic (titled with the session, tool, and summary; priority 4) and holds one streaming subscription. **Allow** or **Deny** in the UI posts `reply <id> allow|deny`; a choice posts `reply <id> {"<question>":"<answer>",…}`. From a phone post, send `reply <id> allow` (also `yes`, `ok`) or `reply <id> deny` (`no`); a single-question choice accepts a label or free text. The hook reads the first usable reply, publishes a read receipt for it, and closes the request with an approval-end record carrying the card ID and reason (priority 1), where reason is `allowed`, `denied`, `answered`, `timeout`, `afk-off`, `cancelled`, `terminal`, or `skipped`.
 
 The wait ends with no decision when `AI_COLLAB_APPROVAL_S` (540 s) passes, when the operator turns AFK mode off, when the operator taps **Skip** (an `approval-end` with reason `skipped` from `operator`; the hook publishes no second end), or when the harness kills the hook. The hook never allows or denies on its own; any failure is no decision. The UI shows closed requests as "Timed out: the terminal prompt took over" or "Closed: answered in the terminal or the agent stopped".
 
 ### View-only cards (AFK off)
 
-An answer from the UI cannot reach a terminal prompt that is already showing, so in mode `off` the card only mirrors it. The Claude Code or Codex `PermissionRequest` hook publishes the approval fields, cleaned and size-capped as in mode `on`, as a view-only card with `mode: "terminal"` (ntfy priority 2, no web push), records the card in the session's `.terminal.json` state file, and returns `{}` at once; the publish is capped at 1.5 s. The UI shows the question and options without answer buttons, labelled "Answer in the terminal", and `POST /api/approve` answers 409. A separate kind keeps readers that answer `approval` envelopes from offering buttons that nothing reads.
+An answer from the UI cannot reach a terminal prompt that is already showing, so in mode `off` the card only mirrors it. The Claude Code or Codex `PermissionRequest` hook publishes the approval fields, cleaned and size-capped as in mode `on`, as a view-only card with `mode: "terminal"` (priority 2, no web push), records the card in the session's `.terminal.json` state file, and returns `{}` at once; the publish is capped at 1.5 s. The UI shows the question and options without answer buttons, labelled "Answer in the terminal", and `POST /api/approve` answers 409. A separate kind keeps readers that answer `approval` envelopes from offering buttons that nothing reads.
 
 Only a mode read as `off` publishes that card. A read that failed is not off: the hook asks the phone like it would in mode `on`, so a headless session whose mode fetch fails never tells the UI the operator is at the terminal while AFK is on. The card's hint follows the live mode from the broadcast history rather than the mode at publish time, so a card that outlives a change never says "AFK is off" while AFK is on (or the reverse for a hook whose read failed).
 
@@ -43,7 +43,7 @@ A later hook event of the same session publishes `approval-end` with reason `ter
 
 `PreToolUse` and `Notification` close nothing: both can fire while the prompt still shows. A denied prompt whose tool reports no failure stays open until the turn ends. A card no event closes expires after `AI_COLLAB_APPROVAL_S`. Cursor and OpenCode publish no view-only card.
 
-**Trust.** Any client that can write the broadcast topic can approve, exactly as it can answer a question. Protect the topic with the ntfy token and ACLs. See [Security model](security.md).
+**Trust.** Any client that can write the broadcast topic can approve, exactly as it can answer a question. Protect the topic with the bus token. See [Security model](security.md).
 
 ### Unverified
 

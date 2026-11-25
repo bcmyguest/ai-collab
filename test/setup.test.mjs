@@ -5,15 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import { PLUGIN_COPY_MAX_BYTES, packPluginCopy, setup } from "../lib/setup.mjs";
 
-const TOKEN = `tk_${"a1".repeat(14)}b`;
-
 function harness(bins) {
   const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-setup-"));
   const calls = [];
-  const run = (cmd, args, opts = {}) => {
+  const run = (cmd, args) => {
     calls.push([cmd, ...args].join(" "));
-    if (args.includes("token")) return { code: 0, stdout: `token ${TOKEN} created for user ai-collab, never expires\n`, stderr: "" };
-    if (args.includes("user")) assert.ok(opts.env.NTFY_PASSWORD.length >= 20);
     return { code: 0, stdout: "", stderr: "" };
   };
   const which = (bin) => (bins.includes(bin) ? `/bin/${bin}` : "");
@@ -22,50 +18,53 @@ function harness(bins) {
   return { home, calls, opts: { env: { HOME: home, PATH: "/bin" }, home, out, run, which }, text: () => text };
 }
 
-test("setup starts ntfy, stores a private token, writes defaults.json, and installs plugins per harness", async () => {
-  const h = harness(["docker", "claude", "codex"]);
+test("setup installs the bus service, stores a private token, writes defaults.json, and installs plugins per harness", async () => {
+  const h = harness(["systemctl", "claude", "codex"]);
   assert.equal(await setup(["--no-ui"], h.opts), 0);
-  assert.match(h.calls[0], /^docker compose -f .*deploy\/compose\.yaml up -d --wait$/);
-  assert.match(h.calls[1], /ntfy user add --role=admin ai-collab$/);
-  const tokenFile = path.join(h.home, ".config", "ai-collab", "ntfy-token");
-  assert.equal(readFileSync(tokenFile, "utf8"), `${TOKEN}\n`);
+  const tokenFile = path.join(h.home, ".config", "ai-collab", "bus-token");
+  const token = readFileSync(tokenFile, "utf8");
+  assert.match(token, /^tk_[a-z0-9]{29}\n$/);
   assert.equal(statSync(tokenFile).mode & 0o777, 0o600);
   const defaults = JSON.parse(readFileSync(path.join(h.home, ".config", "ai-collab", "defaults.json"), "utf8"));
   assert.deepEqual(defaults, { url: "http://127.0.0.1:8794", tokenFile, peers: "claude,codex" });
+  const unit = readFileSync(path.join(h.home, ".config", "systemd", "user", "ai-collab-bus.service"), "utf8");
+  assert.match(unit, /ExecStart=\S+ .*scripts\/ai-collab-bus\.mjs/);
+  assert.match(unit, /Environment=AI_COLLAB_BUS_PORT=8794/);
+  assert.ok(h.calls.includes("systemctl --user enable --now ai-collab-bus"));
   assert.ok(h.calls.includes("claude plugin install ai-collab@ai-collab"));
   assert.ok(h.calls.includes("codex plugin add ai-collab@ai-collab"));
-  assert.doesNotMatch(h.text(), new RegExp(TOKEN));
+  assert.doesNotMatch(h.text(), new RegExp(token.trim()));
   assert.match(h.text(), /tailscale serve/);
 });
 
-test("a rerun reuses defaults.json and starts no container", async () => {
-  const h = harness(["docker"]);
+test("a rerun reuses defaults.json and starts nothing new", async () => {
+  const h = harness(["systemctl"]);
   await setup(["--no-ui"], h.opts);
   h.calls.length = 0;
   assert.equal(await setup(["--no-ui"], h.opts), 0);
   assert.deepEqual(h.calls, []);
-  assert.match(h.text(), /using http:\/\/127\.0\.0\.1:8794/);
+  assert.match(h.text(), /bus: using http:\/\/127\.0\.0\.1:8794/);
 });
 
-test("without Docker or defaults.json setup stops with a fix", async () => {
+test("without systemd the bus step prints the manual command and setup continues", async () => {
   const h = harness([]);
-  assert.equal(await setup(["--no-ui"], h.opts), 1);
-  assert.match(h.text(), /Docker not found/);
+  assert.equal(await setup(["--no-ui"], h.opts), 0);
+  assert.match(h.text(), /bus: no systemd: run `node .*scripts\/ai-collab-bus\.mjs` in the background/);
 });
 
 test("--agent picks the harnesses; claude without its CLI is skipped with a note; unknown names fail", async () => {
-  const h = harness(["docker", "codex"]);
+  const h = harness(["systemctl", "codex"]);
   assert.equal(await setup(["--no-ui", "--agent", "claude,opencode"], h.opts), 0);
   assert.ok(!h.calls.some(c => c.startsWith("codex ")), "codex not picked");
   assert.match(h.text(), /claude: claude not found on PATH/);
   assert.match(h.text(), /opencode: installed/);
-  const bad = harness(["docker"]);
+  const bad = harness(["systemctl"]);
   assert.equal(await setup(["--agent", "vim"], bad.opts), 2);
   assert.match(bad.text(), /unknown --agent vim/);
 });
 
 test("run from the npx cache, setup copies itself to a stable folder and reruns from there", async () => {
-  const h = harness(["docker"]);
+  const h = harness(["systemctl"]);
   const cache = path.join(h.home, ".npm", "_npx", "abc", "node_modules", "ai-collab");
   mkdirSync(path.join(cache, "scripts"), { recursive: true });
   mkdirSync(path.join(cache, "node_modules", "next"), { recursive: true });
@@ -78,7 +77,7 @@ test("run from the npx cache, setup copies itself to a stable folder and reruns 
 });
 
 test("setup adds a clean plugin copy as the Claude and Codex marketplace, never the checkout itself", async () => {
-  const h = harness(["docker", "claude", "codex"]);
+  const h = harness(["systemctl", "claude", "codex"]);
   assert.equal(await setup(["--no-ui"], h.opts), 0);
   const share = path.join(h.home, ".local", "share", "ai-collab");
   assert.ok(h.calls.includes(`claude plugin marketplace add ${path.join(share, "claude-plugin")}`));

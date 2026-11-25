@@ -52,7 +52,7 @@ test("MCP asks and resumes waiting for a matching phone reply on the broadcast t
   assert.equal((await call("wait_for_answer", { id: question.id, wait_seconds: 0 })).status, "pending");
   fake.inject(topic, `reply ${question.id} Option B`);
   assert.deepEqual(await call("wait_for_answer", { id: question.id, wait_seconds: 0 }), {
-    id: question.id, status: "answered", answer: "Option B", source: "unverified ntfy broadcast",
+    id: question.id, status: "answered", answer: "Option B", source: "unverified channel broadcast",
   });
 
   const inbox = await claimInbox(loadConfig(env));
@@ -66,7 +66,7 @@ test("MCP reply_to_operator answers an exact-session direct chat in the same thr
   const operator = loadConfig({ ...env, AI_COLLAB_PEER: "operator" });
   await sendMessage(operator, `alice#${session}`, "Status?", { operatorThread: true });
   const sent = fake.state.publishes.at(-1);
-  const messageId = `m${String(fake.state.seq).padStart(8, "0")}`;
+  const messageId = sent.id;
   const script = fileURLToPath(new URL("../scripts/ai-collab-mcp.mjs", import.meta.url));
   const child = spawn(process.execPath, [script, "claude"], { env, stdio: ["pipe", "pipe", "inherit"] });
   t.after(() => { child.kill(); return fake.close(); });

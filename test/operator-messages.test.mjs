@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { publishActivity } from "../lib/activity.mjs";
 import { askQuestion } from "../lib/questions.mjs";
 import { broadcastTopic, loadConfig } from "../lib/config.mjs";
-import { publish } from "../lib/ntfy.mjs";
+import { publish } from "../lib/transport.mjs";
 import { sendMessage } from "../lib/inbox.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { answerMessage, answerText, terminalMessages } from "../web/lib/operator-messages.js";

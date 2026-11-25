@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { ACTIVITY_MAX_BYTES, activityEvents, buildActivity, publishActivity } from "../lib/activity.mjs";
 import { activityTopic, loadConfig } from "../lib/config.mjs";
 import { claimInbox, sendMessage } from "../lib/inbox.mjs";
-import { pollCached, publish, querySafe } from "../lib/ntfy.mjs";
+import { pollCached, publish, querySafe } from "../lib/transport.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { activityRows, interleave, summarize } from "../web/lib/activity-rows.js";
 import { peerEnv } from "./helpers/env.mjs";

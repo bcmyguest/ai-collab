@@ -86,7 +86,7 @@ test("a direct message reaches an open-gate Claude session over its socket and h
   assert.match(content, /please review/);
   assert.match(content, /from=bob/);
   assert.match(content, /untrusted/);
-  assert.match(content, /respond message_id=m\w+ state=working/);
+  assert.match(content, /respond message_id=\d+ state=working/);
   assert.deepEqual(await claimInbox(target), []);
 });
 

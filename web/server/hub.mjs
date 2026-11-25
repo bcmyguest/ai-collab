@@ -1,5 +1,5 @@
 import { openHistory } from "./history.mjs";
-import { pollCached, streamEvents } from "../../lib/ntfy.mjs";
+import { pollCached, streamEvents } from "../../lib/transport.mjs";
 
 export const HISTORY_LIMIT = 500;
 const MAX_TOPICS = 40;

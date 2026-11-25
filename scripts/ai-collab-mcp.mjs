@@ -6,7 +6,7 @@ import { READ_TOOLS, readsThroughRunCode } from "../lib/code-run.mjs";
 import { runCodeReadRecipe } from "../lib/store-read.mjs";
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
-const INSTRUCTIONS = "AI Collab connects this session to the human operator over a private ntfy server. "
+const INSTRUCTIONS = "AI Collab connects this session to the human operator over a private local message bus. "
   + "Hook context gives your session label and each operator message's ID. "
   + "Answer an operator direct message with reply_to_operator. Answer an operator broadcast with send_to_all and reply_to set to its ID. Attach a screenshot with the attachment field (absolute image path). "
   + "Ask the human through their phone with ask_question; set important=true only when you cannot continue without the answer. "

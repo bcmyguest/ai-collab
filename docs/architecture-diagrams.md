@@ -8,7 +8,7 @@ Three pictures: the whole system with its network boundaries, how a message trav
 | Blue | Our code sitting on an off-the-shelf engine or framework |
 | Amber | Home-grown, we own every line |
 
-Boxes are network boundaries: the phone is off-host, everything on the host binds loopback only, ntfy lives in Docker, team runs and builders live in OpenShell sandboxes.
+Boxes are network boundaries: the phone is off-host, everything on the host binds loopback only, the bus is a systemd user service, team runs and builders live in OpenShell sandboxes.
 
 ## System overview
 
@@ -34,7 +34,7 @@ flowchart LR
   end
 
   subgraph DOCKER["Docker"]
-    ntfy["ntfy v2.38.1<br/>127.0.0.1:8794, deny-all"]
+    bus["ai-collab-bus<br/>127.0.0.1:8794, token-only"]
   end
 
   subgraph SHELL["OpenShell sandboxes"]
@@ -44,16 +44,16 @@ flowchart LR
   providers["Model provider APIs<br/>outbound HTTPS"]
 
   browser -- "chat, approvals, starts" --> ui
-  ui -- "poll and stream topics" --> ntfy
+  ui -- "poll and stream topics" --> bus
   ui -- "control socket (unix)" --> runner
   ui -- "encrypted push" --> push
   runner -- "checkpoints workflows" --> db
   runner -- "reads board and teams" --> state
   runner -- "spawns and parses" --> harness
   runner -- "sandbox exec" --> team
-  hook -- "activity out, inbox in" --> ntfy
-  mcp -- "batched reads and sends" --> ntfy
-  team -- "publishes with token" --> ntfy
+  hook -- "activity out, inbox in" --> bus
+  mcp -- "batched reads and sends" --> bus
+  team -- "publishes with token" --> bus
   harness -- "model calls" --> providers
   team -- "model calls" --> providers
 
@@ -71,7 +71,7 @@ flowchart LR
   class team own
 ```
 
-Read it from the phone: the only door onto the host is Tailscale to the UI server. ntfy never leaves loopback or the Docker network; the token in `~/.config/ai-collab/ntfy-token` is the trust boundary. The runner is the only thing that spawns agents, and it records every step in SQLite before and after. Sandboxes reach ntfy through `host.openshell.internal` routing only.
+Read it from the phone: the only door onto the host is Tailscale to the UI server. the bus binds loopback only; the token in `~/.config/ai-collab/bus-token` is the trust boundary. The runner is the only thing that spawns agents, and it records every step in SQLite before and after. Sandboxes reach the bus through `host.openshell.internal` routing only.
 
 ## Message path: phone to agent and back
 
@@ -79,7 +79,7 @@ Read it from the phone: the only door onto the host is Tailscale to the UI serve
 sequenceDiagram
   participant O as Operator (phone)
   participant U as UI server (Next.js)
-  participant N as ntfy (Docker, loopback)
+  participant N as bus (loopback)
   participant H as Session hook
   participant A as Agent session
 
@@ -93,7 +93,7 @@ sequenceDiagram
   U->>O: render, push when AFK
 ```
 
-Nothing pushes into an agent: the hook polls ntfy with a cursor and injects at a safe point. A reply is just a message on a shared topic, so the waiting tool trusts the token, not the sender name. Permission approvals ride the same path.
+Nothing pushes into an agent: the hook polls the bus with a cursor and injects at a safe point. A reply is just a message on a shared topic, so the waiting tool trusts the token, not the sender name. Permission approvals ride the same path.
 
 ## Runner internals
 
@@ -142,7 +142,7 @@ The durable core is the interesting amber-blue boundary: a home-grown, DBOS-shap
 
 | Piece | Origin | Notes |
 |---|---|---|
-| ntfy | Off-the-shelf (`binwiederhier/ntfy:v2.38.1`, Docker) | Pinned version, deny-all auth, loopback bind; the token is the trust boundary |
+| Message bus | Home-grown (`lib/bus.mjs`), ntfy wire-compatible | Loopback bind, token-only; SQLite with 7-day retention |
 | SQLite | Off-the-shelf engine (`node:sqlite`, WAL) | Schema and recovery logic are ours |
 | Next.js, React, ui-sdk | Off-the-shelf framework | Pages, server routes, and phone behaviour are ours |
 | Tailscale, systemd, Docker, OpenShell | Off-the-shelf plumbing | Tailscale is the only inbound path; systemd owns process lifetimes |
@@ -150,6 +150,6 @@ The durable core is the interesting amber-blue boundary: a home-grown, DBOS-shap
 | Model provider APIs | Third-party | The only outbound traffic |
 | Durable core (`lib/durable.mjs`) | Home-grown | DBOS-shaped: workflows, checkpointed steps, exactly-once messages |
 | Runner (`runner/`) | Home-grown | Owns sessions, sandboxes, control socket, schedules, pattern runs |
-| Session hooks and MCP servers | Home-grown | The seam between harnesses and ntfy; injects inbound text as untrusted data |
+| Session hooks and MCP servers | Home-grown | The seam between harnesses and the bus; injects inbound text as untrusted data |
 | Pattern compiler (`lib/dot.mjs`, `lib/pattern-compiler.mjs`) | Home-grown | DOT graph in, validated transitions out; verifiable with traces, no model calls |
 | Task board, team files, run records | Home-grown | Plain JSON under the state dir, lock-then-rename writes |

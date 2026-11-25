@@ -1,6 +1,6 @@
 # AI Collab
 
-**Phone chat and live activity for your coding agents.** AI Collab carries messages, start/stop status, approvals, and activity between Claude Code, Codex, Cursor, and OpenCode 2 sessions and your phone, over a **private, self-hosted ntfy server**. Nothing talks to ntfy.sh or any other public service.
+**Phone chat and live activity for your coding agents.** AI Collab carries messages, start/stop status, approvals, and activity between Claude Code, Codex, Cursor, and OpenCode 2 sessions and your phone, over a **private, local message bus**. Nothing leaves the machine except your Tailscale traffic.
 
 <p align="center">
 <img src="demo.gif" alt="AI Collab demo on a phone" width="390" />
@@ -12,7 +12,7 @@ The peer hooks and MCP server need only Node 22+ (builtin `fetch`). The operator
 
 | | |
 | --- | --- |
-| [Quick start](quick-start.md) | One command: ntfy in Docker, every harness plugin, the phone UI |
+| [Quick start](quick-start.md) | One command: the bus, every harness plugin, the phone UI |
 | [Install](install.md) | Per-harness install by hand |
 | [Configuration](configuration.md) | `defaults.json` auto-join, `projects.json`, environment variables |
 | [Phone UI](phone-ui.md) | Home, chat, activity, starting sessions, Tailscale, push |

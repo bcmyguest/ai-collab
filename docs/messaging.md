@@ -1,6 +1,6 @@
 # Messaging
 
-Structured messages use the project's [ntfy wire format](ag-ui.md). Plain questions and replies remain human-readable in ntfy.
+Structured messages use the project's [wire format](ag-ui.md) (an ntfy-compatible subset). Plain questions and replies stay human-readable.
 
 ## CLI
 
@@ -39,7 +39,7 @@ Every operator message the hooks inject says how to answer it, and the identity 
 |---|---|
 | Direct (UI chat with one session, `operatorThread`) | MCP `reply_to_operator` with the message ID and session label. The reply lands in the same chat. |
 | Broadcast (UI to all, envelope `from: operator`) | MCP `send_to_all` with `reply_to` set to the message ID. The answer goes to the broadcast topic with `replyTo`. |
-| Phone post (plain text on the broadcast topic, shown as `from=ntfy`) | Same as a broadcast. |
+| Phone post (plain text on the broadcast topic, shown as `from=ntfy`, the legacy sender name) | Same as a broadcast. |
 | Without MCP | `AI_COLLAB_PEER=<peer> AI_COLLAB_SESSION=<label> ai-collab send all "<answer>"` |
 
 Peer agents' messages carry no reply hint. An agent's own `ask_question` post is not delivered back to it.
@@ -48,15 +48,15 @@ Messages ai-collab sends on its own initiative travel under the operator's addre
 
 ### Screenshots
 
-`send --file /abs/image.png`, and the `attachment` field of the MCP `send_to_all` and `reply_to_operator` tools, upload one image as an ntfy attachment. Allowed: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, at most 15 MB, with file bytes that match the extension (a renamed text file is refused). The UI shows the image inline and serves it through `/api/file/<id>` only when that ID appears in a loaded topic. ntfy keeps attachments for the cache duration (12 h); its `/file/<id>` URLs need no token, so the unguessable ID and the loopback/tailnet binding are the protection.
+`send --file /abs/image.png`, and the `attachment` field of the MCP `send_to_all` and `reply_to_operator` tools, upload one image as an attachment. Allowed: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, at most 15 MB, with file bytes that match the extension (a renamed text file is refused). The UI shows the image inline and serves it through `/api/file/<id>` only when that ID appears in a loaded topic. The bus keeps attachments for its retention (7 days by default); `/file/<id>` needs the bus token, and IDs are unguessable.
 
 ### One download per attachment
 
-ntfy bills attachment downloads against a daily bandwidth quota, so concurrent readers share one download while the file is cached. Both the UI and the agents read one cache under `<state dir>/<project>/attachments/` (`lib/attachment-cache.mjs`): when the sender and reader share that cache, a successful upload seeds it with the original bytes. Otherwise, whichever asks first downloads the file into a temporary name and renames it, under a lock that makes concurrent readers (two tabs, a hook and the UI, two sessions) share the one download. Every later request is served from disk, including a browser reload or a second device.
+Concurrent readers share one download while the file is cached, so a screenshot costs one fetch however many sessions or tabs view it. Both the UI and the agents read one cache under `<state dir>/<project>/attachments/` (`lib/attachment-cache.mjs`): when the sender and reader share that cache, a successful upload seeds it with the original bytes. Otherwise, whichever asks first downloads the file into a temporary name and renames it, under a lock that makes concurrent readers (two tabs, a hook and the UI, two sessions) share the one download. Every later request is served from disk, including a browser reload or a second device.
 
-An agent is told the cached path. `claimInbox`, the dispatcher's push and the runner's delivery all cache a message's attachment (within a 4-second budget, never failing the message) and `formatInbox` then prints `attachment="shot.png" local_path="/…/attachments/f1.png"`, so the agent reads the file instead of fetching it. A message that arrives before any copy exists carries the attachment name only. The cache keeps files for 7 days and the newest 200; a pruned file is downloaded again on the next request, if ntfy still has it. A download that fails or exceeds the size limit writes nothing.
+An agent is told the cached path. `claimInbox`, the dispatcher's push and the runner's delivery all cache a message's attachment (within a 4-second budget, never failing the message) and `formatInbox` then prints `attachment="shot.png" local_path="/…/attachments/f1.png"`, so the agent reads the file instead of fetching it. A message that arrives before any copy exists carries the attachment name only. The cache keeps files for 7 days and the newest 200; a pruned file is downloaded again on the next request, if the bus still has it. A download that fails or exceeds the size limit writes nothing.
 
-See the [transport design spike](research/message-transport.md) for options to extend attachment lifetime and remove chat's dependency on ntfy upload limits.
+See the [transport design spike](research/message-transport.md) for the transport's design history.
 
 ## Stop continuation
 
@@ -71,7 +71,7 @@ The Stop hook reads the inbox. When messages wait, it keeps the agent going with
 
 The plugin's own guard allows `AI_COLLAB_STOP_CAP` (default 5) consecutive message continuations, then lets the agent stop and leaves later messages queued. A Stop that is not a continuation (`stop_hook_active: false`, or no continuation in the last hour) resets the count.
 
-Each Stop hook call waits at most 600 seconds. The Stop hooks are registered with a 660-second timeout; Claude Code and Codex default to 600 seconds, and Cursor's default is undocumented. While waiting, the hook holds one ntfy streaming subscription and reads the inbox only when an event arrives.
+Each Stop hook call waits at most 600 seconds. The Stop hooks are registered with a 660-second timeout; Claude Code and Codex default to 600 seconds, and Cursor's default is undocumented. While waiting, the hook holds one bus streaming subscription and reads the inbox only when an event arrives.
 
 ## Agent messaging tools
 
@@ -80,7 +80,7 @@ Six MCP tools (plus the options below) follow the agent-messaging interface of t
 | Tool | Does | Built on | CLI |
 |---|---|---|---|
 | `list_agents` | Live sessions of the project on this machine: address, harness, project, name, activity line, tags, last active, parent. `all: true` adds offline ones; `tags: [...]` keeps sessions that carry every tag. | session registry (`lib/sessions.mjs`) | `ai-collab agents [--all] [--tag T]...` |
-| `send` | To a session (`peer#label`), a peer name, or `all` / `*`. `await_reply: N` blocks up to N s (max 45) for a `reply`, `done` or `declined` answer to this message. `priority` (`normal`, `urgent`, `fyi`), `expect_reply`, `urgent`, `reply_to`, `attachment` optional. | `sendMessage`, the Stop hook's ntfy stream waiter | `ai-collab send <to> [msg] [--urgent] [--priority P] [--expect-reply] [--await N]` |
+| `send` | To a session (`peer#label`), a peer name, or `all` / `*`. `await_reply: N` blocks up to N s (max 45) for a `reply`, `done` or `declined` answer to this message. `priority` (`normal`, `urgent`, `fyi`), `expect_reply`, `urgent`, `reply_to`, `attachment` optional. | `sendMessage`, the Stop hook's bus stream waiter | `ai-collab send <to> [msg] [--urgent] [--priority P] [--expect-reply] [--await N]` |
 | `respond` | Answers a message id with `state` `working`, `reply`, `done` or `declined` and an optional body: an operator direct message in its chat, a broadcast on the shared channel, a peer message to its sender's session. | msg envelope with `replyTo` and `state` | `ai-collab respond <id> <state> [msg]` |
 | `wait` | Blocks up to `seconds` (max 45) for a new message to this session; returns it marked read. `until: "idle:<address>"` blocks until that agent has no turn running (`idle`), its process ended (`ended`) or the timeout. | stream waiter + `claimInbox`; `lib/idle.mjs` | `ai-collab wait [N]`, `ai-collab wait idle:<address> [N]`, `ai-collab wait reply:<id> [N]` |
 | `inbox` | Reads new messages and marks them delivered; publishes read receipts. `peek: true` leaves them unread. | `claimInbox`, `lib/receipts.mjs` | `ai-collab inbox [--peek]` |
@@ -171,7 +171,7 @@ The UI action `interrupt` (POST `/api/interrupt` with `{project, target}`; an **
 
 ## Urgent messages ("send now")
 
-A msg envelope may carry `urgent: true` (UI **Send now**, send body field `urgent`, CLI `--urgent`, MCP `urgent`). Hooks normally read the inbox at most once per `AI_COLLAB_POLL_INTERVAL_MS` (10 s). The sender also writes a marker `$AI_COLLAB_STATE_DIR/<project>/urgent/<target>` holding the send time; `claimInbox` reads the markers for `all`, its peer and its session before the throttle and polls ntfy at once when one is newer than its last poll. The check costs up to three small file reads per hook and no network request, so it runs on every hook event; one stream subscription per hook event would cost a connection each time. The marker works only between processes that share a state directory (the UI server and agents of the same user on one machine); an urgent message from elsewhere arrives at the next unthrottled poll. Nothing interrupts a model mid-generation: delivery happens at the next hook event, its next tool call (`PostToolUse`) or its stop.
+A msg envelope may carry `urgent: true` (UI **Send now**, send body field `urgent`, CLI `--urgent`, MCP `urgent`). Hooks normally read the inbox at most once per `AI_COLLAB_POLL_INTERVAL_MS` (10 s). The sender also writes a marker `$AI_COLLAB_STATE_DIR/<project>/urgent/<target>` holding the send time; `claimInbox` reads the markers for `all`, its peer and its session before the throttle and polls the bus at once when one is newer than its last poll. The check costs up to three small file reads per hook and no network request, so it runs on every hook event; one stream subscription per hook event would cost a connection each time. The marker works only between processes that share a state directory (the UI server and agents of the same user on one machine); an urgent message from elsewhere arrives at the next unthrottled poll. Nothing interrupts a model mid-generation: delivery happens at the next hook event, its next tool call (`PostToolUse`) or its stop.
 
 ## Agents starting agents
 
@@ -189,7 +189,7 @@ Tested with fake hook payloads, not with real harness runs.
 An agent publishes a read receipt the moment a message reaches it: when a hook injects it (SessionStart, UserPromptSubmit, PostToolUse, or a Stop continuation), when `ai-collab inbox` prints it (with or without `--peek`), or when `wait_for_answer` (or the Stop hook's important-question check) returns a phone reply. One delivery is one publish to `ai-collab-<project>--receipts`, split only to stay within 4095 bytes:
 
 ```json
-{"v":1,"kind":"receipt","from":"claude","session":"<16-hex label>","ids":["<ntfy message id>","…"],"state":"read","ts":"<ISO time>"}
+{"v":1,"kind":"receipt","from":"claude","session":"<16-hex label>","ids":["<message id>","…"],"state":"read","ts":"<ISO time>"}
 ```
 
 Receipts are best effort: the publish runs in the background under a 1.5-second deadline, alongside activity, and a failure never blocks or changes delivery. Like the status topic, receipts carry no priority or tags and no phone subscribes to them, so they never notify. The UI loads the topic's history once and keeps it live through the shared subscription.
@@ -198,7 +198,7 @@ The operator's own messages show ticks:
 
 | Tick | Label | Direct message | Broadcast or harness message |
 |---|---|---|---|
-| ✓ | Sent | ntfy accepted it | ntfy accepted it |
+| ✓ | Sent | the bus accepted it | the bus accepted it |
 | ✓✓ | Read by some sessions | not used: a direct message stays ✓ until its session reads it | at least one recipient session sent a receipt |
 | ✓✓ in the primary colour | Read | that session sent a receipt | every session online when the UI first saw the message sent a receipt; with none online then, the first receipt |
 

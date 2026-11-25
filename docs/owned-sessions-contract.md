@@ -21,7 +21,7 @@ The November 22, 2026 rollout enabled Claude and Codex. Cursor and OpenCode stil
 | Claude | Agent SDK `query()` with an `AsyncIterable` prompt; the adapter picks the session UUID and passes it as `options.sessionId` (sdk.d.ts L2273) | research |
 | OpenCode | The registered OpenCode service (`~/.local/state/opencode/service.json`), HTTP plus SSE; permission replies are always `once` | research, review |
 | Cursor | `cursor-agent acp`, one child per session, in a git worktree outside OpenShell; `--force` inside an OpenShell sandbox with no further limits (2026-11-22) | operator |
-| Events | AG-UI adapter events and a configurable [ntfy wire format](ag-ui.md) | operator |
+| Events | AG-UI adapter events and a configurable [wire format](ag-ui.md) | operator |
 | Hook stand-down | Owned record keyed by session label; only the process the runner spawned stands down, and agents started inside it register as its children | operator |
 | Cut runs | Never resent. Every cut run, on every adapter, is marked interrupted | operator |
 | T3 Code | MIT; may be ported with its notice kept (one-line header naming T3 Code, the file, and the commit) | operator |
@@ -32,10 +32,10 @@ The November 22, 2026 rollout enabled Claude and Codex. Cursor and OpenCode stil
 flowchart LR
   phone[Phone / browser] --> ui[ai-collab-ui.service]
   ui -- "start / interrupt / close<br/>HTTP over runner.sock" --> runner[ai-collab-runner.service]
-  ui -- "chat, approval replies" --> ntfy[(ntfy)]
-  ntfy -- "inbox + broadcast stream" --> runner
-  runner -- "activity, status, approval, receipt" --> ntfy
-  ntfy --> ui
+  ui -- "chat, approval replies" --> bus[(bus)]
+  bus -- "inbox + broadcast stream" --> runner
+  runner -- "activity, status, approval, receipt" --> bus
+  bus --> ui
   runner --- log[(runner.db<br/>workflow log)]
   runner --- owned[(owned/&lt;label&gt;.json)]
   runner --> codex[codex app-server child]
@@ -69,7 +69,7 @@ The operator asked for DBOS-style durable execution: workflows and steps are che
 | `workflows` | `id, name, input, status (PENDING, SUCCESS, ERROR, CANCELLED, SKIPPED), output, error, created_at, updated_at` | One row per session workflow; one per scheduled tick (`scheduled:<name>`) |
 | `steps` | `workflow_id, seq, name, status (started, done, error), output, error, started_at, finished_at` | A checkpoint per step and per `recv`, numbered in call order |
 | `messages` | `id, workflow_id, topic, value, dedupe UNIQUE, consumed, created_at` | Durable input to a workflow; `dedupe` holds `ntfy:<event id>` |
-| `kv` | `key, value` | `ntfy-cursor:<project>`, the last ntfy event the runner handled |
+| `kv` | `key, value` | `ntfy-cursor:<project>`, the last bus event the runner handled |
 
 Replay rule: a step whose row is `done` returns its recorded output without running. A step whose row is `started` was cut by a stop or crash: it runs `onCut` when one is given and re-executes otherwise. A step whose name differs from the recorded one throws `NonDeterminismError`, so workflow code must call steps in a deterministic order.
 
@@ -99,7 +99,7 @@ The first prompt is the first input; the loop starts with it, not with `recv`.
 | Cut inside `run.wait` | Marked interrupted (`turn ended · interrupted · runner restarted`); `record.cut = {runId, at, reason}`; open approval cards end with reason `cancelled` |
 | `resume: "none"` | Next input fails with 409; the operator closes the session |
 | Adapter module missing at boot | The workflow fails (status ERROR); its owned record stays as it was |
-| Messages that arrived on ntfy while the runner was down | Read from the stored `ntfy-cursor:<project>` and deduplicated by `ntfy:<event id>` |
+| Messages that arrived on the bus while the runner was down | Read from the stored `ntfy-cursor:<project>` and deduplicated by `ntfy:<event id>` |
 
 `runner.stop()` (SIGTERM) aborts workflows where they wait and leaves open steps `started`, so the rules above apply at the next boot. The cut row is published at that boot, not at stop, so it appears exactly once.
 
@@ -123,7 +123,7 @@ A tick id is recorded with its first step, so a tick starts at most once while `
 
 **Run detail.** A command that resumes a harness session names it: `--resume <id>` / `-r <id>` for Cursor and Claude, `--session <id>` for OpenCode, `codex exec resume <id>` for Codex. The runner matches the id against the registered session label (`sessionLabel`, the hash the hooks publish), so each run in `GET /v1/schedules/:name/runs` carries `startedAt`, `finishedAt` and `session: {harness, session}`. The UI turns that into a link to the session's timeline cut to the run's window (the run plus 15 min either side), where the tick's prompts, tool calls and builders appear. A command that resumes nothing (a plain script, a wrapper like `npx`) lists its runs with no session and no link. Code: `lib/schedule-session.mjs`.
 
-The command runs with `spawn` (argv, no shell) in its own process group, stdin closed, in `cwd`, with `timeoutSec` as the deadline. A timeout or abort kills the group. A clean exit leaves processes the command started in the background (agents it handed work to) running. Its result is `{ok, exitCode, signal, timedOut, durationMs, tail, scheduledTime, actualTime}`, where `tail` is the last 2000 characters of stdout and stderr. Ticks publish no ntfy rows: a schedule has no session to publish under.
+The command runs with `spawn` (argv, no shell) in its own process group, stdin closed, in `cwd`, with `timeoutSec` as the deadline. A timeout or abort kills the group. A clean exit leaves processes the command started in the background (agents it handed work to) running. Its result is `{ok, exitCode, signal, timedOut, durationMs, tail, scheduledTime, actualTime}`, where `tail` is the last 2000 characters of stdout and stderr. Ticks publish no bus rows: a schedule has no session to publish under.
 
 **Prompt blocks.** A harness command's prompt is the schedule's own prompt, then the project's [mission file](mission.md) (`withMission`, `lib/mission.mjs`), then the [run review](mission.md#the-run-review) (`withReview`, `lib/pm-review.mjs`). Both are appended at run time, so a tick always reads the current files, and a plain script is left exactly as `schedules.json` wrote it.
 
@@ -154,17 +154,17 @@ The runner takes `runner.lock` beside `runner.db`; a second live runner on the s
 **Sandboxed ticks.** With `"sandbox": true` the tick runs `node runner/sandbox-run.mjs --name <name> --cwd <cwd> [--project <p>] -- <command>` in its scope, and the host guard (`lib/agent-guard.mjs`) lets `--force` and the like through. Without it, a command whose argv turns the harness's approvals off is refused with a `tail` that names the flag, unless the runner has `AI_COLLAB_ALLOW_HOST_AGENT=1`. A plain script (`steward.sh`, `round.mjs`, `runner-reload.sh`) is never wrapped. `sandbox-run.mjs`:
 
 1. Skips the tick (exit 0, the reason in its log) at the sandbox cap, `defaults.json` `maxSandboxes` (default 6, every sandbox but `ai-collab-code` and `aic-ro-*`; see [Configuration](configuration.md#auto-join-every-repo-defaultsjson)). Refuses when `cwd` is not a git work tree.
-2. Stages a clone of `cwd`'s checked-out branch, node and its libraries, git, oncebitten, `package.json`, `scripts/`, `lib/` and `web/lib/` for the ai-collab CLI and MCP server, the harness install, the project's `node_modules`, a snapshot of the project's task file, and a policy with the harness's API hosts and `host.openshell.internal:8794`. The sandbox home gets `defaults.json` and `projects.json` pointing at that ntfy URL, the ntfy token, the ai-collab MCP server (Cursor `~/.cursor/mcp.json`, Claude `~/.claude.json`), the harness's own login, and the host's Claude `.credentials.json` and Codex `auth.json` for any harness, copied as builders copy them (0600 temp file, single-file upload, never in argv or a log). Long-lived session tokens may replace these copies later.
+2. Stages a clone of `cwd`'s checked-out branch, node and its libraries, git, oncebitten, `package.json`, `scripts/`, `lib/` and `web/lib/` for the ai-collab CLI and MCP server, the harness install, the project's `node_modules`, a snapshot of the project's task file, and a policy with the harness's API hosts and `host.openshell.internal:8794`. The sandbox home gets `defaults.json` and `projects.json` pointing at that bus URL, the bus token, the ai-collab MCP server (Cursor `~/.cursor/mcp.json`, Claude `~/.claude.json`), the harness's own login, and the host's Claude `.credentials.json` and Codex `auth.json` for any harness, copied as builders copy them (0600 temp file, single-file upload, never in argv or a log). Long-lived session tokens may replace these copies later.
 3. Creates sandbox `s-<first 8 of name>-<6 hex>`, uploads, and runs the command with the harness binary replaced by its launcher name on `/sandbox/tools/bin`; stdout and stderr go to the tick's `tail`.
 4. Downloads the clone, commits loose edits as `chore(sandbox): uncommitted work from schedule <name>`, and fetches new commits into `cwd`'s repo as branch `sandbox/<name>-<UTC stamp>`; the checked-out branch is not touched. A failed download keeps the sandbox and the staging and logs both.
-5. Replays recorded `ai-collab task set|progress` calls through the host CLI and drops other task writes with a log line. Inside, `ai-collab task list|show` read the snapshot, `builder` commands are refused, and other commands are the real CLI over ntfy.
+5. Replays recorded `ai-collab task set|progress` calls through the host CLI and drops other task writes with a log line. Inside, `ai-collab task list|show` read the snapshot, `builder` commands are refused, and other commands are the real CLI over the bus.
 6. Deletes the sandbox, also after SIGTERM from a timeout.
 
 The scheduler passes host install overrides such as `AI_COLLAB_CURSOR_TREE` and `AI_COLLAB_BUILDER_NODE` to `sandbox-run.mjs` for staging. The helper constructs the environment used inside OpenShell.
 
-Live 2026-11-23 (throwaway entry `sbx-proof-tick`, Cursor DeepSeek, project in a temp repo): the tick wrote and committed a file, sent `sandboxed tick OK` to the project's `all` topic over ntfy, landed 2 commits on `sandbox/sbx-proof-tick-20261123T032955Z`, deleted its sandbox, and finished in 34 s. Ticks that use the MCP `task_update` tool write the sandbox's task file, which is dropped: only CLI `task set|progress` reach the host.
+Live 2026-11-23 (throwaway entry `sbx-proof-tick`, Cursor DeepSeek, project in a temp repo): the tick wrote and committed a file, sent `sandboxed tick OK` to the project's `all` topic on the bus, landed 2 commits on `sandbox/sbx-proof-tick-20261123T032955Z`, deleted its sandbox, and finished in 34 s. Ticks that use the MCP `task_update` tool write the sandbox's task file, which is dropped: only CLI `task set|progress` reach the host.
 
-Control socket only (operator): `GET /v1/schedules` returns `{schedules: [{name, everyMs, nextRun, last: {id, status, scheduledTime, output, error}, command, cwd, session?}], configError: [...]}`; `GET /v1/schedules/:name/runs` returns the recent runs newest first, each `{id, status, scheduledTime, startedAt, finishedAt, updatedAt, output, error, session?}`, where `session` is `{harness, session}` when the command resumes one; `POST /v1/schedules/:name/run?caller=<label>` runs a tick now. Neither route is on MCP or ntfy.
+Control socket only (operator): `GET /v1/schedules` returns `{schedules: [{name, everyMs, nextRun, last: {id, status, scheduledTime, output, error}, command, cwd, session?}], configError: [...]}`; `GET /v1/schedules/:name/runs` returns the recent runs newest first, each `{id, status, scheduledTime, startedAt, finishedAt, updatedAt, output, error, session?}`, where `session` is `{harness, session}` when the command resumes one; `POST /v1/schedules/:name/run?caller=<label>` runs a tick now. Neither route is on MCP or the bus.
 
 ## Delivery and wake workflows
 
@@ -201,7 +201,7 @@ Expect-reply: after the first delivery the workflow sleeps 10 min (durable), che
 
 One workflow per wake, id `wake:<address>:<last message id>`, name `wake`, input `{project, address, messages, adopt?}`. `messages` is the batch of direct messages queued for the session when the wake starts. Broadcasts and messages addressed to the peer as a whole never wake: only `to` equal to the session's address. A wake starts from:
 
-- the ntfy route, for a direct message to a closed owned session; while a wake for that session runs, the message joins the running wake's queue (`wake` topic, deduplicated by ntfy id) instead;
+- the bus route, for a direct message to a closed owned session; while a wake for that session runs, the message joins the running wake's queue (`wake` topic, deduplicated by bus id) instead;
 - `pumpDeliveries`, for a direct message to a closed session the runner does not own, seen in the registry within the last 7 days; `adopt` carries `nativeId`, `cwd` and `model`. At most 2 such wakes start per pump tick.
 
 One run takes every message in the batch, so a burst costs one paid turn. Messages that arrive while a run is in flight take one more run.
@@ -225,7 +225,7 @@ Harness adapters: all four are built (`claude`, `codex`, `cursor`, `opencode`); 
 
 ### Pruning
 
-Hourly, `pumpDeliveries` deletes the steps and messages of delivery and wake workflows that are not `PENDING` and were last updated more than 12 h ago (the ntfy cache window, at most 720 min). The workflow row stays as a tombstone, so a message the log knows is never started again. Rows are a few bytes each.
+Hourly, `pumpDeliveries` deletes the steps and messages of delivery and wake workflows that are not `PENDING` and were last updated more than 12 h ago (the approval expiry cap, at most 720 min). The workflow row stays as a tombstone, so a message the log knows is never started again. Rows are a few bytes each.
 
 ### Restart rules for delivery and wake
 
@@ -276,7 +276,7 @@ Rules for every adapter:
 - Spawn children with `options.env`, `shell: false`, and argv from a fixed template; the prompt is never an argv element that a CLI could read as a flag (`checkPrompt` already rejects a leading `-`).
 - Export `AI_COLLAB_PARENT=<harness>#<label>` (`label` = `sessionLabel(nativeId)`) into the shell environment the agent runs commands in, as `lib/family.mjs` does for hook-driven sessions, so an agent it starts registers as the owned session's child.
 - Map `options.permission` (from the permission table) onto the harness; never widen it.
-- Emit completed text and tool calls as `TEXT_MESSAGE_CHUNK` and `TOOL_CALL_CHUNK`. The ntfy publisher skips incremental `TEXT_MESSAGE_CONTENT` fragments.
+- Emit completed text and tool calls as `TEXT_MESSAGE_CHUNK` and `TOOL_CALL_CHUNK`. The bus publisher skips incremental `TEXT_MESSAGE_CONTENT` fragments.
 - Reject `open` with an `Error` whose message the operator can act on. Never print secrets into it.
 - `open` may call `options.beforeStart(nativeId)` once the adapter has chosen the native id and before the child starts; the runner writes the owned record there (status `starting`), so the child's hooks stand down.
 - A send error with `mayHaveStarted: true` means the harness may have taken the input: the runner marks it delivered and never resends it. Only a send error that certainly did not start releases the batch.
@@ -340,10 +340,10 @@ Standard subagent attribution uses `subagentRunId`. The optional `metadata.aiCol
 
 ### Envelope details
 
-Activity and control events publish through: `publishActivity` (`lib/activity.mjs`, one 1.5 s deadline per batch, clipping to 4,095 bytes), `publishStatus` (`lib/inbox.mjs`), `sendReceipts` (`lib/receipts.mjs`) and `publish` (`lib/ntfy.mjs`) for approvals. The sender is `from: <harness>, session: <label>`, the same as a hook in that session, so `web/server/ui.mjs` (`activityItem`, `approvalEntry`, `outcomes`, `agents`) renders owned rows, cards and presence without change. Publishes for one session are serialized, so rows keep their order.
+Activity and control events publish through: `publishActivity` (`lib/activity.mjs`, one 1.5 s deadline per batch, clipping to 4,095 bytes), `publishStatus` (`lib/inbox.mjs`), `sendReceipts` (`lib/receipts.mjs`) and `publish` (`lib/transport.mjs`) for approvals. The sender is `from: <harness>, session: <label>`, the same as a hook in that session, so `web/server/ui.mjs` (`activityItem`, `approvalEntry`, `outcomes`, `agents`) renders owned rows, cards and presence without change. Publishes for one session are serialized, so rows keep their order.
 
-- **Approval card:** `lib/approvals.mjs` `approvalMessage` publishes the usual card fields plus `owned: true` in the configured wire format. The runner, not the adapter, makes the 12-hex `id` and maps it to the adapter's `interruptId`. `expiresAt` is `ts` + `AI_COLLAB_APPROVAL_TIMEOUT_MIN` minutes (default 30, at most 720, ntfy's cache window). The runner denies an unanswered card at that time and ends it with `denied`. The UI's existing Allow / Deny publishes `reply <id> allow|deny` (or the answers as JSON) on the broadcast topic; the runner streams that topic and calls `handle.respond`. Ends: `allowed`, `denied` (operator or timeout), `answered`, `cancelled` (run ended, session closed, or runner restarted).
-- **Read receipts:** published when `handle.send` or `handle.steer` resolves, for the ntfy ids the input carried.
+- **Approval card:** `lib/approvals.mjs` `approvalMessage` publishes the usual card fields plus `owned: true` in the configured wire format. The runner, not the adapter, makes the 12-hex `id` and maps it to the adapter's `interruptId`. `expiresAt` is `ts` + `AI_COLLAB_APPROVAL_TIMEOUT_MIN` minutes (default 30, at most 720). The runner denies an unanswered card at that time and ends it with `denied`. The UI's existing Allow / Deny publishes `reply <id> allow|deny` (or the answers as JSON) on the broadcast topic; the runner streams that topic and calls `handle.respond`. Ends: `allowed`, `denied` (operator or timeout), `answered`, `cancelled` (run ended, session closed, or runner restarted).
+- **Read receipts:** published when `handle.send` or `handle.steer` resolves, for the bus ids the input carried.
 - **Status:** `start` at `RUN_STARTED`, `stop` at a run's end and at session end. Today's UI counts a session online for `ONLINE_MS` after `start`, as with hooks.
 
 ## Session identity and the registry
@@ -399,10 +399,10 @@ How a UI start reaches the runner (the UI change comes with the first adapter, n
 
 1. The phone's Start form gains an "owned" switch. `POST /api/start` with `owned: true` keeps every existing check in `web/server/ui.mjs` (harness, place, prompt, model, the 10 s gap), then calls `runnerClient().start({project, harness, prompt, model, place, permissionMode})` instead of `startSession`.
 2. When the socket is missing, the UI answers 503 "The runner is not running" and does not fall back to a terminal start.
-3. Chat, Allow / Deny and replies need no new route: they already travel over ntfy, and the runner streams them.
-4. Interrupt and Close are new UI buttons that call the runner directly; ntfy has no interrupt envelope.
+3. Chat, Allow / Deny and replies need no new route: they already travel over the bus, and the runner streams them.
+4. Interrupt and Close are new UI buttons that call the runner directly; the bus has no interrupt envelope.
 
-## Input from ntfy
+## Input from the bus
 
 The runner streams, per project, `ai-collab-<project>--to--all` plus `ai-collab-<project>--to--<harness>` for every loaded adapter, from the stored cursor.
 
@@ -424,7 +424,7 @@ Modes: `supervised`, `accept-edits`, `auto`, `full-access`. The table is `PERMIS
 
 Defaults: Claude `auto`, Codex `auto`, OpenCode `supervised`, Cursor `supervised` (`DEFAULT_PERMISSION`). With `place: "openshell"` the default is `full-access` for every harness (`defaultPermission(harness, place)`).
 
-The operator changes a running session's mode with `POST /v1/sessions/:harness/:label/mode` on the control socket (0600, the operator's user only). Neither ntfy nor the MCP server offers the operation, so an agent cannot raise its own mode; it can ask the operator. The runner validates the pair with `permissionSettings`, calls `handle.setPermissionMode`, updates the owned record and publishes a notice row.
+The operator changes a running session's mode with `POST /v1/sessions/:harness/:label/mode` on the control socket (0600, the operator's user only). Neither the bus nor the MCP server offers the operation, so an agent cannot raise its own mode; it can ask the operator. The runner validates the pair with `permissionSettings`, calls `handle.setPermissionMode`, updates the owned record and publishes a notice row.
 
 Cursor's `full-access` needs OpenShell. For the other harnesses the runner refuses `full-access` outside OpenShell, at start and on a mode change, unless the runner has `AI_COLLAB_ALLOW_HOST_AGENT=1` (`lib/agent-guard.mjs`). OpenCode replies are always `once`, never `always`, because an "always" grant covers the whole project. An adapter that cannot honour a mode leaves it out of `capabilities.permissionModes`, and the runner answers 400.
 
@@ -461,7 +461,7 @@ Cursor help, `agent 2026.11.22-e9042b2` (read locally; nothing run against an ac
 
 `openshell 0.1.9`, measured on this machine on 2026-11-22 against real sandboxes (`oslab-verify` and `ai-collab-osdbg*`, all deleted afterwards; `openshell sandbox list -o json` is empty). Tests inject `test/helpers/fake-openshell.mjs`; nothing in the suite creates a sandbox.
 
-Adapter flow for `place: "openshell"`: `sandbox list -o json`, then `sandbox create` when the project sandbox is missing (with `AI_COLLAB_OPENSHELL_POLICY`, else a generated policy for Cursor's API hosts and the host's ntfy, for the executables of the CLI tree), or `sandbox start` (or `resume`) when its state says stopped (or suspended). A start that would add a sandbox at the cap (`maxSandboxes`, default 6) is refused with 409 naming the running sandboxes. Then it uploads the worktree (a git work tree as a clone of its branch, with its own `.git`), the host CLI tree (once per sandbox), Cursor's auth file and the host's Claude and Codex logins (the same files builders copy; long-lived session tokens may replace them later), and the ntfy token from `defaults.json` `tokenFile` to `/sandbox/home/.config/ai-collab/ntfy-token`, with sandbox `defaults.json` and `projects.json` pointing `tokenFile` at that path. A team worktree (`team-<run>`, reused after the first upload) gets the token on every open. Then `sandbox exec` runs `cursor-agent acp --force` with the owned marker, `CURSOR_AGENT_ALLOW_PROCESS_INSPECTION=1`, the session home and a PATH that has `/sandbox/bin`. On close it downloads the clone, commits loose edits, and fast-forwards the host worktree (`runner/adapters/cursor.mjs`). A start that names no place gets `defaults.json` `startPlace` (default `openshell`) when the adapter lists it and `openshell` is installed; Codex keeps the folder unless it is a builder. The runner uses `ai-collab-<project slug>` when it fits the 19-character limit in OpenShell 0.1.9. For longer or empty slugs it uses `ai-collab-` followed by eight hex characters from a hash of the project name.
+Adapter flow for `place: "openshell"`: `sandbox list -o json`, then `sandbox create` when the project sandbox is missing (with `AI_COLLAB_OPENSHELL_POLICY`, else a generated policy for Cursor's API hosts and the host's bus, for the executables of the CLI tree), or `sandbox start` (or `resume`) when its state says stopped (or suspended). A start that would add a sandbox at the cap (`maxSandboxes`, default 6) is refused with 409 naming the running sandboxes. Then it uploads the worktree (a git work tree as a clone of its branch, with its own `.git`), the host CLI tree (once per sandbox), Cursor's auth file and the host's Claude and Codex logins (the same files builders copy; long-lived session tokens may replace them later), and the bus token from `defaults.json` `tokenFile` to `/sandbox/home/.config/ai-collab/bus-token`, with sandbox `defaults.json` and `projects.json` pointing `tokenFile` at that path. A team worktree (`team-<run>`, reused after the first upload) gets the token on every open. Then `sandbox exec` runs `cursor-agent acp --force` with the owned marker, `CURSOR_AGENT_ALLOW_PROCESS_INSPECTION=1`, the session home and a PATH that has `/sandbox/bin`. On close it downloads the clone, commits loose edits, and fast-forwards the host worktree (`runner/adapters/cursor.mjs`). A start that names no place gets `defaults.json` `startPlace` (default `openshell`) when the adapter lists it and `openshell` is installed; Codex keeps the folder unless it is a builder. The runner uses `ai-collab-<project slug>` when it fits the 19-character limit in OpenShell 0.1.9. For longer or empty slugs it uses `ai-collab-` followed by eight hex characters from a hash of the project name.
 
 | Command | Used for | Verified |
 |---|---|---|
@@ -486,7 +486,7 @@ Still unsolved:
 - **Solved 2026-11-23: a real prompt completes.** Through an isolated `runner/main.mjs`, `POST /v1/sessions {harness: "cursor", model: "deepseek-v41-flash-1017-high"}` with no place opened `ai-collab-sbx-proof` with the generated policy and `CURSOR_AGENT_ALLOW_PROCESS_INSPECTION=1`; the turn wrote and committed a file, replied `OK`, `ai-collab sessions` listed the session, and the close landed the commit on the host worktree and deleted the sandbox. The two bullets below describe the earlier failure.
 - **Earlier failure: a real prompt had never completed inside a sandbox.** The staged `agent` starts, speaks ACP, reports `isAuthenticated: true`, and `initialize` succeeds with `protocolVersion: 1`. `session/new` then answers `{"code":-32603,"message":"Internal error","data":{"message":"Failed to initialize session services"}}` with `cwd: "/sandbox/work/repo"`, and its own log shows why the same request cannot reach home: `privacy.refresh.error ConnectError: [unavailable] getaddrinfo EAI_AGAIN api2.cursor.sh`, then `analytics.flush.error ... fetch failed`. The CLI sandboxes *itself* (`sandbox.configureSuccess {.../cursorsandbox}`) and applies a Landlock network rule that denies its own egress about a second in; the sandbox's policy engine logs the connection as allowed, so the denial is inside the CLI process. Auth, staging and file sync are proven; the conversation is not.
 - **The fix to try next.** A Cursor CLI version whose nested sandbox detects that it is already sandboxed, a supported knob that turns the nested network policy off (the CLI's own `networkAccess` profile did not), or a policy change that exempts the `cursorsandbox` helper.
-- **ntfy access from inside.** Owned sessions need none: the runner publishes their events. Sandboxed schedule ticks run the ai-collab CLI and MCP server inside and reach `host.openshell.internal:8794` (live 2026-11-23). Hooks still do not run in an owned session's sandbox.
+- **Bus access from inside.** Owned sessions need none: the runner publishes their events. Sandboxed schedule ticks run the ai-collab CLI and MCP server inside and reach `host.openshell.internal:8794` (live 2026-11-23). Hooks still do not run in an owned session's sandbox.
 - **Idle cleanup.** A sandbox lives until its last session closes. A runner crash leaves it; there is no orphan sweep.
 - **The other harnesses.** Claude and OpenCode still cannot use `place: "openshell"` as owned sessions, and Codex only as a builder; `capabilities.places` names what each adapter allows. A start of theirs with no place stays in the folder.
 - **Session lifetime.** An idle owned session keeps its project sandbox until the operator closes it; the commits reach the host only at close.
@@ -514,7 +514,7 @@ AI_COLLAB_LIVE_CURSOR_OPENSHELL=1 node --test \
   --test-name-pattern='live Cursor OpenShell' test/runner.test.mjs
 ```
 
-The opt-in test starts `runner/main.mjs` with an isolated project, database, and control socket. It uses local fixture ntfy for activity capture and the real OpenShell and Cursor CLIs for the turn. It requests an owned Cursor session in OpenShell with the permission mode omitted, checks that the service selects `full-access`, then waits for assistant text and a successful stop. It closes the session through the socket and checks the marker in the host worktree and the removal of the project sandbox.
+The opt-in test starts `runner/main.mjs` with an isolated project, database, and control socket. It uses the in-process bus fixture for activity capture and the real OpenShell and Cursor CLIs for the turn. It requests an owned Cursor session in OpenShell with the permission mode omitted, checks that the service selects `full-access`, then waits for assistant text and a successful stop. It closes the session through the socket and checks the marker in the host worktree and the removal of the project sandbox.
 
 The OpenShell builder returned `ENOENT` for `openshell --version` at the live test's preflight. Cursor Agent was also absent from its PATH. The test skips by default. The earlier live probe described above reached ACP `initialize` and failed at `session/new` with Cursor logging `EAI_AGAIN api2.cursor.sh`.
 
@@ -547,7 +547,7 @@ entry points, see [Live OpenShell bootstrap smoke](sandbox-smoke.md).
 | `runner/schedules.mjs` | `schedules.json` loader and the scheduled command step |
 | `lib/schedule-session.mjs` | The registered session a schedule's command resumes, and the project a schedule's folder names |
 | `runner/lock.mjs` | Single-instance lock (`runner.lock` beside `runner.db`) |
-| `runner/runner.mjs` | Session workflow, control operations, ntfy input |
+| `runner/runner.mjs` | Session workflow, control operations, bus input |
 | `runner/publish.mjs` | Event → envelope mapping |
 | `runner/control.mjs`, `runner/client.mjs` | Control socket server and client |
 | `runner/main.mjs` | Service entry (`npm run runner`) |
@@ -563,7 +563,7 @@ entry points, see [Live OpenShell bootstrap smoke](sandbox-smoke.md).
 | `lib/deliver-push.mjs` | Live push paths (socket, `codex queue`, OpenCode HTTP) and the ack tracker, shared with the UI dispatcher |
 | `lib/owned.mjs` | Owned-record read/write and `standsDown` |
 | `deploy/ai-collab-runner.service` | User unit template; not installed |
-| `test/runner*.test.mjs` | Tests with the fake adapter and fake ntfy |
+| `test/runner*.test.mjs` | Tests with the fake adapter and the in-process bus |
 
 Environment: `AI_COLLAB_APPROVAL_TIMEOUT_MIN` (minutes before an unanswered owned approval is denied; default 30), `AI_COLLAB_RUNNER_SOCKET`, `AI_COLLAB_RUNNER_DB` (default `$AI_COLLAB_STATE_DIR/runner.db`), `AI_COLLAB_RUNNER_HARNESSES` (comma list; `none` loads no adapter; unset loads all four), `AI_COLLAB_RUNNER_ADAPTER_DIR` (directory the adapter modules load from; default `runner/adapters`), `AI_COLLAB_SCHEDULES` (path of `schedules.json`), and the usual `AI_COLLAB_*` project settings, read through `loadProjects`.
 

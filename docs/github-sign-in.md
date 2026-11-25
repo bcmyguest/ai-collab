@@ -38,11 +38,11 @@ The UI follows GitHub's [web application flow](https://docs.github.com/en/apps/o
 
 ## What agents see
 
-Routing stays `from: "operator"`. Messages gain an envelope field `by` (the login), and hooks render the sender as `from=operator (octocat)`. Question answers and approvals stay the plain `reply <id> <answer>` text, with the login in the ntfy title (`Reply from operator (octocat)`), which the UI shows next to the answer. AFK mode envelopes carry `by` too.
+Routing stays `from: "operator"`. Messages gain an envelope field `by` (the login), and hooks render the sender as `from=operator (octocat)`. Question answers and approvals stay the plain `reply <id> <answer>` text, with the login in the message title (`Reply from operator (octocat)`), which the UI shows next to the answer. AFK mode envelopes carry `by` too.
 
 ## Hosted project isolation
 
-Set `"hosted": true` in `github.json` to scope the UI to each signed-in GitHub login. For every project on the UI host, add an explicit `projects.json` entry with its GitHub `owner` and the absolute path to its ntfy `tokenFile`. Keep project names unique. The UI uses the first project assigned to each login as that user's default and shows the configured owner on agent cards. Ownership comes from the host's configuration.
+Set `"hosted": true` in `github.json` to scope the UI to each signed-in GitHub login. For every project on the UI host, add an explicit `projects.json` entry with its GitHub `owner` and the absolute path to its bus `tokenFile`. Keep project names unique. The UI uses the first project assigned to each login as that user's default and shows the configured owner on agent cards. Ownership comes from the host's configuration.
 
 Provision a dedicated ntfy account per owner before enabling hosted mode. On a shared broker, use deny-by-default ACLs and grant each account access to only its own project topics. Use a separate private broker per owner if tenants can reach the broker's file endpoint, since ntfy attachments use bearer URLs. Give agent machines the corresponding restricted credentials. Keep setup's admin credentials on the broker host. The UI rejects missing owners or credentials and rejects a token reused across owners. The broker administrator configures and verifies the underlying ACLs.
 

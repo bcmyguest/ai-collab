@@ -3,7 +3,7 @@ import { test } from "node:test";
 import os from "node:os";
 import { broadcastTopic, inboxTopic, loadConfig } from "../lib/config.mjs";
 import { claimInbox, reserveOwned } from "../lib/inbox.mjs";
-import { pollCached } from "../lib/ntfy.mjs";
+import { pollCached } from "../lib/transport.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 
@@ -66,7 +66,7 @@ test("a same-lane peek skips events its own predicate refused, and no further", 
     fake.inject(broadcastTopic("demo"), "fresh-4");
     const second = await claimInbox(cfg, { commit: false, peek, poll: new Map(), now: NOW });
     assert.deepEqual(second.map((m) => m.body), ["fresh-4"]);
-    assert.match(lastPoll(fake, broadcastTopic("demo")).since, /^m\d{8}$/, "second read starts at an event id");
+    assert.match(lastPoll(fake, broadcastTopic("demo")).since, /^\d+$/, "second read starts at an event id");
   } finally {
     await fake.close();
   }
