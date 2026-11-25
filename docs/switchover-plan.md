@@ -238,3 +238,23 @@ Decided 2026-11-25. The reviews keep finding interleaving bugs (two lock holders
 - **A, now:** model-based tests with fast-check (MIT) in `node --test`. Each protocol is a small model; fast-check runs random command sequences against the real code and checks invariants after every step. Order: store lock (at most one holder, no stuck lock with a dead owner), delivery/redelivery (no copy after an answer, every claimed message starts or is marked), pattern-run handoffs, bus cursor (no gap or duplicate across reconnects).
 - **B, next:** TLA+ specs checked with TLC for the lock and delivery protocols, the established tool with the largest community (Quint was considered: TLA+ semantics, TypeScript-like syntax, smaller community). The A models mirror the specs so code and spec stay linked.
 - Lean 4 proofs were considered and rejected for now: they prove properties of an abstract model, not the JavaScript, at the highest cost per property.
+
+## 8. Progress after D4 (2026-11-25, late)
+
+| Item | Branch | Commits | State |
+|---|---|---|---|
+| Model test: store lock | `feat/model-tests` | 47eb13f4 (fast-check 4.11.0), 1396ec4c | passes; finds the rejected 614d0db7 lock ([Acquire, Crash, ReusePid, Acquire]) |
+| Model test: bus cursor | `feat/model-tests` | 5d113a63 | passes on both stores; finds a planted backfill off-by-one. Found: poll with an unknown cursor replays the topic, a stream does not; fix in 4b |
+| Integration of reviewed side fixes | `integrate/stack-2` | bb30aa11 | redelivery-2, opencode-permission-2, mention-reply-2 on top of the model tests; full suite baseline only |
+| Model test: delivery + pump guard | `feat/model-delivery` | 33253ca9, aae25434 | the model found a live bug: an answer seen while the target was busy or not ready still got a copy once it freed up |
+| Fix for that bug | `fix/ack-before-redelivery` | caa522cd (committed by the operator: the Claude Code checker refused to commit an existing-test change on phone-channel approval) | runner re-checks before reserving a redelivery; UI dispatcher refreshes acks right before redelivering |
+| Prune | `feat/prune` (agent worktree) | 1fef16ff … acade8ce | Opus: UNSAFE as written (builder commits, ignored files, nested worktrees, liveness); 8 fixes in progress. Defaults: 7d, refuse < 24h. Never --apply before re-review |
+| Labels | `feat/labels` (agent worktree) | in progress | OpenShell `--label`: ai-collab.managed/project/kind/owner/version; cap and cleanup select by label |
+| 4a fixes | `feat/workflows-dbos` (qwen) | in progress | review findings 1-8 |
+
+Backlog raised by the operator:
+- OpenShell sandboxes re-upload ~3.2 GB each (clone 1.5 GB, node_modules 1.1 GB, harness tree); no registry access, so no package cache applies today. Options: prebuilt base image or template (`--from`), shallow clone, registry mirrors later. Disk is 92% full; 55 dangling Docker volumes hold ~303 GB (origin unverified).
+- macOS: platform layer for systemd units/scopes, /proc reads, container runtime; CI on a macOS runner.
+- Harness version contract tests: pin event shapes, flags and hook payloads per harness; run against the newest release on a schedule.
+- UI: "waking the selected session" shows after every send even when the session is live.
+- Route `web/server/ui.mjs` skip/outcome loops through `operator.matchReply`.
