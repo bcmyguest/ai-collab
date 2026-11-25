@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { stateDir } from "../lib/config.mjs";
@@ -292,6 +292,43 @@ test("readLiveCwds reports the cwd of a running child process", (t) => {
   const child = spawn("sleep", ["60"], { cwd: dir, stdio: "ignore" });
   t.after(() => child.kill());
   assert.ok(readLiveCwds().includes(realpathSync(dir)));
+});
+
+test("a node_modules symlink alone is removable and its target survives", async (t) => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-prune-nm-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const env = fixtureEnv(home);
+  const repo = makeRepo(home);
+  const wt = path.join(home, "wt");
+  mkdirSync(wt);
+  const target = path.join(home, "shared-node-modules");
+  mkdirSync(path.join(target, "pkg"), { recursive: true });
+  writeFileSync(path.join(target, "pkg", "index.js"), "export {};\n");
+  const linkOnly = path.join(wt, "linkonly");
+  git(repo, ["worktree", "add", "-q", "-b", "linkonly", linkOnly, "main"]);
+  symlinkSync(target, path.join(linkOnly, "node_modules"));
+  const realDir = path.join(wt, "realdir");
+  git(repo, ["worktree", "add", "-q", "-b", "realdir", realDir, "main"]);
+  mkdirSync(path.join(realDir, "node_modules", "pkg"), { recursive: true });
+  writeFileSync(path.join(realDir, "node_modules", "pkg", "index.js"), "x\n");
+  const linkPlus = path.join(wt, "linkplus");
+  git(repo, ["worktree", "add", "-q", "-b", "linkplus", linkPlus, "main"]);
+  symlinkSync(target, path.join(linkPlus, "node_modules"));
+  writeFileSync(path.join(linkPlus, "scratch.txt"), "scratch\n");
+  for (const p of [linkOnly, realDir, linkPlus]) setOld(p);
+  const before = readdirSync(target, { recursive: true }).sort();
+  const dry = await pruneRepo({ env, root: repo, olderThanMs: WEEK, apply: false, now: NOW });
+  const decided = outcomes(dry);
+  assert.equal(decided["worktree:linkonly"], "remove");
+  assert.equal(decided["worktree:realdir"], "dirty: 2 changed or untracked file(s)");
+  assert.equal(decided["worktree:linkplus"], "dirty: 1 changed or untracked file(s)");
+  assert.ok(existsSync(linkOnly));
+  const applied = await pruneRepo({ env, root: repo, olderThanMs: WEEK, apply: true, now: NOW });
+  assert.equal(outcomes(applied)["worktree:linkonly"], "remove");
+  assert.ok(!existsSync(linkOnly));
+  assert.ok(existsSync(realDir) && existsSync(linkPlus));
+  assert.deepEqual(readdirSync(target, { recursive: true }).sort(), before);
+  assert.equal(readFileSync(path.join(target, "pkg", "index.js"), "utf8"), "export {};\n");
 });
 
 test("prune dry run decides every candidate and deletes nothing", async (t) => {

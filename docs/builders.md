@@ -246,7 +246,7 @@ UNVERIFIED:
 
 - Builder dirs in a settled phase (`finished`, `failed`, `stopped`) whose `state.json` is older than the cutoff, with the unit inactive and no live pid. It deletes `back/` (clone), `stage/` (staged tree and `tools/`), `download-*` and `*.log` files over 1 MiB. It keeps `state.json`, `brief.md`, `policy.yaml`, the `workflow-*.db` journal, `out/` (ai-collab call records and oncebitten payloads) and smaller logs.
 - Unlanded commits (`commits > 0`, `landed` false) are archived first: the clone's HEAD goes to `refs/ai-collab/archive/<builder-id>` in the project repo. A builder with unlanded commits and no clone is kept.
-- Linked worktrees of the project repo, except the main worktree and protected checkouts. A worktree goes only when it has no uncommitted or untracked-but-not-ignored files, is not locked, no live process has its cwd inside it, and its last commit or directory mtime is older than the cutoff. A detached HEAD goes to `refs/ai-collab/archive/wt-<name>` before `git worktree remove`. Branches are never deleted.
+- Linked worktrees of the project repo, except the main worktree and protected checkouts. A worktree goes only when it has no uncommitted or untracked-but-not-ignored files (one top-level `node_modules` symlink is ignored; its target is never touched), is not locked, no live process has its cwd inside it, and its last commit or directory mtime is older than the cutoff. A detached HEAD goes to `refs/ai-collab/archive/wt-<name>` before `git worktree remove`. Branches are never deleted.
 
 Builders hold no harness transcript on the host. Claude, Codex and OpenCode write their output to the unit's journal, Cursor streams to OTLP, and the sandbox session directories are destroyed at cleanup.
 
