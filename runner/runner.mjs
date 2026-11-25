@@ -20,7 +20,7 @@ import { attachmentOf, cacheAttachmentsWithin, localizedAttachment } from "../li
 import { streamEvents } from "../lib/transport.mjs";
 import { listSessions, recordSession } from "../lib/sessions.mjs";
 import { claudeConfirmedSince, claudeSnapshot, claudeWindowMs } from "../lib/claude-socket.mjs";
-import { ackTracker, direct, MAX_ATTEMPTS, PUSHED, pushSession, readDispatchLedger, readySession, writeDispatchLedger } from "../lib/deliver-push.mjs";
+import { ackTracker, busyWithPush, direct, MAX_ATTEMPTS, PUSHED, pushSession, readDispatchLedger, readySession, writeDispatchLedger } from "../lib/deliver-push.mjs";
 import { sessionIdleState } from "../lib/idle.mjs";
 import { opencodeRequest } from "../lib/opencode-api.mjs";
 import { BUILDER_START_TIMEOUT_MS, builderPaths, builderResumePrompt, stoppedBuilder, ownedBuilder, stageOwnedBuilder, claimOwnedBuilder, finishOwnedBuilder, markOwnedBuilderFailed } from "../lib/builder.mjs";
@@ -631,8 +631,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       return (cfg && listSessions(cfg).find((s) => s.id === address && s.online)) || null;
     },
     ready: async (session) => readySession(session, session.harness === "opencode" ? await openCodeActive() : null, { env, idle: sessionIdleState }),
-    // An OpenCode session with a running turn queues a push behind its earlier copies.
-    busy: async (session) => session.harness === "opencode" && Boolean((await openCodeActive())?.has(session.sessionId)),
+    busy: async (session) => busyWithPush(session, session.harness === "opencode" ? await openCodeActive() : null),
     reserve: (scfg, ids, { owner, allowSeen = false }) => reserveOwned(scfg, ids, { owner, allowSeen, ttlMs: reserveTtlMs }),
     release: (scfg, ids, owner) => releaseOwned(scfg, ids, owner),
     markDelivered: (scfg, ids) => markDelivered(scfg, ids),

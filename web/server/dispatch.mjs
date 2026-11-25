@@ -12,7 +12,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { broadcastTopic, inboxTopic, receiptsTopic } from "../../lib/config.mjs";
-import { BACKOFF_BASE_MS, BACKOFF_MAX_MS, MAX_ATTEMPTS, PUSHED, REDELIVER_MS, TTL_MS, direct, pushSession, readySession, runCommand } from "../../lib/deliver-push.mjs";
+import { BACKOFF_BASE_MS, BACKOFF_MAX_MS, MAX_ATTEMPTS, PUSHED, REDELIVER_MS, TTL_MS, busyWithPush, direct, pushSession, readySession, runCommand } from "../../lib/deliver-push.mjs";
 import { formatInbox } from "../../lib/format.mjs";
 import { sessionIdleState } from "../../lib/idle.mjs";
 import { claimInbox, ATTACHMENT_BUDGET_MS, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery, reservedMessage } from "../../lib/inbox.mjs";
@@ -201,7 +201,7 @@ export function createDispatcher({
         if (acked(id, e.address) || now() - e.firstAt >= TTL_MS || (due && e.attempts >= MAX_ATTEMPTS)) {
           delete entries[id];
           counts.dropped += 1;
-        } else if (due && session && !cooling(session, id) && await ready(session, active)) {
+        } else if (due && session && !cooling(session, id) && !busyWithPush(session, active) && await ready(session, active)) {
           const scfg = { ...cfg, peer: session.peer, session: session.session };
           const again = { ...e.message, attempt: e.attempts + 1, attempts: MAX_ATTEMPTS };
           // Redelivery reserves an id that is already seen, so the seen list can be trimmed without exposing it.
