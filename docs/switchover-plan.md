@@ -169,6 +169,8 @@ Revised 2026-11-25 after the operator allowed Postgres. See 2.4.
 | C. Keep SQLite `lib/durable.mjs` | 0 | nothing | ~770 hand-rolled lines stay ours |
 | D. celld | celld + S3-style bucket + host gateway | durable and possibly bus | Beta; nothing found built on it; Cloudflare is porting its features into workerd (blog, 2026-10-09) |
 
+Constraint for A: DBOS Transact only (MIT, free). No Conductor: it is proprietary and licensed for production (https://www.dbos.dev/dbos-pricing). Recovery on one machine runs at `DBOS.launch()`.
+
 The bus stays on SQLite in A-C: sandboxes, hooks and the phone need its plain HTTP surface, and no Postgres option provides one without another adapter.
 
 Recommendation: A.
