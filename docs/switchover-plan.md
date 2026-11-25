@@ -206,5 +206,14 @@ Review: one Opus subagent per batch, briefed with the branch and this document, 
 |---|---|---|---|---|
 | 0 + 1 | `fix/domain-bugs` | cb93af16 … 44b22410 (12 commits) | Opus, 3 rounds. Round 1: the sync lock blocked the UI event loop behind an async holder. Round 2: start and wake disagreed on the Cursor binary in sandboxes; one test was tautological. Round 3: approve; start's Cursor resolution restored to main's | ready to merge; 55/55 targeted tests, full suite baseline only |
 | 2 | `feat/ts-core` | 55b06744, 9776494f | Opus: approve with nits, both fixed (`.ts` specifier scan in the publish build, Node 22.18+ in docs) | ready to merge |
+| 0-2 merged | `integrate/batches-0-2` | 595849e4 | typecheck clean; full suite baseline only | waiting to fast-forward `main` (blocked by another session's uncommitted files in `~/ai-collab`) |
+| 3: store | `feat/store` (on the integration branch) | 3f602e5c, 330acdc7, 614d0db7 (reverted by be44846f), 88f568c6, 1e9287bd | Opus, 3 rounds: 614d0db7 rejected (reproduced double holders); redo approved: 0 violations in 48,000 stress acquisitions, old and new code mixed | done; residual race only when a holder is suspended past 10 × staleMs |
+| fix | `fix/mention-reply-in-channel` | 1ac5cf7d | 3 tests red→green | replies to project-chat @mentions show in the project chat |
+
+Baseline on `main` (2f1db8e8, Opus re-measured, each file alone, twice): `activity` "UI streams activity…", `operator-messages` "project and session chats show terminal prompts…", `pm-workspace` "a dirty PM clone…" (global git `push.pushOption` leaks into the test remote) fail; "session chat shows typed terminal prompts…" fails in full runs.
+
+## 6. Decision D3: one Postgres, bus as a log
+
+Decided 2026-11-25. Batch 4b, after the runner runs on DBOS: the bus keeps its HTTP/NDJSON server (the phone, hooks and sandboxes speak it) and swaps `openBusStore` for a Postgres store: `events(id bigserial, topic, time, message, title, attachment)` plus a files table; publish = INSERT then `NOTIFY topic`; subscribe = backfill `WHERE id > since`, then re-query on NOTIFY; retention = `DELETE WHERE time < cutoff`. NOTIFY is only a doorbell, so a lost notification cannot lose data. No queue framework: messages are a replayable log, and delivery/retry belongs to the runner's DBOS workflows. Considered: pg-boss (MIT; fan-out via publish/subscribe, but job-shaped, so no `since` replay), PGMQ (SQS-style extension, no fan-out), DBOS streams (per-workflow, no retention or attachments). `bus.db` is retired after 4b.
 
 Deferred to the `store` module (batch 3), predates this work: a lock left by a dead process blocks writers for up to 40 s (`staleMs`), and two waiters can both judge it stale and remove each other's lock (`lib/state.mjs`). Fix: record the owner pid in the lock and treat it as stale only when that pid is gone.
