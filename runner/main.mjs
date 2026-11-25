@@ -3,9 +3,10 @@
 import { mkdirSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
-import { loadProjects, stateDir } from "../lib/config.mjs";
+import { loadProjects, stateDir, autoDefaults } from "../lib/config.mjs";
 import { HARNESSES } from "./contract.mjs";
-import { openDurable } from "../lib/durable.mjs";
+import { openWorkflows } from "../lib/workflows.ts";
+import { pgUrl } from "../lib/postgres.mjs";
 import { createRunner } from "./runner.mjs";
 import { listenControl, runnerSocket } from "./control.mjs";
 import { loadSchedules, registerSchedules } from "./schedules.mjs";
@@ -51,7 +52,9 @@ export async function main(env = process.env) {
   let runner;
   let control;
   try {
-    durable = openDurable(db);
+    // "dbos" runs the workflows on Postgres (ai-collab postgres up); the sqlite durable log stays the default.
+    const engine = env.AI_COLLAB_WORKFLOW_ENGINE || autoDefaults(env)?.workflowEngine || "sqlite";
+    durable = await openWorkflows({ engine, file: db, ...(engine === "dbos" ? { pgUrl: pgUrl(env) } : {}) });
     // Registered before boot so PENDING ticks recover with the sessions; invalid entries are reported, not fatal.
     const { entries, errors } = loadSchedules(env);
     for (const error of errors) log(`schedule skipped: ${error}`);
@@ -60,7 +63,7 @@ export async function main(env = process.env) {
     const recovered = await runner.boot();
     // Serve the socket before any tick can start, so a failed bind starts nothing.
     control = await listenControl(runner, runnerSocket(env));
-    durable.startSchedules();
+    await durable.startSchedules();
     startTaskWakes(entries, runner, { env, log });
     log(`listening on ${control.path}; adapters ${[...adapters.keys()].join(", ") || "none"}; recovered ${recovered.length} session(s); schedules ${schedules.join(", ") || "none"}`);
   } catch (error) {

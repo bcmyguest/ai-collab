@@ -28,6 +28,8 @@ export interface Workflows {
   startWorkflow(name: string, id: string, input: Json): Promise<unknown>;
   /** True when this call started the workflow; false when the id already had a run. */
   startWorkflowOnce(name: string, id: string, input: Json): Promise<boolean>;
+  /** Set on engines returned by openWorkflows; createRunner uses it to skip re-adapting a raw sqlite log. */
+  readonly isAsync?: boolean;
   listNamed(name: string, limit?: number): Promise<Json[]>;
   pending(): Promise<string[]>;
   recover(): Promise<string[]>;
@@ -78,9 +80,10 @@ type SqliteDurable = {
 };
 
 /** Wraps the sync sqlite durable log so both engines expose one async interface; awaiting a sync value is a no-op. */
-function adaptSqlite(raw: ReturnType<typeof openDurable>): Workflows {
+export function adaptSqlite(raw: ReturnType<typeof openDurable>): Workflows {
   const d = raw as unknown as SqliteDurable;
   return {
+    isAsync: true,
     register: (name, fn) => d.register(name, fn),
     scheduled: (name, opts, fn) => d.scheduled(name, opts, fn),
     hasSchedule: (name) => d.hasSchedule(name),
@@ -89,7 +92,12 @@ function adaptSqlite(raw: ReturnType<typeof openDurable>): Workflows {
     async schedules() { return d.schedules(); },
     async scheduleRuns(name, limit) { return d.scheduleRuns(name, limit); },
     async startWorkflow(name, id, input) { return await d.startWorkflow(name, id, input); },
-    async startWorkflowOnce(name, id, input) { return d.startWorkflowOnce(name, id, input) !== null; },
+    async startWorkflowOnce(name, id, input) {
+      const run = d.startWorkflowOnce(name, id, input);
+      if (run === null) return false;
+      run.catch(() => {}); // the caller learns "started" from the boolean; the result promise is the runner's business
+      return true;
+    },
     async listNamed(name, limit) { return d.listNamed(name, limit); },
     async pending() { return d.pending(); },
     async recover() { return d.recover(); },
@@ -103,7 +111,7 @@ function adaptSqlite(raw: ReturnType<typeof openDurable>): Workflows {
     async prune(names, before) { return d.prune(names, before); },
     async drain(workflowId, topic) { return d.drain(workflowId, topic); },
     async pendingCount(workflowId, topic) { return d.pendingCount(workflowId, topic); },
-    async close() { d.close(); },
+    async close() { await d.close(); },
   };
 }
 
@@ -266,6 +274,7 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { 
   }
 
   return {
+    isAsync: true,
     register(name, fn) { registry.set(name, fn); },
     scheduled(name, { everyMs, firstStep = null }, fn) {
       if (!Number.isSafeInteger(everyMs) || everyMs < 1) throw new Error(`schedule ${name}: everyMs must be a positive integer`);

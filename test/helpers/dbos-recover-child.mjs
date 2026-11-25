@@ -5,6 +5,8 @@ import { openWorkflows } from "../../lib/workflows.ts";
 import { pgUrl } from "../../lib/postgres.mjs";
 
 const [phase, id, markFile] = process.argv.slice(2);
+// node --test globs every file under test/; this module only runs as a spawned child of workflows-dbos-recovery.test.mjs.
+if (!["start", "relaunch"].includes(phase)) process.exit(0);
 
 const wf = await openWorkflows({ engine: "dbos", pgUrl: pgUrl() });
 // The marker path travels in the workflow input: a recovered run marks its own file, not the recovering process's.

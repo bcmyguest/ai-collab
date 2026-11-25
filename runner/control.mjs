@@ -49,14 +49,14 @@ export async function route(runner, method, url, input) {
     if (a === "advance") return [200, await runner.advancePattern(input)];
   }
   if (area === "schedules") {
-    if (!a && method === "GET") return [200, runner.schedules()];
+    if (!a && method === "GET") return [200, await runner.schedules()];
     if (a && b === "runs" && !action) {
       if (method !== "GET") fail(405, "Method not allowed");
-      return [200, runner.scheduleRuns(a)];
+      return [200, await runner.scheduleRuns(a)];
     }
     if (a && b === "run" && !action) {
       if (method !== "POST") fail(405, "Method not allowed");
-      return [202, runner.runSchedule(a, callerOf(url))];
+      return [202, await runner.runSchedule(a, callerOf(url))];
     }
     fail(404, "Not found");
   }
@@ -70,7 +70,7 @@ export async function route(runner, method, url, input) {
   }
   if (area === "deliveries") {
     if (method !== "GET") fail(405, "Method not allowed");
-    return [200, runner.deliveries()];
+    return [200, await runner.deliveries()];
   }
   if (area === "builder-continuations" && !a && method === "POST") return [201, await runner.continueBuilder(input)];
   if (area !== "sessions") fail(404, "Not found");

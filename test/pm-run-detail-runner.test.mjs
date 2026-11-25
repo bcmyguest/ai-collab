@@ -24,9 +24,9 @@ async function runnerWith(entries) {
 test("each run reports its start and end, and the session its command resumes", async () => {
   const { durable, runner } = await runnerWith([{ name: "pm", everyMs: 60_000, command: ["cursor-agent", "-p", "--resume", CONVERSATION, "tick"] }]);
   try {
-    const started = runner.runSchedule("pm");
+    const started = await runner.runSchedule("pm");
     await durable.result(started.id);
-    const [run] = runner.scheduleRuns("pm");
+    const [run] = await runner.scheduleRuns("pm");
     assert.equal(run.status, "SUCCESS");
     assert.ok(Number.isSafeInteger(run.startedAt));
     assert.ok(Number.isSafeInteger(run.finishedAt));
@@ -40,9 +40,9 @@ test("each run reports its start and end, and the session its command resumes", 
 test("a run's link opens the project's timeline for exactly that run", async () => {
   const { durable, runner } = await runnerWith([{ name: "pm", everyMs: 60_000, command: ["cursor-agent", "-p", "--resume", CONVERSATION, "tick"] }]);
   try {
-    const started = runner.runSchedule("pm");
+    const started = await runner.runSchedule("pm");
     await durable.result(started.id);
-    const [run] = runner.scheduleRuns("pm");
+    const [run] = await runner.scheduleRuns("pm");
     const selected = parseSelection(runLink({ ...run, project: "demo" }, "demo").slice(1));
     assert.equal(selected.project, "demo");
     assert.equal(selected.session, "cursor#" + sessionLabel(CONVERSATION));
@@ -56,9 +56,9 @@ test("a run's link opens the project's timeline for exactly that run", async () 
 test("a schedule whose command resumes no session lists its runs without a link", async () => {
   const { durable, runner } = await runnerWith([{ name: "pm", everyMs: 60_000, command: ["node", "pm.mjs", "--once"] }]);
   try {
-    const started = runner.runSchedule("pm");
+    const started = await runner.runSchedule("pm");
     await durable.result(started.id);
-    const [run] = runner.scheduleRuns("pm");
+    const [run] = await runner.scheduleRuns("pm");
     assert.equal(run.session, undefined);
     assert.ok(Number.isSafeInteger(run.startedAt));
     assert.equal(runLink({ ...run, project: "demo" }, "demo"), "");
