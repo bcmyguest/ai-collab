@@ -39,6 +39,10 @@ if (mode === "restart" && !readFileSync("notes.md", "utf8").includes("pending fa
   setInterval(() => {}, 1000);
   await new Promise(() => {});
 }
+if (mode === "cursor-plan-limit") {
+  console.error("ActionRequiredError: You've reached your plan limit for this month.");
+  process.exit(1);
+}
 if (mode === "cursor-limit") {
   console.error("ActionRequiredError: You've hit your usage limit. Your usage limits will reset when your monthly cycle ends on 12/18/2099.");
   process.exit(1);

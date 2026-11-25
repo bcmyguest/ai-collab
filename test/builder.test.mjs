@@ -632,6 +632,15 @@ test("a Cursor usage limit is visible on the task and stops later dispatches for
   assert.equal(readJsonLines(l.env.FAKE_BUILDER_LOG).length, 2);
 });
 
+test("a Cursor plan limit with no usage-limit wording blocks the task like a usage limit", async () => {
+  const l = lab({ FAKE_BUILDER_MODE: "cursor-plan-limit" });
+  await withTask(l);
+  const started = await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief);
+  assert.equal(started.code, 0, started.err);
+  assert.equal(task(l).status, "blocked");
+  assert.match(task(l).detail, /reached its usage limit/);
+});
+
 for (const [label, stream, failDownload] of [
   ["carries edits forward after a stderr limit", "stderr", false],
   ["carries edits forward after a stdout limit", "stdout", false],
