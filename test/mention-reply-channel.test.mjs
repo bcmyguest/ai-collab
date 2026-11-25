@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { loadConfig } from "../lib/config.mjs";
+import { inboxTopic, loadConfig } from "../lib/config.mjs";
+import { encodeEnvelope } from "../lib/agui.mjs";
 import { replyToOperator, sendMessage } from "../lib/inbox.mjs";
+import { publish } from "../lib/transport.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
@@ -45,6 +47,31 @@ test("a plain DM reply stays out of the project chat", { timeout: 10000 }, async
   const { project, session } = await chats(t, () => ({}));
   assert.equal(project.length, 0);
   assert.equal(session.length, 1);
+});
+
+test("a reply to a project-chat mention from another session stays out of the project chat", { timeout: 10000 }, async (t) => {
+  const fake = await startFakeNtfy();
+  t.after(() => fake.close());
+  const cfg = loadConfig(peerEnv(fake, { peer: "operator" }));
+  const bob = `bob#0000000000000001`;
+  const sent = await sendMessage(cfg, bob, `@${bob} status?`, { operatorThread: true, mentionedIn: "all" });
+  // Carol's session answers bob's mention on the wire; replyToOperator only lets the addressed session reply.
+  const carol = { ...loadConfig(peerEnv(fake, { peer: "carol" })), session: "0000000000000002" };
+  const wire = encodeEnvelope("msg", { from: "carol", session: carol.session, to: "operator", operatorThread: true, replyTo: sent.id, ts: new Date().toISOString(), body: "all green" }, carol.wire);
+  await publish(carol, inboxTopic(cfg.project, "carol"), wire, { title: "ai-collab from carol" });
+  const ui = createUi({ cfg, env: peerEnv(fake, { peer: "operator" }) });
+  const ctrl = new AbortController();
+  t.after(() => { ctrl.abort(); ui.close(); });
+  const stream = sse(ui.events(new Request(`${base}/api/events?`, { signal: ctrl.signal })));
+  for (;;) {
+    const { value, done } = await stream.next();
+    if (done) throw new Error("stream ended");
+    if (value.event === "problem") throw new Error(value.data.error);
+    if (value.event === "state") {
+      assert.equal(value.data.messages.filter(m => m.body === "all green").length, 0);
+      break;
+    }
+  }
 });
 
 test("a reply to a mention made in a session chat stays out of the project chat", { timeout: 10000 }, async (t) => {

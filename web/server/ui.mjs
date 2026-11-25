@@ -925,7 +925,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       // Inbox direct sends stay in session threads; they only suppress terminal echoes here.
       // An agent's answer to a project-chat @mention (mentionedIn "all") also shows here, quoting the post it answers.
       const mentions = new Map(inbox.filter(item => item.from === "operator" && item.mentionedIn === "all").map(item => [item.id, item]));
-      const mentionReplies = inbox.filter(item => item.thread && item.to === "operator" && mentions.has(item.replyOf))
+      // Only the mention's addressee answers it here; a reply from another session stays out.
+      const mentionReplies = inbox.filter(item => item.thread && item.to === "operator" && mentions.has(item.replyOf) && item.from === mentions.get(item.replyOf).to)
         .map(item => ({ ...item, quote: { id: item.replyOf, sender: "operator", body: String(mentions.get(item.replyOf).body || "").slice(0, QUOTE_MAX) } }));
       list = [...shared, ...mentionReplies, ...answers.map(answerMessage), ...terminalPrompts(activity(), sent)];
     }
