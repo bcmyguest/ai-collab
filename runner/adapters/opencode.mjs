@@ -7,6 +7,7 @@ import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, PERMISSION_TABLE } from "../cont
 
 const NO_SERVICE = "OpenCode service is not running (no loopback url in its service.json)";
 const RETRY_MS = 2000;
+const PARENT_DEPTH = 8;
 const ASK_FALLBACK = "permission";
 const enc = encodeURIComponent;
 
@@ -153,12 +154,27 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
     });
   }
 
+  // The owned session above a child session, found through the parentID chain of the service; undefined when none is owned.
+  async function ownerOf(sessionID) {
+    let id = sessionID;
+    for (let depth = 0; depth < PARENT_DEPTH; depth++) {
+      const r = await opencodeRequest("GET", `/api/session/${enc(id)}`, { env });
+      id = r.ok && typeof r.body?.data?.parentID === "string" ? r.body.data.parentID : "";
+      if (!id) return undefined;
+      if (sessions.has(id)) return sessions.get(id);
+    }
+    return undefined;
+  }
+
   function dispatch(event) {
     const data = event?.data ?? {};
     if (event?.type === "permission.replied") return replied(data);
-    // An ask from a subagent child (parentID names the owned session) is handled for the owned session.
+    // An ask from a subagent child is handled for the owned session; the event may name no parentID, so the service tells.
     const asked = event?.type === "permission.asked";
     const s = sessions.get(data.sessionID) ?? (asked ? sessions.get(data.parentID) : undefined);
+    if (!s && asked && typeof data.sessionID === "string" && data.sessionID && !data.parentID) {
+      return ownerOf(data.sessionID).then((owner) => { if (owner) ask(owner, data); }).catch(() => {});
+    }
     if (!s || (!asked && s.sessionID !== data.sessionID)) return;
     switch (event.type) {
       case "permission.asked": return ask(s, data);

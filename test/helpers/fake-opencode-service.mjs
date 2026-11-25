@@ -10,9 +10,10 @@ const SESSION = "ses_test"; // the id POST /api/session returns
 
 /**
  * status: session id -> "idle" | "busy" (read on GET /api/session/:id); permissions: session id -> listed asks.
+ * parents: child session id -> parent id, read on GET /api/session/:id.
  * holdReplies(true) parks permission reply POSTs until releaseReplies().
  */
-export async function fakeOpencodeService({ status = {}, permissions = {} } = {}) {
+export async function fakeOpencodeService({ status = {}, permissions = {}, parents = {} } = {}) {
   const state = mkdtempSync(path.join(os.tmpdir(), "ai-collab-opencode-fake-"));
   const calls = [];
   const streams = [];
@@ -38,7 +39,7 @@ export async function fakeOpencodeService({ status = {}, permissions = {} } = {}
     if (!session) return send(404, { error: "unscripted route" });
     const id = decodeURIComponent(session[1]);
     const rest = session[2] ?? "";
-    if (req.method === "GET" && rest === "") return send(200, { data: { id, status: status[id] ?? "idle" } });
+    if (req.method === "GET" && rest === "") return send(200, { data: { id, status: status[id] ?? "idle", ...(parents[id] ? { parentID: parents[id] } : {}) } });
     if (req.method === "GET" && rest === "/permission") return send(200, { data: permissions[id] ?? [] });
     if (req.method === "POST" && rest === "/prompt") return send(200, { data: { id: "msg_1" } });
     if (req.method === "POST" && /^\/permission\/[^/]+\/reply$/.test(rest)) {
