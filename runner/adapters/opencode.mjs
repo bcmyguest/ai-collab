@@ -7,6 +7,7 @@ import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, PERMISSION_TABLE } from "../cont
 
 const NO_SERVICE = "OpenCode service is not running (no loopback url in its service.json)";
 const RETRY_MS = 2000;
+const PARENT_DEPTH = 8;
 const ASK_FALLBACK = "permission";
 const enc = encodeURIComponent;
 
@@ -30,6 +31,8 @@ const statusOf = (data) => {
   const status = Number(raw);
   return Number.isInteger(status) && status > 0 ? status : undefined;
 };
+// OpenCode 2.2.6 Session.Info has no status: idle once time.idle is set and not older than time.busy.
+const isIdle = (session) => typeof session?.time?.idle === "number" && (typeof session.time.busy !== "number" || session.time.idle >= session.time.busy);
 const sleep = (ms, signal) => new Promise((resolve) => {
   const timer = setTimeout(resolve, ms);
   signal.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
@@ -63,6 +66,7 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
   const pending = new Map(); // open approval request id -> {sessionID (asking session), owner (owned session id), action}
   const inflight = new Set(); // approval ids being auto-replied
   const answering = new Set(); // approval ids whose reply POST is in flight
+  const owners = new Map(); // child session id -> owned session id, or null when no owned session sits above it
   let stream = null; // {ac}: the one /api/event subscription every session shares
 
   const service = () => serviceEndpoint(env);
@@ -153,12 +157,40 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
     });
   }
 
+  // The owned session above a child session, found through the parentID chain of the service, walked from `start`.
+  // Resolves the owner id, null when no owned session sits above, or undefined when a lookup failed (not cached).
+  async function parentOwner(start) {
+    let id = start;
+    for (let depth = 0; depth < PARENT_DEPTH; depth++) {
+      const r = await opencodeRequest("GET", `/api/session/${enc(id)}`, { env });
+      if (!r.ok) return undefined;
+      id = typeof r.body?.data?.parentID === "string" ? r.body.data.parentID : "";
+      if (!id) return null;
+      if (sessions.has(id)) return id;
+    }
+    return null;
+  }
+
+  // The owned session above a child session; undefined when none is owned. Each child is looked up once per adapter.
+  async function ownerOf(sessionID, parentID) {
+    if (!owners.has(sessionID)) {
+      const found = await parentOwner(parentID ?? sessionID);
+      if (found === undefined) return undefined;
+      owners.set(sessionID, found);
+    }
+    return sessions.get(owners.get(sessionID) ?? "");
+  }
+
   function dispatch(event) {
     const data = event?.data ?? {};
     if (event?.type === "permission.replied") return replied(data);
-    // An ask from a subagent child (parentID names the owned session) is handled for the owned session.
+    // An ask from a subagent child is handled for the owned session; the event may name no parentID, so the service tells.
     const asked = event?.type === "permission.asked";
     const s = sessions.get(data.sessionID) ?? (asked ? sessions.get(data.parentID) : undefined);
+    if (!s && asked && typeof data.sessionID === "string" && data.sessionID) {
+      const parentID = typeof data.parentID === "string" ? data.parentID : undefined;
+      return ownerOf(data.sessionID, parentID).then((owner) => { if (owner) ask(owner, data); }).catch(() => {});
+    }
     if (!s || (!asked && s.sessionID !== data.sessionID)) return;
     switch (event.type) {
       case "permission.asked": return ask(s, data);
@@ -195,7 +227,7 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
     for (const s of [...sessions.values()]) {
       if (s.run) {
         const status = await opencodeRequest("GET", `/api/session/${enc(s.sessionID)}`, { env });
-        if (status.ok && status.body?.data?.status === "idle") {
+        if (status.ok && isIdle(status.body?.data)) {
           endRun(s, (runId) => ({ type: EventType.RUN_ERROR, message: "the OpenCode run ended while the event stream was down", metadata: { aiCollab: { runId } } }));
         }
       }
