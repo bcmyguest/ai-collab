@@ -92,6 +92,7 @@ export async function phoneFixture({ homeSessions = false, inactive = false, kan
   return {
     url: `http://127.0.0.1:${server.address().port}`,
     project: cfg.project, address, sessions,
+    inject: (topic, message) => fake.inject(topic, message),
     messageDeliveries: (body, urgent = false) => fake.state.publishes.flatMap(post => {
       const message = parseEnvelope(post.message);
       return message?.kind === "msg" && message.body === body && Boolean(message.urgent) === urgent ? [[post.topic, message.toSession]] : [];
