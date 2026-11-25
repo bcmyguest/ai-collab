@@ -245,13 +245,13 @@ UNVERIFIED:
 `ai-collab prune [--apply] [--older-than 7d] [--json]` is a dry run unless `--apply` is given. The cutoff must be at least 24h. It removes:
 
 - Builder dirs in a settled phase (`finished`, `failed`, `stopped`) whose `state.json` is older than the cutoff, with the unit inactive, no live pid, and the task not open (any status except `done`; a missing task counts as closed). It deletes `back/` (clone), `stage/` (staged tree and `tools/`), `download-*` and `*.log` files over 1 MiB. It keeps `state.json`, `brief.md`, `policy.yaml`, the `workflow-*.db` journal, `out/` (ai-collab call records and oncebitten payloads) and smaller logs.
-- Before a clone is deleted, its uncommitted work is committed, and every branch plus HEAD is copied to `refs/ai-collab/archive/<builder-id>/heads/*` and `.../HEAD` in the project repo, then verified. A clone whose archive has diverged is kept. A builder with unlanded commits and no clone is kept.
+- Before a clone is deleted, its uncommitted work is committed, and every branch, tag, the stash and HEAD are copied to `refs/ai-collab/archive/<builder-id>/{heads/*,tags/*,stash,HEAD}` in the project repo, then HEAD is verified. A clone with ignored files outside `node_modules` is kept. A clone whose archive has diverged is kept. A builder with unlanded commits and no clone is kept.
 - Linked worktrees of the project repo, except the main worktree, protected checkouts, and any worktree that contains another worktree. A worktree goes only when all hold:
-  - `git status --porcelain --untracked-files=all --ignored=matching` reports nothing, except one top-level `node_modules` symlink. Ignored paths outside `node_modules`, `dist/` and `web/.next*` keep it.
+  - `git status --porcelain --untracked-files=all --ignored=matching` reports nothing, except one top-level `node_modules` symlink. Ignored paths outside `node_modules` and `web/.next*` keep it.
   - Its HEAD reflog holds no commit that no ref reaches (HEAD itself excepted).
   - It is not locked, and no live process has its cwd inside it.
   - No open builder task has it as `state.worktree`.
-  - Every activity signal is older than the cutoff: HEAD commit, directory and file mtimes (the scan skips `node_modules` and `.next`, and keeps the worktree past 50,000 entries), index, HEAD reflog, and any session seen inside.
+  - Every activity signal is older than the cutoff: HEAD commit, directory and file mtimes (the scan skips `node_modules` and `.next`, and keeps the worktree past 50,000 entries), index, HEAD reflog, and any session seen inside. A session record that is live (process running or a job running) and inside the worktree keeps it at once; an unreadable registry record keeps every worktree.
 - A detached HEAD goes to `refs/ai-collab/archive/wt-<name>` before removal. Removal locks the worktree, re-checks every rule, then runs `git worktree remove` without `--force`. A refused removal unlinks only the `node_modules` symlink, retries, and restores the link if the retry fails. Missing worktrees are pruned after kept ones are locked. Branches are never deleted.
 
 Builders hold no harness transcript on the host. Claude, Codex and OpenCode write their output to the unit's journal, Cursor streams to OTLP, and the sandbox session directories are destroyed at cleanup.

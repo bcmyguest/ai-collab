@@ -94,7 +94,6 @@ function makeWorktrees(home, repo) {
   const paths = {};
   paths.merged = at("merged");
   git(repo, ["worktree", "add", "-q", "-b", "merged", paths.merged, "main"]);
-  writeFileSync(path.join(paths.merged, "cache.log"), "ignored\n");
   paths.unmerged = at("unmerged");
   git(repo, ["worktree", "add", "-q", "-b", "unmerged", paths.unmerged, "main"]);
   commitOld(paths.unmerged, "feature.txt");
@@ -210,7 +209,7 @@ const EXPECTED_OUTCOMES = {
   "builder:recent": "newer than cutoff",
   "builder:broken": "unreadable: state.json unreadable",
   "worktree:repo": "main worktree",
-  "worktree:merged": "ignored outside allowlist: cache.log",
+  "worktree:merged": "remove",
   "worktree:unmerged": "remove",
   "worktree:detached": "remove",
   "worktree:dirty": "dirty: 1 changed or untracked file(s)",
@@ -412,7 +411,7 @@ test("prune apply removes only the decided copies and keeps every commit reachab
   assert.ok(existsSync(path.join(stateOf("running"), "stage")));
   assert.ok(existsSync(path.join(stateOf("broken"), "state.json")));
 
-  assert.ok(existsSync(f.paths.merged));
+  assert.ok(!existsSync(f.paths.merged));
   assert.ok(!existsSync(f.paths.unmerged));
   assert.ok(!existsSync(f.paths.detached));
   assert.ok(existsSync(f.paths.dirty));

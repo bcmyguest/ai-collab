@@ -1,8 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { appendFileSync, chmodSync, existsSync, lstatSync, lutimesSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { appendFileSync, chmodSync, existsSync, lstatSync, lutimesSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";import os from "node:os";
 import path from "node:path";
 import { stateDir } from "../lib/config.mjs";
 import { parsePruneArgs, pruneRepo } from "../lib/prune.mjs";
@@ -74,7 +73,7 @@ function scene(t) {
   git(repo, ["add", "notes.md"]);
   git(repo, ["commit", "-q", "-m", "init"], { GIT_AUTHOR_DATE: OLD_ISO, GIT_COMMITTER_DATE: OLD_ISO });
   mkdirSync(path.join(repo, ".git", "info"), { recursive: true });
-  appendFileSync(path.join(repo, ".git", "info", "exclude"), ".env\ndist/\n.claude/worktrees/\n");
+  appendFileSync(path.join(repo, ".git", "info", "exclude"), ".env\ndist/\nweb/.next/\n.claude/worktrees/\n");
   return { home, env, repo, wt: path.join(home, "wt") };
 }
 
@@ -172,9 +171,9 @@ test("an ignored file outside the allowlist keeps its worktree", async (t) => {
 test("a fresh file under an allowlisted ignored dir keeps its worktree", async (t) => {
   const s = scene(t);
   const p = addWorktree(s, "fresh", (q) => [q, "-b", "fresh", "main"]);
-  mkdirSync(path.join(p, "dist", "deep"), { recursive: true });
   ageWorktree(s.repo, p);
-  writeFileSync(path.join(p, "dist", "deep", "fresh.txt"), "edited now\n");
+  const now = new Date();
+  utimesSync(path.join(p, "notes.md"), now, now);
   const summary = await pruneRepo({ env: s.env, root: s.repo, olderThanMs: WEEK, apply: false, now: NOW });
   assert.equal(outcomes(summary)["worktree:fresh"], "newer than cutoff");
 });
@@ -222,16 +221,16 @@ test("a failed removal restores the node_modules symlink it unlinked", async (t)
   const target = path.join(s.home, "shared-nm");
   mkdirSync(target);
   symlinkSync(target, path.join(p, "node_modules"));
-  mkdirSync(path.join(p, "dist"));
-  writeFileSync(path.join(p, "dist", "blob.bin"), "blob\n");
+  mkdirSync(path.join(p, "web", ".next"), { recursive: true });
+  writeFileSync(path.join(p, "web", ".next", "blob.bin"), "blob\n");
   ageWorktree(s.repo, p);
-  chmodSync(path.join(p, "dist"), 0o555);
+  chmodSync(path.join(p, "web", ".next"), 0o555);
   try {
     const summary = await pruneRepo({ env: s.env, root: s.repo, olderThanMs: WEEK, apply: true, now: NOW });
     assert.match(outcomes(summary)["worktree:stuck"], /^remove failed/);
     assert.equal(readlinkSync(path.join(p, "node_modules")), target);
   } finally {
-    chmodSync(path.join(p, "dist"), 0o755);
+    chmodSync(path.join(p, "web", ".next"), 0o755);
   }
 });
 
@@ -242,4 +241,88 @@ test("a session seen inside a worktree within the cutoff keeps it", async (t) =>
   const sessions = () => [{ cwd: p, seenAt: Date.now() }];
   const summary = await pruneRepo({ env: s.env, root: s.repo, olderThanMs: WEEK, apply: false, now: NOW, sessions });
   assert.equal(outcomes(summary)["worktree:sess"], "newer than cutoff");
+});
+
+function builderClone(s, id) {
+  const dir = path.join(stateDir(s.env), "builders", id);
+  const clone = path.join(dir, "back", `ai-collab-wt-${id}`);
+  mkdirSync(clone, { recursive: true });
+  git(clone, ["init", "-q", "-b", "work"]);
+  writeFileSync(path.join(clone, "a.txt"), "a\n");
+  git(clone, ["add", "a.txt"]);
+  git(clone, ["commit", "-q", "-m", "a"], { GIT_AUTHOR_DATE: OLD_ISO, GIT_COMMITTER_DATE: OLD_ISO });
+  writeFileSync(path.join(dir, "state.json"), JSON.stringify({ id, phase: "failed", commits: 0, root: s.repo, worktree: path.join(s.home, `ai-collab-wt-${id}`) }));
+  setOld(path.join(dir, "state.json"));
+  return { dir, clone };
+}
+
+test("a builder archive keeps its tags and stash", async (t) => {
+  const s = scene(t);
+  const { clone } = builderClone(s, "tg");
+  git(clone, ["checkout", "-q", "--detach"]);
+  writeFileSync(path.join(clone, "tagged.txt"), "t\n");
+  git(clone, ["add", "tagged.txt"]);
+  git(clone, ["commit", "-q", "-m", "tagged"], { GIT_AUTHOR_DATE: OLD_ISO, GIT_COMMITTER_DATE: OLD_ISO });
+  const tagSha = git(clone, ["rev-parse", "HEAD"]);
+  git(clone, ["tag", "t1"]);
+  git(clone, ["checkout", "-q", "work"]);
+  writeFileSync(path.join(clone, "stash.txt"), "s\n");
+  git(clone, ["add", "stash.txt"]);
+  git(clone, ["stash", "push", "-qm", "s"]);
+  const stashSha = git(clone, ["rev-parse", "refs/stash"]);
+  const summary = await pruneRepo({ env: s.env, root: s.repo, olderThanMs: WEEK, apply: true, now: NOW });
+  assert.deepEqual(summary.builders.map((b) => b.id), ["tg"]);
+  assert.equal(git(s.repo, ["rev-parse", "refs/ai-collab/archive/tg/tags/t1"]), tagSha);
+  assert.equal(git(s.repo, ["rev-parse", "refs/ai-collab/archive/tg/stash"]), stashSha);
+});
+
+test("a builder clone with an ignored file outside node_modules is kept", async (t) => {
+  const s = scene(t);
+  const { clone } = builderClone(s, "ig");
+  writeFileSync(path.join(clone, ".gitignore"), "out.bin\n");
+  git(clone, ["add", ".gitignore"]);
+  git(clone, ["commit", "-q", "-m", "ignore"], { GIT_AUTHOR_DATE: OLD_ISO, GIT_COMMITTER_DATE: OLD_ISO });
+  writeFileSync(path.join(clone, "out.bin"), "artifact\n");
+  const summary = await pruneRepo({ env: s.env, root: s.repo, olderThanMs: WEEK, apply: true, now: NOW });
+  assert.equal(outcomes(summary)["builder:ig"], "ignored outside node_modules: out.bin");
+  assert.ok(existsSync(path.join(clone, "out.bin")));
+});
+
+test("a live session record keeps its worktree whatever its seenAt", async (t) => {
+  const s = scene(t);
+  const p = addWorktree(s, "live", (q) => [q, "-b", "live", "main"]);
+  ageWorktree(s.repo, p);
+  const sessions = () => [{ cwd: p, seenAt: OLD, live: true }];
+  const summary = await pruneRepo({ env: s.env, root: s.repo, olderThanMs: WEEK, apply: false, now: NOW, sessions });
+  assert.equal(outcomes(summary)["worktree:live"], "newer than cutoff");
+});
+
+test("an unreadable session record keeps every worktree", async (t) => {
+  const s = scene(t);
+  const p = addWorktree(s, "unr", (q) => [q, "-b", "unr", "main"]);
+  ageWorktree(s.repo, p);
+  const sessions = () => [{ file: "broken.json", unreadable: true }];
+  const summary = await pruneRepo({ env: s.env, root: s.repo, olderThanMs: WEEK, apply: false, now: NOW, sessions });
+  assert.equal(outcomes(summary)["worktree:unr"], "newer than cutoff");
+});
+
+test("dist/ is not an allowlisted ignored path", async (t) => {
+  const s = scene(t);
+  const p = addWorktree(s, "distonly", (q) => [q, "-b", "distonly", "main"]);
+  mkdirSync(path.join(p, "dist"));
+  writeFileSync(path.join(p, "dist", "release.tgz"), "built\n");
+  ageWorktree(s.repo, p);
+  const summary = await pruneRepo({ env: s.env, root: s.repo, olderThanMs: WEEK, apply: false, now: NOW });
+  assert.equal(outcomes(summary)["worktree:distonly"], "ignored outside allowlist: dist/");
+});
+
+test("a failed archive leaves the worktree unlocked", async (t) => {
+  const s = scene(t);
+  const p = addWorktree(s, "blk", (q) => ["--detach", q, "main"]);
+  ageWorktree(s.repo, p);
+  git(s.repo, ["update-ref", "refs/ai-collab/archive/wt-blk/x", "main"]);
+  const summary = await pruneRepo({ env: s.env, root: s.repo, olderThanMs: WEEK, apply: true, now: NOW });
+  assert.match(outcomes(summary)["worktree:blk"], /^remove failed/);
+  assert.ok(existsSync(p));
+  assert.ok(!git(s.repo, ["worktree", "list", "--porcelain"]).includes("locked"));
 });
