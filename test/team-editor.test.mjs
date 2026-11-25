@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
 import { checkTeamText, createPattern, listPatterns, saveTeamText, teamTemplates, teamTextOf } from "../lib/patterns.mjs";
+import { projectTeamsDir, teamFilePath } from "../lib/team-files.mjs";
+import { readProjectsFile, setProjectClosed } from "../lib/teams.mjs";
 import { renameTeam, sourceLine } from "../web/lib/team-editor.js";
 
 const MODELS = { claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] };
@@ -102,4 +104,19 @@ test("an edit save keeps the operator's comments and removes the JSON pattern it
   assert.equal(readFileSync(path.join(root, ".ai-collab", "teams", "pipe", "team.dot"), "utf8"), text);
   const projects = JSON.parse(readFileSync(path.join(env.HOME, ".config", "ai-collab", "projects.json"), "utf8"));
   assert.equal(projects[0].patterns?.pipe, undefined, "the JSON entry is gone");
+});
+
+test("a team save holds no projects.json lock while it waits on its team file", async () => {
+  const { env, cfg, root } = setup();
+  const file = teamFilePath(projectTeamsDir(root), "pipe");
+  mkdirSync(`${file}.lock`, { recursive: true });
+  const release = setTimeout(() => rmSync(`${file}.lock`, { recursive: true, force: true }), 400);
+  const pending = saveTeamText(cfg, "pipe", TEXT, env, MODELS);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const started = Date.now();
+  setProjectClosed(env, "demo", true);
+  assert.ok(Date.now() - started < 200, `the sync write waited ${Date.now() - started} ms on the save`);
+  await pending;
+  clearTimeout(release);
+  assert.equal(readProjectsFile(env)[0].closed, true);
 });

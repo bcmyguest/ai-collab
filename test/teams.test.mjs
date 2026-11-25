@@ -111,13 +111,16 @@ test("concurrent updates to different projects both persist", async () => {
   const env = { HOME: home, XDG_CONFIG_HOME: path.join(home, ".config") };
   const dir = path.join(env.XDG_CONFIG_HOME, "ai-collab");
   mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, "projects.json"), JSON.stringify(["alpha", "beta"].map((project) => ({ root: path.join(home, project), project }))));
+  // Padding widens each read-to-rename window, so an unlocked write from the other process lands inside it.
+  const padding = Array.from({ length: 60 }, (_, i) => ({ root: path.join(home, `pad${i}`), project: `pad${i}`, notes: "x".repeat(4000) }));
+  writeFileSync(path.join(dir, "projects.json"), JSON.stringify([...["alpha", "beta"].map((project) => ({ root: path.join(home, project), project })), ...padding]));
   const teamsUrl = pathToFileURL(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../lib/teams.mjs")).href;
   const child = (project) => execFileAsync(process.execPath, ["--input-type=module", "-e", `
     const { setProjectClosed } = await import(${JSON.stringify(teamsUrl)});
     const env = ${JSON.stringify(env)};
-    for (let i = 0; i < 40; i += 1) { setProjectClosed(env, ${JSON.stringify(project)}, false); setProjectClosed(env, ${JSON.stringify(project)}, true); }
+    for (let i = 0; i < 300; i += 1) { setProjectClosed(env, ${JSON.stringify(project)}, false); setProjectClosed(env, ${JSON.stringify(project)}, true); }
   `]);
-  await Promise.all([child("alpha"), child("beta")]);
-  assert.deepEqual(readProjectsFile(env).map((entry) => [entry.project, entry.closed]), [["alpha", true], ["beta", true]]);
+  await Promise.all([child("alpha"), child("beta"), child("alpha"), child("beta")]);
+  const closed = readProjectsFile(env).filter((entry) => ["alpha", "beta"].includes(entry.project));
+  assert.deepEqual(closed.map((entry) => [entry.project, entry.closed]), [["alpha", true], ["beta", true]]);
 });
