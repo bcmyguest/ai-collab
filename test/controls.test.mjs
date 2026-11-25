@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { controlSession, runnerFromEnv } from "../lib/controls.mjs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { controlSession, harnessCommand, runnerFromEnv } from "../lib/controls.mjs";
 import { sessionLabel } from "../lib/config.mjs";
 
 const sessionId = "00000000-abcd-1234-9876-000000000001";
@@ -31,6 +33,14 @@ test("wake of an exited session resumes it once and permits retry after failure"
     assert.equal((await wake()).status, "succeeded");
     assert.equal(calls, 2);
   }
+});
+
+test("the cursor wake command uses the Cursor binary on the given PATH", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-cursor-"));
+  writeFileSync(path.join(dir, "cursor-agent"), "#!/bin/sh\n", { mode: 0o755 });
+  assert.equal(harnessCommand("wake", "cursor", sessionId, false, dir)[0], "cursor-agent");
+  writeFileSync(path.join(dir, "agent"), "#!/bin/sh\n", { mode: 0o755 });
+  assert.equal(harnessCommand("wake", "cursor", sessionId, false, dir)[0], "agent");
 });
 
 test("a running session, or a PID reused by another process, is never resumed", async () => {
