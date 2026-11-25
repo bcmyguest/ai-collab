@@ -38,9 +38,10 @@ test("wake of an exited session resumes it once and permits retry after failure"
 test("the cursor wake command uses the Cursor binary on the given PATH", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-cursor-"));
   writeFileSync(path.join(dir, "cursor-agent"), "#!/bin/sh\n", { mode: 0o755 });
-  assert.equal(harnessCommand("wake", "cursor", sessionId, false, dir)[0], "cursor-agent");
+  assert.equal(harnessCommand("wake", "cursor", sessionId, false, { path: dir })[0], "cursor-agent");
   writeFileSync(path.join(dir, "agent"), "#!/bin/sh\n", { mode: 0o755 });
-  assert.equal(harnessCommand("wake", "cursor", sessionId, false, dir)[0], "agent");
+  assert.equal(harnessCommand("wake", "cursor", sessionId, false, { path: dir })[0], "agent");
+  assert.equal(harnessCommand("wake", "cursor", sessionId, false, { path: dir, sandbox: true })[0], "cursor-agent", "a runner sandbox links the CLI as cursor-agent");
 });
 
 test("a running session, or a PID reused by another process, is never resumed", async () => {
