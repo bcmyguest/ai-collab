@@ -8,30 +8,22 @@
 // deleted at the end, also after a timeout (SIGTERM from the schedule).
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { agentHarness } from "../lib/agent-guard.mjs";
-import { autoDefaults, listProjects, stateDir } from "../lib/config.mjs";
+import { listProjects, stateDir } from "../lib/config.mjs";
 import { builderPolicy, replayable, parseRecordedCall, sharedLibs, toolSources } from "../lib/builder.mjs";
 import { projectOfFolder } from "../lib/schedule-session.mjs";
-import { destroySandbox, execArgv, runTool, sandboxCapRefusal, uploadFile, uploadLogins } from "./sandbox.mjs";
+import { destroySandbox, execArgv, executables, gitIn, HOME_IN, hostTokenFile, landBranch, must, NTFY_TOKEN_IN, OUT, runTool, sandboxCapRefusal, SANDBOX, stageAndUpload, TOOLS, UPLOAD_TIMEOUT_MS, WORK } from "../lib/sandbox.ts";
 
 const APP_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const CLI = join(APP_ROOT, "scripts", "ai-collab.mjs");
 const APP_PARTS = ["package.json", "scripts", "lib", "web/lib"];
-const SANDBOX = "/sandbox";
-const WORK = "/sandbox/work";
-const TOOLS = "/sandbox/tools";
-const HOME_IN = "/sandbox/home";
-const OUT = "/sandbox/out";
 const APP_IN = `${TOOLS}/ai-collab`;
 const NODE_IN = `${TOOLS}/node/bin/node`;
-const TOKEN_IN = `${HOME_IN}/.config/ai-collab/ntfy-token`;
 const SANDBOX_PATH = `${TOOLS}/bin:${TOOLS}/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`;
 const NTFY = "http://host.openshell.internal:8794";
-const SYNC_TIMEOUT_MS = 900_000;
 const NAME_PREFIX_MAX = 8;
 // Per harness: where its install goes, the launcher inside it, and where its login lives in the sandbox home.
 const LAYOUTS = {
@@ -52,6 +44,8 @@ case "$1 $2" in
 esac
 exec ${NODE_IN} ${APP_IN}/scripts/ai-collab.mjs "$@"
 `;
+
+const git = (cwd, args, env) => gitIn(env)(cwd, args);
 
 /** The sandbox name for one schedule run: s-<first 8 of the name>-<6 hex>, at most 17 characters. */
 export function runSandboxName(name, at = Date.now()) {
@@ -80,39 +74,11 @@ export function parseArgs(args) {
   return { ...flags, command: args.slice(at + 1) };
 }
 
-async function must(bin, args, env, what, timeoutMs = SYNC_TIMEOUT_MS) {
-  const out = await runTool(bin, args, { env, timeoutMs });
-  if (out.code !== 0) throw new Error(`${what} failed: ${(out.stderr || out.stdout || "").trim() || `exit ${out.code}`}`);
-  return out.stdout;
-}
-
-const git = (cwd, args, env) => must("git", ["-C", cwd, ...args], env, `git ${args[0]}`);
-
-// Uploads a directory unfiltered: .gitignore filtering would drop the clone's .git.
-const uploadAll = (openshell, env, sandbox, local, remote) => must(openshell, ["sandbox", "upload", sandbox, `${local.replace(/\/+$/, "")}/`, `${remote.replace(/\/+$/, "")}/`, "--no-git-ignore"], env, "sandbox upload");
-
-// Copies a credential through a 0600 temp file so it never appears in argv, env or a log.
-async function uploadSecret(openshell, env, sandbox, file, remoteDir, name = basename(file)) {
-  const dir = mkdtempSync(join(tmpdir(), "ai-collab-sandbox-run-auth-"));
-  try {
-    writeFileSync(join(dir, name), readFileSync(file), { mode: 0o600 });
-    await uploadFile({ openshell, env, sandbox, local: join(dir, name), remoteDir });
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-// The host's ntfy token file from defaults.json, or "".
-function hostTokenFile(env) {
-  const file = autoDefaults(env)?.tokenFile;
-  return typeof file === "string" && existsSync(file) ? file : "";
-}
-
 /** Builds the host-side staging: the clone, the tools tree, the sandbox home and the policy. */
 export async function stage({ cwd, project, harness, dir, env, log }) {
   const clone = join(dir, basename(cwd));
   const branch = (await git(cwd, ["rev-parse", "--abbrev-ref", "HEAD"], env)).trim();
-  await must("git", ["clone", "--quiet", "--no-hardlinks", ...(branch !== "HEAD" ? ["--branch", branch] : []), cwd, clone], env, "git clone");
+  await must("git", ["clone", "--quiet", "--no-hardlinks", ...(branch !== "HEAD" ? ["--branch", branch] : []), cwd, clone], { env, timeoutMs: UPLOAD_TIMEOUT_MS, what: "git clone", errorPrefix: "", stdoutFallback: true });
   await git(clone, ["remote", "remove", "origin"], env);
   for (const key of ["user.name", "user.email"]) {
     const value = (await runTool("git", ["-C", cwd, "config", key], { env })).stdout.trim();
@@ -146,7 +112,7 @@ export async function stage({ cwd, project, harness, dir, env, log }) {
   const config = join(home, ".config", "ai-collab");
   mkdirSync(config, { recursive: true });
   const token = hostTokenFile(env);
-  const ntfy = { url: NTFY, ...(token ? { tokenFile: TOKEN_IN } : {}) };
+  const ntfy = { url: NTFY, ...(token ? { tokenFile: NTFY_TOKEN_IN } : {}) };
   writeFileSync(join(config, "defaults.json"), `${JSON.stringify({ ...ntfy, peers: "claude,codex,cursor,opencode" }, null, 2)}\n`);
   if (project) writeFileSync(join(config, "projects.json"), `${JSON.stringify([{ root: workdir, project, ...ntfy }], null, 2)}\n`);
   // The ai-collab MCP server, so set_identity, send_to_all and ask_question reach the operator over ntfy.
@@ -168,52 +134,15 @@ export async function stage({ cwd, project, harness, dir, env, log }) {
   return { clone, base, branch, tools, home, src, layout, tree, token, workdir, policy, execEnv };
 }
 
-// Regular executable files directly in a directory: the binaries a network policy names.
-function executables(dir) {
-  try {
-    return readdirSync(dir).filter((f) => { const st = statSync(join(dir, f)); return st.isFile() && (st.mode & 0o111) !== 0; });
-  } catch { return []; }
+// The host paths stageAndUpload sends; sandbox-run sends no npm tree.
+function uploadPaths(staged) {
+  return { clone: staged.clone, tools: staged.tools, home: staged.home, workdir: staged.workdir, node: staged.src.node, gitCore: staged.src.gitCore, nodeModules: staged.src.nodeModules, ntfyToken: staged.token };
 }
 
-async function upload(openshell, env, sandbox, staged, harness, log) {
-  const { src, layout } = staged;
-  await uploadAll(openshell, env, sandbox, staged.clone, WORK);
-  await uploadAll(openshell, env, sandbox, staged.tools, SANDBOX);
-  await uploadAll(openshell, env, sandbox, staged.home, SANDBOX);
-  if (src.gitCore) await uploadAll(openshell, env, sandbox, src.gitCore, TOOLS);
-  await uploadFile({ openshell, env, sandbox, local: src.node, remoteDir: `${TOOLS}/node/bin` });
-  if (layout.file) await uploadFile({ openshell, env, sandbox, local: staged.tree, remoteDir: layout.dir });
-  else await uploadAll(openshell, env, sandbox, staged.tree, layout.dir);
-  const auth = layout.auth(src);
-  if (auth) await uploadSecret(openshell, env, sandbox, auth, layout.authDir);
-  else log(`no host ${harness} login found; the harness will ask to log in`);
-  // Claude and Codex logins for any harness, as builders get them (operator decision 2026-11-23).
-  await uploadLogins({ openshell, env, sandbox, home: env.HOME, remoteHome: HOME_IN, log });
-  if (staged.token) await uploadSecret(openshell, env, sandbox, staged.token, dirname(TOKEN_IN), basename(TOKEN_IN));
-  if (src.nodeModules) {
-    await uploadAll(openshell, env, sandbox, src.nodeModules, `${SANDBOX}/deps`);
-    await must(openshell, execArgv({ openshell, sandbox, command: ["ln", "-sfn", `${SANDBOX}/deps/${basename(src.nodeModules)}`, `${staged.workdir}/node_modules`] }).slice(1), env, "sandbox exec ln");
-  }
-}
-
-/** Downloads the clone, commits loose work, and fetches new commits into cwd's repo as sandbox/<name>-<stamp>; returns that branch or "". */
-export async function land({ openshell, env, sandbox, cwd, name, staged, dir, log, now = Date.now() }) {
-  await runTool(openshell, execArgv({ openshell, sandbox, command: ["rm", "-f", `${staged.workdir}/node_modules`] }).slice(1), { env });
-  const back = join(dir, "back", basename(cwd));
-  mkdirSync(dirname(back), { recursive: true });
-  await must(openshell, ["sandbox", "download", sandbox, staged.workdir, back], env, "sandbox download");
-  if (!existsSync(join(back, ".git"))) throw new Error("the downloaded workspace has no git repository");
-  if ((await git(back, ["status", "--porcelain"], env)).trim()) {
-    await git(back, ["add", "-A"], env);
-    await git(back, ["commit", "--quiet", "--no-verify", "-m", `chore(sandbox): uncommitted work from schedule ${name}`], env);
-  }
-  const ahead = Number((await git(back, ["rev-list", "--count", `${staged.base}..HEAD`], env)).trim()) || 0;
-  if (!ahead) { log("no new commits"); return ""; }
-  const stamp = new Date(now).toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
-  const target = `sandbox/${name}-${stamp}`;
-  await git(cwd, ["fetch", "--quiet", back, `HEAD:refs/heads/${target}`], env);
-  log(`${ahead} commit(s) on branch ${target} in ${cwd}`);
-  return target;
+// The harness layout stageAndUpload uses: its tree and login as this run resolved them.
+function uploadLayout(staged) {
+  const { layout, src } = staged;
+  return { dir: layout.dir, file: layout.file, tree: staged.tree, auth: layout.auth(src), authDir: layout.authDir };
 }
 
 /** Replays supported task calls through the host CLI; others are logged and dropped. */
@@ -253,10 +182,14 @@ export async function sandboxRun({ name, cwd, project, command }, { env = proces
   let created = false;
   try {
     const staged = await stage({ cwd, project: proj, harness, dir: join(dir, "stage"), env, log });
-    await must(openshell, ["sandbox", "create", "--name", sandbox, "--no-tty", "--detach", "--policy", staged.policy], env, "sandbox create");
+    await must(openshell, ["sandbox", "create", "--name", sandbox, "--no-tty", "--detach", "--policy", staged.policy], { env, timeoutMs: UPLOAD_TIMEOUT_MS, what: "sandbox create", errorPrefix: "", stdoutFallback: true });
     created = true;
     log(`sandbox ${sandbox} created`);
-    await upload(openshell, env, sandbox, staged, harness, log);
+    await stageAndUpload({
+      openshell, env, sandbox, log, staged: uploadPaths(staged), layout: uploadLayout(staged),
+      style: { errorPrefix: "", stdoutFallback: true }, authMissing: `no host ${harness} login found; the harness will ask to log in`, secretTmp: "ai-collab-sandbox-run-auth-",
+      logins: { home: env.HOME, remoteHome: HOME_IN },
+    });
     let code = 143;
     if (!stopping) {
       const argv = execArgv({ openshell, sandbox, workdir: staged.workdir, env: staged.execEnv, command: inner });
@@ -268,12 +201,12 @@ export async function sandboxRun({ name, cwd, project, command }, { env = proces
       child = null;
     }
     try {
-      await land({ openshell, env, sandbox, cwd, name, staged, dir, log });
+      await landBranch({ openshell, env, sandbox, cwd, name, workdir: staged.workdir, base: staged.base, dir, log });
     } catch (error) {
       keep = true;
       log(`could not land the work; staging kept in ${dir}: ${error.message}`);
     }
-    const got = await runTool(openshell, ["sandbox", "download", sandbox, OUT, join(dir, "out")], { env, timeoutMs: SYNC_TIMEOUT_MS });
+    const got = await runTool(openshell, ["sandbox", "download", sandbox, OUT, join(dir, "out")], { env, timeoutMs: UPLOAD_TIMEOUT_MS });
     if (got.code === 0 && proj) log(`${await replayTasks({ dir, project: proj, env, log, name })} recorded task call(s) applied`);
     return code;
   } finally {
