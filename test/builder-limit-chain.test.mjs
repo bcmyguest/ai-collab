@@ -18,6 +18,12 @@ test("a configured Codex model other than the stopped one is the first retry", (
   assert.deepEqual(chain[0], { harness: "codex", model: "gpt-5-alt" });
 });
 
+test("a harness's default model leads its listed models in the retry chain", () => {
+  const chain = fallbackAttempts(configDir(undefined), { model: "gpt-6.2-sol", available: ["claude"], models: { claude: ["fable", "haiku"] } });
+  assert.ok(chain.some((item) => item.harness === "claude" && item.model === "haiku"), JSON.stringify(chain));
+  assert.ok(!chain.some((item) => item.harness === "claude" && item.model === "fable"), JSON.stringify(chain));
+});
+
 test("a Codex builder's retry offers another available harness with a listed model", () => {
   const chain = fallbackAttempts(configDir(undefined), { model: "gpt-6.2-sol", available: ["claude"], models: { claude: ["haiku"] } });
   assert.ok(chain.some((item) => item.harness === "claude" && item.model === "haiku"), JSON.stringify(chain));

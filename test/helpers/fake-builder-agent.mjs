@@ -39,6 +39,10 @@ if (mode === "restart" && !readFileSync("notes.md", "utf8").includes("pending fa
   setInterval(() => {}, 1000);
   await new Promise(() => {});
 }
+if (mode === "cursor-stderr") {
+  console.error(process.env.FAKE_BUILDER_STDERR);
+  process.exit(1);
+}
 if (mode === "cursor-plan-limit") {
   console.error("ActionRequiredError: You've reached your plan limit for this month.");
   process.exit(1);

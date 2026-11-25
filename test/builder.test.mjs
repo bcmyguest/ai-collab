@@ -661,6 +661,57 @@ test("a corrupt Cursor limit record is no limit: a Codex retry still reaches Cur
   assert.ok(retry.args.includes("deepseek-v41-flash-1017-high"), JSON.stringify(retry.args));
 });
 
+test("a Codex retry that also hits its limit goes on to Cursor", async () => {
+  const l = lab({ AI_COLLAB_OPENCODE_BIN: AGENT, FAKE_SANDBOX_OPENCODE_BIN: AGENT });
+  l.env.AI_COLLAB_RUNNER_SOCKET = path.join(l.home, "missing.sock");
+  const tree = path.join(l.home, "codex-release");
+  mkdirSync(path.join(tree, "bin"), { recursive: true });
+  const codex = path.join(tree, "bin", "codex");
+  writeFileSync(codex, '#!/bin/sh\necho "Usage limit reached" >&2\nexit 1\n', { mode: 0o755 });
+  symlinkSync(codex, path.join(l.home, "bin", "codex"));
+  l.env.AI_COLLAB_CODEX_TREE = tree;
+  writeFileSync(path.join(l.env.XDG_CONFIG_HOME, "ai-collab", "defaults.json"), JSON.stringify({ builderOrder: ["codex"], limitFallback: "codex:gpt-5-mini" }));
+  await withTask(l);
+  const res = await l.cli("builder", "start", "--task", "smoke-task", "--brief", l.brief);
+  assert.equal(res.code, 0, res.err);
+  const launches = readJsonLines(l.env.FAKE_BUILDER_LOG);
+  assert.ok(launches.some((row) => row.args.includes("deepseek-v41-flash-1017-high")), JSON.stringify(launches));
+});
+
+for (const line of [
+  "ActionRequiredError: 429 rate limit exceeded, please slow down",
+  "ActionRequiredError: You've reached your limit of 3 background agents",
+  "ActionRequiredError: quota exceeded for file uploads (max 10MB)",
+]) {
+  test(`a Cursor line that is not a limit does not block a model: ${line}`, async () => {
+    const l = lab({ FAKE_BUILDER_MODE: "cursor-stderr", FAKE_BUILDER_STDERR: line });
+    await withTask(l);
+    await l.cli("builder", "start", "--task", "smoke-task", "--harness", "cursor", "--brief", l.brief);
+    assert.equal(existsSync(cursorLimitPath("deepseek-v41-flash-1017-high", l.env).state), false);
+    assert.doesNotMatch(task(l).detail ?? "", /reached its usage limit/);
+  });
+}
+
+test("a harness found only in a home bin directory is not retried: the chain moves on", async () => {
+  // claude lives in ~/.local/bin, which the staging lookup does not search; "none" hides any host claude on the test PATH.
+  const l = lab({ AI_COLLAB_OPENCODE_BIN: AGENT, FAKE_SANDBOX_OPENCODE_BIN: AGENT, AI_COLLAB_CLAUDE_BIN: "none" });
+  l.env.AI_COLLAB_RUNNER_SOCKET = path.join(l.home, "missing.sock");
+  const tree = path.join(l.home, "codex-release");
+  mkdirSync(path.join(tree, "bin"), { recursive: true });
+  const codex = path.join(tree, "bin", "codex");
+  writeFileSync(codex, '#!/bin/sh\necho "Usage limit reached" >&2\nexit 1\n', { mode: 0o755 });
+  symlinkSync(codex, path.join(l.home, "bin", "codex"));
+  l.env.AI_COLLAB_CODEX_TREE = tree;
+  mkdirSync(path.join(l.home, ".local", "bin"), { recursive: true });
+  writeFileSync(path.join(l.home, ".local", "bin", "claude"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  writeFileSync(path.join(l.env.XDG_CONFIG_HOME, "ai-collab", "defaults.json"), JSON.stringify({ builderOrder: ["codex"], limitFallback: "claude:opus" }));
+  await withTask(l);
+  const res = await l.cli("builder", "start", "--task", "smoke-task", "--brief", l.brief);
+  assert.equal(res.code, 0, res.err);
+  const launches = readJsonLines(l.env.FAKE_BUILDER_LOG);
+  assert.ok(launches.some((row) => row.args.includes("deepseek-v41-flash-1017-high")), JSON.stringify(launches));
+});
+
 for (const [label, stream, failDownload] of [
   ["carries edits forward after a stderr limit", "stderr", false],
   ["carries edits forward after a stdout limit", "stdout", false],

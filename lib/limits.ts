@@ -140,7 +140,7 @@ function classifyOpenCode(event: Event): Limit | null {
 }
 
 // Explicit limit wording a Cursor error may use about the plan's own window (not a bare "rate limited").
-const CURSOR_LIMIT_TEXT = /usage limit|plan limit|quota|reached your (usage|limit|quota)/i;
+const CURSOR_LIMIT_TEXT = /usage limit|plan limit|reached your (usage|limit|quota)/i;
 // Structured ACP/error codes that name a usage limit. UNVERIFIED: no local schema names them.
 const CURSOR_LIMIT_CODES = /usage_?limit|rate_?limit|limit_?exceeded|quota|insufficient_quota|429/i;
 // A bare HTTP 429 counts only with limit wording beside it, so an ordinary throttled request does not open a card.
