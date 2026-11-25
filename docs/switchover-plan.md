@@ -199,3 +199,12 @@ Every batch: implementer works on its own branch, runs the gate, commits with th
 | 5 | Libraries at the `surfaces` edge: `@modelcontextprotocol/sdk`, `parseArgs` | Haiku | `node --test test/mcp*.test.mjs` + full suite |
 
 Review: one Opus subagent per batch, briefed with the branch and this document, never with the implementer's summary.
+
+## 5. Progress log
+
+| Batch | Branch | Commits | Review | State |
+|---|---|---|---|---|
+| 0 + 1 | `fix/domain-bugs` | cb93af16, 4be640d6, a162a7cf, 993bc68f | Opus: lock commit REQUEST CHANGES (the sync lock blocks the UI event loop up to 2 s behind an async holder); others approve with nits | fixes in progress |
+| 2 | `feat/ts-core` | 55b06744, 9776494f | Opus: approve with nits, both fixed (`.ts` specifier scan in the publish build, Node 22.18+ in docs) | ready to merge |
+
+Deferred to the `store` module (batch 3), predates this work: a lock left by a dead process blocks writers for up to 40 s (`staleMs`), and two waiters can both judge it stale and remove each other's lock (`lib/state.mjs`). Fix: record the owner pid in the lock and treat it as stale only when that pid is gone.
