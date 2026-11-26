@@ -98,6 +98,9 @@ const t = test("dbos engine", { skip: pgUp ? false : "no Postgres on 127.0.0.1:5
     await wf.prune(["t.add"], Date.now() + 10_000);
     assert.equal(await wf.status(`add-${stamp}`), null);
 
+    // register after launch must fail fast: the workflow could never be registered with DBOS
+    assert.throws(() => wf.register("t.late", async () => 1), /after launch/);
+
     // schedules: manual run and listing
     const fired = await wf.runScheduled("t.every");
     assert.equal(fired.status, "started");

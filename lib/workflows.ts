@@ -330,7 +330,10 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { 
 
   return {
     isAsync: true,
-    register(name, fn) { registry.set(name, fn); },
+    register(name, fn) {
+      if (launched) throw new Error(`workflow ${name} registered after launch; register before the first async call`);
+      registry.set(name, fn);
+    },
     scheduled(name, { everyMs, firstStep = null }, fn) {
       if (!Number.isSafeInteger(everyMs) || everyMs < 1) throw new Error(`schedule ${name}: everyMs must be a positive integer`);
       if (typeof fn !== "function") throw new Error(`schedule ${name}: fn must be a function`);

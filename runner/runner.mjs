@@ -113,6 +113,25 @@ function view(s) {
   };
 }
 
+/** Claim handoff between a session workflow and its waiter. On DBOS, boot's pending() launches and
+ * recovers before waiters exist, so a claim that arrives early is kept and delivered to the next take. */
+export function createClaims() {
+  const waiters = new Map();
+  const early = new Map();
+  return {
+    take(id) {
+      if (early.has(id)) return Promise.resolve(early.get(id));
+      return new Promise((resolve) => waiters.set(id, resolve));
+    },
+    set(id, value) {
+      const resolve = waiters.get(id);
+      if (resolve) { waiters.delete(id); resolve(value); }
+      else early.set(id, value);
+    },
+    drop(id) { waiters.delete(id); early.delete(id); },
+  };
+}
+
 /** Creates the runner over project configs, a Map harness → Adapter and a durable log (runner/durable.mjs). */
 export function createRunner({ projects, adapters, durable: rawDurable, env = process.env, git = runGit, now = Date.now, startGapMs = START_GAP_MS, approvalMs = approvalTimeoutMs(env), watch = true, log = () => {}, scheduleErrors = [], scheduleEntries = [], pumpMs = PUMP_MS, delivery = {} }) {
   // Tests hand createRunner a raw sqlite log; the runner itself passes an openWorkflows engine. One async surface either way.
@@ -120,7 +139,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   const configs = new Map(projects.map((cfg) => [cfg.project, cfg]));
   const manualAt = new Map();
   const sessions = new Map();
-  const claims = new Map();
+  const claims = createClaims();
   const continuing = new Set();
   // The wake gate per closed session address: a wake runs after the previous wake of that session.
   const wakeTail = new Map();
@@ -424,7 +443,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     const s = runtime(wf, readOwned(cfg, label) || fail(500, "owned record missing"), holder);
     await recordSession(cfg, { id: opened.nativeId, cwd, harness, event: "owned", proc }).catch(() => {});
     if (!wf.replaying) await enqueuePublish(s, () => publishEvent(cfg, harness, { type: EventType.CUSTOM, name: NOTICE, value: `owned session started (${permissionMode})` }));
-    claims.get(wf.id)?.(s);
+    claims.set(wf.id, s);
     const finishBuilder = (finished) => wf.step("builder.finish", async () => {
       await s.live?.close().catch(() => {});
       s.live = null;
@@ -832,7 +851,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     if (!patternRun && !builder && now() - lastStartAt < startGapMs) fail(429, "Wait 10 seconds between starts");
     if (!patternRun && !builder) lastStartAt = now();
     const workflowId = `session-${randomUUID()}`;
-    const claimed = new Promise((resolve) => claims.set(workflowId, resolve));
+    const claimed = claims.take(workflowId);
     const timer = new AbortController();
     const timeout = builder ? BUILDER_START_TIMEOUT_MS : START_TIMEOUT_MS;
     try {
@@ -852,7 +871,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       throw Object.assign(new Error(`${harness} failed to start: ${error.message}`), { status: 502 });
     } finally {
       timer.abort();
-      claims.delete(workflowId);
+      claims.drop(workflowId);
     }
   }
 
@@ -1208,14 +1227,14 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     const sessionIds = [];
     for (const id of pending) if (await isSession(id)) sessionIds.push(id);
     for (const r of await durable.listNamed(DELIVERY, 100)) deliveryIds.add(r.id); // the pump's fresh filter survives restarts for the recent window
-    const claimed = sessionIds.map((id) => new Promise((resolve) => claims.set(id, resolve)));
+    const claimed = sessionIds.map((id) => claims.take(id));
     const ids = await durable.recover();
     for (const id of sessionIds) watchBuilderFailure(id, durable.result(id));
     const waits = sessionIds.map((id, i) => Promise.race([claimed[i], durable.result(id).catch(() => {})]));
     const timer = new AbortController();
     await Promise.race([Promise.all(waits), delay(START_TIMEOUT_MS, null, { signal: timer.signal }).catch(() => {})]);
     timer.abort();
-    for (const id of sessionIds) claims.delete(id);
+    for (const id of sessionIds) claims.drop(id);
     for (const cfg of configs.values()) {
       for (const record of listOwned(cfg)) await reconcileFailedBuilder(record);
     }
