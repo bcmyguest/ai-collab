@@ -11,7 +11,8 @@ import { publish } from "../lib/transport.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { MessageProcessor } from "@a2ui/web_core/v0_9";
 import { ChipApi, aiCollabCatalog } from "../web/lib/a2ui-catalog.js";
-import { runAnswer, runOperations } from "../web/lib/a2ui-run.js";
+import { runAnswer, runOperations, runOutcome } from "../web/lib/a2ui-run.js";
+import { runTerminalUi } from "../web/server/run-terminal.mjs";
 import { ScriptApi } from "../web/lib/a2ui-run-catalog.js";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
@@ -222,4 +223,75 @@ test("every run card state passes the A2UI processor with the Script component",
       assert.equal(ScriptApi.schema.safeParse(props).success, true, component.id);
     }
   }
+});
+
+// The review's repros: a swapped request, hidden characters, the script's environment, and a run lost to a restart.
+const requestFile = (cfg, id) => path.join(cfg.stateDir, cfg.project, "run-terminal", id, "request.json");
+const rewrite = (cfg, id, change) => writeFileSync(requestFile(cfg, id), JSON.stringify({ ...JSON.parse(readFileSync(requestFile(cfg, id), "utf8")), ...change }));
+const runAction = (id, hash) => ({ name: "run", surfaceId: "run-" + id, context: { id, sha256: hash } });
+const quietUi = (env) => runTerminalUi({ env, hosted: false, broadcast: () => {} });
+
+test("a request swapped after the UI showed it keeps the shown script on the card and cannot run", () => {
+  const { env, cfg, cwd, script } = setup();
+  const ui = quietUi(env);
+  const { id } = createRunRequest(cfg, { script, cwd, reason: "land" }, env);
+  assert.equal(ui.snapshot(cfg).runRequests[0].script, script);
+  const swapped = "touch pwned\n";
+  rewrite(cfg, id, { script: swapped, sha256: sha256(swapped) });
+  // The next snapshot would hand the browser the new script; its hash then matches and Run would run it.
+  const card = ui.snapshot(cfg).runRequests[0];
+  assert.equal(card.script, script);
+  assert.notEqual(card.status, "pending");
+  assert.throws(() => ui.answer(cfg, runAction(id, sha256(swapped)), "op"), /changed|already decided/);
+  assert.equal(existsSync(path.join(cwd, "pwned")), false);
+});
+
+test("a request rewritten to a later creation time keeps its first expiry", () => {
+  const { env, cfg, cwd, script } = setup();
+  const ui = quietUi(env);
+  const { id } = createRunRequest(cfg, { script, cwd, reason: "land" }, env);
+  const shown = ui.snapshot(cfg).runRequests[0];
+  const later = Date.now() + 1000;
+  rewrite(cfg, id, { createdAt: later, expiresAt: later + 60 * 60 * 1000 });
+  assert.equal(ui.snapshot(cfg).runRequests[0].expiresAt, shown.expiresAt);
+});
+
+test("invisible, line-separator and look-alike space characters are refused", () => {
+  const { env, cfg, cwd } = setup();
+  for (const hidden of ["­", "͏", "ᅟ", "᠎", " ", " ", " ", " ", "　", "ㅤ", "️", "\u{e0041}", "\u{e0100}", "⁤"]) {
+    assert.throws(() => createRunRequest(cfg, { script: `echo a${hidden}b`, cwd, reason: "x" }, env), /cannot show/, `U+${hidden.codePointAt(0).toString(16)}`);
+  }
+});
+
+test("a long run of blanks that would push text off screen is refused", () => {
+  const { env, cfg, cwd } = setup();
+  assert.throws(() => createRunRequest(cfg, { script: `echo hi${" ".repeat(2000)}; rm -rf ~/x`, cwd, reason: "x" }, env), /blank/);
+  assert.ok(createRunRequest(cfg, { script: `${"    ".repeat(8)}echo indented`, cwd, reason: "x" }, env).id);
+});
+
+test("the script gets no UI server variables or secrets", async () => {
+  const { env, cfg, cwd } = setup();
+  const script = "env\n";
+  const { id } = createRunRequest(cfg, { script, cwd, reason: "env" }, env);
+  const uiEnv = { ...env, AI_COLLAB_TOKEN: "tok-secret", AI_COLLAB_UI_ORIGIN: "https://x.ts.net", NODE_ENV: "production", __NEXT_PRIVATE_ORIGIN: "http://x", NEXT_RUNTIME: "nodejs" };
+  decideRun({ stateDir: cfg.stateDir, project: cfg.project, id, decision: "run", sha256: sha256(script), env: uiEnv });
+  const done = await waitForRun(cfg, id, 10);
+  assert.equal(done.exitCode, 0);
+  for (const name of ["AI_COLLAB_", "NODE_ENV=", "__NEXT", "NEXT_RUNTIME"]) assert.ok(!done.stdoutTail.includes(name), name);
+  assert.ok(done.stdoutTail.includes("PATH="));
+});
+
+test("a run still marked running when the UI server starts is closed as lost", async () => {
+  const { env, cfg, cwd, script } = setup();
+  const { id } = createRunRequest(cfg, { script, cwd, reason: "land" }, env);
+  const dir = path.dirname(requestFile(cfg, id));
+  writeFileSync(path.join(dir, "decision.json"), JSON.stringify({ decision: "run", by: "operator", at: Date.now() }));
+  writeFileSync(path.join(dir, "result.json"), JSON.stringify({ status: "running", startedAt: Date.now() }));
+  const ui = quietUi(env);
+  ui.watch(cfg);
+  ui.close();
+  assert.equal(runStatus(cfg.stateDir, cfg.project, id).status, "lost");
+  assert.equal((await waitForRun(cfg, id, 5)).status, "lost");
+  assert.ok(auditLines(cfg).some((line) => line.event === "lost" && line.id === id));
+  assert.match(runOutcome({ status: "lost" }), /restart/);
 });

@@ -20,6 +20,7 @@ export function runOutcome(request) {
   if (request.status === "expired") return "Expired before anyone ran it";
   if (request.status === "refused") return "Refused: " + (request.why || "closed") + by;
   if (request.status === "running") return "Running" + by;
+  if (request.status === "lost") return "Lost: the UI server restarted while it ran" + by;
   if (request.status !== "done") return "";
   if (request.error) return "Could not start bash: " + request.error;
   if (request.timedOut) return `Killed at the ${request.timeoutS} s timeout · ${seconds(request.durationMs)}` + by;

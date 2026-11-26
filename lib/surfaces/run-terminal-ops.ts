@@ -27,7 +27,7 @@ export const RUN_TERMINAL_OPS: Op[] = [
   },
   {
     name: "run_in_terminal_result",
-    description: "Wait for a run_in_terminal request: returns status pending, running, done, rejected, expired or refused, and once done the exit code, stdout and stderr tails (16 KB each) and duration. Returns the current status when the wait ends first.",
+    description: "Wait for a run_in_terminal request: returns status pending, running, done, lost, rejected, expired or refused, and once done the exit code, stdout and stderr tails (16 KB each) and duration. Returns the current status when the wait ends first.",
     inputSchema: {
       type: "object", required: ["id"], additionalProperties: false,
       properties: { id: { type: "string", pattern: RUN_ID.source }, wait_seconds: WAIT },
