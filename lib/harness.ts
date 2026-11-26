@@ -26,6 +26,14 @@ export const CURSOR_BINARIES: readonly string[] = ["agent", "cursor-agent"];
 export const LAUNCH_BINARY: Readonly<Record<Harness, string>> = { claude: "claude", codex: "codex", cursor: "cursor-agent", opencode: "opencode" };
 // Lets `codex exec` run plugin hooks without persisted trust, which only the interactive `/hooks` review writes.
 export const CODEX_HOOK_TRUST = "--dangerously-bypass-hook-trust";
+// Claude Code's --permission-mode values (`claude --help`; the Agent SDK's PermissionMode). "manual" is an alias of "default".
+export const CLAUDE_PERMISSION_MODES: readonly string[] = ["acceptEdits", "auto", "bypassPermissions", "default", "dontAsk", "plan"];
+// The defaults.json claudePermissionMode that is "default" while AFK is on and passes nothing otherwise.
+export const CLAUDE_PERMISSION_AUTO = "auto-afk";
+// The defaults.json claudePermissionMode that passes nothing, so the user's own Claude settings apply.
+export const CLAUDE_PERMISSION_INHERIT = "inherit";
+// Every value a Claude permission setting may name: defaults.json, a team.dot attribute, or a start option.
+export const CLAUDE_PERMISSION_VALUES: readonly string[] = [CLAUDE_PERMISSION_AUTO, CLAUDE_PERMISSION_INHERIT, ...CLAUDE_PERMISSION_MODES];
 export const REQUIRE_RUN_CODE_ENV = "AI_COLLAB_REQUIRE_RUN_CODE";
 export const CODEX_CODE_MODE_KEY = "features.code_mode";
 // The harness each agent binary runs as, by the binary's name. A Map, so a name like "constructor" finds nothing.
@@ -38,8 +46,8 @@ const BINARY_HARNESS = new Map<string, Harness>([
 ]);
 
 export type ArgvOpts = {
-  start: { root: string; prompt: string; worktree?: string; model?: string; mode?: string; codeMode?: boolean; requireRunCode?: boolean };
-  wake: { id: string; prompt: string; requireRunCode?: boolean; path?: string };
+  start: { root: string; prompt: string; worktree?: string; model?: string; mode?: string; permission?: string; codeMode?: boolean; requireRunCode?: boolean };
+  wake: { id: string; prompt: string; requireRunCode?: boolean; path?: string; permission?: string };
   compact: { id: string };
   queue: { id: string; text: string };
   interrupt: Record<string, never>;
@@ -114,6 +122,18 @@ export function cursorCommandFor({ path = "" }: { path?: string } = {}): string 
   return cursorBinary(path);
 }
 
+/** "" when the value is a Claude permission setting, else the message naming the valid ones. */
+export function claudePermissionError(value: unknown): string {
+  return CLAUDE_PERMISSION_VALUES.includes(value as string) ? "" : `claudePermissionMode must be one of ${CLAUDE_PERMISSION_VALUES.join(", ")}; got ${JSON.stringify(value)}`;
+}
+
+/** The --permission-mode a Claude start passes: the setting itself, "default" for auto-afk while AFK is on, else undefined. */
+export function claudePermissionFlag(setting: string, afk: boolean): string | undefined {
+  if (setting === CLAUDE_PERMISSION_INHERIT) return undefined;
+  if (setting !== CLAUDE_PERMISSION_AUTO) return setting;
+  return afk ? "default" : undefined;
+}
+
 // A start's argv: the mode flags, Codex code mode, and the model after the mode flags. Null for a model or mode it cannot pass.
 function startArgv(harness: Harness, o: ArgvOpts["start"]): Command | null {
   if (o.model !== undefined && !modelShape(harness, o.model)) return null;
@@ -121,7 +141,8 @@ function startArgv(harness: Harness, o: ArgvOpts["start"]): Command | null {
   if (!chosen) return null;
   const flag = (name: string) => (o.model === undefined ? [] : [name, o.model]);
   switch (harness) {
-    case "claude": return [LAUNCH_BINARY.claude, ["--bg", ...(o.worktree ? ["--worktree", o.worktree] : []), ...chosen, ...flag("--model"), o.prompt]];
+    // A plan mode's own --permission-mode wins over the configured permission mode.
+    case "claude": return [LAUNCH_BINARY.claude, ["--bg", ...(o.worktree ? ["--worktree", o.worktree] : []), ...(chosen.length ? chosen : o.permission ? ["--permission-mode", o.permission] : []), ...flag("--model"), o.prompt]];
     // Codex code mode is a feature flag; Claude --bg refuses code mode (background job), so it gets nothing.
     case "codex": return [LAUNCH_BINARY.codex, ["exec", "--json", CODEX_HOOK_TRUST, ...(typeof o.codeMode === "boolean" ? codexCodeModeArgs(o.codeMode) : []), ...(o.requireRunCode ? codexRequiredRunCodeArgs() : []), ...chosen, ...flag("-m"), o.prompt]];
     case "cursor": return [LAUNCH_BINARY.cursor, ["-p", "--trust", "--output-format", "stream-json", "--workspace", o.root, ...chosen, ...flag("--model"), o.prompt]];
@@ -134,7 +155,8 @@ function startArgv(harness: Harness, o: ArgvOpts["start"]): Command | null {
 // A wake resumes a saved session with the wake prompt; Cursor's binary is the one cursorBinary finds on the wake's PATH.
 function wakeArgv(harness: Harness, o: ArgvOpts["wake"]): Command | null {
   switch (harness) {
-    case "claude": return [LAUNCH_BINARY.claude, ["--print", "--resume", o.id, o.prompt]];
+    // A stored /permission value is the session's next-wake mode; without one the wake passes no flag.
+    case "claude": return [LAUNCH_BINARY.claude, ["--print", "--resume", o.id, ...(o.permission ? ["--permission-mode", o.permission] : []), o.prompt]];
     case "codex": return [LAUNCH_BINARY.codex, ["exec", ...(o.requireRunCode ? codexRequiredRunCodeArgs() : []), "resume", o.id, o.prompt]];
     case "cursor": return [cursorBinary(o.path ?? ""), ["--print", "--resume", o.id, o.prompt]];
     case "opencode": return [LAUNCH_BINARY.opencode, ["run", "--session", o.id, o.prompt]];

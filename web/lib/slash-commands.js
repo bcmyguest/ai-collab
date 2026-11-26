@@ -8,6 +8,8 @@ export const COMMANDS = [
   { name: "compact", summary: "Compact the context" },
   { name: "model", summary: "Switch the model", args: "<provider/model>" },
   { name: "clear", summary: "Start a new context" },
+  { name: "permission", summary: "Permission mode for the next start or wake", args: "<mode>" },
+  { name: "team-permission", summary: "Permission mode for a team, after you confirm", args: "<team> <mode>" },
 ];
 
 const supported = (reason) => ({ status: "supported", reason });
@@ -20,6 +22,8 @@ export const SUPPORT = {
   claude: {
     compact: partial("A runner-owned session compacts in place: /compact on its live query. A terminal session compacts through the Agent SDK when saved, or gets a request to finish its step, then /compact in its terminal."),
     model: unsupported("Claude's messaging socket delivers text only; no model switch is documented."),
+    permission: supported("Stored for the session's next start or wake (--permission-mode); the running turn keeps its mode."),
+    "team-permission": supported("Asks the operator to Apply or Cancel on a phone card; Apply rewrites team.dot."),
     clear: unsupported("No clear is documented for Claude's messaging socket."),
     passthrough: unsupported("The socket wraps each message in a cross-session envelope, so /name reaches Claude as text, not a command."),
   },
@@ -27,18 +31,24 @@ export const SUPPORT = {
     compact: partial("A runner-owned session compacts in place with thread/compact/start. A terminal session compacts the thread when it is loaded and idle in the app-server daemon, or a saved thread; otherwise it gets a request."),
     model: unsupported("app-server sets the model per turn (turn/start), not on a thread, so it cannot change the model alone."),
     clear: unsupported("thread/start creates a new thread id; this session keeps its id."),
+    permission: unsupported("/permission sets Claude's permission mode; Codex has none."),
+    "team-permission": supported("Asks the operator to Apply or Cancel on a phone card; Apply rewrites team.dot."),
     passthrough: unsupported("No app-server method runs a slash command. Sending it as a turn is unverified."),
   },
   opencode: {
     compact: supported("POST /api/session/{id}/compact (operation session.compact in the OpenCode binary)."),
     model: unverified("POST /api/session/{id}/model (session.switchModel). The body {providerID, modelID} is not checked against a live service."),
     clear: unsupported("POST /api/session creates another session; this one keeps its id."),
+    permission: unsupported("/permission sets Claude's permission mode; OpenCode has none."),
+    "team-permission": supported("Asks the operator to Apply or Cancel on a phone card; Apply rewrites team.dot."),
     passthrough: unverified("POST /api/session/{id}/command (session.command). The body {command, arguments} is not checked against a live service."),
   },
   cursor: {
     compact: unsupported("No outside compaction trigger. The Compact button sends the session a request instead."),
     model: unsupported("cursor-agent exposes no control channel for a running session (--resume and --print only)."),
     clear: unsupported("cursor-agent exposes no control channel for a running session (--resume and --print only)."),
+    permission: unsupported("/permission sets Claude's permission mode; Cursor has none."),
+    "team-permission": supported("Asks the operator to Apply or Cancel on a phone card; Apply rewrites team.dot."),
     passthrough: unsupported("cursor-agent exposes no control channel for a running session (--resume and --print only)."),
   },
 };

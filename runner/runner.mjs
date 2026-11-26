@@ -25,14 +25,14 @@ import { MAX_ATTEMPTS } from "../lib/delivery.ts";
 import { sessionIdleState } from "../lib/idle.mjs";
 import { opencodeRequest } from "../lib/opencode-api.mjs";
 import { BUILDER_START_TIMEOUT_MS, builderPaths, builderResumePrompt, stoppedBuilder, ownedBuilder, stageOwnedBuilder, claimOwnedBuilder, finishOwnedBuilder, markOwnedBuilderFailed } from "../lib/builder.mjs";
-import { childEnv, checkPrompt, findExecutable, modelShape, projectRoot, worktreeNames } from "../lib/start.mjs";
+import { childEnv, checkPrompt, claudePermissionFor, findExecutable, modelShape, projectRoot, worktreeNames } from "../lib/start.mjs";
 import { parseCodeMode, resolveCodeMode } from "../lib/code-mode.mjs";
 import { openTasks } from "../lib/tasks.mjs";
-import { listOwned, ownedFile, readOwned, writeOwned } from "../lib/sessions/registry.ts";
+import { listOwned, nextPermission, ownedFile, readOwned, writeOwned } from "../lib/sessions/registry.ts";
 import { modelFields } from "../lib/session-events.mjs";
 import { isBlockingLimit, limitFromRunError } from "../lib/limits.ts";
 import { alertLimit } from "../lib/limit-alert.mjs";
-import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, LIMIT, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, OPENSHELL_PERMISSION, permissionSettings } from "./contract.mjs";
+import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, LIMIT, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, OPENSHELL_PERMISSION, permissionSettings, runnerModeOfClaude } from "./contract.mjs";
 import { sessionOfCommand } from "../lib/schedule-session.mjs";
 import { ALLOW_HOST_AGENT_ENV } from "../lib/agent-guard.mjs";
 import { sandboxCapRefusal, sandboxName, teamSandboxName } from "./sandbox.mjs";
@@ -257,7 +257,10 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     const adapter = adapterOf(s.record.harness);
     if (adapter.capabilities.resume === "none") fail(409, `${s.record.harness} sessions cannot resume`);
     s.resuming ??= (async () => {
-      s.live = await adapter.resume(s.record, contextFor({ s }, s.record.harness, s.signal), ownedEnv(), staged);
+      // The owned record's /permission value first, else the registry entry's (setNextPermission), for this resume only.
+      const cfg = configs.get(s.record.project);
+      const claudePermission = s.record.claudePermission ?? (cfg ? nextPermission(cfg, { id: `${s.record.harness}#${s.record.label}`, label: s.record.label }) : undefined);
+      s.live = await adapter.resume({ ...s.record, ...(claudePermission ? { claudePermission } : {}) }, contextFor({ s }, s.record.harness, s.signal), ownedEnv(), staged);
       save(s);
       return s.live;
     })().finally(() => { s.resuming = null; });
@@ -778,14 +781,21 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   durable.register("session", sessionWorkflow);
 
   /** Starts an owned session; resolves {status:"started", session, nativeId, workflowId, detail}. */
-  async function start({ project, harness, prompt, model, place: named, permissionMode, codeMode, taskId, builder: builderId, system = true } = {}, patternRun, continuation) {
+  async function start({ project, harness, prompt, model, place: named, permissionMode, claudePermission, codeMode, taskId, builder: builderId, system = true } = {}, patternRun, continuation) {
     if (!configs.has(project)) fail(400, "Unknown project");
     if (isProjectPaused(configs.get(project))) fail(409, PROJECT_PAUSED);
     const adapter = adapterOf(harness);
     const place = named ?? defaultPlace(harness);
     if (!PLACES.includes(place)) fail(400, "Unknown start place");
     // OpenShell is the boundary: every harness there runs with approvals off, whatever mode the caller named.
-    const mode = place === "openshell" ? OPENSHELL_PERMISSION : permissionMode ?? defaultPermission(harness, place);
+    // An unnamed Claude start takes the configured claudePermissionMode when it names a runner mode.
+    // Team, pattern and continuation starts default to auto; an instance setting replaces the team or configured one.
+    const scoped = Boolean(patternRun || continuation);
+    const claude = harness === "claude" && place !== "openshell" && permissionMode === undefined ? claudePermissionFor(harness, configs.get(project), env, { setting: claudePermission ?? (scoped ? "auto" : undefined) }) : {};
+    if (claude.error) fail(400, claude.error);
+    if (claude.flag && !runnerModeOfClaude(claude.flag)) fail(400, `claudePermissionMode ${claude.flag} has no runner mode; use default, acceptEdits, auto or bypassPermissions`);
+    const configuredMode = claude.flag ? runnerModeOfClaude(claude.flag) : null;
+    const mode = place === "openshell" ? OPENSHELL_PERMISSION : permissionMode ?? configuredMode ?? defaultPermission(harness, place);
     if (!PERMISSION_MODES.includes(mode) || !adapter.capabilities.permissionModes.includes(mode)) fail(400, `${harness} does not support permission mode ${mode}`);
     const permission = permissionSettings(harness, mode, place);
     if (permission.error) fail(400, permission.error);

@@ -2,14 +2,14 @@
 import { execFile, spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync } from "node:fs";
 import { basename, delimiter, isAbsolute, join, resolve, sep } from "node:path";
-import { hostAgentRefusal } from "../agent-guard.mjs";
-import { listProjects, sessionLabel, startPlaceSetting } from "../config.mjs";
+import { ALLOW_HOST_AGENT_ENV, hostAgentRefusal } from "../agent-guard.mjs";
+import { claudePermissionSetting, listProjects, sessionLabel, startPlaceSetting } from "../config.mjs";
 import { REQUIRE_RUN_CODE_ENV, resolveCodeMode } from "../code-mode.mjs";
 import { SYSTEM_PROMPT_ENV } from "../machine-prompt.mjs";
-import { WAKE_ENV } from "../mode.mjs";
+import { recordedMode, WAKE_ENV } from "../mode.mjs";
 import { isProjectPaused, PROJECT_PAUSED } from "../project-pause.ts";
 import { runnerSocket } from "../runner-request.mjs";
-import { argv, childPath, CURSOR_BINARIES, cursorCommandFor, type Command, HARNESSES, type Harness, LAUNCH_BINARY, modelShape } from "../harness.ts";
+import { argv, childPath, claudePermissionError, claudePermissionFlag, CURSOR_BINARIES, cursorCommandFor, type Command, HARNESSES, type Harness, LAUNCH_BINARY, modelShape } from "../harness.ts";
 import { modeFlags } from "../../web/lib/start-mode.js";
 import { placeCommand, SANDBOX_NAME } from "./control.ts";
 import { findExecutable, scopeLaunch, utcStamp } from "./scope.ts";
@@ -40,10 +40,34 @@ export function startRefusal(harness: string, mode = "agent", model?: unknown): 
  * The mode comes from the new-agent dialogue's Agent / Ask / Plan pill: its flags are the harness's own read-only
  * switches (web/lib/start-mode.js), so "agent" adds nothing and a mode the harness lacks returns null.
  */
-export function startCommand(harness: string, root: string, prompt: string, { worktree = "", model, mode, codeMode, requireRunCode = false }: {
-  worktree?: string; model?: string; mode?: string; codeMode?: boolean; requireRunCode?: boolean;
+export function startCommand(harness: string, root: string, prompt: string, { worktree = "", model, mode, permission, codeMode, requireRunCode = false }: {
+  worktree?: string; model?: string; mode?: string; permission?: string; codeMode?: boolean; requireRunCode?: boolean;
 } = {}): Command | null {
-  return argv(harness as Harness, "start", { root, prompt, worktree, model, mode, codeMode, requireRunCode } as never);
+  return argv(harness as Harness, "start", { root, prompt, worktree, model, mode, permission, codeMode, requireRunCode } as never);
+}
+
+/**
+ * The --permission-mode a start of this harness passes: a named setting (a team's or an instance's) replaces the
+ * configured one. Claude only; {flag: undefined} passes nothing, {error} refuses the start. "auto-afk" is default while
+ * AFK is on or quiet. bypassPermissions runs only in OpenShell (sandboxed) or with AI_COLLAB_ALLOW_HOST_AGENT=1.
+ */
+export function claudePermissionFor(harness: string, cfg: SessionCfg, env: NodeJS.ProcessEnv = process.env, { sandboxed = false, setting: named }: { sandboxed?: boolean; setting?: string } = {}) {
+  if (harness !== "claude") return {};
+  if (named !== undefined && claudePermissionError(named)) return { error: claudePermissionError(named) };
+  const configured = named === undefined ? claudePermissionSetting(env) : undefined;
+  if (configured?.error) return { error: configured.error };
+  const mode = named ?? configured?.mode ?? "default";
+  const afk = ["on", "quiet"].includes(recordedMode(cfg)?.mode);
+  const flag = claudePermissionFlag(mode, afk);
+  const refusal = bypassRefusal(flag, { sandboxed }, env);
+  if (refusal) return { flag: undefined, error: refusal };
+  return { flag };
+}
+
+/** Why a Claude permission of bypassPermissions may not start here, or "" when it may: outside OpenShell it needs AI_COLLAB_ALLOW_HOST_AGENT=1. */
+export function bypassRefusal(setting: string | undefined, { sandboxed = false }: { sandboxed?: boolean } = {}, env: NodeJS.ProcessEnv = process.env): string {
+  if (setting !== "bypassPermissions" || sandboxed || env[ALLOW_HOST_AGENT_ENV] === "1") return "";
+  return `bypassPermissions runs only in openshell; set ${ALLOW_HOST_AGENT_ENV}=1 to allow it on the host`;
 }
 
 /** Maps a startCommand's cursor binary onto this machine's name: `agent` when installed, else `cursor-agent`. */
@@ -187,8 +211,8 @@ function readHead(file: string): string {
 }
 
 /** Spawns the harness detached with its log file, waits up to waitMs for its session id, and reports onEnd at exit. */
-export async function startSession(cfg: SessionCfg, { harness = "", prompt = "", model, mode = "agent", place = "folder", origin = "", codeMode, requireRunCode = false, system = false, env = process.env, run: spawnChild = spawn, git = runGit, now = Date.now, waitMs = ID_WAIT_MS, onEnd }: {
-  harness?: string; prompt?: string; model?: string; mode?: string; place?: string; origin?: string; codeMode?: unknown; requireRunCode?: boolean; system?: boolean;
+export async function startSession(cfg: SessionCfg, { harness = "", prompt = "", model, mode = "agent", place = "folder", origin = "", codeMode, requireRunCode = false, system = false, claudePermission, env = process.env, run: spawnChild = spawn, git = runGit, now = Date.now, waitMs = ID_WAIT_MS, onEnd }: {
+  harness?: string; prompt?: string; model?: string; mode?: string; place?: string; origin?: string; codeMode?: unknown; requireRunCode?: boolean; system?: boolean; claudePermission?: string;
   env?: NodeJS.ProcessEnv; run?: typeof spawn; git?: typeof runGit; now?: () => number; waitMs?: number;
   onEnd?: (end: { code: number | null; signal: string | null; log: string }) => unknown;
 } = {}): Promise<{ status: string; detail: string; log?: string; session?: string }> {
@@ -197,6 +221,8 @@ export async function startSession(cfg: SessionCfg, { harness = "", prompt = "",
   if (!START_PLACES.includes(place)) return { status: "failed", detail: "Unknown start place" };
   const refused = startRefusal(harness, mode, model);
   if (refused) return { status: "failed", detail: refused };
+  const permission = claudePermissionFor(harness, cfg, env, { sandboxed: place === "openshell", setting: claudePermission });
+  if (permission.error) return { status: "failed", detail: permission.error };
   const childVars = childEnv(env);
   if (system) childVars[SYSTEM_PROMPT_ENV] = "1";
   if (requireRunCode) childVars[REQUIRE_RUN_CODE_ENV] = "1";
@@ -212,7 +238,7 @@ export async function startSession(cfg: SessionCfg, { harness = "", prompt = "",
     const code = await git(gitFile, ["-C", root, "worktree", "add", "-b", tree.branch, cwd], { cwd: root, env: childVars });
     if (code !== 0) return { status: "failed", detail: `git worktree add exited ${code}` };
   }
-  const base = startCommand(harness, cwd, prompt, { worktree: tree && harness === "claude" ? tree.name : "", model, mode, requireRunCode, codeMode: resolveCodeMode(codeMode as never, env) });
+  const base = startCommand(harness, cwd, prompt, { worktree: tree && harness === "claude" ? tree.name : "", model, mode, permission: permission.flag, requireRunCode, codeMode: resolveCodeMode(codeMode as never, env) });
   if (!base) return { status: "failed", detail: startRefusal(harness, mode, model) || "Unknown harness" };
   const sandbox = place === "openshell" ? openshellRunner(env) : null;
   if (place === "openshell" && !sandbox) return { status: "failed", detail: "AI_COLLAB_OPENSHELL_SANDBOX is not set" };

@@ -49,11 +49,16 @@ export const PERMISSION_TABLE = {
 
 export const DEFAULT_PERMISSION = { claude: "auto", codex: "auto", cursor: "supervised", opencode: "supervised" };
 export const OPENSHELL_PERMISSION = "full-access";
+// The runner mode each Claude --permission-mode value names; dontAsk and plan have no runner mode.
+export const CLAUDE_CLI_MODES = { default: "supervised", acceptEdits: "accept-edits", auto: "auto", bypassPermissions: "full-access" };
 export const APPROVAL_TIMEOUT_MIN = 30;
 const APPROVAL_TIMEOUT_MAX_MIN = 12 * 60;
 
 /** The mode a session starts in when the caller names none: full-access in OpenShell, else the harness default. */
 export const defaultPermission = (harness, place = "folder") => (place === "openshell" ? OPENSHELL_PERMISSION : DEFAULT_PERMISSION[harness]);
+
+/** The runner mode for a Claude --permission-mode value, or null when the runner has none for it. */
+export const runnerModeOfClaude = (flag) => (Object.hasOwn(CLAUDE_CLI_MODES, flag) ? CLAUDE_CLI_MODES[flag] : null);
 
 /** Milliseconds an owned approval waits before the runner denies it: AI_COLLAB_APPROVAL_TIMEOUT_MIN (default 30, at most 12 h, the ntfy cache window). */
 export function approvalTimeoutMs(env = process.env) {

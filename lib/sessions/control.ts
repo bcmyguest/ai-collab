@@ -27,8 +27,8 @@ export const COMPACT_REQUEST = "[ai-collab] The operator asked to compact this s
   + "reply to the operator in one line with what is still in progress, then end your turn so the operator can run /compact.";
 
 /** The binary and argv that act on a session; the Cursor name is cursorBinary on the PATH the wake runs with. */
-export function harnessCommand(action: string, harness: string, id: string, requireRunCode: boolean, { path = "" }: { path?: string } = {}): Command | null {
-  if (action === "wake") return argv(harness as Harness, "wake", { id, prompt: WAKE_PROMPT, requireRunCode, path });
+export function harnessCommand(action: string, harness: string, id: string, requireRunCode: boolean, { path = "", permission }: { path?: string; permission?: string } = {}): Command | null {
+  if (action === "wake") return argv(harness as Harness, "wake", { id, prompt: WAKE_PROMPT, requireRunCode, path, permission });
   if (action === "compact") return argv(harness as Harness, "compact", { id });
   return null;
 }
@@ -120,7 +120,7 @@ async function run(action: string, peer: Session, { execute = invoke, compact = 
     return { status: "unsupported", detail: "Missing a verified native session ID or workspace." };
   }
   const env = harnessEnv();
-  const command = harnessCommand(action, harness, sessionId, peer.requireRunCode === true, { path: env.PATH });
+  const command = harnessCommand(action, harness, sessionId, peer.requireRunCode === true, { path: env.PATH, permission: peer.claudePermission });
   const sdk = action === "compact" && harness === "claude";
   const appServer = action === "compact" && harness === "codex";
   const adapter = Boolean(command || sdk || appServer);

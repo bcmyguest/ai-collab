@@ -21,6 +21,7 @@ export type Session = Identity & {
   seenAt?: number;
   model?: string;
   requireRunCode?: boolean;
+  claudePermission?: string;
   pid?: number;
   pidStart?: string;
   lastOperatorPromptAt?: number;
@@ -107,6 +108,8 @@ export async function recordSession(cfg: SessionCfg, { id, cwd, harness, event, 
       id: address, sessionId: id, cwd, harness, event, seenAt: Date.now(),
       ...(modelName ? { model: modelName } : {}),
       ...(requireRunCode === true || own.requireRunCode === true ? { requireRunCode: true } : {}),
+      // The /permission value a later wake takes survives every hook write.
+      ...(typeof own.claudePermission === "string" ? { claudePermission: own.claudePermission } : {}),
       ...(proc ? { pid: proc.pid, pidStart: proc.start } : {}),
       ...(last ? { lastOperatorPromptAt: last } : {}),
       ...(parent ? { parent } : {}),
@@ -295,6 +298,37 @@ export function readOwned(cfg: SessionCfg, label: string | undefined): OwnedReco
 /** Writes the record atomically (0600 file in a 0700 dir). */
 export function writeOwned(cfg: SessionCfg, record: { label: string; [field: string]: unknown }): void {
   writeState(ownedFile(cfg, record.label), { ...record, v: 1, updatedAt: Date.now() });
+}
+
+/**
+ * Stores the Claude permission a session's next start or wake takes: its owned record when the runner owns the session,
+ * else its registry entry. An unregistered session is refused, so no entry appears for it in listSessions.
+ */
+export async function setNextPermission(cfg: SessionCfg, { id, label, value }: { id: string; label: string; value: string }): Promise<"owned" | "registry"> {
+  const owned = readOwned(cfg, label);
+  if (owned) {
+    writeOwned(cfg, { ...owned, label, claudePermission: value });
+    return "owned";
+  }
+  const file = join(registry(cfg), `${id}.json`);
+  if (!existsSync(file)) throw new Error("Unknown session");
+  await withLock(file, async () => {
+    const entry = JSON.parse(readFileSync(file, "utf8")) || {};
+    writeState(file, { ...entry, claudePermission: value });
+  });
+  return "registry";
+}
+
+/** The Claude permission stored for a session: its owned record first, then its registry entry; undefined when neither has one. */
+export function nextPermission(cfg: Pick<SessionCfg, "stateDir" | "project">, { id, label }: { id: string; label: string }): string | undefined {
+  const owned = readOwned(cfg as SessionCfg, label)?.claudePermission;
+  if (typeof owned === "string") return owned;
+  try {
+    const entry = JSON.parse(readFileSync(join(registry(cfg), `${id}.json`), "utf8"));
+    return typeof entry?.claudePermission === "string" ? entry.claudePermission : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Every readable owned record of this project. */

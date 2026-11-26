@@ -7,7 +7,7 @@ import { codexRequiredRunCodeArgs } from "../lib/code-mode.mjs";
 import { authorCommand } from "../lib/catalog/author.ts";
 import { pushSession } from "../lib/deliver-push.mjs";
 import { acpArgs } from "../runner/adapters/cursor.mjs";
-import { argv } from "../lib/harness.ts";
+import { argv, claudePermissionFlag } from "../lib/harness.ts";
 import { WAKE_PROMPT } from "../lib/mode.mjs";
 
 // Pinned from the per-harness sites before they moved into lib/harness.ts; each row is what that site returned.
@@ -95,4 +95,27 @@ test("acp argv", () => {
   assert.deepEqual(acpArgs({}), ["acp"]);
   assert.deepEqual(acpArgs({ force: true }), ["acp", "--force"]);
   assert.deepEqual(acpArgs({ force: true, model: MODEL.cursor }), ["acp", "--force", "--model", "deepseek-v41-flash-1017-high"]);
+});
+
+// Rows for the configured Claude permission mode: a start passes it, a plan start keeps its own flag, no other harness takes it.
+test("claude start passes the configured permission mode; plan keeps its own", () => {
+  const start = (opts) => startCommand("claude", "/w/proj", "Do it", opts);
+  assert.deepEqual(start({ permission: "default" }), ["claude", ["--bg", "--permission-mode", "default", "Do it"]]);
+  assert.deepEqual(start({ permission: "dontAsk", model: MODEL.claude }), ["claude", ["--bg", "--permission-mode", "dontAsk", "--model", "claude-haiku-5-5", "Do it"]]);
+  assert.deepEqual(start({ permission: "default", mode: "plan", model: MODEL.claude }), ["claude", ["--bg", "--permission-mode", "plan", "--model", "claude-haiku-5-5", "Do it"]]);
+  assert.deepEqual(start({ permission: "auto", worktree: "wt-1" }), ["claude", ["--bg", "--worktree", "wt-1", "--permission-mode", "auto", "Do it"]]);
+});
+
+test("the permission mode reaches no other harness's start", () => {
+  assert.deepEqual(startCommand("codex", "/w/proj", "Do it", { permission: "default" }), ["codex", ["exec", "--json", "--dangerously-bypass-hook-trust", "Do it"]]);
+  assert.deepEqual(startCommand("cursor", "/w/proj", "Do it", { permission: "default" }), ["cursor-agent", ["-p", "--trust", "--output-format", "stream-json", "--workspace", "/w/proj", "Do it"]]);
+  assert.deepEqual(startCommand("opencode", "/w/proj", "Do it", { permission: "default" }), ["opencode", ["run", "--format", "json", "Do it"]]);
+});
+
+test("claudePermissionFlag: auto-afk is default only while AFK is on; a concrete mode passes as set", () => {
+  assert.equal(claudePermissionFlag("auto-afk", true), "default");
+  assert.equal(claudePermissionFlag("auto-afk", false), undefined);
+  assert.equal(claudePermissionFlag("dontAsk", false), "dontAsk");
+  assert.equal(claudePermissionFlag("plan", true), "plan");
+  assert.equal(claudePermissionFlag("inherit", true), undefined);
 });

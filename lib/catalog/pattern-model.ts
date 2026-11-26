@@ -64,7 +64,7 @@ export function withExtras(checked: Pattern, team: DotTeam): Pattern {
     };
   });
   const handoffs: Handoff[] = checked.handoffs.map((handoff, index) => (team.edges[index].kind === "pair" ? handoff : { ...handoff, kind: team.edges[index].kind }));
-  return { ...checked, roles, handoffs, ...(team.maxVisits ? { maxVisits: team.maxVisits } : {}) };
+  return { ...checked, roles, handoffs, ...(team.maxVisits ? { maxVisits: team.maxVisits } : {}), ...(team.permission ? { permission: team.permission } : {}) };
 }
 
 /** A validated pattern as the input of a team.dot file. */
