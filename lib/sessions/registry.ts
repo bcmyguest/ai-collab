@@ -35,7 +35,7 @@ export type Session = Identity & {
 };
 type OwnedStatus = "starting" | "idle" | "running" | "ended";
 type OwnedRecord = { v: 1; label: string; status: OwnedStatus; updatedAt: number; [field: string]: unknown };
-export type SessionCfg = { stateDir: string; project: string; peer: string; session: string; peers: string[]; root?: string; auto?: boolean; enabled?: boolean };
+export type SessionCfg = { stateDir: string; project: string; peer: string; session?: string; peers: string[]; root?: string; auto?: boolean; enabled?: boolean };
 
 const ACTIVITY_MAX = 200;
 const TAGS_MAX = 10;
@@ -65,7 +65,7 @@ const RESUME: Record<string, (id: string, requireRunCode: boolean) => string> = 
   opencode: (id) => `opencode run --session ${id} "<prompt>"`,
 };
 
-function registry(cfg: SessionCfg): string {
+function registry(cfg: Pick<SessionCfg, "stateDir" | "project">): string {
   return join(cfg.stateDir, cfg.project, "registry");
 }
 
@@ -182,7 +182,7 @@ export function agentDirectory(cfg: SessionCfg, { all = false, tags = [] }: { al
   }));
 }
 
-export function listSessions(cfg: SessionCfg): Session[] {
+export function listSessions(cfg: Pick<SessionCfg, "stateDir" | "project" | "peers">): Session[] {
   let files: string[];
   try { files = readdirSync(registry(cfg)); } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
