@@ -155,8 +155,8 @@ export async function listAllSandboxes({ openshell, env }: { openshell: string; 
 }
 
 /** The labels every ai-collab sandbox is created with: the managed mark, its project, kind, owner and package version. */
-export function sandboxLabels({ project, kind, owner }: { project: string; kind: SandboxKind; owner: string }): SandboxLabels {
-  return { [MANAGED_LABEL]: "true", [PROJECT_LABEL]: project, [KIND_LABEL]: kind, [OWNER_LABEL]: owner, [VERSION_LABEL]: PACKAGE_VERSION };
+export function sandboxLabels({ project, kind, owner }: { project: string; kind: SandboxKind; owner: string }) {
+  return { [MANAGED_LABEL]: "true", [PROJECT_LABEL]: project, [KIND_LABEL]: kind, [OWNER_LABEL]: owner, [VERSION_LABEL]: PACKAGE_VERSION } satisfies SandboxLabels;
 }
 
 /** The `--label key=value` pairs for `sandbox create`. */
