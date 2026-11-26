@@ -2,7 +2,7 @@
 
 A builder is one agent that implements one task on its own branch. `ai-collab builder start` runs each new builder inside its own OpenShell sandbox. Codex uses a runner-owned session when the runner is reachable. Cursor, Claude, and OpenCode use a transient systemd user unit. Codex uses the same fallback when the runner is unavailable. Builders started by hand before this command existed run on the host and are left alone.
 
-Lib: `lib/builder/`, re-exported by `lib/builder.mjs`. OpenShell lifecycle: `lib/sandbox.ts`. Tests: `test/builder.test.mjs` and `test/builder-claude.test.mjs` with fake `openshell`, `systemd-run`, `systemctl`, agent and `oncebitten` from `test/helpers/`. Pure outputs (policy, argv, hook files, paths) are pinned by `test/builder-characterize.test.mjs`.
+Lib: `lib/builder/`, re-exported by `lib/builder.ts`. OpenShell lifecycle: `lib/sandbox.ts`. Tests: `test/builder.test.mjs` and `test/builder-claude.test.mjs` with fake `openshell`, `systemd-run`, `systemctl`, agent and `oncebitten` from `test/helpers/`. Pure outputs (policy, argv, hook files, paths) are pinned by `test/builder-characterize.test.mjs`.
 
 | Module | Owns |
 |---|---|
@@ -229,7 +229,7 @@ UNVERIFIED:
 
 | Path | Role |
 |---|---|
-| `lib/builder.mjs` | `builder start/run/list/stop` |
+| `lib/builder.ts` | `builder start/run/list/stop` |
 | `lib/cli.mjs` | `ai-collab builder` wiring |
 | `lib/prune.mjs` | `ai-collab prune`: builder copies and worktrees |
 | `test/prune.test.mjs` | prune decisions, archive refs and reachability against temp repos |

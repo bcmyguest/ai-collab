@@ -14,7 +14,7 @@ import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { readOwned, standsDown, writeOwned } from "../lib/sessions/registry.ts";
 import { listSessions } from "../lib/sessions.mjs";
 import { openTasks } from "../lib/tasks.mjs";
-import { builderPaths } from "../lib/builder.mjs";
+import { builderPaths } from "../lib/builder.ts";
 import { setProjectPaused } from "../lib/project-pause.ts";
 import { settleReceipts } from "../lib/receipts.mjs";
 import { openDurable } from "../runner/durable.mjs";

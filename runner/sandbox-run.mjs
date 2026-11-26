@@ -2,7 +2,7 @@
 // Runs one agent harness command inside a fresh OpenShell sandbox and lands its commits on the host; schedules.json
 // entries with "sandbox": true run through it. Usage: sandbox-run.mjs --name N --cwd DIR [--project P] -- <argv...>
 //
-// Staging follows lib/builder.mjs: a clone of cwd's branch, node, git, the ai-collab CLI and the harness install go
+// Staging follows lib/builder.ts: a clone of cwd's branch, node, git, the ai-collab CLI and the harness install go
 // in by upload; ntfy is reachable at host.openshell.internal:8794; the clone comes back by download, uncommitted work
 // becomes one commit, and new commits land on branch sandbox/<name>-<stamp> in cwd's repository. The sandbox is
 // deleted at the end, also after a timeout (SIGTERM from the schedule).
@@ -13,7 +13,7 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { agentHarness } from "../lib/agent-guard.mjs";
 import { listProjects, stateDir } from "../lib/config.mjs";
-import { builderPolicy, replayable, parseRecordedCall, sharedLibs, toolSources } from "../lib/builder.mjs";
+import { builderPolicy, replayable, parseRecordedCall, sharedLibs, toolSources } from "../lib/builder.ts";
 import { projectOfFolder } from "../lib/schedule-session.mjs";
 import { destroyOwnedSandboxes, execArgv, executables, gitIn, HOME_IN, hostTokenFile, labelArgs, landBranch, must, NTFY_TOKEN_IN, OUT, runTool, sandboxCapRefusal, sandboxLabels, SANDBOX, stageAndUpload, TOOLS, UPLOAD_TIMEOUT_MS, WORK } from "../lib/sandbox.ts";
 
@@ -32,7 +32,7 @@ const LAYOUTS = {
   opencode: { dir: "/sandbox/opencode", launcher: "", name: "opencode", file: true, authDir: `${HOME_IN}/.local/share/opencode`, tree: (src) => src.opencodeBin, auth: (src) => src.opencodeAuth },
   claude: { dir: "/sandbox/claude", launcher: "", name: "claude", file: true, authDir: `${HOME_IN}/.claude`, tree: (src) => src.claudeBin, auth: (src) => src.claudeAuth },
 };
-// The CLI marks itself non-dumpable unless this is set; OpenShell then denies its sockets (lib/builder.mjs).
+// The CLI marks itself non-dumpable unless this is set; OpenShell then denies its sockets (lib/builder.ts).
 const HARNESS_ENV = { cursor: { CURSOR_AGENT_ALLOW_PROCESS_INSPECTION: "1" } };
 // Inside the sandbox: task writes are recorded for the host, builder commands are refused, the rest is the real CLI.
 const CLI_SHIM = `#!/bin/sh
@@ -57,7 +57,7 @@ export function runSandboxName(name, at = Date.now()) {
 export function sandboxCommand(argv) {
   const harness = agentHarness(argv);
   if (!harness) throw new Error(`a sandboxed schedule runs an agent harness (claude, codex, cursor-agent, opencode), not ${basename(String(argv?.[0] ?? ""))}`);
-  // By name: the exec env's PATH starts with /sandbox/tools/bin, where the launcher link lives (as lib/builder.mjs runs it).
+  // By name: the exec env's PATH starts with /sandbox/tools/bin, where the launcher link lives (as lib/builder.ts runs it).
   return [LAYOUTS[harness].name, ...argv.slice(1)];
 }
 

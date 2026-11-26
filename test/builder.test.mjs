@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { runCli } from "../lib/cli.mjs";
 import {
   briefNotes, builderPaths, builderAssignment, builderSandbox, builderPolicy, captureHooks, cursorLimitPath, harnessCommand, hostCaptureEvents, parseRecordedCall, replayable, sharedLibs, toolSources,
-} from "../lib/builder.mjs";
+} from "../lib/builder.ts";
 import { createUi } from "../web/server/ui.mjs";
 import { listOwned } from "../lib/sessions/registry.ts";
 import { taskStoreFile } from "../lib/tasks.mjs";
@@ -321,7 +321,7 @@ test("a restarted runner resumes a saved verdict and skips an already published 
     settlement: { status: "done", progress: "finished", at: Date.now() },
   };
   const resume = () => execFileSync(process.execPath, ["--input-type=module", "-e",
-    'import { finishOwnedBuilder, ownedBuilder } from "./lib/builder.mjs"; await finishOwnedBuilder(ownedBuilder("demo", "smoke-task", process.env), null, 1, process.env, () => {});',
+    'import { finishOwnedBuilder, ownedBuilder } from "./lib/builder.ts"; await finishOwnedBuilder(ownedBuilder("demo", "smoke-task", process.env), null, 1, process.env, () => {});',
   ], { env: { ...process.env, ...l.env } });
   writeFileSync(paths.state, JSON.stringify(state));
   resume();
@@ -426,7 +426,7 @@ test("sandbox staging discovers oncebitten in Cargo's bin directory when the ser
 });
 
 test("a CODEX_HOME with no login falls back to the user's ~/.codex login", async () => {
-  const { toolSources } = await import("../lib/builder.mjs");
+  const { toolSources } = await import("../lib/builder.ts");
   const { homedir } = await import("node:os");
   const { existsSync, mkdtempSync } = await import("node:fs");
   const { join } = await import("node:path");

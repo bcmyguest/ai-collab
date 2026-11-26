@@ -1,5 +1,5 @@
 // The operation table: each op is rendered to the MCP servers (lib/surfaces/render-mcp.ts) and to the run_code ai client.
-import { BUILDER_HARNESSES, startBuilder } from "../builder.mjs";
+import { BUILDER_HARNESSES, startBuilder } from "../builder.ts";
 import { agentDirectory, sessionDirectory, setIdentity, listSessions } from "../sessions.mjs";
 import { messageView, respond, sendAndAwait, waitForIdle, waitForMessages } from "../agents.mjs";
 import { readInbox } from "../messaging.ts";

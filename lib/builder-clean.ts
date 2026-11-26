@@ -8,17 +8,20 @@ import { stateDir } from "./config.mjs";
 export const BUILDER_DIR_CAP = 50;
 export const BUILDER_LIVE_CAP = 2;
 // Oldest finished go first, then oldest failed, then oldest stopped.
-const PHASE_RANK = { finished: 0, failed: 1, stopped: 2 };
+const PHASE_RANK = { finished: 0, failed: 1, stopped: 2 } as const;
 export const PROTECTED_CHECKOUTS = ["/home/b/ai-collab", "/home/b/ai-collab-serving"];
 
-function covers(base, candidate) {
+type Env = NodeJS.ProcessEnv;
+type Row = { id: string; phase: string; mtime: number; root?: string; worktree?: string };
+
+function covers(base: string, candidate: string) {
   const root = path.resolve(base);
   const target = path.resolve(candidate);
   return target === root || target.startsWith(root + path.sep);
 }
 
 /** True when `candidate` is the project checkout, the ai-collab checkout, or the serving checkout. */
-export function worktreeIsProtected(candidate, repoRoot) {
+export function worktreeIsProtected(candidate: string, repoRoot: string) {
   const targets = [candidate];
   try { targets.push(realpathSync(candidate)); } catch { /* path is already gone */ }
   const bases = [repoRoot, ...PROTECTED_CHECKOUTS].filter(Boolean);
@@ -39,40 +42,40 @@ export function worktreeIsProtected(candidate, repoRoot) {
  * Order: oldest finished, then oldest failed, then oldest stopped (state.json mtime).
  * Running, staging, and every other phase are kept.
  */
-export function buildersToRemove(rows, cap = BUILDER_DIR_CAP) {
+export function buildersToRemove(rows: Row[], cap = BUILDER_DIR_CAP) {
   const overflow = rows.length - cap;
   if (overflow <= 0) return [];
   return rows
     .filter((row) => Object.hasOwn(PHASE_RANK, row.phase))
-    .sort((a, b) => PHASE_RANK[a.phase] - PHASE_RANK[b.phase] || a.mtime - b.mtime || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .sort((a, b) => PHASE_RANK[a.phase as keyof typeof PHASE_RANK] - PHASE_RANK[b.phase as keyof typeof PHASE_RANK] || a.mtime - b.mtime || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
     .slice(0, overflow)
     .map((row) => row.id);
 }
 
-function builderWorktree(id, env) {
+function builderWorktree(id: string, env: Env) {
   const home = env.HOME || homedir();
   return path.join(env.AI_COLLAB_BUILDER_WORKTREES || home, `ai-collab-wt-${id}`);
 }
 
-function buildersRoot(env) {
+function buildersRoot(env: Env) {
   return path.join(stateDir(env), "builders");
 }
 
-function safeId(id) {
+function safeId(id: unknown) {
   return typeof id === "string" && id !== "." && id !== ".." && id === path.basename(id) && !id.includes("\0");
 }
 
 /** Error text when `cap` builders are already running or staging, else "". */
-export function builderLiveRefusal(env, cap = BUILDER_LIVE_CAP) {
+export function builderLiveRefusal(env: Env, cap = BUILDER_LIVE_CAP) {
   const live = listBuilders(env).filter((row) => row.phase === "running" || row.phase === "staging");
   if (live.length < cap) return "";
   return `${cap} builders are already running or staging (${live.map((row) => row.id).join(", ")})`;
 }
 
-function listBuilders(env) {
+function listBuilders(env: Env): Row[] {
   const root = buildersRoot(env);
   if (!existsSync(root)) return [];
-  const rows = [];
+  const rows: Row[] = [];
   for (const id of readdirSync(root)) {
     if (!safeId(id)) continue;
     const dir = path.join(root, id);
@@ -91,17 +94,17 @@ function listBuilders(env) {
   return rows;
 }
 
-function gitEnv(env) {
+function gitEnv(env: Env) {
   const next = { ...env };
   for (const key of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX"]) delete next[key];
   return next;
 }
 
-function git(repo, args, env) {
-  return new Promise((resolve, reject) => {
+function git(repo: string, args: string[], env: Env) {
+  return new Promise<string>((resolve, reject) => {
     execFile("git", ["-C", repo, ...args], { env: gitEnv(env), timeout: 120_000 }, (error, stdout, stderr) => {
       if (error) {
-        error.stderr = stderr;
+        (error as Error & { stderr?: string }).stderr = stderr;
         reject(error);
         return;
       }
@@ -110,7 +113,7 @@ function git(repo, args, env) {
   });
 }
 
-function linkedToRepo(worktree, repoRoot) {
+function linkedToRepo(worktree: string, repoRoot: string) {
   const gitfile = path.join(worktree, ".git");
   let info;
   try { info = lstatSync(gitfile); } catch { return false; }
@@ -128,7 +131,7 @@ function linkedToRepo(worktree, repoRoot) {
 }
 
 // --force: a finished worktree often still has the node_modules link or other untracked files.
-async function removeWorktree(row, env) {
+async function removeWorktree(row: Row, env: Env) {
   const expected = builderWorktree(row.id, env);
   if (row.worktree && path.resolve(row.worktree) !== path.resolve(expected)) return "mismatch";
   let info;
@@ -137,18 +140,18 @@ async function removeWorktree(row, env) {
   const repo = typeof row.root === "string" ? row.root : "";
   if (!repo || worktreeIsProtected(expected, repo)) return "protected";
   if (!linkedToRepo(expected, repo)) return "unrelated";
-  const run = (args) => git(repo, ["worktree", "remove", ...args, expected], env);
+  const run = (args: string[]) => git(repo, ["worktree", "remove", ...args, expected], env);
   try {
     await run(["--force"]);
   } catch (error) {
-    const text = `${error.stderr || ""} ${error.message || ""}`;
+    const text = `${(error as Error & { stderr?: string }).stderr || ""} ${(error as Error).message || ""}`;
     if (!/locked/i.test(text)) return "fail";
     try { await run(["--force", "--force"]); } catch { return "fail"; }
   }
   return existsSync(expected) ? "fail" : "removed";
 }
 
-function removeState(env, id) {
+function removeState(env: Env, id: string) {
   if (!safeId(id)) return false;
   const root = buildersRoot(env);
   const dir = path.join(root, id);
@@ -164,8 +167,8 @@ function removeState(env, id) {
 }
 
 /** Delete oldest finished, then failed, then stopped state dirs until `cap` remain. Returns removed ids. */
-export async function cleanBuilders(env = process.env, { cap = BUILDER_DIR_CAP } = {}) {
-  const removed = [];
+export async function cleanBuilders(env: Env = process.env, { cap = BUILDER_DIR_CAP }: { cap?: number } = {}) {
+  const removed: string[] = [];
   for (const id of buildersToRemove(listBuilders(env), cap)) {
     const rows = listBuilders(env);
     const row = rows.find((item) => item.id === id);

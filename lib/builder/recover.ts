@@ -7,18 +7,20 @@ import { stateDir } from "../config.mjs";
 import { PROMPT_MAX_CHARS } from "../start.mjs";
 import { withLock } from "../state.mjs";
 import { openTasks } from "../tasks.mjs";
-import { BUILDER_HARNESSES, DEFAULT_MODEL, ID_RE, BUILDER_START_TIMEOUT_MS, SYNC_TIMEOUT_MS, FINAL_PHASES, LIVE_STATES, builderPaths, builderId, readState, updateState, builderExited, oneLine } from "./state.mjs";
-import { builderSandboxGone, uploadBuilderSandbox, upload, stage } from "./stage.mjs";
-import { cursorLimitDetail, retryLimitedBuilder, collect, downloadWorktree, cleanupBuilderSandbox } from "./run.mjs";
-import { prepareSettlement, publishSettlement } from "./settle.mjs";
-import { launchBuilder, unitState } from "./supervisor.mjs";
+import { BUILDER_HARNESSES, DEFAULT_MODEL, ID_RE, BUILDER_START_TIMEOUT_MS, SYNC_TIMEOUT_MS, FINAL_PHASES, LIVE_STATES, builderPaths, builderId, readState, updateState, builderExited, oneLine } from "./state.ts";
+import type { BuilderState, Env } from "./state.ts";
+import { builderSandboxGone, uploadBuilderSandbox, upload, stage } from "./stage.ts";
+import type { BuilderStaged } from "./stage.ts";
+import { cursorLimitDetail, retryLimitedBuilder, collect, downloadWorktree, cleanupBuilderSandbox } from "./run.ts";
+import { prepareSettlement, publishSettlement } from "./settle.ts";
+import { launchBuilder, unitState } from "./supervisor.ts";
 
 /** The stopped builder snapshot used by the task handoff. A task done or waiting for review is not handed off again. */
-export function stoppedBuilder(project, task, env) {
+export function stoppedBuilder(project: string, task: { id: string; status: string }, env: Env) {
   const id = builderId(task.id);
   if (!ID_RE.test(id) || task.status === "done" || task.status === "review") return null;
   const paths = builderPaths(id, env);
-  let state;
+  let state: BuilderState;
   try { state = readState(paths); } catch { return null; }
   if (state.project !== project || state.task !== task.id || !FINAL_PHASES.includes(state.phase)
       || state.sandboxCreated || state.sandboxDeleted === false || !existsSync(join(state.worktree, ".git"))) return null;
@@ -28,12 +30,12 @@ export function stoppedBuilder(project, task, env) {
   return state;
 }
 
-export function builderAssignment(project, task, sessions, env) {
+export function builderAssignment(project: string, task: { id: string; status: string; owner?: string }, sessions: { taskId?: string; status?: string }[], env: Env) {
   // A build waiting for review, and a finished one, have nothing to recover.
   if (task.status === "done" || task.status === "review") return null;
   const paths = builderPaths(builderId(task.id), env);
   if (!existsSync(paths.state)) return null;
-  let state;
+  let state: BuilderState;
   try { state = readState(paths); } catch { return null; }
   if (state.project !== project || state.task !== task.id) return null;
   if (!builderExited(state)) {
@@ -50,7 +52,7 @@ export function builderAssignment(project, task, sessions, env) {
   } };
 }
 
-export async function recoverBuilder(project, id, harness, sessions, env) {
+export async function recoverBuilder(project: string, id: string, harness: string | undefined, sessions: () => { taskId?: string; status?: string }[], env: Env) {
   if (isProjectPaused({ project, stateDir: stateDir(env) })) throw new Error(PROJECT_PAUSED);
   const paths = builderPaths(builderId(id), env);
   const result = await withLock(join(paths.dir, "recovery"), async () => {
@@ -60,7 +62,7 @@ export async function recoverBuilder(project, id, harness, sessions, env) {
     const state = readState(paths);
     const nextHarness = harness ?? state.harness;
     if (!BUILDER_HARNESSES.includes(nextHarness)) throw new Error("Unknown builder harness");
-    const model = nextHarness === state.harness ? state.model : DEFAULT_MODEL[nextHarness];
+    const model = nextHarness === state.harness ? state.model : (DEFAULT_MODEL as Record<string, string>)[nextHarness];
     const limited = cursorLimitDetail(nextHarness, model, env);
     if (limited) throw new Error(limited);
     if (!state.owned && LIVE_STATES.includes(await unitState(state.unit, env))) throw new Error("The previous builder is still stopping");
@@ -89,14 +91,14 @@ export async function recoverBuilder(project, id, harness, sessions, env) {
 }
 
 // Runner-owned builders reuse the standalone staging and landing paths.
-export function ownedBuilder(project, id, env) {
+export function ownedBuilder(project: string, id: string, env: Env) {
   if (typeof id !== "string" || !ID_RE.test(id)) throw new Error("Invalid builder id");
   const state = readState(builderPaths(id, env));
   if (!state.owned || state.id !== id || state.harness !== "codex" || state.project !== project) throw new Error("Unknown owned builder");
   return state;
 }
 
-export function markOwnedBuilderFailed(project, id, address, error, env) {
+export function markOwnedBuilderFailed(project: string, id: string, address: string, error: unknown, env: Env) {
   const paths = builderPaths(id, env);
   if (!existsSync(paths.state)) return;
   const current = ownedBuilder(project, id, env);
@@ -104,7 +106,7 @@ export function markOwnedBuilderFailed(project, id, address, error, env) {
   updateState(paths, { phase: "failed", ended: Date.now(), error });
 }
 
-export async function stageOwnedBuilder(state, env, log) {
+export async function stageOwnedBuilder(state: BuilderState, env: Env, log: (line: string) => void) {
   const paths = builderPaths(state.id, env);
   const openshell = env.AI_COLLAB_OPENSHELL_BIN || "openshell";
   const current = readState(paths);
@@ -126,13 +128,13 @@ export async function stageOwnedBuilder(state, env, log) {
   };
 }
 
-export async function claimOwnedBuilder(state, address, env) {
+export async function claimOwnedBuilder(state: BuilderState, address: string, env: Env) {
   // A task already attached to a run retains that association.
   await openTasks(state.project, env).update(state.task, { owner: address, status: "building", ...(state.run ? { run: state.run } : {}) });
   updateState(builderPaths(state.id, env), { phase: "running", address });
 }
 
-export async function finishOwnedBuilder(state, staged, exitCode, env, log, failure, usageLimit = false, signal) {
+export async function finishOwnedBuilder(state: BuilderState, staged: BuilderStaged | null, exitCode: number, env: Env, log: (line: string) => void, failure?: string | null, usageLimit = false, signal?: AbortSignal) {
   const paths = builderPaths(state.id, env);
   const openshell = env.AI_COLLAB_OPENSHELL_BIN || "openshell";
   const taskEnv = { ...env, AI_COLLAB_PROJECT: state.project };
@@ -143,15 +145,15 @@ export async function finishOwnedBuilder(state, staged, exitCode, env, log, fail
         if (failure) throw new Error(failure);
         signal?.throwIfAborted();
         if (!current.fallback && current.phase !== "collected") {
-          await collect(state, paths, staged, { openshell, env, log });
+          await collect(state, paths, staged as BuilderStaged, { openshell, env, log });
           updateState(paths, { phase: "collected", exitCode });
         }
         if (usageLimit || current.fallback) await retryLimitedBuilder(state, paths, { openshell, env: taskEnv, log, signal });
         else await prepareSettlement(state, paths, current.phase === "collected" ? current.exitCode : exitCode, { env: taskEnv, log });
       } catch (error) {
         signal?.throwIfAborted();
-        const detail = "builder " + state.id + " failed: " + oneLine(error.message);
-        updateState(paths, { settlement: { status: "blocked", detail, at: Date.now(), error: error.message } });
+        const detail = "builder " + state.id + " failed: " + oneLine((error as Error).message);
+        updateState(paths, { settlement: { status: "blocked", detail, at: Date.now(), error: (error as Error).message } });
       }
     }
     await publishSettlement(state, paths, taskEnv);

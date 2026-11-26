@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCli } from "../lib/cli.mjs";
-import { builderSandbox } from "../lib/builder.mjs";
+import { builderSandbox } from "../lib/builder.ts";
 import { prepareSandbox, sandboxName } from "../runner/adapters/cursor.mjs";
 import { ensureSandbox } from "../runner/sandbox.mjs";
 

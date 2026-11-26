@@ -10,7 +10,7 @@ import { exportSpans, otlpEndpoint, runRecorder } from "../../lib/cursor-trace.m
 import { cursorBinary, findExecutable } from "../../lib/start.mjs";
 import { argv, LAUNCH_BINARY } from "../../lib/harness.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, permissionSettings } from "../contract.mjs";
-import { builderPolicy } from "../../lib/builder.mjs";
+import { builderPolicy } from "../../lib/builder.ts";
 import {
   commitUncommitted, destroyOwnedSandboxes, downloadTree, ensureSandbox as ensureSandboxIn, execArgv as sandboxExecArgv, runTool,
   sandboxLabels, sandboxName as sandboxNameFor, teamSandboxName, uploadFile, uploadLogins, uploadSecret, uploadTree,
@@ -33,7 +33,7 @@ const NTFY_URL = "http://host.openshell.internal:8794";
 const TOKEN_IN = `${SANDBOX_HOME}/.config/ai-collab/ntfy-token`;
 // The name the CLI is launched by inside a sandbox, whatever it is called on the host.
 const SANDBOX_LAUNCHER = LAUNCH_BINARY.cursor;
-// The CLI marks itself non-dumpable unless this is set; OpenShell then cannot read its /proc/<pid>/exe and denies its sockets (lib/builder.mjs).
+// The CLI marks itself non-dumpable unless this is set; OpenShell then cannot read its /proc/<pid>/exe and denies its sockets (lib/builder.ts).
 const SANDBOX_CURSOR_ENV = { CURSOR_AGENT_ALLOW_PROCESS_INSPECTION: "1" };
 const GIT_TIMEOUT_MS = 120_000;
 
@@ -281,7 +281,7 @@ async function git(cwd, args, env) {
 
 /**
  * Uploads a git work tree as a self-contained clone of its checked-out branch, so git works inside the sandbox:
- * a linked worktree's .git is a file pointing into the host repo, which the sandbox does not have (as lib/builder.mjs).
+ * a linked worktree's .git is a file pointing into the host repo, which the sandbox does not have (as lib/builder.ts).
  */
 async function uploadClone({ openshell, env, sandbox, cwd, remote }) {
   const dir = mkdtempSync(join(tmpdir(), "ai-collab-sandbox-clone-"));
