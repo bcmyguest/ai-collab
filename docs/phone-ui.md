@@ -291,11 +291,11 @@ Runs in the host checkout (`/home/b/ai-collab`):
 
 On `deployed`, `failed` and `skipped`, the CLI publishes the line to each operator's broadcast topic, writes it to `deploy-last.json` in the state directory, and restarts `ai-collab-bus`, `ai-collab-ui` and `ai-collab-runner` in one transient unit. The Land panel shows the last line. Only a deploy that moved HEAD restarts services.
 
-Two deploys never run at once: the first holds `deploy.lock` in the state directory, and a second run prints `skipped: another deploy is running`. A crash can leave the lock behind; remove `deploy.lock` after checking that no deploy runs.
+Two deploys never run at once: the first holds `deploy.lock` in the state directory, and a second run prints `skipped: another deploy is running`. The lock records its owner pid. A lock whose pid is gone (a crash) is taken over on the next run.
 
 ### Auto deploy
 
-Set `AI_COLLAB_AUTO_DEPLOY=1`, or `"autoDeploy": true` in `defaults.json`, to add a runner schedule named `auto-deploy`. It runs `ai-collab deploy --if-moved` every 5 minutes with a 4-minute timeout. Without a change on `origin/main` it does nothing and publishes nothing. The flag is off by default; `AI_COLLAB_AUTO_DEPLOY` overrides `defaults.json`.
+Set `AI_COLLAB_AUTO_DEPLOY=1`, or `"autoDeploy": true` in `defaults.json`, to add a runner schedule named `auto-deploy`. It runs `ai-collab deploy --if-moved` every 5 minutes with a 20-minute timeout, so a kill never lands mid-install. Without a change on `origin/main` it does nothing and publishes nothing. A skip with the same reason as the last recorded result is not published again. The flag is off by default; `AI_COLLAB_AUTO_DEPLOY` overrides `defaults.json`.
 
 ## Run in terminal
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { HOST_CHECKOUT } from "../lib/merge-cli.mjs";
@@ -204,7 +205,8 @@ test("the auto-deploy schedule runs deploy --if-moved every 5 minutes", () => {
   assert.equal(entry.everyMs, 5 * 60_000);
   assert.equal(entry.cwd, HOST_CHECKOUT);
   assert.deepEqual(entry.command, ["/usr/bin/node", join(HOST_CHECKOUT, "scripts/ai-collab.mjs"), "deploy", "--if-moved"]);
-  assert.ok(entry.timeoutMs < entry.everyMs);
+  // A full npm ci and build take minutes; a kill mid-install breaks node_modules, so the timeout is 20 minutes.
+  assert.equal(entry.timeoutMs, 20 * 60_000);
 });
 
 test("autoDeploy is off unless the env or defaults.json turns it on", (t) => {
@@ -272,4 +274,59 @@ test("deploy CLI refuses to run beside another deploy", async (t) => {
   assert.equal(status, 0);
   assert.equal(output, "skipped: another deploy is running\n");
   assert.equal(run.calls.length, 0);
+});
+
+test("a deploy lock owned by a live pid still blocks", async (t) => {
+  const stateDir = mkdtempSync(join(tmpdir(), "land-state-"));
+  t.after(() => rmSync(stateDir, { recursive: true, force: true }));
+  const lock = join(stateDir, "deploy.lock");
+  mkdirSync(lock);
+  writeFileSync(join(lock, "owner.json"), JSON.stringify({ pid: process.pid, host: hostname() }));
+  const run = hostRun();
+  let output = "";
+  await deploy([], {
+    env: { AI_COLLAB_STATE_DIR: stateDir }, run, hostCheckout: "/host", npm: ["npm"],
+    out: { write: (m) => { output += m; } }, err: { write: () => {} }, publish: async () => {},
+  });
+  assert.equal(output, "skipped: another deploy is running\n");
+  assert.equal(run.calls.length, 0);
+});
+
+test("a deploy lock left by a dead pid is taken over", async (t) => {
+  const stateDir = mkdtempSync(join(tmpdir(), "land-state-"));
+  t.after(() => rmSync(stateDir, { recursive: true, force: true }));
+  // A child that has exited: its pid is gone.
+  const dead = spawnSync(process.execPath, ["-e", ""]).pid;
+  const lock = join(stateDir, "deploy.lock");
+  mkdirSync(lock);
+  writeFileSync(join(lock, "owner.json"), JSON.stringify({ pid: dead, host: hostname() }));
+  const run = hostRun();
+  let output = "";
+  const status = await deploy([], {
+    env: { AI_COLLAB_STATE_DIR: stateDir }, run, hostCheckout: "/host", npm: ["npm"],
+    out: { write: (m) => { output += m; } }, err: { write: () => {} }, publish: async () => {},
+  });
+  assert.equal(status, 0);
+  assert.equal(output, `deployed ${OLD.slice(0, 12)}..${NEW.slice(0, 12)}\n`);
+  assert.equal(existsSync(lock), false);
+});
+
+test("deploy publishes a skipped line only when its reason changes", async (t) => {
+  const stateDir = mkdtempSync(join(tmpdir(), "land-state-"));
+  t.after(() => rmSync(stateDir, { recursive: true, force: true }));
+  const published = [];
+  const common = {
+    env: { AI_COLLAB_STATE_DIR: stateDir }, hostCheckout: "/host", npm: ["npm"],
+    out: { write: () => {} }, err: { write: () => {} },
+    publish: async (line) => { published.push(line); },
+  };
+  const dirty = () => hostRun({ dirty: " M lib/x.mjs\n" });
+  await deploy([], { ...common, run: dirty() });
+  await deploy([], { ...common, run: dirty() });
+  assert.deepEqual(published, ["skipped: the host checkout has local changes"]);
+  await deploy([], { ...common, run: hostRun({ branch: "feat/x" }) });
+  assert.deepEqual(published, [
+    "skipped: the host checkout has local changes",
+    "skipped: the host checkout is on feat/x, not on main",
+  ]);
 });
