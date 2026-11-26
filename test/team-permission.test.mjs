@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { DotError, parseDot, serializeDot } from "../lib/dot.mjs";
+import { DotError, parseDot, serializeDot } from "../lib/catalog/dot.ts";
 import { claudePermissionFor } from "../lib/start.mjs";
 
 const TEAM = `digraph "duo" {

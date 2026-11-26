@@ -41,7 +41,7 @@ T3 references: the client package [T3: packages/effect-codex-app-server](https:/
 
 | | Agent SDK `query()` (recommended) | `claude -p --input-format stream-json --output-format stream-json` |
 |---|---|---|
-| Interface | `@anthropic-ai/claude-agent-sdk` 0.3.330, already in `package.json` and used by `lib/controls.mjs` for `/compact`. It spawns the CLI and speaks its control protocol. | The same CLI and wire protocol, driven by hand |
+| Interface | `@anthropic-ai/claude-agent-sdk` 0.3.330, already in `package.json` and used by `lib/sessions/control.ts` for `/compact`. It spawns the CLI and speaks its control protocol. | The same CLI and wire protocol, driven by hand |
 | Events | `SDKMessage`: `system/init`, `assistant` (tool_use blocks), `user` (tool_result), `stream_event` with `includePartialMessages`, `result` (usage, cost), `system/compact_boundary`, task and subagent messages | Same JSON lines; `--include-partial-messages`, `--replay-user-messages` |
 | Follow-ups | Pass an `AsyncIterable<SDKUserMessage>` as the prompt, or `streamInput()` (sdk.d.ts L3582) | Write user JSON lines to stdin |
 | Interrupt | `query.interrupt()` (L3191); `stopTask()` for a background task | `control_request` `interrupt` on stdin (undocumented by hand) |

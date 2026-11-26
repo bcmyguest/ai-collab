@@ -1,15 +1,9 @@
 // Delivery workflow: one durable workflow per (session, message). It reserves, pushes, confirms and marks the message,
 // then redelivers an expect-reply message until it is answered. Steps and sleeps are checkpointed in runner.db.
-import { BACKOFF_BASE_MS, BACKOFF_MAX_MS, MAX_ATTEMPTS, REDELIVER_MS, TTL_MS } from "../lib/deliver-push.mjs";
+import { backoffMs, nextAction, REDELIVER_MS } from "../lib/delivery.ts";
 
 export const DELIVERY = "delivery";
 export const READY_POLL_MS = 5000;
-const ANSWERED = Symbol("answered");
-
-/** Durable wait after the nth failed push: BACKOFF_BASE_MS doubling, capped at BACKOFF_MAX_MS. */
-export function backoffMs(failures) {
-  return Math.min(BACKOFF_BASE_MS * 2 ** (failures - 1), BACKOFF_MAX_MS);
-}
 
 /**
  * Builds the workflow function over deps (injectable; the live set is in runner/runner.mjs):
@@ -22,6 +16,7 @@ export function backoffMs(failures) {
  * Optional overrides for tests: backoffMs(failures), redeliverMs, readyPollMs.
  * Input: {project, address, message, redeliver?: {pushes, firstAt}} (redeliver resumes a message the dispatcher delivered).
  * Output: {status} with status delivered, skipped, cut, answered, dropped or expired.
+ * The timing and attempt rules come from lib/delivery.ts nextAction.
  */
 export function deliveryWorkflow(deps) {
   const backoff = deps.backoffMs ?? backoffMs;
@@ -32,38 +27,46 @@ export function deliveryWorkflow(deps) {
     const id = message.id;
     const owner = wf.id;
     const firstAt = await wf.step("start", () => redeliver?.firstAt ?? deps.now());
-    const expired = () => deps.now() - firstAt >= TTL_MS;
     // The first snapshot of the workflow: every resend is checked against it, so a landed push is never sent twice.
     let snap;
+    // Ms of the last redelivery wake; the next redelivery is due no earlier than this.
+    let dueAt = null;
+    const stateOf = (attemptNo) => ({ firstAt, pushes: attemptNo - 1, dueAt });
 
-    // Waits, without a checkpoint, until the target is live and ready; resolves null once the TTL passes.
-    // A redelivery also waits while the target works on an earlier push, so busy sessions do not queue stale copies.
-    // A redelivery that the target answers during that wait resolves ANSWERED.
-    async function target(redelivery) {
+    // Waits, without a checkpoint, until nextAction allows a push: resolves the live session, or the action that ends the message.
+    async function target(state) {
       for (;;) {
-        if (expired()) return null;
+        // A replayed attempt has its outcome recorded, so it takes no live probe.
+        if (wf.replaying) {
+          const replayed = deps.sessionOf(project, address);
+          if (replayed) return replayed;
+        }
         const session = deps.sessionOf(project, address);
         // One probe per poll, shared by ready and busy.
         const active = session ? (await deps.probe?.(session)) ?? null : null;
-        if (session && await deps.ready(session, active)) {
-          if (!(redelivery && await deps.busy?.(session, active))) return session;
-          if (await deps.acked(project, address, message)) return ANSWERED;
-        }
+        const ready = Boolean(session) && await deps.ready(session, active);
+        const busy = ready && state.pushes > 0 && Boolean(await deps.busy?.(session, active));
+        // Acks matter only to a redelivery; the first push never polls them.
+        const acked = state.pushes > 0 && !wf.replaying && await deps.acked(project, address, message);
+        const action = nextAction(state, deps.now(), { acked, busy, ready });
+        if (action === "push") return session;
+        if (action !== "wait") return action;
         await wf.pause(readyPollMs);
       }
     }
 
-    // One push attempt. Resolves "delivered", "failed" (retry after backoff), "cut" (never sent again), "skipped", "expired" or "answered".
+    // One push attempt. Resolves "delivered", "failed" (retry after backoff), "cut" (never sent again), "skipped", "expired", "dropped" or "answered".
     async function attempt(attemptNo, { allowSeen }) {
-      const session = await target(attemptNo > 1);
-      if (session === ANSWERED) return "answered";
-      if (!session) return "expired";
+      const session = await target(stateOf(attemptNo));
+      if (typeof session === "string") return session;
       const scfg = deps.scfgOf(project, session);
       if (snap === undefined) snap = await wf.step("snapshot", () => deps.snapshot(session));
       if (attemptNo > 1 && await wf.step("recheck", () => deps.confirmedSince(session, [id], snap))) {
         await wf.step("mark", () => deps.markDelivered(scfg, [id]));
         return "delivered";
       }
+      // A redelivery re-checks the answer before reserving, so an answer seen while waiting never gets a copy.
+      if (attemptNo > 1 && !wf.replaying && await deps.acked(project, address, message)) return "answered";
       const got = await wf.step("reserve", () => deps.reserve(scfg, [id], { owner, allowSeen }));
       if (got.busy) return "failed";
       if (!got.owned.length) return "skipped";
@@ -123,12 +126,14 @@ export function deliveryWorkflow(deps) {
     // Redelivery: after each redeliverMs without an answer, push again, at most MAX_ATTEMPTS pushes in all.
     for (;;) {
       await wf.sleep(redeliverMs);
-      if (await wf.step("acked", () => deps.acked(project, address, message))) return { status: "answered", pushes };
-      if (expired()) return { status: "expired", pushes };
-      if (pushes >= MAX_ATTEMPTS) return { status: "dropped", pushes };
+      // The durable sleep has just run out, so the redelivery is due: dueAt is the wake time.
+      dueAt = deps.now();
+      const acked = await wf.step("acked", () => deps.acked(project, address, message));
+      // Ready and busy are decided on each poll in target(); here only the answer, TTL and attempt cap can end the message.
+      const wake = nextAction(stateOf(pushes + 1), deps.now(), { acked, busy: false, ready: true });
+      if (wake !== "push") return { status: wake, pushes };
       const outcome = await deliver(pushes + 1, { allowSeen: true });
-      if (outcome === "answered") return { status: "answered", pushes };
-      if (outcome === "expired" || outcome === "cut") return { status: outcome, pushes };
+      if (["answered", "expired", "cut", "dropped"].includes(outcome)) return { status: outcome, pushes };
       if (outcome === "delivered") pushes += 1;
     }
   };

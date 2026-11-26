@@ -2,9 +2,22 @@
 
 A builder is one agent that implements one task on its own branch. `ai-collab builder start` runs each new builder inside its own OpenShell sandbox. Codex uses a runner-owned session when the runner is reachable. Cursor, Claude, and OpenCode use a transient systemd user unit. Codex uses the same fallback when the runner is unavailable. Builders started by hand before this command existed run on the host and are left alone.
 
-Lib: `lib/builder.mjs`. OpenShell lifecycle: `lib/sandbox.ts`. Tests: `test/builder.test.mjs` and `test/builder-claude.test.mjs` with fake `openshell`, `systemd-run`, `systemctl`, agent and `oncebitten` from `test/helpers/`.
+Lib: `lib/builder/`, re-exported by `lib/builder.mjs`. OpenShell lifecycle: `lib/sandbox.ts`. Tests: `test/builder.test.mjs` and `test/builder-claude.test.mjs` with fake `openshell`, `systemd-run`, `systemctl`, agent and `oncebitten` from `test/helpers/`. Pure outputs (policy, argv, hook files, paths) are pinned by `test/builder-characterize.test.mjs`.
 
-`runner/runner.mjs` manages the durable session steps for runner-owned builders. Both supervisors use `lib/builder.mjs` to collect work, publish landing results, and clean up sandboxes. Cleanup retains an uploaded workspace until its worktree has been collected.
+| Module | Owns |
+|---|---|
+| `state.mjs` | ids, sandbox and unit names, paths, state file, phases |
+| `policy.mjs` | harness argv, sandbox network policy, Claude settings, capture hooks |
+| `stage.mjs` | host staging: clone, tools tree, sandbox home, OpenShell upload, `git` and `must` helpers |
+| `run.mjs` | one attempt: agent in the sandbox, collection, the Codex limit retry chain |
+| `settle.mjs` | commit, fast-forward the host branch, oncebitten check, task verdict |
+| `recover.mjs` | recovery after a restart, the task handoff, runner-owned builder hooks |
+| `supervisor.mjs` | systemd unit launch, the durable workflow inside the unit, stop |
+| `cli.mjs` | `ai-collab builder start|run|list|stop|clean` |
+
+Codex's hook trust flag is needed because `codex exec` runs plugin hooks only when their trust is persisted in config.toml, which only the interactive `/hooks` review writes.
+
+`runner/runner.mjs` manages the durable session steps for runner-owned builders. Both supervisors use `lib/builder/` to collect work, publish landing results, and clean up sandboxes. Cleanup retains an uploaded workspace until its worktree has been collected.
 
 For the opt-in host integration matrix, see [Live OpenShell bootstrap smoke](sandbox-smoke.md).
 

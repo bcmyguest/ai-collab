@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
 import { checkTeamText, createPattern, listPatterns, saveTeamText, teamTemplates, teamTextOf } from "../lib/patterns.mjs";
-import { projectTeamsDir, teamFilePath } from "../lib/team-files.mjs";
+import { projectTeamsDir, teamFilePath } from "../lib/catalog/team-files.ts";
 import { renameTeam, sourceLine } from "../web/lib/team-editor.js";
 
 const MODELS = { claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] };

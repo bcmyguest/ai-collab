@@ -95,8 +95,8 @@ export function reconnectBackoff(baseMs: number, maxMs = RETRY_MAX_MS) {
   let ms = baseMs;
   return {
     reset() { ms = baseMs; },
-    async wait(signal: AbortSignal): Promise<void> {
-      await delay(ms, undefined, { signal }).catch(() => {});
+    async wait(signal?: AbortSignal, capMs = Infinity): Promise<void> {
+      await delay(Math.min(ms, capMs), undefined, { signal }).catch(() => {});
       ms = Math.min(ms * 2, maxMs);
     },
   };

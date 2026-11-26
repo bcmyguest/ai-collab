@@ -12,7 +12,7 @@ import { harnessOfCommand, projectOfFolder, sessionOfCommand } from "../lib/sche
 import { childEnv } from "../lib/start.mjs";
 import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.mjs";
 import { ROLE_ENV } from "../lib/cursor-trace.mjs";
-import { scopeLaunch } from "../lib/scope.mjs";
+import { scopeLaunch } from "../lib/sessions/scope.ts";
 import { agentHarness, hostAgentRefusal } from "../lib/agent-guard.mjs";
 
 export const DEFAULT_TIMEOUT_SEC = 900;

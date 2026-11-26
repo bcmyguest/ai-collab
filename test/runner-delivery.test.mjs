@@ -134,9 +134,9 @@ test("an expect-reply message stops being redelivered once the target answers", 
   const log = newLog();
   let checks = 0;
   const { output } = await deliver(depsWith(log, { acked: async () => (checks += 1) >= 2 }), { msg: message({ expectReply: true }) });
-  // The first redelivery goes out before the second check, which finds the answer.
-  assert.deepEqual(output, { status: "answered", pushes: 2 });
-  assert.equal(log.pushes.length, 2);
+  // The second check runs right before the redelivery and finds the answer, so no copy goes out (operator-approved 2026-11-25).
+  assert.deepEqual(output, { status: "answered", pushes: 1 });
+  assert.equal(log.pushes.length, 1);
 });
 
 test("a message already reserved elsewhere is skipped without a push", async () => {

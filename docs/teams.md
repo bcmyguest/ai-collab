@@ -153,6 +153,20 @@ A writing agent turns a plain-language request into one `team.dot`; the operator
 - Deleting or copying a JSON project pattern does not take the lock.
 - Team names may not collide with a legacy team name.
 
+## Code map
+
+Code lives in `lib/catalog/`. `lib/patterns.mjs` and `lib/teams.mjs` re-export it for their importers.
+
+- `dot.ts`: parses and serializes `team.dot`. Node attributes: agent, count, skill, prompt, fallback, code_mode. Edge attributes: on, kind, required, cap. Graph attributes: description, max_visits. Parse errors carry the line of the first problem. Serialization writes the canonical form the parser reads back.
+- `pattern-model.ts`: pattern validation and the `team.dot` round trip, with no file access. Pattern: named roles (responsibility, harness, model) and handoffs. A handoff is required (the run cannot finish without it) or guidance (`required: false`, the lead may skip it).
+- `projects.ts`: `projects.json` read, write and update under its lock.
+- `teams.ts`, `roster.ts`: team member lists, team sessions, team create and start. Pattern names are checked in `roster.ts`, so `teams.ts` does not import patterns.
+- `patterns.ts`: pattern listing, storage and saves. Legacy teams list as patterns; a bad member lists as `invalid` and does not throw.
+- `team-files.ts`: `team.dot` files in the project and global folders. A symlinked `team.dot` is not read.
+- `author.ts`: a writing agent turns a chat into a `team.dot`. Its answer is checked with the same parser and validator as a save. A name cannot leave the teams folders.
+
+Lock order: `projects.json` first, then a team file.
+
 ## Legacy team roster in the UI
 
 Open a legacy team in the project's **Teams** view to see its member roster. For a project team, **Edit roster** lets you save one harness or harness:model per line. Global rosters are read-only in the UI. Teams also work through `ai-collab team create|list|delete|start|status`, the MCP `team_*` tools, and `@team` chats. Create new coordination as a pattern.
