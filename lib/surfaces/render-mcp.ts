@@ -1,7 +1,7 @@
 // Serves a tool list over MCP stdio with the official SDK; tool definitions pass through unchanged.
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { CallToolRequestSchema, ListToolsRequestSchema, type Tool } from "@modelcontextprotocol/sdk/types.js";
+// The plugin runs without node_modules, so the SDK comes from a checked-in bundle (tools/vendor-mcp-sdk.mjs).
+import { CallToolRequestSchema, ListToolsRequestSchema, Server, StdioServerTransport } from "../vendor/mcp-sdk.mjs";
+import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { Args } from "./types.ts";
 
 export interface ToolResult {

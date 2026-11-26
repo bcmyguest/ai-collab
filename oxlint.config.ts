@@ -6,7 +6,8 @@ import { defineConfig } from 'oxlint';
 export default defineConfig({
   extends: [cloudflare],
   env: cloudflare.env,
-  ignorePatterns: cloudflare.ignorePatterns,
+  // lib/vendor holds generated bundles (tools/vendor-mcp-sdk.mjs).
+  ignorePatterns: [...cloudflare.ignorePatterns, 'lib/vendor/**'],
   rules: {
     // Existing code uses instanceof.
     '@nkzw/no-instanceof': 'off',
