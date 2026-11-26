@@ -105,7 +105,26 @@ The UI server reads its own variables; see [Phone UI](phone-ui.md#ui-settings) a
 
 The Postgres store writes to schema `bus` of the database `AI_COLLAB_PG_DATABASE` names (default `ai_collab`), on the container and with the variables of the DBOS engine above. It creates the schema on first open. Ids come from a `bigserial`; each publish runs `NOTIFY bus_events`, and every open stream reads when that notification arrives, so no stream polls. Ids, ordering, `since` values, retention and attachments behave as in the SQLite store.
 
-Events in `bus.db` do not move to Postgres: a bus switched to `postgres` starts with an empty `bus` schema.
+Events in `bus.db` do not move on their own. `ai-collab bus migrate --to postgres` copies them, keeping their ids; without it a bus switched to `postgres` starts with an empty `bus` schema.
+
+### Cutover: bus to Postgres
+
+Run the steps in order. The copy reads `bus.db` read-only, so the bus must be stopped first: a crashed bus can leave a dirty WAL that makes that read fail.
+
+```sh
+ai-collab bus migrate --to postgres --dry-run   # read-only; prints event and file counts
+systemctl --user stop ai-collab-bus
+ai-collab bus migrate --to postgres             # copies into schema bus of AI_COLLAB_PG_DATABASE
+```
+
+Set `"busStore": "postgres"` in `~/.config/ai-collab/defaults.json`, then:
+
+```sh
+systemctl --user start ai-collab-bus            # log line: "store postgres"
+systemctl --user restart ai-collab-ui ai-collab-runner
+```
+
+Rollback: set `"busStore": "sqlite"` in `defaults.json` and restart the bus. Events published while on postgres are not in `bus.db`. Clients whose cursors point past `bus.db`'s max id get a `reset: true` replay; dedupe absorbs it.
 
 ## Topics
 
