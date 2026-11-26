@@ -8,6 +8,7 @@
  */
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import type { WorkflowStatus } from "@dbos-inc/dbos-sdk";
+import { runWithTopContext } from "@dbos-inc/dbos-sdk/internal/context";
 import pg from "pg";
 import { openDurable } from "./durable.mjs";
 
@@ -269,13 +270,20 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
     return rows[0] ? mapStatus(rows[0]) : null;
   }
 
+  // DBOS forbids starting a workflow from inside a step; the runner's pattern flow does exactly that
+  // (a step starts role sessions). Such starts are independent workflows, like on the sqlite engine:
+  // run them with a cleared context so DBOS treats them as top-level starts, not child workflows.
+  function startOutsideStep<T>(fn: () => Promise<T>): Promise<T> {
+    return DBOS.isWithinWorkflow() && !DBOS.isInWorkflow() ? runWithTopContext({}, fn) : fn();
+  }
+
   async function startOnce(name: string, id: string, input: Json): Promise<boolean> {
     await ready();
     // Start first: DBOS dedupes by workflowID (a repeat start returns the first run's handle), so no guard row
     // can strand a message when a crash lands between the guard and the start. The pre-check only informs the
     // boolean; two racing callers both reporting "started" is harmless because the workflow itself runs once.
     const existed = Boolean(await statusRow(id));
-    const h = await DBOS.startWorkflow(dbosFn(name), { workflowID: id })({ ...input, __id: id });
+    const h = await startOutsideStep(() => DBOS.startWorkflow(dbosFn(name), { workflowID: id })({ ...input, __id: id }));
     h.getResult().catch(() => {});
     return !existed;
   }
@@ -390,7 +398,7 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
     },
     async startWorkflow(name, id, input) {
       await ready();
-      const h = await DBOS.startWorkflow(dbosFn(name), { workflowID: id })({ ...input, __id: id });
+      const h = await startOutsideStep(() => DBOS.startWorkflow(dbosFn(name), { workflowID: id })({ ...input, __id: id }));
       return await h.getResult();
     },
     startWorkflowOnce: startOnce,
