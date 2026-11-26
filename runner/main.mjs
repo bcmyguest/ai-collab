@@ -3,7 +3,8 @@
 import { mkdirSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
-import { loadProjects, stateDir, autoDefaults } from "../lib/config.mjs";
+import { loadProjects, stateDir, autoDefaults, autoDeployEnabled } from "../lib/config.mjs";
+import { autoDeployEntry } from "../lib/land.mjs";
 import { HARNESSES } from "./contract.mjs";
 import { openWorkflows } from "../lib/workflows.ts";
 import { pgUrl } from "../lib/postgres.mjs";
@@ -56,7 +57,9 @@ export async function main(env = process.env) {
     const engine = env.AI_COLLAB_WORKFLOW_ENGINE || autoDefaults(env)?.workflowEngine || "sqlite";
     durable = await openWorkflows({ engine, file: db, log, ...(engine === "dbos" ? { pgUrl: pgUrl(env) } : {}) });
     // Registered before boot so PENDING ticks recover with the sessions; invalid entries are reported, not fatal.
-    const { entries, errors } = loadSchedules(env);
+    const { entries: configured, errors } = loadSchedules(env);
+    // The auto-deploy schedule exists only when autoDeploy is on (AI_COLLAB_AUTO_DEPLOY or defaults.json).
+    const entries = autoDeployEnabled(env) ? [...configured, autoDeployEntry()] : configured;
     for (const error of errors) log(`schedule skipped: ${error}`);
     const schedules = registerSchedules(durable, entries, { env, log });
     runner = createRunner({ projects, adapters, durable, env, log, scheduleErrors: errors, scheduleEntries: entries });

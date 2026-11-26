@@ -6,8 +6,9 @@ import { basename, dirname, join } from "node:path";
 import { cursorBinary, findExecutable } from "../start.mjs";
 import { openTasks } from "../tasks.mjs";
 import { HOME_IN, NTFY_TOKEN_IN, OUT, SANDBOX, TOOLS, WORK } from "../sandbox.ts";
-import { APP_ROOT, BASE_REF, GIT_TIMEOUT_MS, SYNC_TIMEOUT_MS, updateState } from "./state.mjs";
-import { APP_IN, CLAUDE_SETTINGS_IN, CLAUDE_MCP_IN, CURSOR_DIR, CODEX_DIR, OPENCODE_DIR, CLAUDE_DIR, CODE_MCP, NTFY_HOST, NTFY_PORT, CLAUDE_ENV, CURSOR_ENV, builderPolicy, claudeSettings, claudeMcpConfig, captureHooks, hostCaptureEvents } from "./policy.mjs";
+import { APP_ROOT, BASE_REF, GIT_TIMEOUT_MS, SYNC_TIMEOUT_MS, updateState } from "./state.ts";
+import type { BuilderPaths, BuilderState, Env } from "./state.ts";
+import { APP_IN, CLAUDE_SETTINGS_IN, CLAUDE_MCP_IN, CURSOR_DIR, CODEX_DIR, OPENCODE_DIR, CLAUDE_DIR, CODE_MCP, NTFY_HOST, NTFY_PORT, CLAUDE_ENV, CURSOR_ENV, builderPolicy, claudeSettings, claudeMcpConfig, captureHooks, hostCaptureEvents } from "./policy.ts";
 
 const AI_COLLAB_SHIM = `#!/bin/sh
 # Inside a builder sandbox: records task set and task progress for the host to apply after the run.
@@ -35,37 +36,37 @@ const SANDBOX_PATH = `${TOOLS}/bin:${TOOLS}/node/bin:/usr/local/sbin:/usr/local/
 // glibc libraries the sandbox image provides itself; host copies would not match its loader.
 const GLIBC_LIB = /^(libc|libm|libdl|libpthread|librt|ld-linux[^.]*)\.so/;
 
-export async function git(cwd, args, env) {
+export async function git(cwd: string, args: string[], env: Env) {
   const res = await S.runTool("git", ["-C", cwd, ...args], { env, timeoutMs: GIT_TIMEOUT_MS });
   if (res.code !== 0) throw new Error(`git ${args[0]} failed: ${(res.stderr || "").trim() || `exit ${res.code}`}`);
   return res.stdout;
 }
 
-export function must(bin, args, env, what) {
+export function must(bin: string, args: string[], env: Env, what: string) {
   return S.must(bin, args, { env, timeoutMs: SYNC_TIMEOUT_MS, what });
 }
 
 // Deletes the sandboxes labelled as this builder's (its project, kind and id); its name counts only when unlabelled.
-export function builderSandboxGone(state, { openshell, env }) {
+export function builderSandboxGone(state: BuilderState, { openshell, env }: { openshell: string; env: Env }) {
   return S.destroyOwnedSandboxes({ openshell, env, project: state.project, kind: "builder", owner: state.id, legacyNames: [state.sandbox] });
 }
 
 // Creates this builder's own sandbox; an existing one with the name is never reused or touched.
-export async function createSandbox({ openshell, env, name, policy, labels }) {
+export async function createSandbox({ openshell, env, name, policy, labels }: { openshell: string; env: Env; name: string; policy: string; labels: S.SandboxLabels }) {
   const list = await S.listAllSandboxes({ openshell, env });
   if (list.code !== 0) throw new Error(`openshell sandbox list failed: ${list.stderr.trim() || `exit ${list.code}`}`);
   if (list.records.some((s) => s?.name === name)) throw new Error(`sandbox ${name} already exists`);
   await must(openshell, ["sandbox", "create", "--name", name, "--no-tty", "--detach", "--policy", policy, ...S.labelArgs(labels)], env, "sandbox create");
 }
 
-export async function uploadBuilderSandbox(state, paths, staged, context) {
+export async function uploadBuilderSandbox(state: BuilderState, paths: BuilderPaths, staged: BuilderStaged, context: BuilderContext) {
   const { openshell, env } = context;
   await createSandbox({ openshell, env, name: state.sandbox, policy: paths.policy, labels: S.sandboxLabels({ project: state.project, kind: "builder", owner: state.id }) });
   updateState(paths, { sandboxCreated: true });
   await upload(state, paths, staged, context);
 }
 
-export async function upload(state, paths, staged, { openshell, env, log }) {
+export async function upload(state: BuilderState, paths: BuilderPaths, staged: BuilderStaged, { openshell, env, log }: BuilderContext) {
   const { src, layout } = staged;
   const uploaded = await S.stageAndUpload({
     openshell, env, sandbox: state.sandbox, log,
@@ -76,10 +77,10 @@ export async function upload(state, paths, staged, { openshell, env, log }) {
 }
 
 // Host sources of what the sandbox needs; an AI_COLLAB_BUILDER_* override of "none" leaves one out.
-export function toolSources(state, env) {
+export function toolSources(state: BuilderState, env: Env) {
   const path = env.PATH || "";
-  const pick = (key, fallback) => (env[key] === "none" ? "" : env[key] || fallback());
-  const real = (p) => { try { return p ? realpathSync(p) : ""; } catch { return ""; } };
+  const pick = (key: string, fallback: () => string) => (env[key] === "none" ? "" : env[key] || fallback());
+  const real = (p: string) => { try { return p ? realpathSync(p) : ""; } catch { return ""; } };
   const node = pick("AI_COLLAB_BUILDER_NODE", () => real(process.execPath));
   const npm = node ? join(dirname(dirname(node)), "lib", "node_modules", "npm") : "";
   const home = env.HOME || homedir();
@@ -108,33 +109,40 @@ export function toolSources(state, env) {
     claudeBin: pick("AI_COLLAB_CLAUDE_BIN", () => real(findExecutable("claude", path))),
     claudeAuth: existsSync(join(claudeHome, ".credentials.json")) ? join(claudeHome, ".credentials.json") : "",
     ntfyToken: pick("AI_COLLAB_BUILDER_NTFY_TOKEN", () => S.hostTokenFile(env)),
-    hostHooks: hostHooks[state.harness],
+    hostHooks: hostHooks[state.harness as keyof typeof hostHooks],
   };
 }
 
 // Where each harness's install lives on the host and in the sandbox, its launcher, auth file and hook file.
-function harnessLayout(harness, src) {
-  const all = (inTree) => (dir) => S.executables(dir).map((f) => `${inTree}/${f}`);
+function harnessLayout(harness: string, src: ReturnType<typeof toolSources>) {
+  const all = (inTree: string) => (dir: string) => S.executables(dir).map((f) => `${inTree}/${f}`);
   if (harness === "cursor") {
-    return { tree: src.cursorTree, dir: CURSOR_DIR, launcher: "/cursor-agent", name: "cursor-agent", hookDir: ".cursor", auth: src.cursorAuth, authDir: `${HOME_IN}/.config/cursor`, binaries: (inTree) => all(inTree)(src.cursorTree) };
+    return { tree: src.cursorTree, dir: CURSOR_DIR, launcher: "/cursor-agent", name: "cursor-agent", hookDir: ".cursor", auth: src.cursorAuth, authDir: `${HOME_IN}/.config/cursor`, binaries: (inTree: string) => all(inTree)(src.cursorTree) };
   }
   if (harness === "codex") {
-    return { tree: src.codexTree, dir: CODEX_DIR, launcher: "/bin/codex", name: "codex", hookDir: ".codex", auth: src.codexAuth, authDir: `${HOME_IN}/.codex`, binaries: (inTree) => all(`${inTree}/bin`)(join(src.codexTree, "bin")) };
+    return { tree: src.codexTree, dir: CODEX_DIR, launcher: "/bin/codex", name: "codex", hookDir: ".codex", auth: src.codexAuth, authDir: `${HOME_IN}/.codex`, binaries: (inTree: string) => all(`${inTree}/bin`)(join(src.codexTree, "bin")) };
   }
   // Claude Code is one native binary, uploaded as a file into /sandbox/claude.
   if (harness === "opencode") {
-    return { tree: src.opencodeBin, file: true, dir: OPENCODE_DIR, launcher: "", name: "opencode", hookDir: ".config/opencode", auth: src.opencodeAuth, authDir: `${HOME_IN}/.local/share/opencode`, binaries: (inTree) => [inTree] };
+    return { tree: src.opencodeBin, file: true, dir: OPENCODE_DIR, launcher: "", name: "opencode", hookDir: ".config/opencode", auth: src.opencodeAuth, authDir: `${HOME_IN}/.local/share/opencode`, binaries: (inTree: string) => [inTree] };
   }
-  return { tree: src.claudeBin, file: true, dir: CLAUDE_DIR, launcher: "", name: "claude", hookDir: ".claude", auth: src.claudeAuth, authDir: `${HOME_IN}/.claude`, binaries: (inTree) => [inTree] };
+  return { tree: src.claudeBin, file: true, dir: CLAUDE_DIR, launcher: "", name: "claude", hookDir: ".claude", auth: src.claudeAuth, authDir: `${HOME_IN}/.claude`, binaries: (inTree: string) => [inTree] };
 }
 
-export function findOncebitten(env) {
+export function findOncebitten(env: Env) {
   const cargoBin = join(env.CARGO_HOME || join(env.HOME || homedir(), ".cargo"), "bin");
   return findExecutable("oncebitten", env.PATH) || findExecutable("oncebitten", cargoBin);
 }
 
+/** The host sources the sandbox needs, as toolSources resolves them. */
+export type ToolSources = ReturnType<typeof toolSources>;
+/** What stage() returns, plus the auth hash upload() records on it. */
+export type BuilderStaged = Awaited<ReturnType<typeof stage>> & { authHash?: string };
+/** The per-run host context builders thread through staging and upload. */
+export type BuilderContext = { openshell: string; env: Env; log: (line: string) => void; signal?: AbortSignal; [key: string]: unknown };
+
 /** The shared libraries `ldd` resolves for a binary, minus glibc's own, which must match the image's loader. */
-export async function sharedLibs(bin, env = process.env) {
+export async function sharedLibs(bin: string, env: Env = process.env) {
   const res = await S.runTool("ldd", [bin], { env });
   if (res.code !== 0) return [];
   return [...res.stdout.matchAll(/=>\s+(\/\S+)/g)].map((m) => m[1].replace(/\/+$/, "")).filter((p) => {
@@ -148,12 +156,12 @@ export async function sharedLibs(bin, env = process.env) {
 }
 
 // Whether the host has the harness's install, by the same lookup the sandbox staging uses.
-export function hasInstall(harness, state, env) {
+export function hasInstall(harness: string, state: BuilderState, env: Env) {
   return Boolean(harnessLayout(harness, toolSources({ ...state, harness }, env)).tree);
 }
 
 // Builds the host-side staging: a self-contained clone, the tools tree, the sandbox home and the policy.
-export async function stage(state, paths, { env, log, resume }) {
+export async function stage(state: BuilderState, paths: BuilderPaths, { env, log, resume }: { env: Env; log: (line: string) => void; resume?: string }) {
   rmSync(paths.stage, { recursive: true, force: true });
   mkdirSync(paths.stage, { recursive: true });
   const name = basename(state.worktree);

@@ -2,8 +2,8 @@
 import { contentToText, EventType } from "@ag-ui/core";
 import { broadcastTopic } from "../lib/config.mjs";
 import { approvalEnd } from "../lib/operator.ts";
-import { publish } from "../lib/transport.mjs";
-import { publishStatus } from "../lib/inbox.mjs";
+import { publish } from "../lib/messaging.ts";
+import { publishStatus } from "../lib/messaging.ts";
 import { publishActivity } from "../lib/activity.mjs";
 import { compactionFields } from "../lib/compaction.mjs";
 import { modelFields } from "../lib/session-events.mjs";

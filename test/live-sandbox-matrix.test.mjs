@@ -9,7 +9,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { parseWireEnvelope } from "../lib/agui.mjs";
-import { builderPaths } from "../lib/builder.mjs";
+import { builderPaths } from "../lib/builder.ts";
 import { activityTopic } from "../lib/config.mjs";
 import { cursorBinary, findExecutable } from "../lib/start.mjs";
 import { openTasks } from "../lib/tasks.mjs";

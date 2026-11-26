@@ -6,7 +6,9 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { configDir, stateDir } from "../lib/config.mjs";
-import { DEFAULT_RETENTION_MS, openBus } from "../lib/bus.mjs";
+import { DEFAULT_RETENTION_MS, openBus, resolveBusStoreKind } from "../lib/bus.mjs";
+import { openPostgresBusStore } from "../lib/bus-postgres.mjs";
+import { pgUrl } from "../lib/postgres.mjs";
 
 function busToken(env) {
   if (env.AI_COLLAB_BUS_TOKEN !== undefined) return env.AI_COLLAB_BUS_TOKEN.trim();
@@ -19,6 +21,14 @@ function busToken(env) {
   }
   if (!file) return "";
   try { return readFileSync(file, "utf8").trim(); } catch { return ""; }
+}
+
+function busDefaults(env) {
+  try {
+    return JSON.parse(readFileSync(path.join(configDir(env), "defaults.json"), "utf8"));
+  } catch {
+    return {};
+  }
 }
 
 function busPort(env) {
@@ -39,14 +49,18 @@ export async function main(env = process.env) {
   }
   const dataDir = env.AI_COLLAB_BUS_DATA || path.join(stateDir(env), "bus");
   const retentionMs = Number(env.AI_COLLAB_BUS_RETENTION_HOURS ? Number(env.AI_COLLAB_BUS_RETENTION_HOURS) * 3_600_000 : DEFAULT_RETENTION_MS);
-  const bus = openBus({ dataDir, token, retentionMs, baseUrl: env.AI_COLLAB_BUS_BASE_URL || "" });
+  const kind = resolveBusStoreKind(env, busDefaults(env));
+  const store = kind === "postgres"
+    ? await openPostgresBusStore({ url: pgUrl(env), filesDir: path.join(dataDir, "files"), retentionMs, log })
+    : undefined;
+  const bus = openBus({ dataDir, token, retentionMs, baseUrl: env.AI_COLLAB_BUS_BASE_URL || "", store });
   const port = busPort(env);
   const url = await bus.listen(port, "127.0.0.1");
-  const prune = () => { try { const { events, files } = bus.prune(); if (events || files) log(`pruned ${events} event(s), ${files} file(s)`); } catch (error) { log(`prune failed: ${error.message}`); } };
-  prune();
+  const prune = async () => { try { const { events, files } = await bus.prune(); if (events || files) log(`pruned ${events} event(s), ${files} file(s)`); } catch (error) { log(`prune failed: ${error.message}`); } };
+  await prune();
   const timer = setInterval(prune, 3_600_000);
   timer.unref?.();
-  log(`listening on ${url}; data ${dataDir}; retention ${Math.round(retentionMs / 3_600_000)}h`);
+  log(`listening on ${url}; store ${kind}; data ${dataDir}; retention ${Math.round(retentionMs / 3_600_000)}h`);
   let stopping = false;
   const shutdown = async () => {
     if (stopping) return;

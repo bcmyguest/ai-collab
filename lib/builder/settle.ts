@@ -4,34 +4,38 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { clipProgress, openTasks, reviewPacket, STATUSES } from "../tasks.mjs";
-import { cleanBuilders } from "../builder-clean.mjs";
+import { cleanBuilders } from "../builder-clean.ts";
 import { loadConfig } from "../config.mjs";
 import { task } from "../task-cli.mjs";
 import { WORK } from "../sandbox.ts";
-import { BUILDER_HARNESSES, BASE_REF, GIT_TIMEOUT_MS, readState, updateState, oneLine } from "./state.mjs";
-import { git, findOncebitten } from "./stage.mjs";
+import { BUILDER_HARNESSES, BASE_REF, GIT_TIMEOUT_MS, readState, updateState, oneLine } from "./state.ts";
+import type { BuilderPaths, BuilderState, Env } from "./state.ts";
+import { git, findOncebitten } from "./stage.ts";
 
 /** Whether a recorded call may be replayed on the host: only `task set` and `task progress`. */
-export function replayable(argv) {
+export function replayable(argv: string[]) {
   return argv[0] === "task" && (argv[1] === "set" || argv[1] === "progress") && argv.length >= 4;
 }
 
 /** Splits a recorded shim call (NUL-terminated arguments) into argv. */
-export function parseRecordedCall(text) {
+export function parseRecordedCall(text: string) {
   const parts = String(text).split("\0");
   if (parts.at(-1) === "") parts.pop();
   return parts;
 }
 
 // Save the verified verdict before publishing it.
-export async function prepareSettlement(state, paths, exitCode, { env, log, limitDetail }) {
+const HARNESS_NAMES = { cursor: "Cursor", codex: "Codex", claude: "Claude", opencode: "OpenCode" } as const;
+
+export async function prepareSettlement(state: BuilderState, paths: BuilderPaths, exitCode: number | null, { env, log, limitDetail }: { env: Env; log: (text: string) => void; limitDetail?: string }) {
   const back = join(paths.back, basename(state.worktree));
-  const hostGit = (cwd, args) => git(cwd, args, env);
-  const trailer = `Assisted-by: ${{ cursor: "Cursor", codex: "Codex", claude: "Claude", opencode: "OpenCode" }[state.harness]}:${state.model}`;
+  const hostGit = (cwd: string, args: string[]) => git(cwd, args, env);
+  const harnessName = HARNESS_NAMES[state.harness as keyof typeof HARNESS_NAMES];
+  const trailer = `Assisted-by: ${harnessName}:${state.model}`;
   if (await S.commitUncommitted({ git: hostGit, repo: back, message: `chore(builder): uncommitted work from ${state.id}`, trailer })) log("committed the agent's uncommitted changes on the host");
   const commits = await S.commitsAhead({ git: hostGit, repo: back, base: state.base });
   let landed = false;
-  let commit;
+  let commit: string | undefined;
   let landError = "";
   if (commits > 0) {
     try {
@@ -41,7 +45,7 @@ export async function prepareSettlement(state, paths, exitCode, { env, log, limi
       landed = true;
       log(`${commits} commit(s) on ${state.branch}`);
     } catch (error) {
-      landError = `could not fast-forward ${state.branch}; the work is kept in ${back}: ${oneLine(error.message)}`;
+      landError = `could not fast-forward ${state.branch}; the work is kept in ${back}: ${oneLine((error as Error).message)}`;
       log(landError);
     }
   }
@@ -74,7 +78,7 @@ export async function prepareSettlement(state, paths, exitCode, { env, log, limi
 }
 
 // The criteria a reviewer judges the build against: the task's own detail, else the brief's opening paragraph.
-function reviewCriteria(state, paths, env) {
+function reviewCriteria(state: BuilderState, paths: BuilderPaths, env: Env) {
   let detail = "";
   try { detail = openTasks(state.project, env).get(state.task).detail || ""; } catch { /* store unreadable; fall back to the brief */ }
   if (detail.trim()) return detail;
@@ -85,16 +89,16 @@ function reviewCriteria(state, paths, env) {
 }
 
 // Per-file line counts for the packet; a missing range is not worth failing the settlement over.
-async function reviewNumstat(back, base, env) {
+async function reviewNumstat(back: string, base: string, env: Env) {
   try { return await git(back, ["diff", "--numstat", `${base}..HEAD`], env); } catch { return ""; }
 }
 
-export async function publishSettlement(state, paths, env) {
+export async function publishSettlement(state: BuilderState, paths: BuilderPaths, env: Env) {
   const { at, progress, detail, ...result } = readState(paths).settlement;
   const tasks = openTasks(state.project, env);
   const entry = { by: state.unit, text: clipProgress(progress || detail).text };
   // The progress entry and verdict are written together. On retry the entry proves publication.
-  if (!tasks.get(state.task).progress.some(p => p.at === at && p.by === entry.by && p.text === entry.text)) {
+  if (!tasks.get(state.task).progress.some((p: { at?: number; by?: string; text?: string }) => p.at === at && p.by === entry.by && p.text === entry.text)) {
     // A runner killed while holding this lock can leave it behind until the stale-lock timeout.
     await tasks.update(state.task, { status: result.status, ...(result.review ? { review: result.review } : {}), ...(detail !== undefined ? { detail } : {}), progress: entry }, at, { waitMs: 45_000 });
   }
@@ -105,7 +109,7 @@ export async function publishSettlement(state, paths, env) {
 }
 
 // Feeds every saved hook payload to the host's `oncebitten capture`, with sandbox paths mapped to the host worktree.
-async function replayCaptures(state, paths, env, log) {
+async function replayCaptures(state: BuilderState, paths: BuilderPaths, env: Env, log: (text: string) => void) {
   const dir = join(paths.out, "oncebitten");
   if (!existsSync(dir)) return 0;
   const bin = env.AI_COLLAB_ONCEBITTEN_BIN || findOncebitten(env);
@@ -123,7 +127,7 @@ async function replayCaptures(state, paths, env, log) {
 }
 
 // Own-task status assignments are requests. Replay other fields and progress as usual.
-async function replayCalls(state, paths, env, log) {
+async function replayCalls(state: BuilderState, paths: BuilderPaths, env: Env, log: (text: string) => void) {
   const dir = join(paths.out, "ai-collab");
   let requested = "";
   if (!existsSync(dir)) return requested;
@@ -144,13 +148,13 @@ async function replayCalls(state, paths, env, log) {
       if (argv.length > 3) await taskCli(argv, env);
       if (status) requested = status;
     } catch (error) {
-      log(`recorded call failed: ${error.message}`);
+      log(`recorded call failed: ${(error as Error).message}`);
     }
   }
   return requested;
 }
 
-async function oncebittenCheck(state, env) {
+async function oncebittenCheck(state: BuilderState, env: Env) {
   const bin = env.AI_COLLAB_ONCEBITTEN_BIN || findOncebitten(env);
   if (!bin) {
     const lock = join(state.worktree, ".oncebitten", "rules.lock");
@@ -163,9 +167,9 @@ async function oncebittenCheck(state, env) {
 }
 
 // Runs `ai-collab task ...` in-process; throws with its stderr on a non-zero exit.
-async function taskCli(argv, env) {
+async function taskCli(argv: string[], env: Env) {
   let errText = "";
   const sink = { write: () => true };
-  const code = await task(argv.slice(1), { env, cfg: loadConfig(env), out: sink, err: { write: (s) => { errText += s; return true; } } });
+  const code = await task(argv.slice(1) as Parameters<typeof task>[0], { env, cfg: loadConfig(env), out: sink, err: { write: (s: string) => { errText += s; return true; } } });
   if (code !== 0) throw new Error(oneLine(errText) || `ai-collab ${argv.join(" ")} exited ${code}`);
 }

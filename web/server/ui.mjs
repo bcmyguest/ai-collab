@@ -1,6 +1,7 @@
 import { SEND_CONFIRMATION } from "../lib/send-confirmation.js";
 import { HOST_CHECKOUT } from "../../lib/merge-cli.mjs";
 import { landReviews, mergeReview } from "./land-reviews.mjs";
+import { LandRefused, hostLand } from "../../lib/land.mjs";
 import { isProjectPaused, PROJECT_PAUSED, setProjectPaused } from "../../lib/project-pause.ts";
 import { terminalHasDraft } from "../../lib/terminal-draft.mjs";
 import { EventType } from "@ag-ui/core";
@@ -15,10 +16,10 @@ import { buzzes, readAlertLevel, writeAlertLevel } from "../../lib/alerts.mjs";
 import { loadConfig, loadProjects, activityTopic, startDefaultSetting, startPlaceSetting, broadcastTopic, configDir, stateDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.mjs";
 import { ACTIVITY_TYPES } from "../../lib/activity.mjs";
 import { stripControl } from "../../lib/format.mjs";
-import { MESSAGE_MAX_BYTES, latestStatuses, changeQueuedMessage, queuedMessage, markUrgent, parseEnvelope, sendMessage } from "../../lib/inbox.mjs";
+import { MESSAGE_MAX_BYTES, latestStatuses, changeQueuedMessage, queuedMessage, markUrgent, parseEnvelope, sendMessage } from "../../lib/messaging.ts";
 import { ATTACHMENT_MAX_BYTES, imageAttachment } from "../../lib/attachment.mjs";
 import { IMAGE_FILE, TEXT_FILE, attachmentOf, ensureAttachment, cachedAttachment, readAttachmentFile } from "../../lib/attachment-cache.mjs";
-import { publish } from "../../lib/transport.mjs";
+import { publish } from "../../lib/messaging.ts";
 import { parsePhoneReply, parseQuestionText } from "../../lib/questions.mjs";
 import { disposeSession, listSessions, sessionPlace, worktreeGone } from "../../lib/sessions.mjs";
 import { readState, statePath } from "../../lib/state.mjs";
@@ -43,7 +44,7 @@ import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern
 import { authorModel, authorTeam, saveAuthoredTeam } from "../../lib/catalog/author.ts";
 import { listOwned, readOwned, setNextPermission } from "../../lib/sessions/registry.ts";
 import { requestTeamPermission } from "../../lib/team-permission.mjs";
-import { builderAssignment, recoverBuilder, stoppedBuilder } from "../../lib/builder.mjs";
+import { builderAssignment, recoverBuilder, stoppedBuilder } from "../../lib/builder.ts";
 import { REVIEW_ACTIONS, STATUSES, TaskNotFoundError, openTasks } from "../../lib/tasks.mjs";
 import { priorityOf } from "../../lib/task-order.mjs";
 import { mentions, mentionedNames, mentionedTeams, startOnlyMentions, messageDestinations } from "../lib/message-routing.js";
@@ -71,7 +72,7 @@ import { runTerminalUi } from "./run-terminal.mjs";
 export { mentionedNames, mentionedTeams, startOnlyMentions };
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "move-task", "continue-builder", "recover-builder", "project-pause", "land-reviews", "review", "skip", "request-outcome", "approve-outcome", "accept-outcome"];
+const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "move-task", "continue-builder", "recover-builder", "project-pause", "land-reviews", "land", "review", "skip", "request-outcome", "approve-outcome", "accept-outcome"];
 const HOSTED_ACTIONS = new Set(["history", "messages", "send", "reply", "afk", "approve", "a2ui", "skip"]);
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
@@ -376,7 +377,7 @@ function originalOf(quote) {
   return { sender: typeof source.sender === "string" ? source.sender : "", body: typeof source.body === "string" ? source.body : "" };
 }
 
-export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start: launch = startSession, models = listModels, push: notifier = null, auth = null, runner = runnerClient, hasDraft = terminalHasDraft, hosted = false, landingCheckout = HOST_CHECKOUT, runMergeReview = mergeReview }) {
+export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start: launch = startSession, models = listModels, push: notifier = null, auth = null, runner = runnerClient, hasDraft = terminalHasDraft, hosted = false, landingCheckout = HOST_CHECKOUT, runMergeReview = mergeReview, land = hostLand }) {
   if (!configs.length) throw new Error("No ai-collab project is configured");
   for (const item of configs) if (!item.enabled) throw new Error(item.reason);
   if (allowedOrigin && (!allowedOrigin.startsWith("https://") || new URL(allowedOrigin).origin !== allowedOrigin)) {
@@ -1340,6 +1341,17 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return { project, harness: scope === "home" ? "" : harness, session: scope === "home" ? "" : session, activity: mode === "activity", scope, history: url.searchParams.get("history") === "1" };
   }
 
+  // GET /api/land: the open PRs into main with their checks, and the last deploy result.
+  async function landApi(request) {
+    try {
+      caller(request);
+      if (hosted) reject(403, "Landing is unavailable in hosted mode");
+      return json(200, { prs: await land.list(), deploy: await land.lastDeploy(env) });
+    } catch (err) {
+      return json(err.status || 502, { error: err.message });
+    }
+  }
+
   // The signed-in GitHub user, or a 401 while sign-in is on; null while it is off.
   function caller(request) {
     if (!auth) return null;
@@ -1389,7 +1401,11 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           if (client.ready && (client.hasQueuedMessages || client.hasRunningJobs || client.hasOpenTasks || client.hasReview || (!hosted && client.scope === "home")) && clients.has(client)) push(client);
         }, KEEPALIVE_MS);
         keepalive.unref?.();
-        request.signal?.addEventListener("abort", close, { once: true });
+        // An aborted request also ends the body, so a reader of the stream sees it finish instead of waiting forever.
+        request.signal?.addEventListener("abort", () => {
+          close();
+          try { controller.close(); } catch { /* already closed or cancelled */ }
+        }, { once: true });
         void load(client);
       },
       cancel: close,
@@ -1484,6 +1500,19 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       if (action === "history") return history(request, by, await payload(request));
       const { input, attachment } = upload ? await imagePayload(request) : { input: await payload(request) };
       const { project: name, paused, target, body, queueAction, question, mode, level: alertLevel, id, status: taskStatus, decision, answers, harness, prompt, place, worktree, openshell, urgent, sendAnyway, model, startMode, codeMode, permission, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText, commit, submission, note: reviewNote, taskId } = input;
+      // Merges one PR whose checks are green at the head the operator reviewed, then starts deploy detached.
+      if (action === "land") {
+        const number = input.number;
+        const headSha = typeof input.headSha === "string" ? input.headSha : "";
+        if (!Number.isInteger(number) || number < 1 || !/^[0-9a-f]{40}$/.test(headSha)) reject(400, "Give the PR number and its head commit");
+        try {
+          await land.merge(number, headSha);
+        } catch (err) {
+          reject(err instanceof LandRefused ? 409 : 502, err.message);
+        }
+        const deploy = await land.startDeploy().then(() => "deploy started", err => "deploy not started: " + err.message);
+        return json(201, { status: "Merged", detail: `#${number} merged; ${deploy}` });
+      }
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -1964,6 +1993,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     reviewDiff,
     file,
     handle,
+    land: landApi,
     push: pushApi,
     /** Adds every enabled config not yet watched (auto-joined repos); returns how many were added. */
     refresh(list) {

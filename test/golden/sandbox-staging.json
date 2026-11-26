@@ -1572,6 +1572,14 @@
         "sandbox",
         "upload",
         "s-pm-<H>",
+        "<TMP>/ai-collab-sandbox-secret-<R>/auth.json",
+        "/sandbox/home/.codex/",
+        "--no-git-ignore"
+      ],
+      [
+        "sandbox",
+        "upload",
+        "s-pm-<H>",
         "<TMP>/ai-collab-sandbox-run-auth-<R>/ntfy-token",
         "/sandbox/home/.config/ai-collab/",
         "--no-git-ignore"

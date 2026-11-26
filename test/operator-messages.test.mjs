@@ -8,6 +8,9 @@ import { sendMessage } from "../lib/inbox.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { answerMessage, answerText, terminalMessages } from "../web/lib/operator-messages.js";
 import { peerEnv } from "./helpers/env.mjs";
+
+// A wake run's env hides operator prompts from chat; tests run outside it.
+delete process.env.AI_COLLAB_WAKE;
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
 

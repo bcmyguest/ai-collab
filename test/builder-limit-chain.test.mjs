@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { fallbackAttempts } from "../lib/builder.mjs";
+import { fallbackAttempts } from "../lib/builder.ts";
 
 function configDir(limitFallback) {
   const home = mkdtempSync(path.join(tmpdir(), "ai-collab-builder-chain-"));

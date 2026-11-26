@@ -70,8 +70,10 @@ export function teamSandboxName(project: string, run: string): string {
 }
 
 /** The phase a sandbox JSON record reports; 0.1.9 writes "Ready" on `sandbox get` and `sandbox list`. */
-export function sandboxPhase(sandbox: any): string {
-  return String(sandbox?.phase ?? sandbox?.state ?? sandbox?.status?.phase ?? sandbox?.status ?? "");
+export function sandboxPhase(sandbox: { phase?: unknown; state?: unknown; status?: unknown } | null | undefined): string {
+  const status = sandbox?.status;
+  const statusPhase = typeof status === "object" && status !== null ? (status as { phase?: unknown }).phase : undefined;
+  return String(sandbox?.phase ?? sandbox?.state ?? statusPhase ?? status ?? "");
 }
 
 /** The start/resume step for a sandbox in a non-ready phase, or null when it needs none. */
@@ -133,7 +135,7 @@ export function gitIn(env: Env, timeoutMs = UPLOAD_TIMEOUT_MS): GitRunner {
 
 /** Parses `openshell sandbox list -o json`; throws when the reply is not JSON. */
 export function parseSandboxList(stdout: string): SandboxRecord[] {
-  let parsed: any;
+  let parsed: { sandboxes?: unknown } | null;
   try { parsed = JSON.parse(stdout); } catch { throw new Error("openshell sandbox list printed no JSON"); }
   return Array.isArray(parsed?.sandboxes) ? parsed.sandboxes : [];
 }
@@ -240,7 +242,8 @@ export function ownedSandboxNames(project: string): string[] {
 
 /** The sandbox cap: defaults.json maxSandboxes when a positive integer, else DEFAULT_MAX_SANDBOXES. */
 export function maxSandboxes(env: Env = process.env): number {
-  const value = (autoDefaults(env) as { maxSandboxes?: number } | null)?.maxSandboxes;
+  const defaults: { maxSandboxes?: unknown } | null = autoDefaults(env);
+  const value = defaults?.maxSandboxes;
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : DEFAULT_MAX_SANDBOXES;
 }
 
@@ -322,7 +325,7 @@ export async function destroyOwnedSandboxes({ openshell, env, project, kind, own
 }
 
 /**
- * The Claude and Codex login files a sandbox gets, found as lib/builder.mjs finds them: Claude's
+ * The Claude and Codex login files a sandbox gets, found as lib/builder.ts finds them: Claude's
  * `$CLAUDE_CONFIG_DIR/.credentials.json` (default ~/.claude), Codex's `$CODEX_HOME/auth.json`, else ~/.codex/auth.json.
  */
 export function harnessLogins(env: Env = process.env, home = env.HOME || homedir(), remoteHome = HOME_IN): { harness: string; file: string; remoteDir: string }[] {
@@ -361,7 +364,8 @@ export async function uploadLogins({ openshell, env, sandbox, home, remoteHome, 
 
 /** The host's ntfy token file from defaults.json, or "". */
 export function hostTokenFile(env: Env = process.env): string {
-  const file = (autoDefaults(env) as { tokenFile?: unknown } | null)?.tokenFile;
+  const defaults: { tokenFile?: unknown } | null = autoDefaults(env);
+  const file = defaults?.tokenFile;
   return typeof file === "string" && existsSync(file) ? file : "";
 }
 
@@ -410,8 +414,18 @@ export async function stageAndUpload(a: UploadArgs): Promise<{ authHash: string 
 export async function commitUncommitted({ git, repo, message, trailer }: { git: GitRunner; repo: string; message: string; trailer?: string }): Promise<boolean> {
   if (!(await git(repo, ["status", "--porcelain"])).trim()) return false;
   await git(repo, ["add", "-A"]);
-  await git(repo, ["commit", "--quiet", "--no-verify", "-m", message, ...(trailer ? ["-m", trailer] : [])]);
+  await git(repo, [...(await commitIdentity({ git, repo })), "commit", "--quiet", "--no-verify", "-m", message, ...(trailer ? ["-m", trailer] : [])]);
   return true;
+}
+
+/** Identity flags for a commit the host makes for an agent: none when git can name the committer, else a fixed ai-collab one (a CI runner has none). */
+export async function commitIdentity({ git, repo }: { git: GitRunner; repo: string }): Promise<string[]> {
+  try {
+    await git(repo, ["var", "GIT_COMMITTER_IDENT"]);
+    return [];
+  } catch {
+    return ["-c", "user.name=ai-collab", "-c", "user.email=ai-collab@localhost"];
+  }
 }
 
 /** The commits a clone has on top of its base. */

@@ -1,5 +1,5 @@
 // Posts to the shared channel; a progress post also records on the session's building task.
-import { sendMessage } from "../inbox.mjs";
+import { sendMessage } from "../messaging.ts";
 import { storedMode } from "../mode.mjs";
 import { PROGRESS_MAX, clipProgress, ownedBuilding, recordOwnerProgress } from "../tasks.mjs";
 import type { SurfaceConfig } from "./types.ts";

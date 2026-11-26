@@ -13,19 +13,19 @@ import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, cutPatter
 import { patternWorkflowId, runIdOfPatternWorkflow, runPatternWorkflow, seedPatternRun } from "../lib/pattern-workflow.mjs";
 import { statePath } from "../lib/state.mjs";
 import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, receiptsTopic, sessionLabel, startPlaceSetting } from "../lib/config.mjs";
-import { RESERVE_MS, ATTACHMENT_BUDGET_MS, claimInbox, markDelivered, mentionsAgent, parseEnvelope, releaseOwned, reserveOwned, reservedMessage } from "../lib/inbox.mjs";
+import { RESERVE_MS, ATTACHMENT_BUDGET_MS, claimInbox, markDelivered, mentionsAgent, parseEnvelope, releaseOwned, reserveOwned, reservedMessage } from "../lib/messaging.ts";
 import { parsePhoneReply, parseQuestionText } from "../lib/questions.mjs";
 import { replyDecision, APPROVAL_ID } from "../lib/approvals.mjs";
 import { formatInbox } from "../lib/format.mjs";
 import { attachmentOf, cacheAttachmentsWithin, localizedAttachment } from "../lib/attachment-cache.mjs";
-import { streamEvents } from "../lib/transport.mjs";
+import { streamEvents } from "../lib/messaging.ts";
 import { listSessions, recordSession } from "../lib/sessions.mjs";
 import { claudeConfirmedSince, claudeSnapshot, claudeWindowMs } from "../lib/claude-socket.mjs";
 import { ackTracker, busyWithPush, direct, PUSHED, pushSession, readDispatchLedger, readySession, writeDispatchLedger } from "../lib/deliver-push.mjs";
 import { MAX_ATTEMPTS } from "../lib/delivery.ts";
 import { sessionIdleState } from "../lib/idle.mjs";
 import { opencodeRequest } from "../lib/opencode-api.mjs";
-import { BUILDER_START_TIMEOUT_MS, builderPaths, builderResumePrompt, stoppedBuilder, ownedBuilder, stageOwnedBuilder, claimOwnedBuilder, finishOwnedBuilder, markOwnedBuilderFailed } from "../lib/builder.mjs";
+import { BUILDER_START_TIMEOUT_MS, builderPaths, builderResumePrompt, stoppedBuilder, ownedBuilder, stageOwnedBuilder, claimOwnedBuilder, finishOwnedBuilder, markOwnedBuilderFailed } from "../lib/builder.ts";
 import { childEnv, checkPrompt, claudePermissionFor, findExecutable, modelShape, projectRoot, worktreeNames } from "../lib/start.mjs";
 import { parseCodeMode, resolveCodeMode } from "../lib/code-mode.mjs";
 import { openTasks } from "../lib/tasks.mjs";
@@ -157,7 +157,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   let lastStartAt = 0;
   let pumpTimer = null;
   let lastPruneAt = -Infinity;
-  // In-memory read positions of the pump's peeks, keyed by lane, state file and topic; see recordPeek in lib/inbox.mjs.
+  // In-memory read positions of the pump's peeks, keyed by lane, state file and topic; see recordPeek in lib/messaging.ts.
   const pumpPeeks = new Map();
   // Delivery workflow ids this runner has started or recovered; keeps the pump's sync claim filter (accept) off the async status query.
   const deliveryIds = new Set();
@@ -1367,7 +1367,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     let backoff = 1000;
     while (!watchers.signal.aborted) {
       try {
-        for await (const ev of streamEvents(cfg, topics, { since, signal: watchers.signal, onOpen: () => { backoff = 1000; } })) {
+        const onReset = () => log(`bus replayed ${cfg.project} from the oldest event (unknown cursor)`);
+        for await (const ev of streamEvents(cfg, topics, { since, signal: watchers.signal, onOpen: () => { backoff = 1000; }, onReset })) {
           await onNtfy(cfg, ev.topic, ev);
           since = ev.id;
           await durable.setKv(key, since);

@@ -7,6 +7,9 @@ import path from "node:path";
 import { refreshPmWorkspace } from "../lib/pm-workspace.mjs";
 import { loadSchedules, tickFn } from "../runner/schedules.mjs";
 
+// The user's global push.pushOption makes pushes to the local test remote fail.
+process.env.GIT_CONFIG_GLOBAL = "/dev/null";
+
 const ID = ["-c", "user.name=Test", "-c", "user.email=test@example.invalid"];
 const mission = (line) => `# T\n\n${line}\n\n## Goals\n\n- [ ] A\n\n## Rules\n\n- R\n`;
 

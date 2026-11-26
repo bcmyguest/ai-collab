@@ -54,6 +54,7 @@ const INDEX_TAIL_BYTES = 256 * 1024;
 const MACHINE_NAME = /^agent-[0-9a-f]{8,}$/i;
 
 // Headless resume command per harness; Codex needs CODEX_HOOK_TRUST or a fresh worktree fires no hooks.
+// oxlint-disable-next-line quality/no-known-value-widening -- harness names are open strings; lookups index by s.harness
 const RESUME: Record<string, (id: string, requireRunCode: boolean) => string> = {
   claude: (id) => `claude -p --resume ${id} "<prompt>"`,
   codex: (id, requireRunCode) => {
@@ -144,7 +145,7 @@ export async function setIdentity(cfg: SessionCfg, { name, activity, tags }: { n
     return identity;
   });
   if (!r.locked) throw new Error("The session registry is busy; retry");
-  return r.value as Identity;
+  return r.value;
 }
 
 /** Marks the parent as told about this session; true only the first time. */

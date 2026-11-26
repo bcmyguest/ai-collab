@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCli } from "../lib/cli.mjs";
-import { builderSandbox, claudeMcpConfig, claudeSettings, harnessCommand } from "../lib/builder.mjs";
+import { builderSandbox, claudeMcpConfig, claudeSettings, harnessCommand } from "../lib/builder.ts";
 import { taskStoreFile } from "../lib/tasks.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));

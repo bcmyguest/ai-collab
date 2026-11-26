@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { claudeSettings } from "../lib/builder.mjs";
+import { claudeSettings } from "../lib/builder.ts";
 
 test("Claude builders auto-compact at a 250k-token window", () => {
   const settings = claudeSettings(["UserPromptSubmit"]);

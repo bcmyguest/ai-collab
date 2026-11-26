@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { builderId, builderPaths, builderPolicy, briefNotes, builderSandbox, captureHooks, claudeMcpConfig, claudeSettings, harnessCommand } from "../lib/builder.mjs";
+import { builderId, builderPaths, builderPolicy, briefNotes, builderSandbox, captureHooks, claudeMcpConfig, claudeSettings, harnessCommand } from "../lib/builder.ts";
 
 const digest = (value) => createHash("sha256").update(typeof value === "string" ? value : `${JSON.stringify(value, null, 2)}\n`).digest("hex");
 

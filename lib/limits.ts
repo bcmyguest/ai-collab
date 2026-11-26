@@ -6,6 +6,7 @@ import { autoDefaults, stateDir } from "./config.mjs";
 import { FALLBACK_MODEL, HARNESSES, modelShape, parseHarnessModel } from "./harness.ts";
 import { readJson, withLock, writeJson } from "./store.ts";
 
+// oxlint-disable-next-line typescript/no-explicit-any -- SDK event payloads are untyped JSON; property reads need any
 export type Event = Record<string, any>;
 export type Limit = {
   harness: string; window: string | null; windowName: string | null; resetsAt: number | null;
@@ -15,6 +16,7 @@ export type Limit = {
 export type DetectedLimit = Limit & { kind: "limit" | "rate" };
 export type Pick = { label: string; harness: string; model: string; description?: string };
 
+// oxlint-disable-next-line quality/no-known-value-widening -- open map keyed by server window names
 export const LIMIT_WINDOW_NAMES: Record<string, string> = {
   five_hour: "5-hour", seven_day: "weekly", seven_day_opus: "weekly Opus", seven_day_sonnet: "weekly Sonnet",
   seven_day_overage_included: "weekly overage", overage: "overage",
@@ -101,7 +103,7 @@ const CODEX_RESET = /try again at (?:([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|t
 export function codexResetFrom(message: unknown, now = Date.now()): number | null {
   const found = CODEX_RESET.exec(String(message ?? ""));
   if (!found) return null;
-  const [, month, day, year, hourText, minute, meridiem] = found as unknown as string[];
+  const [, month, day, year, hourText, minute, meridiem] = found;
   const hour = (Number(hourText) % 12) + (/^p/i.test(meridiem) ? 12 : 0);
   if (Number(hourText) < 1 || Number(hourText) > 12 || Number(minute) > 59) return null;
   let at: Date;
@@ -260,7 +262,8 @@ export function fallbackChain({ harness, model = "", fallback, models = {}, avai
     if (picks.some((pick) => pick.label === label) || picks.length >= REPLACEMENT_MAX) return;
     picks.push({ label, harness: item.harness, model: item.model, ...(description ? { description } : {}) });
   };
-  const configured = fallback ?? (env ? (autoDefaults(env) as { limitFallback?: unknown } | null)?.limitFallback : undefined);
+  const defaults: { limitFallback?: unknown } | null = env ? autoDefaults(env) : null;
+  const configured = fallback ?? defaults?.limitFallback;
   add(fallbackOf(configured), "Configured fallback", { sameHarness: true });
   add(CURSOR_FALLBACK, "Cursor fallback");
   add(OPENCODE_FALLBACK, "Free fallback");
