@@ -1,16 +1,10 @@
 import { cn } from "@/lib/utils"
 import { remarkTaskLinks } from "@/lib/task-tags"
-import { marked } from "marked"
-import { memo, useId, useMemo } from "react"
+import { memo, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks"
 import remarkGfm from "remark-gfm"
 import { CodeBlock, CodeBlockCode } from "./code-block"
-
-function parseMarkdownIntoBlocks(markdown) {
-  const tokens = marked.lexer(markdown)
-  return tokens.map((token) => token.raw)
-}
 
 function extractLanguage(className) {
   if (!className) return "plaintext"
@@ -18,6 +12,11 @@ function extractLanguage(className) {
   return match ? match[1] : "plaintext"
 }
 
+// One markdown config for the whole console: chat bubbles render it through assistant-ui's
+// MarkdownTextPrimitive (web/components/chat/thread.jsx), everything outside a message context
+// renders it through the Markdown component below. The primitive reads its text from the message
+// part context and takes no text prop, so it cannot serve cards and activity rows directly;
+// both paths must keep using THIS list so the two renderers cannot drift.
 const INITIAL_COMPONENTS = {
   // "#mention" links come from @tags in chat bodies; only the tag is coloured.
   a: function LinkComponent({ href, children, ...props }) {
@@ -58,55 +57,18 @@ const INITIAL_COMPONENTS = {
   },
 }
 
-const MemoizedMarkdownBlock = memo(
-  function MarkdownBlock({
-    content,
-    taskLinks,
-    components = INITIAL_COMPONENTS
-  }) {
-    return (
-      <ReactMarkdown
-        remarkPlugins={taskLinks ? [remarkGfm, remarkBreaks, [remarkTaskLinks, taskLinks]] : [remarkGfm, remarkBreaks]}
-        components={components}
-      >
-        {content}
-      </ReactMarkdown>
-    )
-  },
-  function propsAreEqual(prevProps, nextProps) {
-    return prevProps.content === nextProps.content && prevProps.taskLinks === nextProps.taskLinks
-  }
-)
-
-MemoizedMarkdownBlock.displayName = "MemoizedMarkdownBlock"
-
-function MarkdownComponent({
-  children,
-  id,
-  className,
-  taskLinks,
-  components = INITIAL_COMPONENTS
-}) {
-  const generatedId = useId()
-  const blockId = id ?? generatedId
-  const blocks = useMemo(() => parseMarkdownIntoBlocks(children), [children])
-
+const Markdown = memo(function Markdown({ children, className, taskLinks }) {
+  const plugins = useMemo(() => remarkPluginsFor(taskLinks), [taskLinks])
   return (
     <div className={className}>
-      {blocks.map((block, index) => (
-        <MemoizedMarkdownBlock
-          key={`${blockId}-block-${index}`}
-          content={block}
-          taskLinks={taskLinks}
-          components={components}
-        />
-      ))}
+      <ReactMarkdown remarkPlugins={plugins} components={INITIAL_COMPONENTS}>
+        {children || ""}
+      </ReactMarkdown>
     </div>
   )
-}
-
-const Markdown = memo(MarkdownComponent)
-Markdown.displayName = "Markdown"
+}, function propsAreEqual(prev, next) {
+  return prev.children === next.children && prev.taskLinks === next.taskLinks && prev.className === next.className
+})
 
 /** The remark plugin list for a task-link map, shared with the assistant-ui bubble renderer. */
 export function remarkPluginsFor(taskLinks) {
