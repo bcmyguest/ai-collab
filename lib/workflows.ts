@@ -152,6 +152,7 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
     if (!launched) {
       launched = (async () => {
         for (const name of registry.keys()) if (!dbosFns.has(name)) registerDbos(name);
+        await versionGuard();
         // DBOS hashes registered functions into the app version by default; our registrations are one wrapper whose
         // count changes with the code, which would orphan PENDING workflows on every deploy. Pin it instead.
         DBOS.setConfig({ name: "ai-collab", systemDatabaseUrl: pgUrl, applicationVersion });
@@ -159,6 +160,33 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
       })();
     }
     return launched;
+  }
+
+  // Upgrade rule: DBOS only recovers PENDING runs recorded under the CURRENT applicationVersion, so a
+  // deliberate bump orphans the old ones (dropped records and reservations). Default "off" leaves them
+  // alone — shared dev databases and parallel test runs hold stale rows. When deploying a bump, set
+  // AI_COLLAB_DBOS_VERSION_GUARD=refuse (boot fails listing foreign-version runs of our own workflows)
+  // or =drain (cancel them, then boot). Bump applicationVersion only after the old fleet has drained.
+  async function versionGuard(): Promise<void> {
+    const mode = process.env.AI_COLLAB_DBOS_VERSION_GUARD || "off";
+    if (mode !== "refuse" && mode !== "drain") return;
+    const names = [...registry.keys()];
+    if (!names.length) return;
+    let ids: string[];
+    try {
+      const { rows } = await pool.query(
+        "SELECT workflow_uuid FROM dbos.workflow_status WHERE application_version <> $1 AND status IN ('PENDING', 'ENQUEUED') AND name = ANY($2) ORDER BY created_at",
+        [applicationVersion, names]);
+      ids = rows.map((r: { workflow_uuid: string }) => r.workflow_uuid);
+    } catch (error) {
+      log(`workflows: version guard query failed, booting unchecked: ${String(error?.message ?? error)}`);
+      return;
+    }
+    if (!ids.length) return;
+    const listed = `${ids.slice(0, 5).join(", ")}${ids.length > 5 ? `, … ${ids.length} total` : ""}`;
+    if (mode === "refuse") throw new Error(`workflows: ${ids.length} PENDING run(s) recorded under another application version (${listed}); drain the old fleet first, or boot with AI_COLLAB_DBOS_VERSION_GUARD=drain to cancel them`);
+    await pool.query("UPDATE dbos.workflow_status SET status = 'CANCELLED', updated_at = $2 WHERE workflow_uuid = ANY($1) AND status IN ('PENDING', 'ENQUEUED')", [ids, now()]);
+    log(`workflows: drained ${ids.length} PENDING run(s) recorded under another application version`);
   }
 
   // Prior recorded step names, read straight from DBOS's operation table: a DBOS.listWorkflowSteps
