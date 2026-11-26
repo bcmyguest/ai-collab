@@ -8,10 +8,14 @@ import { test } from "node:test";
 import diagnostics from "node:diagnostics_channel";
 import fc from "fast-check";
 import { pollCached, streamEvents } from "../lib/transport.mjs";
+import { openPostgresBusStore } from "../lib/bus-postgres.mjs";
+import { pgUrl } from "../lib/postgres.mjs";
+import { dbosTestDb } from "./helpers/dbos-env.mjs";
 
 // BUS_IMPL points the model at another bus.mjs, e.g. a scratch copy with a planted bug.
 const BUS_IMPL = process.env.BUS_IMPL ? path.resolve(process.env.BUS_IMPL) : fileURLToPath(new URL("../lib/bus.mjs", import.meta.url));
 const { createBusServer, openBusStore, openMemoryStore } = await import(pathToFileURL(BUS_IMPL).href);
+const pgUp = await dbosTestDb();
 
 const TOKEN = "tk_bus_cursor_model";
 const TOPICS = ["a", "b"];
@@ -42,19 +46,21 @@ function initialModel(kind) {
 
 /** Real side: the store, the bus server on a fixed port, and each subscriber's streams and received ids. */
 async function openReal(kind, dir) {
-  const real = { kind, dir, store: null, server: null, url: "", subs: SUBSCRIBERS.map(() => null) };
+  const schema = `bus_m_${Math.random().toString(36).slice(2, 10)}`;
+  const real = { kind, dir, schema, store: null, server: null, url: "", subs: SUBSCRIBERS.map(() => null) };
   await startBus(real);
   return real;
 }
 
-function openStore(r) {
+async function openStore(r) {
+  if (r.kind === "postgres") return openPostgresBusStore({ url: pgUrl(process.env), filesDir: path.join(r.dir, "files"), retentionMs: RETENTION_MS, schema: r.schema });
   return r.kind === "sqlite"
     ? openBusStore({ file: path.join(r.dir, "bus.db"), filesDir: path.join(r.dir, "files"), retentionMs: RETENTION_MS })
     : openMemoryStore();
 }
 
 async function startBus(r, port = 0) {
-  r.store = openStore(r);
+  r.store = await openStore(r);
   r.server = createBusServer({ store: r.store, token: TOKEN });
   r.url = await r.server.listen(port);
 }
@@ -83,10 +89,11 @@ function expectedPoll(m, topic, since) {
   return ids(sinceFilter(events, since));
 }
 
-/** Stream backfill rule of lib/bus.mjs: a numeric since reads every subscribed event with a larger id. */
+/** Stream backfill rule of lib/bus.mjs: a known numeric since reads every subscribed event with a larger id; an unknown one replays all. */
 function expectedBackfill(m, topics, since) {
   const events = m.log.filter((e) => topics.includes(e.topic));
-  if (isNumeric(since)) return ids(events.filter((e) => Number(e.id) > Number(since)));
+  if (isNumeric(since) && events.some((e) => Number(e.id) === Number(since))) return ids(events.filter((e) => Number(e.id) > Number(since)));
+  if (isNumeric(since)) return ids(events);
   return ids(sinceFilter(events, since));
 }
 
@@ -176,7 +183,18 @@ async function closeReal(r) {
   for (const rs of r.subs) rs?.ctrl?.abort();
   await Promise.all(r.subs.filter(Boolean).map((rs) => rs.done));
   await r.server.close();
-  r.store.close();
+  await r.store.close();
+  if (r.kind === "postgres") await dropSchema(r.schema);
+}
+
+async function dropSchema(schema) {
+  const { default: pg } = await import("pg");
+  const pool = new pg.Pool({ connectionString: pgUrl(process.env), max: 1 });
+  try {
+    await pool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+  } finally {
+    await pool.end();
+  }
 }
 
 class Publish {
@@ -318,7 +336,7 @@ class RestartBus {
     const port = Number(new URL(r.url).port);
     await r.server.close();
     for (const rs of r.subs) if (rs) await rs.done;
-    r.store.close();
+    await r.store.close();
     await startBus(r, port);
     // A pooled keep-alive socket to the old server must be gone before the next request reuses it.
     const stale = [...clientSockets].map((socket) => new Promise((resolve) => socket.once("close", resolve)));
@@ -344,7 +362,7 @@ class Prune {
   async run(m, r) {
     m.offsetMs += this.advanceMs;
     const nowSec = Math.floor(Date.now() / 1000) + Math.floor(m.offsetMs / 1000);
-    r.store.prune(nowSec);
+    await r.store.prune(nowSec);
     const cutoff = nowSec - RETENTION_MS / 1000;
     m.log = m.log.filter((e) => e.time >= cutoff);
     await checkInvariants(m, r);
@@ -373,8 +391,9 @@ function commandArb(kind) {
   return fc.oneof(...arbs);
 }
 
-for (const kind of ["memory", "sqlite"]) {
-  test(`bus cursor matches the model on the ${kind} store`, async () => {
+for (const kind of ["memory", "sqlite", "postgres"]) {
+  const skip = kind === "postgres" && !pgUp && "Postgres not reachable";
+  test(`bus cursor matches the model on the ${kind} store`, { skip }, async () => {
     await fc.assert(fc.asyncProperty(fc.commands([commandArb(kind)], { maxCommands: 14 }), async (cmds) => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bus-cursor-model-"));
       const real = await openReal(kind, dir);
