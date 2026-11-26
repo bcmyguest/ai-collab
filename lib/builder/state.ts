@@ -39,6 +39,7 @@ export const LIVE_STATES = ["active", "activating", "deactivating", "reloading"]
 export type Env = NodeJS.ProcessEnv;
 export type BuilderPaths = ReturnType<typeof builderPaths>;
 /** A builder's state.json: phases and fields every module reads loosely. */
+// oxlint-disable-next-line typescript/no-explicit-any -- state.json is untyped JSON every builder module reads loosely
 export type BuilderState = Record<string, any>;
 
 /** Unit, sandbox, worktree and state paths for one builder id. */

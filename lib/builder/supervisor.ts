@@ -31,7 +31,8 @@ type StartResult = { session?: string; unit?: string; task: string; sandbox: str
 type DurableWorkflow = { step: <T>(name: string, fn: () => T | Promise<T>, opts?: { onCut?: () => T }) => Promise<T> };
 
 export async function startBuilder(flags: StartFlags, { env, cfg, readBrief }: { env: Env; cfg: BuilderCfg; readBrief?: () => string }) {
-  const order = (autoDefaults(env) as { builderOrder?: unknown } | null)?.builderOrder;
+  const defaults: { builderOrder?: unknown } | null = autoDefaults(env);
+  const order = defaults?.builderOrder;
   const preferred = Array.isArray(order) ? order.find((name) => BUILDER_HARNESSES.includes(name)) : undefined;
   const harness = flags.harness ?? preferred ?? "codex";
   if (!BUILDER_HARNESSES.includes(harness)) throw new Error("Unknown builder harness");
