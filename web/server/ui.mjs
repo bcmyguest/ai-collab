@@ -1389,7 +1389,11 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           if (client.ready && (client.hasQueuedMessages || client.hasRunningJobs || client.hasOpenTasks || client.hasReview || (!hosted && client.scope === "home")) && clients.has(client)) push(client);
         }, KEEPALIVE_MS);
         keepalive.unref?.();
-        request.signal?.addEventListener("abort", close, { once: true });
+        // An aborted request also ends the body, so a reader of the stream sees it finish instead of waiting forever.
+        request.signal?.addEventListener("abort", () => {
+          close();
+          try { controller.close(); } catch { /* already closed or cancelled */ }
+        }, { once: true });
         void load(client);
       },
       cancel: close,
