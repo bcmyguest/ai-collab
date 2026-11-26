@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { controlSession, harnessCommand, harnessEnv, runnerFromEnv } from "../lib/sessions.ts";
+import { controlSession, harnessCommand, harnessEnv, runnerFromEnv } from "../lib/sessions/control.ts";
 import { childEnv, resolveStartBinary } from "../lib/start.mjs";
 import { sessionLabel } from "../lib/config.mjs";
 

@@ -6,7 +6,7 @@ import path from "node:path";
 import { broadcastTopic, loadConfig, sessionLabel } from "../lib/config.mjs";
 import { publishActivity } from "../lib/activity.mjs";
 import { publishStatus } from "../lib/inbox.mjs";
-import { cleanName, sessionName } from "../lib/sessions.ts";
+import { cleanName, sessionName } from "../lib/sessions/registry.ts";
 import { listSessions, recordSession } from "../lib/sessions.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { fallbackName, isOpenGroup, listedGroups, sessionCounts, sessionState, sessionTree, visibleWake } from "../web/lib/session-state.js";

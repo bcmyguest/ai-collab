@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { loadProjects, sessionLabel } from "../lib/config.mjs";
-import { resetScopeProbe, scopeAvailable, systemdRunOnPath } from "../lib/sessions.ts";
+import { resetScopeProbe, scopeAvailable, systemdRunOnPath } from "../lib/sessions/scope.ts";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 

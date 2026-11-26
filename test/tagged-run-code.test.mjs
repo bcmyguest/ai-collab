@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { codexRequiredRunCodeArgs, REQUIRE_RUN_CODE_ENV } from "../lib/code-mode.mjs";
 import { loadProjects, sessionLabel } from "../lib/config.mjs";
-import { controlSession } from "../lib/sessions.ts";
+import { controlSession } from "../lib/sessions/control.ts";
 import { listSessions, recordSession, sessionDirectory } from "../lib/sessions.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

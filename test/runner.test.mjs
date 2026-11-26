@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
-import { readOwned, standsDown, writeOwned } from "../lib/sessions.ts";
+import { readOwned, standsDown, writeOwned } from "../lib/sessions/registry.ts";
 import { listSessions } from "../lib/sessions.mjs";
 import { openTasks } from "../lib/tasks.mjs";
 import { builderPaths } from "../lib/builder.mjs";

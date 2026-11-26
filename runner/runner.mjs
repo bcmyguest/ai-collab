@@ -27,7 +27,7 @@ import { BUILDER_START_TIMEOUT_MS, builderPaths, builderResumePrompt, stoppedBui
 import { childEnv, checkPrompt, findExecutable, modelShape, projectRoot, worktreeNames } from "../lib/start.mjs";
 import { parseCodeMode, resolveCodeMode } from "../lib/code-mode.mjs";
 import { openTasks } from "../lib/tasks.mjs";
-import { listOwned, ownedFile, readOwned, writeOwned } from "../lib/sessions.ts";
+import { listOwned, ownedFile, readOwned, writeOwned } from "../lib/sessions/registry.ts";
 import { modelFields } from "../lib/session-events.mjs";
 import { isBlockingLimit, limitFromRunError } from "../lib/limits.ts";
 import { alertLimit } from "../lib/limit-alert.mjs";

@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chmodSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { sessionLabel } from "../lib/config.mjs";
 import { claimParentNotice, listSessions, recordSession, sessionPlace, setIdentity, worktreeGone } from "../lib/sessions.mjs";
-import { harnessCommand } from "../lib/sessions.ts";
-import { interruptSession } from "../lib/sessions.ts";
-import { scopeLaunch, scopeSupport } from "../lib/sessions.ts";
+import { harnessCommand } from "../lib/sessions/control.ts";
+import { interruptSession } from "../lib/sessions/control.ts";
+import { scopeLaunch, scopeSupport } from "../lib/sessions/scope.ts";
 import { defaultStartPlace, startRefusal } from "../lib/start.mjs";
+import { startSession } from "../lib/sessions/launch.ts";
 
 const UUID = "0b1c2d3e-4f50-4617-8899-aabbccddeeff";
 const DEAD = { pid: 4_194_000, start: "1" };
@@ -129,4 +130,17 @@ test("a session in a deleted worktree is gone; live or sandboxed ones are not", 
   assert.equal(sessionPlace({ cwd: root }, root), "folder");
   assert.equal(sessionPlace({ cwd: gone }, root), "worktree ai-collab-claude-1");
   assert.equal(sessionPlace({ cwd: "/x", sandbox: true }, root), "sandbox");
+});
+
+test("startSession with no options refuses the empty harness instead of throwing", async (t) => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-start-"));
+  const root = path.join(dir, "repo");
+  mkdirSync(root);
+  mkdirSync(path.join(dir, "config", "ai-collab"), { recursive: true });
+  writeFileSync(path.join(dir, "config", "ai-collab", "projects.json"), JSON.stringify([{ project: "demo", root }]));
+  const saved = process.env.XDG_CONFIG_HOME;
+  process.env.XDG_CONFIG_HOME = path.join(dir, "config");
+  t.after(() => { if (saved === undefined) delete process.env.XDG_CONFIG_HOME; else process.env.XDG_CONFIG_HOME = saved; });
+  const result = await startSession({ project: "demo", stateDir: dir, peers: [] });
+  assert.deepEqual(result, { status: "failed", detail: "Unknown harness" });
 });

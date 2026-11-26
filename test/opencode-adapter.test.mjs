@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { sessionLabel } from "../lib/config.mjs";
-import { controlSession, nativeSessionId } from "../lib/sessions.ts";
+import { controlSession, nativeSessionId } from "../lib/sessions/control.ts";
 import { installOpenCode, mcpEntry, mergeMcp, opencodeConfigDir, pluginShim } from "../lib/install-opencode.mjs";
 import { opencodeModels, parseOpenCodeModels } from "../lib/models.mjs";
 import { packageRoot } from "../lib/install-cursor.mjs";

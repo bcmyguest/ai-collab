@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sessionLabel } from "../lib/config.mjs";
 import { sessionIdleState } from "../lib/idle.mjs";
-import { codexLiveInterrupt, interruptSession } from "../lib/sessions.ts";
+import { codexLiveInterrupt, interruptSession } from "../lib/sessions/control.ts";
 import { activeOpencodeSessions, opencodeRequest } from "../lib/opencode-api.mjs";
 
 const CODEX_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
