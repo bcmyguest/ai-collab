@@ -10,6 +10,10 @@ import { awaitReply, waitForIdle, waitForMessages, waitForReply } from "../lib/a
 import { readInbox } from "../lib/messaging.ts";
 import { runWaiter } from "../lib/waiter.mjs";
 import { runCli } from "../lib/cli.mjs";
+import { decideStop } from "../lib/stop.mjs";
+import { requestWait } from "../lib/questions.mjs";
+import { claimInbox } from "../lib/inbox.mjs";
+import { settleReceipts } from "../lib/receipts.mjs";
 
 const SESSION_ID = "11111111-2222-3333-4444-555555555555";
 const LABEL = sessionLabel(SESSION_ID);
@@ -129,8 +133,29 @@ test("the CLI inbox --peek prints the message and leaves it unread for the next 
   const peeked = await run(["inbox", "--peek"]);
   assert.equal(peeked.code, 0);
   assert.match(peeked.out, /body="peek me"/);
-  assert.equal(receiptIds(fake).length, 1, "CLI peek publishes a receipt, as on main");
+  assert.deepEqual(receiptIds(fake), [], "CLI peek publishes no receipt");
   const claimed = await run(["inbox"]);
   assert.match(claimed.out, /body="peek me"/);
   assert.equal((await run(["inbox"])).out, "no new messages\n");
+});
+
+test("stop: a message that arrives as the AFK wait times out is delivered with one receipt", { timeout: 10000 }, async (t) => {
+  const fake = await startFakeNtfy();
+  t.after(() => fake.close());
+  const session = "aabbccddeeff0123";
+  const env = peerEnv(fake, { peer: "alice", AI_COLLAB_SESSION: session, AI_COLLAB_STOP_POLL_MS: "5000", AI_COLLAB_AFK_WAIT_S: "120" });
+  const cfg = loadConfig(env);
+  const operator = loadConfig(peerEnv(fake, { peer: "operator" }));
+  fake.inject("ai-collab-demo--to--all", JSON.stringify({ v: 1, kind: "mode", from: "operator", mode: "on", ts: Date.now() }));
+  await claimInbox(cfg);
+  await requestWait(cfg);
+  const wait = async () => {
+    await sendMessage(operator, `alice#${session}`, "late");
+    return "timeout";
+  };
+  const r = await decideStop(cfg, { host: "claude", input: { stop_hook_active: false }, wait });
+  assert.equal(r.why, "messages");
+  assert.match(r.text, /body="late"/);
+  await settleReceipts();
+  assert.equal(receiptIds(fake).length, 1);
 });
