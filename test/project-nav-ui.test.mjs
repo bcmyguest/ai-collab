@@ -71,14 +71,14 @@ test("no project views, no nav", () => {
 });
 
 test("the console places the rail beside the sidebar and the bar under the composer, from one link list", () => {
-  const chat = readFileSync(new URL("../web/app/chat.jsx", import.meta.url), "utf8");
+  const chat = readFileSync(new URL("../web/app/chat-console.jsx", import.meta.url), "utf8");
   // Both layouts draw the same links, so the phone and the computer can never drift apart.
   assert.match(chat, /const navLinks = projectNavigation\(project, level, viewCounts\);/);
   assert.match(chat, /<ProjectNav links=\{navLinks\} rail\/>/);
   assert.match(chat, /<ProjectNav links=\{navLinks\}\/>/);
   // The rail follows the projects sidebar, and the phone's bar is the last thing in the column, under the composer.
   assert.match(chat, /<aside aria-label="Projects and sessions" className="hidden w-72[^"]*md:block"><Sidebar \{\.\.\.sidebarProps\}\/><\/aside>\s*\n\s*<ProjectNav links=\{navLinks\} rail\/>/);
-  assert.match(chat, /\}\/>\}\s*\n\s*<ProjectNav links=\{navLinks\}\/>\s*\n\s*<\/main>/);
+  assert.match(chat, /\}\/>\}\s*\n\s*<\/>\s*\n\s*<\/ChatRuntimeProvider>\)\}\s*\n\s*<ProjectNav links=\{navLinks\}\/>\s*\n\s*<\/main>/);
   // The sidebar no longer repeats Tasks and Teams, so the three views live in exactly one place.
   assert.doesNotMatch(chat, />Tasks<\/span>/);
   assert.doesNotMatch(chat, /Patterns and teams/);
