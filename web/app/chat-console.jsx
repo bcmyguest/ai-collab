@@ -119,6 +119,9 @@ export function Console({ account }) {
   const latestAction = useRef(0);
   const [now, setNow] = useState(Date.now);
   const route = useRef("");
+  // The runtime's onNew bridge: the Composer registers its send handler here, so the primitive owns the
+  // input state while the console keeps the send path (urgent, command, image flags live in the Composer).
+  const sendBridgeRef = useRef(null);
   const { home, watching, subagents, inline, raw, listing, tasks, compactions, requested } = streamOf(selected);
   route.current = requested;
   // The live stream owns the screen it streams: data, activity, surfaces, readiness, and the reconnect ladder.
@@ -455,7 +458,9 @@ export function Console({ account }) {
         decide={(id, answer) => action("decide", { id, answer }, "Decided")}
         review={(id, decision, note, packet) => action("review", { id, decision, note, ...packet }, decision === "accept" ? "Build accepted" : "Build returned")}
         skip={taskId => action("skip", { taskId }, "Skipped")}
-        open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatContainerRoot key={inbox ? "inbox" : home ? "home" : "conversation"} initial={home ? false : "instant"} contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
+        open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatRuntimeProvider key={requested + ":" + composeTask} entries={thread} operator={data.operator} onSend={body => sendBridgeRef.current?.(body)}>
+        <>
+        <ChatContainerRoot key={inbox ? "inbox" : home ? "home" : "conversation"} initial={home ? false : "instant"} contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
         <ChatContainerContent key={requested} className="mx-auto w-full max-w-3xl gap-5 px-3 py-4">
           {!ready && (home || listing || subagents || compactions) && !loadError && <p className="py-16 text-center text-sm text-muted-foreground">Loading sessions…</p>}
           {ready && (home || listing) && <>
@@ -486,8 +491,7 @@ export function Console({ account }) {
             pick={run => navigate({ ...selected, project, tab: "subagents", run })}/>}
           {!home && !listing && !subagents && (!ready || (thread.length + live.length === 0 && (raw || queue.length === 0))) && <p className="py-16 text-center text-sm text-muted-foreground">
             {ready ? (raw ? "No activity yet." : "No messages yet.") : loadError ? "" : watching ? "Loading project chat…" : "Loading conversation…"}</p>}
-          {ready && !home && !listing && !subagents && <ChatRuntimeProvider entries={thread} operator={data.operator}>
-            <ThreadPrimitive.Messages>
+          {ready && !home && !listing && !subagents && <ThreadPrimitive.Messages>
               {({ message }) => {
                 const [entry] = getExternalStoreMessages(message) || [];
                 if (!entry) return null;
@@ -501,8 +505,7 @@ export function Console({ account }) {
                   reply={id => { setQuestion(id); setNotice(""); document.getElementById("composer")?.focus(); }}
                   replyFrom={target => setReplyTo(target)}/>;
               }}
-            </ThreadPrimitive.Messages>
-          </ChatRuntimeProvider>}
+            </ThreadPrimitive.Messages>}
           {ready && watching && live.map(row => <LiveRow key={row.id} row={{ ...row, seat: seatOf(data.agents, row.agent) }} open={openAddress}/>)}
           {ready && inline && <Working rows={rows} now={now}/>}
           <ChatContainerScrollAnchor/>
@@ -514,9 +517,9 @@ export function Console({ account }) {
         <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
           <ScrollButton className="pointer-events-auto shadow-md" aria-label="Scroll to newest"/>
         </div>
-      </ChatContainerRoot>)}
+      </ChatContainerRoot>
       <div role="status" hidden={!notice} className="mx-auto w-full max-w-3xl px-4 text-center text-xs text-muted-foreground">{notice}</div>
-      {!composing && queue.length > 0 && <section aria-label="Queued messages" className="mx-auto w-full max-w-3xl border-t bg-background">
+      {queue.length > 0 && <section aria-label="Queued messages" className="mx-auto w-full max-w-3xl border-t bg-background">
         <h2 className="px-3 py-1 text-xs font-medium text-muted-foreground">Queued messages ({queue.length})</h2>
         <ul className="max-h-48 overflow-y-auto">
           {queue.map(message => <QueueRow key={project + ":" + message.id} message={message} disabled={working || Boolean(message.by && message.by !== account.user?.login)}
@@ -524,7 +527,7 @@ export function Console({ account }) {
               { edit: "Queue updated", cancel: "Message canceled", steer: "Prioritized for delivery" }[queueAction])}/>)}
         </ul>
       </section>}
-      {!home && !listing && !patterns && !tasksView && !composing && <Composer key={requested + ":" + composeTask} conversation={conversationKey(project, composeTask ? "#" + composeTask : level === "session" ? selected.session : "")} initialDraft={composeTask ? `#${composeTask} ` : ""} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
+      {!home && !listing && <Composer sendBridgeRef={sendBridgeRef} key={requested + ":" + composeTask} conversation={conversationKey(project, composeTask ? "#" + composeTask : level === "session" ? selected.session : "")} initialDraft={composeTask ? `#${composeTask} ` : ""} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
         placeholder={placeholder} routing={routing} question={question} cancel={() => setQuestion("")} urgentable={!question} replying={replyTo} cancelReply={() => setReplyTo(null)}
         onSend={async (body, urgent, command, sendAnyway, image) => {
           // Project chat never runs commands: a leading / there is ordinary chat.
@@ -538,6 +541,8 @@ export function Console({ account }) {
           }
           return sent;
         }}/>}
+        </>
+      </ChatRuntimeProvider>)}
       <ProjectNav links={navLinks}/>
     </main>
   </div></SurfaceContext.Provider>;

@@ -1,7 +1,9 @@
 "use client";
-// The composer: draft memory per conversation, the @mention and /command pickers, image drafts,
+// The composer: assistant-ui's ComposerPrimitive over the console's external-store runtime, with
+// draft memory per conversation, the @mention and /command pickers, image drafts,
 // and the destination line that says where the message will go before it is sent.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ComposerPrimitive, useAui, useAuiState } from "@assistant-ui/react";
 import { ArrowUp, AtSign, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -32,8 +34,10 @@ export function useModels(project) {
 
 export const modelsOf = (models, harness) => Array.isArray(models[harness]) ? models[harness].filter(id => typeof id === "string" && id) : [];
 
-export function Composer({ conversation, agents, harnesses, teams = [], startable = [], models = {}, now, disabled, placeholder, routing, onSend, question, cancel, urgentable, replying, cancelReply, harness = "", initialDraft = "" }) {
-  const [draft, setDraftState] = useState(() => drafts.get(conversation, "") || initialDraft);
+export function Composer({ conversation, agents, harnesses, teams = [], startable = [], models = {}, now, disabled, placeholder, routing, onSend, question, cancel, urgentable, replying, cancelReply, harness = "", initialDraft = "", sendBridgeRef }) {
+  // The draft lives in the runtime composer; the per-conversation store mirrors it so a view switch restores it.
+  const aui = useAui();
+  const draft = useAuiState(s => s.composer.text);
   const [urgent, setUrgent] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -44,11 +48,21 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
   const [imageError, setImageError] = useState("");
   // Command names the picker inserted in this draft; only these and known commands make the message a command.
   const picked = useRef(new Set());
-  const pending = useRef(false);
   const prefillFocused = useRef(false);
   const textarea = useRef(null);
-  // The composer grows with its draft up to 240px, like the prompt input it replaces.
-  useLayoutEffect(() => { const el = textarea.current; if (!el) return; el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 240) + "px"; }, [draft]);
+  // The flags the runtime's onNew must carry back to the console's send path (the primitive only knows the text).
+  const flags = useRef({});
+  // Seed the runtime composer from this conversation's stored draft once, before paint.
+  useLayoutEffect(() => {
+    const saved = drafts.get(conversation, "") || initialDraft;
+    if (saved && !aui.composer.getState().text) aui.composer.setText(saved);
+  }, []);
+  // Every edit is kept per conversation, so a tab or view switch that remounts the composer restores it.
+  const firstText = useRef(true);
+  useEffect(() => {
+    if (firstText.current) { firstText.current = false; return; }
+    drafts.set(conversation, draft);
+  }, [draft]);
   const mention = mentionAt(draft);
   const options = [...agents.map(agent => ({ id: agent.id, name: agent.name, lastMessageAt: agent.lastMessageAt, activeAt: agent.activeAt, online: agent.online, live: isLive(agent, now) })),
     ...harnesses.map(harness => ({ id: harness.id, lastMessageAt: harness.lastMessageAt, activeAt: harness.activeAt, harness: true })),
@@ -82,7 +96,7 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
     : "Send · " + destination;
 
   // Every edit is kept per conversation, so a tab or view switch that remounts the composer restores it.
-  function setDraft(next) { setHeld(null); drafts.set(conversation, next); setDraftState(next); }
+  function setDraft(next) { setHeld(null); aui.composer.setText(next); }
   function focus() { document.getElementById("composer")?.focus(); }
   function selectImages(next) { setHeld(null); setImageError(""); setImages(next); }
   useEffect(() => {
@@ -116,21 +130,30 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
     setActiveIndex(0);
     focus();
   }
-  async function send(sendAnyway = false, sendNow = urgent) {
-    if (pending.current || busy || !canSend) return;
-    pending.current = true;
+  // The runtime's onNew path: the console's send runs with the flags set at send time;
+  // a non-true result makes the provider throw MessageNotSentError, so the runtime hands the text back.
+  async function finish(body) {
     setPosting(true);
-    const text = draft.trim();
     try {
+      const { urgent: now, command, sendAnyway, image } = flags.current;
       // onSend returns true only when the message was sent (or a command ran or was requested); otherwise the draft stays.
-      const result = await onSend(text, urgentable && sendNow, command, sendAnyway, image);
-      if (result === "draftHeld") setHeld({ text, replying, question, sendNow });
+      const result = await onSend(body, urgentable && now, command, sendAnyway, image);
+      if (result === "draftHeld") setHeld({ text: body, replying, question, sendNow: now });
       if (result === true) {
-        setDraft(""); setShowPicker(false); setUrgent(false); picked.current.clear();
+        setShowPicker(false); setUrgent(false); picked.current.clear();
         if (image) selectImages([]);
       }
-    }
-    finally { pending.current = false; setPosting(false); focus(); }
+      return result;
+    } finally { setPosting(false); focus(); }
+  }
+  // The console's runtime bridge calls finish for every composer submission.
+  useEffect(() => { sendBridgeRef.current = finish; });
+  function send(sendAnyway = false, sendNow = urgent) {
+    if (busy || !canSend) return;
+    flags.current = { urgent: urgentable && sendNow, command, sendAnyway, image };
+    // Text goes through the runtime (it owns clearing and draft-restoration); an image-only send has no text to hold.
+    if (text) aui.composer.send();
+    else void finish("");
   }
   return <div className="relative mx-auto w-full max-w-3xl px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
     {held?.text === draft.trim() && held.replying === replying && held.question === question && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-sm">
@@ -189,16 +212,18 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
       event.preventDefault(); event.stopPropagation();
     }}>
       <ImagePicker files={images} onChange={selectImages} onError={setImageError} disabled={busy || Boolean(question)}>
-        <form onSubmit={event => { event.preventDefault(); send(); }} onClick={() => { if (!busy) textarea.current?.focus(); }}
+        <ComposerPrimitive.Root onSubmit={event => { event.preventDefault(); send(); }}
           className={cn("cursor-text rounded-3xl border bg-card p-2 shadow-sm focus-within:ring-2 focus-within:ring-ring/50", busy && "cursor-not-allowed opacity-60")}>
           {image && <ImageDraft file={image} disabled={busy} remove={() => { selectImages([]); focus(); }}/>}
           {!question && imageError && <p role="alert" className="px-3 text-sm text-destructive">{imageError}</p>}
           <div id="composer-destination" aria-live="polite" className="max-h-[20dvh] overflow-y-auto break-words px-3 pt-1 text-xs font-medium text-muted-foreground">
             {destination}
           </div>
-          <textarea ref={textarea} id="composer" aria-label="Message" aria-describedby="composer-destination" placeholder={placeholder} rows={1} disabled={busy}
-            value={draft} onChange={event => change(event.target.value)}
-            onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !window.matchMedia?.("(pointer: coarse)").matches) { event.preventDefault(); send(); } }}
+          <ComposerPrimitive.Input ref={textarea} id="composer" aria-label="Message" aria-describedby="composer-destination" placeholder={placeholder} disabled={busy}
+            submitMode="enter" unstable_insertNewlineOnTouchEnter cancelOnEscape={false}
+            unstable_focusOnRunStart={false} unstable_focusOnScrollToBottom={false} unstable_focusOnThreadSwitched={false}
+            onChange={event => change(event.target.value)}
+            style={{ maxHeight: "240px" }}
             className="min-h-[44px] w-full resize-none border-none bg-transparent px-3 text-[15px] text-foreground shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0"/>
           <TooltipProvider>
             <div className="flex items-center justify-between px-1 pt-1">
@@ -229,7 +254,7 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
               </div>
             </div>
           </TooltipProvider>
-        </form>
+        </ComposerPrimitive.Root>
       </ImagePicker>
     </div>
   </div>;
