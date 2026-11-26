@@ -21,7 +21,17 @@
         "--no-tty",
         "--detach",
         "--policy",
-        "<HOME>/state/builders/smoke-task/policy.yaml"
+        "<HOME>/state/builders/smoke-task/policy.yaml",
+        "--label",
+        "ai-collab.managed=true",
+        "--label",
+        "ai-collab.project=demo",
+        "--label",
+        "ai-collab.kind=builder",
+        "--label",
+        "ai-collab.owner=smoke-task",
+        "--label",
+        "ai-collab.version=0.11.0"
       ],
       [
         "sandbox",
@@ -159,6 +169,12 @@
         "b-smoke-ta-d39a55",
         "/sandbox/out",
         "<HOME>/state/builders/smoke-task/out"
+      ],
+      [
+        "sandbox",
+        "list",
+        "-o",
+        "json"
       ],
       [
         "sandbox",
@@ -447,7 +463,17 @@
         "--no-tty",
         "--detach",
         "--policy",
-        "<HOME>/state/builders/smoke-task/policy.yaml"
+        "<HOME>/state/builders/smoke-task/policy.yaml",
+        "--label",
+        "ai-collab.managed=true",
+        "--label",
+        "ai-collab.project=demo",
+        "--label",
+        "ai-collab.kind=builder",
+        "--label",
+        "ai-collab.owner=smoke-task",
+        "--label",
+        "ai-collab.version=0.11.0"
       ],
       [
         "sandbox",
@@ -619,6 +645,12 @@
         "b-smoke-ta-d39a55",
         "/sandbox/out",
         "<HOME>/state/builders/smoke-task/out"
+      ],
+      [
+        "sandbox",
+        "list",
+        "-o",
+        "json"
       ],
       [
         "sandbox",
@@ -855,7 +887,17 @@
         "--no-tty",
         "--detach",
         "--policy",
-        "<HOME>/state/sandbox-run-<R>/stage/policy.yaml"
+        "<HOME>/state/sandbox-run-<R>/stage/policy.yaml",
+        "--label",
+        "ai-collab.managed=true",
+        "--label",
+        "ai-collab.project=demo",
+        "--label",
+        "ai-collab.kind=run",
+        "--label",
+        "ai-collab.owner=pm",
+        "--label",
+        "ai-collab.version=0.11.0"
       ],
       [
         "sandbox",
@@ -978,6 +1020,12 @@
         "s-pm-<H>",
         "/sandbox/out",
         "<HOME>/state/sandbox-run-<R>/out"
+      ],
+      [
+        "sandbox",
+        "list",
+        "-o",
+        "json"
       ],
       [
         "sandbox",
@@ -1166,7 +1214,17 @@
         "--no-tty",
         "--detach",
         "--policy",
-        "<HOME>/state/sandbox-run-<R>/stage/policy.yaml"
+        "<HOME>/state/sandbox-run-<R>/stage/policy.yaml",
+        "--label",
+        "ai-collab.managed=true",
+        "--label",
+        "ai-collab.project=demo",
+        "--label",
+        "ai-collab.kind=run",
+        "--label",
+        "ai-collab.owner=pm",
+        "--label",
+        "ai-collab.version=0.11.0"
       ],
       [
         "sandbox",
@@ -1287,6 +1345,12 @@
         "s-pm-<H>",
         "/sandbox/out",
         "<HOME>/state/sandbox-run-<R>/out"
+      ],
+      [
+        "sandbox",
+        "list",
+        "-o",
+        "json"
       ],
       [
         "sandbox",
@@ -1436,7 +1500,17 @@
         "--no-tty",
         "--detach",
         "--policy",
-        "<HOME>/state/sandbox-run-<R>/stage/policy.yaml"
+        "<HOME>/state/sandbox-run-<R>/stage/policy.yaml",
+        "--label",
+        "ai-collab.managed=true",
+        "--label",
+        "ai-collab.project=demo",
+        "--label",
+        "ai-collab.kind=run",
+        "--label",
+        "ai-collab.owner=pm",
+        "--label",
+        "ai-collab.version=0.11.0"
       ],
       [
         "sandbox",
@@ -1557,6 +1631,12 @@
         "s-pm-<H>",
         "/sandbox/out",
         "<HOME>/state/sandbox-run-<R>/out"
+      ],
+      [
+        "sandbox",
+        "list",
+        "-o",
+        "json"
       ],
       [
         "sandbox",
