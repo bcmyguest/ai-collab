@@ -18,6 +18,7 @@ The peer hooks and MCP server need only Node 22.18+ (builtin `fetch`). The opera
 | [Phone UI](phone-ui.md) | Home, chat, activity, starting sessions, Tailscale, push |
 | [AFK mode](afk.md) | Progress posts, phone questions, Stop-hook waits |
 | [Approvals and questions](approvals.md) | Permission prompts and questions answered from the phone |
+| [Run in terminal](run-in-terminal.md) | An agent proposes a script; the operator reads it and clicks Run on the phone (off by default) |
 | [Messaging](messaging.md) | CLI and MCP tools, Stop continuation, receipts |
 | [Tasks](tasks.md) | Project task store, `ai-collab task`, status board and dependency graph |
 | [PM mission file](mission.md) | `MISSION.md`: the mission, goals and rules the PM owns, and the review each run ends with |
