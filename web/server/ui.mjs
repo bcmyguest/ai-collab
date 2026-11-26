@@ -43,7 +43,7 @@ import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern
 import { authorModel, authorTeam, saveAuthoredTeam } from "../../lib/catalog/author.ts";
 import { listOwned, readOwned, setNextPermission } from "../../lib/sessions/registry.ts";
 import { requestTeamPermission } from "../../lib/team-permission.mjs";
-import { builderAssignment, recoverBuilder, stoppedBuilder } from "../../lib/builder.mjs";
+import { builderAssignment, recoverBuilder, stoppedBuilder } from "../../lib/builder.ts";
 import { REVIEW_ACTIONS, STATUSES, TaskNotFoundError, openTasks } from "../../lib/tasks.mjs";
 import { priorityOf } from "../../lib/task-order.mjs";
 import { mentions, mentionedNames, mentionedTeams, startOnlyMentions, messageDestinations } from "../lib/message-routing.js";

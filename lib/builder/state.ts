@@ -36,8 +36,13 @@ export const FINAL_PHASES = ["finished", "failed", "stopped"];
 
 export const LIVE_STATES = ["active", "activating", "deactivating", "reloading"];
 
+export type Env = NodeJS.ProcessEnv;
+export type BuilderPaths = ReturnType<typeof builderPaths>;
+/** A builder's state.json: phases and fields every module reads loosely. */
+export type BuilderState = Record<string, any>;
+
 /** Unit, sandbox, worktree and state paths for one builder id. */
-export function builderPaths(id, env = process.env) {
+export function builderPaths(id: string, env: Env = process.env) {
   const home = env.HOME || homedir();
   const dir = join(stateDir(env), "builders", id);
   return {
@@ -50,37 +55,37 @@ export function builderPaths(id, env = process.env) {
 }
 
 /** A builder's sandbox name: b-<first 8 of the id>-<6 hex of its hash>, at most 17 characters. */
-export function builderSandbox(id) {
+export function builderSandbox(id: string) {
   const hash = createHash("sha256").update(id).digest("hex").slice(0, 6);
   return `b-${id.slice(0, SANDBOX_PREFIX_MAX).replace(/-+$/, "")}-${hash}`;
 }
 
 /** The builder id for a task id: lowercase letters, digits and dashes, at most 63 characters. */
-export function builderId(taskId) {
+export function builderId(taskId: string) {
   return String(taskId).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 63);
 }
 
-export function readState(paths) {
+export function readState(paths: { state: string }): BuilderState {
   return JSON.parse(readFileSync(paths.state, "utf8"));
 }
 
-export function writeState(paths, state) {
+export function writeState(paths: { state: string }, state: unknown) {
   writeJson(paths.state, state, { indent: 2 });
 }
 
-export function updateState(paths, patch) {
-  let state = {};
+export function updateState(paths: { state: string }, patch: Record<string, unknown>) {
+  let state: BuilderState = {};
   try { state = readState(paths); } catch { /* first write */ }
   writeState(paths, { ...state, ...patch, updated: Date.now() });
 }
 
-export function builderExited(state) {
+export function builderExited(state: BuilderState) {
   if (FINAL_PHASES.includes(state.phase)) return true;
   if (state.owned || !Number.isSafeInteger(state.pid) || state.pid <= 0) return false;
-  try { process.kill(state.pid, 0); } catch (error) { return error.code === "ESRCH"; }
+  try { process.kill(state.pid, 0); } catch (error) { return (error as NodeJS.ErrnoException).code === "ESRCH"; }
   return false;
 }
 
-export function oneLine(text) {
+export function oneLine(text: unknown) {
   return String(text).replace(/\s+/g, " ").trim();
 }

@@ -1,6 +1,7 @@
 // One builder attempt: the agent in its sandbox, collection, and the limit retry chain.
 import * as S from "../sandbox.ts";
 import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -10,13 +11,15 @@ import { cursorLimitFile, cursorLimitUntil, detectLimit, fallbackChain, isBlocki
 import { listModels } from "../models.mjs";
 import { traceStream } from "../cursor-trace.mjs";
 import { OUT, SANDBOX, WORK } from "../sandbox.ts";
-import { BUILDER_HARNESSES, DEFAULT_MODEL, BASE_REF, SYNC_TIMEOUT_MS, readState, updateState } from "./state.mjs";
-import { harnessCommand } from "./policy.mjs";
-import { builderSandboxGone, must, uploadBuilderSandbox, hasInstall, stage } from "./stage.mjs";
-import { prepareSettlement } from "./settle.mjs";
+import { BUILDER_HARNESSES, DEFAULT_MODEL, BASE_REF, SYNC_TIMEOUT_MS, readState, updateState } from "./state.ts";
+import type { BuilderPaths, BuilderState, Env } from "./state.ts";
+import { harnessCommand } from "./policy.ts";
+import { builderSandboxGone, must, uploadBuilderSandbox, hasInstall, stage } from "./stage.ts";
+import type { BuilderContext, BuilderStaged } from "./stage.ts";
+import { prepareSettlement } from "./settle.ts";
 
 /** The sandbox notes appended to every builder brief. */
-export function briefNotes({ task, branch, workdir }) {
+export function briefNotes({ task, branch, workdir }: { task: string; branch: string; workdir: string }) {
   return [
     "",
     "## Builder sandbox",
@@ -30,35 +33,35 @@ export function briefNotes({ task, branch, workdir }) {
   ].join("\n");
 }
 
-export function cursorLimitPath(model, env) {
+export function cursorLimitPath(model: string, env: Env) {
   return { state: cursorLimitFile(model, env) };
 }
 
-export function cursorLimitDetail(harness, model, env) {
+export function cursorLimitDetail(harness: string, model: string, env: Env) {
   if (harness !== "cursor") return undefined;
   const until = cursorLimitUntil(model, env);
   if (until > Date.now()) return `Cursor ${model} reached its usage limit. Choose another approved model or retry after ${new Date(until).toISOString()}.`;
 }
 
 /** Retry chain after a Codex usage limit: lib/limits.ts's chain, Codex only as another configured model. */
-export function fallbackAttempts(env, { model = "", available = [], models = {} } = {}) {
+export function fallbackAttempts(env: Env, { model = "", available = [], models = {} }: { model?: string; available?: string[]; models?: Record<string, string[]> } = {}) {
   return fallbackChain({ harness: "codex", model, models: leadWithDefaults(models), available, env }).map(({ harness, model: next }) => ({ harness, model: next }));
 }
 
 // A harness's default model leads its listed models, so a retry does not take the catalogue's first entry.
-function leadWithDefaults(models) {
+function leadWithDefaults(models: Record<string, string[]>) {
   return Object.fromEntries(Object.entries(models).map(([harness, list]) => {
-    const preferred = DEFAULT_MODEL[harness];
+    const preferred = (DEFAULT_MODEL as Record<string, string>)[harness];
     return [harness, preferred && list.includes(preferred) ? [preferred, ...list.filter((name) => name !== preferred)] : list];
   }));
 }
 
 /** The first retry target: defaults.json "limitFallback" ("harness:model"), else Cursor DeepSeek. */
-export function limitFallback(env) {
+export function limitFallback(env: Env) {
   return fallbackAttempts(env)[0];
 }
 
-export async function retryLimitedBuilder(state, paths, context) {
+export async function retryLimitedBuilder(state: BuilderState, paths: BuilderPaths, context: BuilderContext) {
   const { openshell, env, log, signal } = context;
   const sandbox = state.sandbox;
   let { fallback } = readState(paths);
@@ -123,7 +126,7 @@ export async function retryLimitedBuilder(state, paths, context) {
   await prepareSettlement(state, paths, readState(paths).exitCode, { env, log, limitDetail: fallback.detail });
 }
 
-export async function runSandboxAgent(state, paths, staged, { openshell, env, log, onChild, signal }) {
+export async function runSandboxAgent(state: BuilderState, paths: BuilderPaths, staged: BuilderStaged, { openshell, env, log, onChild, signal }: BuilderContext & { onChild?: (child: ChildProcess | null) => void }) {
   signal?.throwIfAborted();
   const original = state.prompt ?? readFileSync(paths.brief, "utf8");
   const brief = staged.builderCode ? original + "\nUse ai-collab-code run_code to batch related sh, read, grep and edit operations. "
@@ -131,12 +134,12 @@ export async function runSandboxAgent(state, paths, staged, { openshell, env, lo
   const launcher = staged.layout.file ? staged.layout.dir + "/" + basename(staged.layout.tree) : undefined;
   const argv = S.execArgv({
     openshell, sandbox: state.sandbox, workdir: staged.workdir, env: staged.execEnv,
-    command: harnessCommand({ ...state, brief, workdir: staged.workdir, launcher, builderCode: staged.builderCode }),
+    command: harnessCommand({ ...state, brief, workdir: staged.workdir, launcher, builderCode: staged.builderCode } as Parameters<typeof harnessCommand>[0]),
   });
   log("running " + state.harness + " " + state.model + " in sandbox " + state.sandbox);
   const cursor = state.harness === "cursor";
   const codex = state.harness === "codex";
-  const stdio = cursor || codex ? ["ignore", "pipe", "pipe"] : ["ignore", "inherit", "inherit"];
+  const stdio: ("ignore" | "pipe" | "inherit")[] = cursor || codex ? ["ignore", "pipe", "pipe"] : ["ignore", "inherit", "inherit"];
   const child = spawn(argv[0], argv.slice(1), { env, stdio });
   onChild?.(child);
   const stop = () => child.kill("SIGTERM");
@@ -144,11 +147,11 @@ export async function runSandboxAgent(state, paths, staged, { openshell, env, lo
   // A Cursor builder's stream-json passes through to the log and becomes its OTLP trace (model, tokens, tool calls).
   const trace = cursor ? traceStream(child.stdout, { env, out: process.stdout, role: "builder", model: state.model }) : null;
   let errorTail = "";
-  let cursorLimit;
+  let cursorLimit: string | undefined;
   let usageLimit = false;
   if (codex) {
     let outputTail = "";
-    child.stdout.setEncoding("utf8").on("data", (chunk) => {
+    child.stdout?.setEncoding("utf8").on("data", (chunk: string) => {
       process.stdout.write(chunk);
       outputTail = (outputTail + chunk).slice(-8192);
       // Codex stdout can contain assistant text alongside explicit errors.
@@ -156,7 +159,7 @@ export async function runSandboxAgent(state, paths, staged, { openshell, env, lo
         /^\s*error:/i.test(line) && isBlockingLimit(detectLimit("codex", line)));
     });
   }
-  child.stderr?.setEncoding("utf8").on("data", (chunk) => {
+  child.stderr?.setEncoding("utf8").on("data", (chunk: string) => {
     process.stderr.write(chunk);
     errorTail = (errorTail + chunk).slice(-8192);
     if (cursor) {
@@ -168,7 +171,7 @@ export async function runSandboxAgent(state, paths, staged, { openshell, env, lo
       usageLimit ||= errorTail.split(/\r?\n/).some((line) => isBlockingLimit(detectLimit("codex", line)));
     }
   });
-  const exitCode = await new Promise((resolve, reject) => {
+  const exitCode = await new Promise<number | null>((resolve, reject) => {
     child.once("error", reject);
     child.once("close", resolve);
   }).finally(() => {
@@ -182,13 +185,13 @@ export async function runSandboxAgent(state, paths, staged, { openshell, env, lo
     limitDetail: exitCode !== 0 && cursorLimit ? cursorLimitDetail(state.harness, state.model, env) : undefined };
 }
 
-export function builderResumePrompt(prompt) {
+export function builderResumePrompt(prompt: string) {
   const instruction = "The runner restarted during this assignment. Inspect the existing workspace and continue the task. Preserve any work already completed.";
   return instruction + "\n\n" + prompt.slice(0, PROMPT_MAX_CHARS - instruction.length - 2);
 }
 
 // Copies a credentials file the harness refreshed inside back to the host, unless the host's changed meanwhile; never logs it.
-async function keepRefreshedAuth(state, staged, { openshell, env, log }) {
+async function keepRefreshedAuth(state: BuilderState, staged: BuilderStaged, { openshell, env, log }: BuilderContext) {
   const { layout } = staged;
   if (!layout.auth || !staged.authHash) return;
   const remote = `${layout.authDir}/${basename(layout.auth)}`;
@@ -204,7 +207,7 @@ async function keepRefreshedAuth(state, staged, { openshell, env, log }) {
 }
 
 // Downloads the worktree clone and the recorded hook payloads and task calls.
-export async function collect(state, paths, staged, { openshell, env, log }) {
+export async function collect(state: BuilderState, paths: BuilderPaths, staged: BuilderStaged, { openshell, env, log }: BuilderContext) {
   log(`collecting workspace from sandbox ${state.sandbox}`);
   await keepRefreshedAuth(state, staged, { openshell, env, log });
   await S.runTool(openshell, S.execArgv({ openshell, sandbox: state.sandbox, command: ["rm", "-f", `${staged.workdir}/node_modules`] }).slice(1), { env });
@@ -215,7 +218,7 @@ export async function collect(state, paths, staged, { openshell, env, log }) {
   if (got.code !== 0) log("no recorded task calls or hook payloads");
 }
 
-export async function downloadWorktree(state, paths, openshell, env) {
+export async function downloadWorktree(state: BuilderState, paths: BuilderPaths, openshell: string, env: Env) {
   const name = basename(state.worktree);
   const incoming = mkdtempSync(join(paths.dir, "download-"));
   try {
@@ -228,7 +231,7 @@ export async function downloadWorktree(state, paths, openshell, env) {
   }
 }
 
-export async function cleanupBuilderSandbox(state, paths, { openshell, env, log }) {
+export async function cleanupBuilderSandbox(state: BuilderState, paths: BuilderPaths, { openshell, env, log }: BuilderContext) {
   const final = readState(paths);
   if (final.sandboxCreated && (!final.workspaceUploaded || final.collected)) {
     const gone = await builderSandboxGone(state, { openshell, env });

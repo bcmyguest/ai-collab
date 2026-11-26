@@ -322,7 +322,7 @@ export async function destroyOwnedSandboxes({ openshell, env, project, kind, own
 }
 
 /**
- * The Claude and Codex login files a sandbox gets, found as lib/builder.mjs finds them: Claude's
+ * The Claude and Codex login files a sandbox gets, found as lib/builder.ts finds them: Claude's
  * `$CLAUDE_CONFIG_DIR/.credentials.json` (default ~/.claude), Codex's `$CODEX_HOME/auth.json`, else ~/.codex/auth.json.
  */
 export function harnessLogins(env: Env = process.env, home = env.HOME || homedir(), remoteHome = HOME_IN): { harness: string; file: string; remoteDir: string }[] {

@@ -2,9 +2,13 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { stateDir } from "../config.mjs";
-import { cleanBuilders } from "../builder-clean.mjs";
-import { BUILDER_HARNESSES, FINAL_PHASES, LIVE_STATES, builderPaths, readState } from "./state.mjs";
-import { startBuilder, runBuilder, stopBuilder, unitState } from "./supervisor.mjs";
+import { cleanBuilders } from "../builder-clean.ts";
+import { BUILDER_HARNESSES, FINAL_PHASES, LIVE_STATES, builderPaths, readState } from "./state.ts";
+import type { Env } from "./state.ts";
+import { startBuilder, runBuilder, stopBuilder, unitState } from "./supervisor.ts";
+import type { BuilderCfg } from "./supervisor.ts";
+
+type Writer = { write: (chunk: string) => void };
 
 const USAGE = {
   start: "usage: builder start --task <id> [--harness cursor|codex|claude|opencode] [--model M] --brief <file> [--branch B] [--run ID]",
@@ -14,8 +18,8 @@ const USAGE = {
   clean: "usage: builder clean",
 };
 
-export async function builder([sub, ...rest], { env, cfg, out, err }) {
-  const fail = (key) => { err.write(`ai-collab: ${USAGE[key]}\n`); return 1; };
+export async function builder([sub, ...rest]: string[], { env, cfg, out, err }: { env: Env; cfg: BuilderCfg; out: Writer; err: Writer }) {
+  const fail = (key: keyof typeof USAGE) => { err.write(`ai-collab: ${USAGE[key]}\n`); return 1; };
   try {
     if (sub === "start") {
       const flags = parseStart(rest);
@@ -33,16 +37,16 @@ export async function builder([sub, ...rest], { env, cfg, out, err }) {
       return 0;
     }
   } catch (error) {
-    err.write(`ai-collab: builder ${sub}: ${error.message}\n`);
+    err.write(`ai-collab: builder ${sub}: ${(error as Error).message}\n`);
     return 1;
   }
   err.write(`ai-collab: ${Object.values(USAGE).join("\n  ")}\n`);
   return 1;
 }
 
-function parseStart(argv) {
+function parseStart(argv: string[]): Record<string, string> | null {
   const spec = ["--task", "--harness", "--model", "--brief", "--branch", "--run"];
-  const flags = {};
+  const flags: Record<string, string> = {};
   for (let i = 0; i < argv.length; i += 1) {
     const at = argv[i].indexOf("=");
     const [key, value] = at > 0 ? [argv[i].slice(0, at), argv[i].slice(at + 1)] : [argv[i], argv[i + 1]];
@@ -53,7 +57,7 @@ function parseStart(argv) {
   return flags;
 }
 
-function listBuilders(argv, { env, out, fail }) {
+function listBuilders(argv: string[], { env, out, fail }: { env: Env; out: Writer; fail: (key: keyof typeof USAGE) => number }) {
   if (argv.length > 1 || (argv.length === 1 && argv[0] !== "--all")) return fail("list");
   const all = argv[0] === "--all";
   const root = join(stateDir(env), "builders");

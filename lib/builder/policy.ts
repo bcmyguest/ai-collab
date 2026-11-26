@@ -2,6 +2,7 @@
 import * as S from "../sandbox.ts";
 import { readFileSync } from "node:fs";
 import { argv } from "../harness.ts";
+import type { Harness } from "../harness.ts";
 import { TRACE_ENV } from "../cursor-trace.mjs";
 import { SANDBOX, TOOLS } from "../sandbox.ts";
 
@@ -72,20 +73,20 @@ const CLAUDE_SETTINGS = {
 };
 
 /** Harness argv in the sandbox, its own sandbox off; Codex gets hook trust (docs/builders.md). */
-export function harnessCommand({ harness, model, brief, workdir, launcher, builderCode }) {
+export function harnessCommand({ harness, model, brief, workdir, launcher, builderCode }: { harness: string; model: string; brief: string; workdir: string; launcher?: string; builderCode?: boolean }) {
   const sandbox = { tools: TOOLS, claudeTools: CLAUDE_TOOLS, mcpIn: CLAUDE_MCP_IN, settingsIn: CLAUDE_SETTINGS_IN };
-  const command = argv(harness, "builder", { model, brief, workdir, launcher, builderCode, sandbox });
+  const command = argv(harness as Harness, "builder", { model, brief, workdir, launcher, builderCode, sandbox });
   if (!command) throw new Error(`unknown harness ${harness}`);
   return [command[0], ...command[1]];
 }
 
 /** The sandbox policy (JSON is YAML): the harness's API hosts and the host's ntfy port, for the named binaries only. */
-export function builderPolicy({ harness, binaries, ntfyBinaries = [] }) {
+export function builderPolicy({ harness, binaries, ntfyBinaries = [] }: { harness: string; binaries: string[]; ntfyBinaries?: string[] }) {
   // Cursor and OpenCode keep their own TLS: through the TLS-terminating proxy Zen refuses free models (measured 2026-11-22).
-  const apiEndpoint = (host) => TLS_PASSTHROUGH.includes(harness)
+  const apiEndpoint = (host: string) => TLS_PASSTHROUGH.includes(harness)
     ? { host, port: 443, protocol: "tcp", tls: "skip" }
     : endpoint(host, 443);
-  const endpoint = (host, port) => ({ host, port, protocol: "rest", access: "full" });
+  const endpoint = (host: string, port: number) => ({ host, port, protocol: "rest", access: "full" });
   return {
     version: 1,
     filesystem_policy: {
@@ -95,36 +96,39 @@ export function builderPolicy({ harness, binaries, ntfyBinaries = [] }) {
     },
     landlock: { compatibility: "best_effort" },
     network_policies: {
-      [harness]: { name: harness, endpoints: API_HOSTS[harness].map(apiEndpoint), binaries: binaries.map((path) => ({ path })) },
+      [harness]: { name: harness, endpoints: API_HOSTS[harness as keyof typeof API_HOSTS].map(apiEndpoint), binaries: binaries.map((path) => ({ path })) },
       ai_collab: { name: "ai-collab", endpoints: [endpoint(NTFY_HOST, NTFY_PORT)], binaries: [...binaries, ...ntfyBinaries].map((path) => ({ path })) },
     },
   };
 }
 
 /** The lean Claude settings file: feature switches, denied tools, and the capture hooks. */
-export function claudeSettings(events) {
+export function claudeSettings(events: string[]) {
   return { ...CLAUDE_SETTINGS, permissions: { deny: [...CLAUDE_TOOL_DENY, ...CLAUDE_MCP_DENY] }, ...captureHooks("claude", events) };
 }
 
 /** The only MCP servers a Claude builder gets: ai-collab, and code mode when its script exists; none without node. */
-export function claudeMcpConfig({ node, project, codeMode }) {
+export function claudeMcpConfig({ node, project, codeMode }: { node: string; project: string; codeMode: boolean }) {
   if (!node) return { mcpServers: {} };
-  const server = (script) => ({ command: `${TOOLS}/node/bin/node`, args: [`${APP_IN}/${script}`], env: { AI_COLLAB_PROJECT: project, AI_COLLAB_PEER: "claude" } });
+  const server = (script: string) => ({ command: `${TOOLS}/node/bin/node`, args: [`${APP_IN}/${script}`], env: { AI_COLLAB_PROJECT: project, AI_COLLAB_PEER: "claude" } });
   return { mcpServers: { "ai-collab": server("scripts/ai-collab-mcp.mjs"), ...(codeMode ? { "ai-collab-code": server(CODE_MCP) } : {}) } };
 }
 
 /** Hook settings that save every capture payload in the sandbox: Cursor's hooks.json, Codex's, or Claude's settings hooks. */
-export function captureHooks(harness, events) {
+export function captureHooks(harness: string, events: string[]) {
   const command = `${TOOLS}/bin/ob-capture ${harness}`;
   if (harness === "cursor") return { version: 1, hooks: Object.fromEntries(events.map((e) => [e, [{ command }]])) };
   return { hooks: Object.fromEntries(events.map((e) => [e, [{ hooks: [{ type: "command", command }] }]])) };
 }
 
 /** Hook events whose host commands run `oncebitten capture`, read from the host's hooks.json; defaults when none. */
-export function hostCaptureEvents(harness, file) {
-  let hooks = {};
-  try { hooks = JSON.parse(readFileSync(file, "utf8")).hooks ?? {}; } catch { return CAPTURE_EVENTS[harness]; }
-  const captures = (entry) => /oncebitten\S*'?\s+capture/.test(String(entry?.command ?? "")) || (entry?.hooks ?? []).some(captures);
+export function hostCaptureEvents(harness: string, file: string) {
+  let hooks: Record<string, unknown> = {};
+  try { hooks = JSON.parse(readFileSync(file, "utf8")).hooks ?? {}; } catch { return CAPTURE_EVENTS[harness as keyof typeof CAPTURE_EVENTS]; }
+  const captures = (entry: unknown): boolean => {
+    const e = entry as { command?: unknown; hooks?: unknown[] } | undefined;
+    return /oncebitten\S*'?\s+capture/.test(String(e?.command ?? "")) || (e?.hooks ?? []).some(captures);
+  };
   const events = Object.entries(hooks).filter(([, list]) => Array.isArray(list) && list.some(captures)).map(([event]) => event);
-  return events.length ? events : CAPTURE_EVENTS[harness];
+  return events.length ? events : CAPTURE_EVENTS[harness as keyof typeof CAPTURE_EVENTS];
 }
