@@ -162,10 +162,16 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
   }
 
   // Prior recorded step names, read straight from DBOS's operation table: a DBOS.listWorkflowSteps
-  // call inside a workflow would itself be recorded and replay stale on recovery.
+  // call inside a workflow would itself be recorded and replay stale on recovery. A query blip here
+  // must not error every workflow: fall back to "no prior record" (fn re-runs, cuts go unanswered).
   async function priorStepNames(id: string): Promise<string[]> {
-    const { rows } = await pool.query("SELECT function_name FROM dbos.operation_outputs WHERE workflow_uuid = $1", [id]);
-    return rows.map((r: { function_name: string }) => r.function_name);
+    try {
+      const { rows } = await pool.query("SELECT function_name FROM dbos.operation_outputs WHERE workflow_uuid = $1", [id]);
+      return rows.map((r: { function_name: string }) => r.function_name);
+    } catch (error) {
+      log(`workflows: prior step lookup failed for ${id}, treating the run as fresh: ${String(error?.message ?? error)}`);
+      return [];
+    }
   }
 
   function registerDbos(name: string): (input: Json) => Promise<WfValue> {
