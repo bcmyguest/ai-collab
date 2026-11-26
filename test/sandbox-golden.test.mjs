@@ -25,6 +25,8 @@ echo loose > loose.txt
 exit 0
 `;
 const SCRIPT = "#!/bin/sh\nexit 0\n";
+// Staged modes follow the umask, so the golden records them under the private umask hosts run with.
+process.umask(0o077);
 const ID = ["-c", "user.name=Test", "-c", "user.email=test@example.invalid"];
 const readJsonLines = (file) => (existsSync(file) ? readFileSync(file, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)) : []);
 
@@ -46,6 +48,11 @@ function lab(harness) {
   writeFileSync(path.join(home, ".claude", ".credentials.json"), '{"claudeAiOauth":{"accessToken":"golden"}}\n', { mode: 0o600 });
   writeFileSync(path.join(home, ".claude", "settings.json"), "{}\n");
   writeFileSync(path.join(home, "codex-release", "bin", "codex"), SCRIPT, { mode: 0o755 });
+  // A fake Codex login for the codex lab, so the record never depends on (or copies) the host user's own ~/.codex.
+  if (harness === "codex") {
+    mkdirSync(path.join(home, ".codex"), { recursive: true });
+    writeFileSync(path.join(home, ".codex", "auth.json"), '{"tokens":"golden"}\n', { mode: 0o600 });
+  }
   const claudeBin = path.join(home, "claude-release");
   writeFileSync(claudeBin, SCRIPT, { mode: 0o755 });
   const token = path.join(home, "ntfy-token");
@@ -62,7 +69,7 @@ function lab(harness) {
   const agent = path.join(home, "fake-cursor-agent");
   writeFileSync(agent, SCHEDULE_AGENT, { mode: 0o755 });
   const env = {
-    PATH: `${bin}:${process.env.PATH}`, HOME: home, XDG_DATA_HOME: path.join(home, "data"), XDG_CONFIG_HOME: path.join(home, ".config"),
+    PATH: `${bin}:${process.env.PATH}`, HOME: home, CODEX_HOME: path.join(home, ".codex"), XDG_DATA_HOME: path.join(home, "data"), XDG_CONFIG_HOME: path.join(home, ".config"),
     AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: harness, AI_COLLAB_STATE_DIR: path.join(home, "state"), AI_COLLAB_BUILDER_WORKTREES: home,
     AI_COLLAB_OPENSHELL_BIN: OPENSHELL, AI_COLLAB_CURSOR_TREE: tree, AI_COLLAB_CODEX_TREE: path.join(home, "codex-release"),
     AI_COLLAB_CLAUDE_BIN: claudeBin, AI_COLLAB_ONCEBITTEN_BIN: ONCEBITTEN, AI_COLLAB_BUILDER_NODE: node,

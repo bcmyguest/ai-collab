@@ -14,6 +14,9 @@ import { pollCached, publish, querySafe } from "../lib/transport.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { activityRows, interleave, summarize } from "../web/lib/activity-rows.js";
 import { peerEnv } from "./helpers/env.mjs";
+
+// A wake run's env hides operator prompts from chat; tests run outside it.
+delete process.env.AI_COLLAB_WAKE;
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
 
