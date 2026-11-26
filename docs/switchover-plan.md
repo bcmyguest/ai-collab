@@ -266,3 +266,15 @@ Backlog raised by the operator:
 - PR and review from the phone (diff view, comments, approve and land) is a focus; diffs are offered but not the product.
 - Permission mode: sessions the operator starts run in default mode; team, pattern and continuation members stay auto, overridable per team and per instance, settable by slash command.
 - A one-step `ai-collab deploy` so landing doesn't need a terminal.
+
+## 10. Progress 2026-11-26
+
+| Item | Branch / commit | State |
+|---|---|---|
+| Labels, run_in_terminal, DBOS r3, web UX fixes | main ad470854, cd336362, ba67eb79 | landed; runner on DBOS since 08:13 (`workflowEngine: dbos`), rollback = `sqlite` + restart |
+| 4b batch 1: bus store seam + Postgres store (Haiku) | feat/bus-postgres 58d0b0f4 | reviewed; pool error handler + LISTEN reconnect test added after review |
+| 4b batch 2: `ai-collab bus migrate --to postgres` (qwen/opencode) | feat/bus-migrate 44152ea1 | reviewed; ids preserved, refuses non-empty target, `--resume`, `--dry-run` |
+| 4b batch 3: unknown cursor replays from oldest with `reset: true` (Haiku; research + red tests by opencode) | feat/bus-unknown-cursor b02009fc | reviewed; foreign id colliding with a local id stays undetectable (documented) |
+| 4b integrated + runbook | land/bus-postgres df041ce9 | full suite = 4 baseline fails; web build ok; awaiting operator land. Cutover runbook in docs/configuration.md "Bus store" |
+
+Board: bug-phone-messages-to-an-idle-host-sessi (P1) also tracks the "afk hold" label shown while subagents work, a missed Remote Control message, and peer messages truncated at ~2.3k chars.
