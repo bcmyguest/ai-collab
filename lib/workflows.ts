@@ -5,6 +5,9 @@
  * call sites await. DBOS equivalents verified against the 5.7.0 d.ts and docs.dbos.dev:
  * startWorkflow→startWorkflow(workflowID), step→runStep, send/recv→send(idempotencyKey)/recv,
  * status/result→listWorkflows/retrieveWorkflow, cancel→cancelWorkflow, recovery→launch().
+ * Not public API: pendingCount, drain and the send dedupe probe read dbos.notifications, readPriorSteps reads
+ * dbos.operation_outputs, the version guard reads and drains dbos.workflow_status, and runWithTopContext comes
+ * from internal/context. The exact 5.7.0 pin in package.json holds that schema; an SDK upgrade must recheck them.
  */
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import type { WorkflowStatus } from "@dbos-inc/dbos-sdk";
@@ -178,6 +181,18 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
   const ctrls = new Map<string, AbortController>(); // one per live run, so cancel() can abort that workflow's signal
   let launched: Promise<void> | null = null;
 
+  // close() aborts every context signal, like the sqlite engine. DBOS records whatever a step or workflow throws
+  // as a terminal error, so a run unwinding on that abort parks instead: shutdown leaves it PENDING with its
+  // step cut, and the next boot recovers it.
+  async function unlessClosing<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (error) {
+      if (closing.signal.aborted) return await new Promise<never>(() => {});
+      throw error;
+    }
+  }
+
   // Registration must finish before launch; the runner registers at boot, so launch on first async use.
   function ready(): Promise<void> {
     if (!launched) {
@@ -238,7 +253,7 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
           log(`workflows: ${id} parked PENDING until the next boot: ${error instanceof Error ? error.message : String(error)}`);
           return await new Promise<never>(() => {});
         }
-        return await wf(makeContext(id, input, ctrl, prior), input);
+        return await unlessClosing(() => wf(makeContext(id, input, ctrl, prior), input));
       } finally {
         ctrls.delete(id);
       }
@@ -279,9 +294,9 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
         await DBOS.runStep(async () => true, { name: marker });
         consumed += 1;
         if (onCut && k > (priorResults.get(name) ?? 0) && k <= (priorMarkers.get(marker) ?? 0)) {
-          return await DBOS.runStep(async () => await onCut(), { name });
+          return await DBOS.runStep(() => unlessClosing(async () => await onCut()), { name });
         }
-        return await DBOS.runStep(fn, { name });
+        return await DBOS.runStep(() => unlessClosing(fn), { name });
       },
       recv: async (topic: string, { all = false, timeoutSeconds = null } = {}) => {
         if (!all) {

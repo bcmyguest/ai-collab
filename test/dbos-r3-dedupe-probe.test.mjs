@@ -16,11 +16,11 @@ test("the send dedupe probe matches keys exactly, not by prefix", { skip: pgUp ?
   const ids = ["a", "b", "c", "d"].map((x) => `r3d-${x}-${stamp}`);
   const runs = ids.map((id) => wf.startWorkflow("r3d.wait", id, {}));
   try {
-    assert.equal(await wf.send(ids[0], "inbox", "label-empty", { dedupe: `ntfy:${stamp}:` }), true);
-    assert.equal(await wf.send(ids[1], "inbox", "wake", { dedupe: `ntfy:${stamp}` }), true, "ntfy:<id> is a different key from ntfy:<id>:");
-    assert.equal(await wf.send(ids[2], "inbox", "nested", { dedupe: `k-${stamp}::x` }), true);
-    assert.equal(await wf.send(ids[3], "inbox", "plain", { dedupe: `k-${stamp}` }), true, "k is a different key from k::x");
-    assert.equal(await wf.send(ids[3], "inbox", "plain", { dedupe: `k-${stamp}` }), false, "a repeat of the same key is still a duplicate");
+    assert.equal(await wf.send(ids[0], "inbox", "label-empty", { dedupe: `r3d-ntfy:${stamp}:` }), true);
+    assert.equal(await wf.send(ids[1], "inbox", "wake", { dedupe: `r3d-ntfy:${stamp}` }), true, "ntfy:<id> is a different key from ntfy:<id>:");
+    assert.equal(await wf.send(ids[2], "inbox", "nested", { dedupe: `r3d-k-${stamp}::x` }), true);
+    assert.equal(await wf.send(ids[3], "inbox", "plain", { dedupe: `r3d-k-${stamp}` }), true, "k is a different key from k::x");
+    assert.equal(await wf.send(ids[3], "inbox", "plain", { dedupe: `r3d-k-${stamp}` }), false, "a repeat of the same key is still a duplicate");
     assert.deepEqual(await Promise.all(runs), ["label-empty", "wake", "nested", "plain"]);
   } finally {
     await wf.close();

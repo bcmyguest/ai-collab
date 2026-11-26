@@ -16,6 +16,8 @@ Configuration lives in `${XDG_CONFIG_HOME:-~/.config}/ai-collab/`. Keep the toke
 
 `"otlpEndpoint"` is the OTLP/HTTP traces URL every Cursor run reports to (default `http://localhost:6006/v1/traces`, the local Phoenix); `"off"` or `false` turns the traces off. With no `defaults.json` nothing is exported. See [Cursor traces](code-mode.md#cursor-traces).
 
+`"workflowEngine": "dbos"` runs the runner's durable workflows on DBOS Transact over Postgres instead of the SQLite log (default `"sqlite"`); see [DBOS workflow engine](#dbos-workflow-engine).
+
 A session in a git repo without a `projects.json` entry then joins under a project ID made from the origin’s repository name and a hash of its host and repository path. Repos without an origin use their main checkout’s folder name. An empty `.ai-collab-off` file in the repo root keeps that repo out. The first session records the repo in `$AI_COLLAB_STATE_DIR/auto-projects/`, and the UI adds it within 10 seconds. Checkouts with the same origin share one project.
 
 ## Per-workspace settings (projects.json)
@@ -72,6 +74,24 @@ Cursor shell commands use the conversation identity exported by Cursor, so `ai-c
 | `AI_COLLAB_PARENT` | unset | Address (`peer#label`) of the agent that started this one; see [Agents starting agents](messaging.md#agents-starting-agents). A session with it set takes its harness name as its peer and ignores an inherited `AI_COLLAB_SESSION`. |
 
 Invalid values disable the plugin and say why (`ai-collab peers` prints the reason).
+
+## DBOS workflow engine
+
+`lib/workflows.ts` opens the runner's workflows on the engine `AI_COLLAB_WORKFLOW_ENGINE` names, else `defaults.json` `workflowEngine`, else `sqlite`. With `dbos`, `ai-collab postgres up` starts the loopback Postgres container (`deploy/postgres/compose.yaml`); the password lives in `${XDG_CONFIG_HOME:-~/.config}/ai-collab/pg-password` (0600).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `AI_COLLAB_WORKFLOW_ENGINE` | `defaults.json` `workflowEngine`, else `sqlite` | `sqlite` or `dbos`. |
+| `AI_COLLAB_PG_HOST`, `AI_COLLAB_PG_PORT` | `127.0.0.1`, `5432` | Postgres address. |
+| `AI_COLLAB_PG_DATABASE` | `ai_collab` | System database. The DBOS tests use `ai_collab_test` and refuse to run against `ai_collab`. |
+| `AI_COLLAB_PG_PASSWORD_FILE` | `<config dir>/pg-password` | Password file. |
+| `AI_COLLAB_DBOS_VERSION_GUARD` | `refuse` | Boot check for PENDING runs of the runner's workflows recorded under another `applicationVersion`, which DBOS never recovers: `refuse` fails the boot and lists every such run, `drain` cancels them and boots, `off` skips the check (the test suite sets it). |
+
+DBOS replays a PENDING run against its recorded operations by position and recovers only runs recorded under the current `applicationVersion` (`DBOS_APP_VERSION` in `lib/workflows.ts`, `ai-collab-1`). A change to a workflow's sequence of steps, receives or sleeps must bump that constant; `test/dbos-step-sequences.test.mjs` fails until the bump and a new entry in `test/golden/dbos-step-sequences.json`. Deploy a bump only after the old runs drain.
+
+The engine reads DBOS's own tables in four places, because the public API has no equivalent that is safe inside a workflow: `pendingCount` and `drain` read `dbos.notifications`, the send dedupe probe matches `dbos.notifications.message_uuid` (`<key>::<destination>`) so a key spent toward one workflow is spent for all, like the SQLite log, and the prior-step lookup reads `dbos.operation_outputs` to detect cut steps and set `replaying`. The boot version guard reads and drains `dbos.workflow_status`. These reads depend on the 5.7.0 schema; `package.json` pins `@dbos-inc/dbos-sdk` to exactly `5.7.0`, so an SDK upgrade must recheck them. The engine also imports `runWithTopContext` from the SDK's `internal/context` to start a workflow from inside another one as an independent run.
+
+A graceful close (a runner restart) aborts every run's signal; a run that unwinds on it stays PENDING with its current step cut, and the next boot recovers it and answers the cut step with its `onCut`, as on the SQLite log. A run whose prior-step record cannot be read after 5 attempts stays PENDING untouched until the next boot.
 
 The UI server reads its own variables; see [Phone UI](phone-ui.md#ui-settings) and [wake settings](phone-ui.md#wake-compact-and-context-alerts).
 
