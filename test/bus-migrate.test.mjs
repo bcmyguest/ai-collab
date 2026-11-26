@@ -133,6 +133,20 @@ test("migrate refuses a non-empty target unless --resume, which copies only newe
   }
 }));
 
+test("running --resume twice is idempotent", { skip }, () => withStores(async ({ dir, schema, sqlite }) => {
+  seedEvents(sqlite, 3);
+  sqlite.putFile({ name: "shot.png", data: PNG });
+  await migrate(dir, schema);
+  seedEvents(sqlite, 2, 4);
+  const first = await migrate(dir, schema, { resume: true });
+  const second = await migrate(dir, schema, { resume: true });
+  assert.equal(second.events, 0, "the second resume finds nothing new");
+  assert.equal(second.files, 0, "the second resume re-copies no files rows");
+  const [{ e, f }] = await pgQuery(`SELECT (SELECT COUNT(*)::int FROM ${schema}.events) AS e, (SELECT COUNT(*)::int FROM ${schema}.files) AS f`);
+  assert.deepEqual({ e, f }, { e: 5, f: 1 }, "the target holds each row exactly once");
+  assert.equal(first.nextId, second.nextId, "the sequence does not move on an empty resume");
+}));
+
 test("--dry-run prints the counts and writes nothing", { skip }, () => withStores(async ({ dir, schema, sqlite }) => {
   seedEvents(sqlite, 3);
   sqlite.putFile({ name: "note.txt", data: Buffer.from("hi") });
