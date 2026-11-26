@@ -23,4 +23,4 @@ services:
       retries: 12
 secrets:
   pg-password:
-    file: ${AI_COLLAB_PG_PASSWORD_FILE:-$HOME/.config/ai-collab/pg-password}
+    file: ${AI_COLLAB_PG_PASSWORD_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/ai-collab/pg-password}
