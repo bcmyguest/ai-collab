@@ -117,7 +117,7 @@ Delete the files above, then remove these registration lines:
 | `lib/tool-api.mjs` | `&& (!op.available \|\| op.available(env))` in `listed` (only if `available` goes) |
 | `web/server/ui.mjs` | the `runTerminalUi` import; `const runTerminal = runTerminalUi(…)` (2 lines); `runTerminal.watch(item);`; `...runTerminal.snapshot(project.cfg, session),`; `...runTerminal.surfaces(current, now)` in `pushSurfaces`; the two `runTerminal.answer` lines in the `a2ui` action; `runTerminal.close();` |
 | `web/components/a2ui/surface.jsx` | the `ScriptImpl` import and `ScriptImpl` in the catalog list |
-| `web/app/chat.jsx` | the `RunRequests` import and `<RunRequests …/>` |
+| `web/app/chat-console.jsx` | the `RunRequests` import and `<RunRequests …/>` |
 | `docs/` | the rows in `index.md`, `approvals.md`, `phone-ui.md`, `configuration.md` |
 
 `grep -rn "run-terminal\|runTerminal\|RunRequests\|ScriptImpl\|RUN_TERMINAL\|run_in_terminal\|runInTerminal" lib web docs` finds them.
