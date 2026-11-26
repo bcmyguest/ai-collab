@@ -66,6 +66,7 @@ import { readScheduleRuns, readSchedules } from "./schedules.mjs";
 import { quotedReply, usableReplyId } from "../lib/reply-quote.js";
 import { answerMessage, answerText, terminalMessages } from "../lib/operator-messages.js";
 import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a2ui.js";
+import { runTerminalUi } from "./run-terminal.mjs";
 
 export { mentionedNames, mentionedTeams, startOnlyMentions };
 
@@ -405,6 +406,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     }, PUSH_DELAY_MS);
     pushTimer.unref?.();
   }
+  const runTerminal = runTerminalUi({ env, hosted, broadcast, notify: (project, request) => notifier && buzzes(readAlertLevel(env), "question")
+    && notifier.notify(project + ":" + request.id, notice({ project, kind: "approval", id: request.id, sender: request.session, tool: "run in terminal", text: request.reason, important: true })).catch(() => {}) });
 
   // Adds a project once; a hub new to this instance gets its listener, and push keeps its topics open.
   function addProject(item) {
@@ -431,6 +434,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     // Task edits from the CLI or an agent reach open streams through the backend's watch.
     const tasks = hosted ? null : tasksOf(item.project, env);
     const unwatchTasks = tasks ? tasks.watch(broadcast) : () => {};
+    runTerminal.watch(item);
     const project = {
       cfg: item, hub: hubs.get(key), watcher, tasks, unwatchTasks,
       operator: { ...item, peer: "operator", session: "" },
@@ -1167,6 +1171,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       // Projects auto-joined from a session's repo have no projects.json entry, so Close and Delete do not apply.
       autoProjects: shown.map(item => item.cfg.project).filter(name => !readProjectsFile(env).some(entry => entry?.project === name)),
       view: { harness, session, ...(scope ? { scope } : {}) },
+      ...runTerminal.snapshot(project.cfg, session),
       harnesses: harnesses(project, placed(list), last),
       // Unfinished subagent runs ride on each agent for the composer's @session/run picker.
       agents: list.map(agent => {
@@ -1258,8 +1263,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const entries = [...(current.messages || []), ...(current.sessions || []).flatMap(card => card.pending || [])];
     const sent = new Map();
     const now = Date.now();
-    for (const entry of entries) {
-      const surface = surfaceOf(entry, now);
+    for (const surface of [...entries.map(entry => surfaceOf(entry, now)), ...runTerminal.surfaces(current, now)]) {
       if (!surface || sent.has(surface.id)) continue;
       const json = JSON.stringify(surface.operations);
       sent.set(surface.id, json);
@@ -1597,6 +1601,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }
       // AG-UI run input from an A2UI surface: its userAction is the answer, mapped onto the approval or question reply path.
       if (action === "a2ui") {
+        const run = runTerminal.answer(cfg, forwardedProps?.a2uiAction?.userAction, by);
+        if (run) return json(201, run);
         const answer = surfaceAnswer(forwardedProps?.a2uiAction?.userAction);
         if (!answer) reject(400, "Unknown answer");
         return json(201, await answerSurface(project, answer, by));
@@ -1973,6 +1979,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         project.unwatchTasks();
       }
       for (const hub of hubs.values()) hub.close();
+      runTerminal.close();
     },
   };
 }
