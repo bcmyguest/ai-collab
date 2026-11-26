@@ -16,6 +16,7 @@ import { BODY, IDENTITY, MESSAGE_ID, URGENT, WAIT, type JsonSchema, type Surface
 import { postToChannel } from "./channel-post.ts";
 import { taskView, updateTask } from "./task-view.ts";
 import { passJs, type Args, type SurfaceConfig } from "./types.ts";
+import { RUN_TERMINAL_OPS } from "./run-terminal-ops.ts";
 
 // A handler's result is JSON-serialisable: it goes back to the agent as a JSON text.
 export type OpResult = object;
@@ -34,6 +35,8 @@ export interface Op {
   needsSession?: boolean;
   // Resolves the config with the caller's own peer name when none is set (session listings need no peer).
   listing?: boolean;
+  // Listed and callable only when this returns true for the server's environment.
+  available?: (env: NodeJS.ProcessEnv) => boolean;
   handler: (args: Args, ctx: OpContext) => OpResult | Promise<OpResult>;
 }
 
@@ -405,4 +408,5 @@ export const OPS: Op[] = [
     surfaces: ["mcp"],
     handler: (args, { cfg, env }) => startBuilder(passJs(args), passJs({ env, cfg })),
   },
+  ...RUN_TERMINAL_OPS,
 ];
