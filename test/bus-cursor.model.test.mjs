@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "node:test";
+import diagnostics from "node:diagnostics_channel";
 import fc from "fast-check";
 import { pollCached, streamEvents } from "../lib/transport.mjs";
 
@@ -25,6 +26,13 @@ const POLL_SINCE = { all: "all", duration: "1d", unknown: "999999" };
 const PNG = Buffer.from("89504e470d0a1a0a", "hex");
 const SETTLE_MS = 2000;
 const NUM_RUNS = Number(process.env.FC_RUNS ?? 500);
+// Client sockets fetch opened; RestartBus waits until the client has seen each one close.
+const clientSockets = new Set();
+diagnostics.subscribe("undici:client:connected", ({ socket }) => {
+  clientSockets.add(socket);
+  socket.once("close", () => clientSockets.delete(socket));
+});
+const SOCKET_CLOSE_MS = 2000;
 const SEED = process.env.FC_SEED ? { seed: Number(process.env.FC_SEED) } : {};
 
 /** Abstract state: store kind, virtual clock offset, retained log, attachments, and each subscriber's expected stream. */
@@ -312,7 +320,9 @@ class RestartBus {
     for (const rs of r.subs) if (rs) await rs.done;
     r.store.close();
     await startBus(r, port);
-    await sleep(20); // let pooled keep-alive sockets see the FIN from the old server
+    // A pooled keep-alive socket to the old server must be gone before the next request reuses it.
+    const stale = [...clientSockets].map((socket) => new Promise((resolve) => socket.once("close", resolve)));
+    await Promise.race([Promise.all(stale), sleep(SOCKET_CLOSE_MS)]);
     for (const sub of m.subs) if (sub) sub.connected = false;
     await checkInvariants(m, r);
   }
