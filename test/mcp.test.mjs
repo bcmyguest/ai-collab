@@ -35,7 +35,7 @@ test("MCP asks and resumes waiting for a matching phone reply on the broadcast t
     return JSON.parse(result.content[0].text);
   }
 
-  assert.equal((await request("initialize", { protocolVersion: "2025-11-25" })).serverInfo.name, "ai-collab");
+  assert.equal((await request("initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } })).serverInfo.name, "ai-collab");
   assert.deepEqual((await request("tools/list")).tools.map(({ name }) => name), ["ask_question", "wait_for_operator", "wait_for_answer", "reply_to_operator", "send_to_all", "send_to_peer", "list_sessions", "list_agents", "send", "respond", "wait", "inbox", "set_identity", "team_status", "team_start", "channel_history", "interrupt", "pattern_list", "pattern_start", "pattern_status", "pattern_advance", "task_list", "task_update", "builder_start"]);
   const question = await call("ask_question", {
     question: "Which option?", wait_seconds: 0, session: "aabbccddeeff0123",

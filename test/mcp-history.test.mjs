@@ -37,7 +37,7 @@ test("MCP channel_history returns the channel oldest first without advancing the
     return { isError: Boolean(result.isError), text, payload: result.isError ? null : JSON.parse(text) };
   }
 
-  await request("initialize", { protocolVersion: "2025-11-25" });
+  await request("initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
   await sendMessage(loadConfig(peerEnv(fake, { peer: "bob" })), "all", "hello from bob");
   fake.inject(TOPIC, JSON.stringify({ v: 1, kind: "msg", from: "operator", to: "all", body: "operator says hi" }));
 

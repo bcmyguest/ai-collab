@@ -179,7 +179,7 @@ test("the MCP server lists run_code, runs a program in the (fake) sandbox, and a
   writeStore(taskStoreFile("demo", env), doc);
   const server = mcp(env, dir);
   t.after(() => server.close());
-  await server.request("initialize", { protocolVersion: "2025-06-18" });
+  await server.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } });
   const { result: listed } = await server.request("tools/list", {});
   assert.deepEqual(listed.tools.map((tool) => tool.name), ["run_code", "run_read_code"]);
   const code = "const { tasks } = await ai.task_list();\nconst { agents } = await ai.list_agents();\nconst live = new Set(agents.map((a) => a.address));\n"
@@ -217,7 +217,7 @@ test("the MCP server refuses to run when openshell is missing", async (t) => {
   const dir = temp(t);
   const server = mcp({ PATH: "/nonexistent", LD_LIBRARY_PATH: process.env.LD_LIBRARY_PATH, HOME: dir, XDG_DATA_HOME: dir, AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "claude" }, dir);
   t.after(() => server.close());
-  await server.request("initialize", {});
+  await server.request("initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
   const { result } = await server.request("tools/call", { name: "run_code", arguments: { code: "return 1", session: SESSION } });
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /needs OpenShell.*nothing ran/);

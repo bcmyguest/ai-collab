@@ -29,7 +29,7 @@ async function server(t, { setting, openshell }) {
     child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }) + "\n");
     return JSON.parse((await output.next()).value).result;
   };
-  await request("initialize", { protocolVersion: "2025-11-25" });
+  await request("initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
   const call = (name, args = {}) => request("tools/call", { name, arguments: args });
   call.list = async () => (await request("tools/list", {})).tools;
   return call;
