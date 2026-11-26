@@ -28,7 +28,7 @@ test("ensureDatabase creates a missing database and is idempotent", { skip: (awa
     assert.equal(rows[0].db, name);
   } finally {
     await pool.end();
-    const admin = new pg.Pool({ connectionString: pgUrl() });
+    const admin = new pg.Pool({ connectionString: pgUrl({ AI_COLLAB_PG_DATABASE: "postgres" }) }); // the maintenance database, never ai_collab
     await admin.query(`DROP DATABASE ${name}`);
     await admin.end();
   }
