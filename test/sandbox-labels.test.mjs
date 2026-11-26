@@ -1,7 +1,7 @@
 // OpenShell sandboxes carry ai-collab labels: creates pass them, and the cap and cleanup select by them, not by name.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -126,6 +126,15 @@ test("a team release deletes an unlabelled sandbox under its name and logs the l
   assert.deepEqual(names(l), [], "the unlabelled team sandbox is deleted by name");
   assert.match(logs.join("\n"), /legacy/);
   await adapter.shutdown();
+});
+
+test("a fake cursor agent left idle with its stdin open exits 1 and says why", { timeout: 20000 }, async () => {
+  const child = spawn(process.execPath, [CURSOR, "acp"], { env: { ...process.env, FAKE_CURSOR_IDLE_MS: "200" }, stdio: ["pipe", "ignore", "pipe"] });
+  let stderr = "";
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  const code = await new Promise((resolve) => child.on("exit", resolve));
+  assert.equal(code, 1);
+  assert.match(stderr, /idle/);
 });
 
 test("removing one run_code read sandbox leaves the shared code sandbox and the other read sandboxes", async () => {
