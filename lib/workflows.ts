@@ -179,7 +179,7 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
         [applicationVersion, names]);
       ids = rows.map((r: { workflow_uuid: string }) => r.workflow_uuid);
     } catch (error) {
-      log(`workflows: version guard query failed, booting unchecked: ${String(error?.message ?? error)}`);
+      log(`workflows: version guard query failed, booting unchecked: ${error instanceof Error ? error.message : String(error)}`);
       return;
     }
     if (!ids.length) return;
@@ -197,7 +197,7 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
       const { rows } = await pool.query("SELECT function_name FROM dbos.operation_outputs WHERE workflow_uuid = $1", [id]);
       return rows.map((r: { function_name: string }) => r.function_name);
     } catch (error) {
-      log(`workflows: prior step lookup failed for ${id}, treating the run as fresh: ${String(error?.message ?? error)}`);
+      log(`workflows: prior step lookup failed for ${id}, treating the run as fresh: ${error instanceof Error ? error.message : String(error)}`);
       return [];
     }
   }

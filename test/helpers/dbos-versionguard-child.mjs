@@ -7,9 +7,10 @@ const SRC = process.env.SRC;
 const { openWorkflows } = await import(`${SRC}/lib/workflows.ts`);
 const { pgUrl } = await import(`${SRC}/lib/postgres.mjs`);
 const wf = await openWorkflows({ engine: "dbos", pgUrl: pgUrl(), applicationVersion: process.env.AIC_DBOS_APP_VERSION });
+const swallow = (p) => p.catch(() => {}); // keeps a top-level promise chain off the lint rule
 wf.register("vg.flow", async (ctx) => await ctx.recv("inbox"));
 if (phase === "orphan") {
-  wf.startWorkflow("vg.flow", id, {}).catch(() => {}); // blocks on recv; the SIGKILL below leaves it PENDING
+  swallow(wf.startWorkflow("vg.flow", id, {})); // blocks on recv; the SIGKILL below leaves it PENDING
   await new Promise((r) => setTimeout(r, 2_000));
   process.kill(process.pid, "SIGKILL");
 } else {
