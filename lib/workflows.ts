@@ -49,7 +49,7 @@ export interface Workflows {
 }
 
 /** Opens the engine named by `engine`: "sqlite" (default) or "dbos". */
-export async function openWorkflows(opts: { engine?: string; file?: string; pgUrl?: string; now?: NowFn; log?: (m: string) => void }): Promise<Workflows> {
+export async function openWorkflows(opts: { engine?: string; file?: string; pgUrl?: string; now?: NowFn; log?: (m: string) => void; applicationVersion?: string }): Promise<Workflows> {
   if ((opts.engine || "sqlite") === "sqlite") {
     if (!opts.file) throw new Error("openWorkflows: the sqlite engine needs a file");
     return adaptSqlite(openDurable(opts.file, { now: opts.now }));
@@ -130,7 +130,7 @@ const asJson = (value: unknown): Json => (value && typeof value === "object" ? v
 const wfInput = (r: WorkflowStatus): Json => (Array.isArray(r.input) ? asJson(r.input[0]) : asJson(r.input));
 
 /** The DBOS-backed engine. Same surface as openDurable; every query is async (Postgres). */
-async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { pgUrl?: string; now?: NowFn; log?: (m: string) => void }): Promise<Workflows> {
+async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, applicationVersion = "ai-collab-1" }: { pgUrl?: string; now?: NowFn; log?: (m: string) => void; applicationVersion?: string }): Promise<Workflows> {
   const pool = new pg.Pool({ connectionString: pgUrl, max: 5 });
   await pool.query(`CREATE SCHEMA IF NOT EXISTS ai_collab;
     CREATE TABLE IF NOT EXISTS ai_collab.kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -152,7 +152,7 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { 
         for (const name of registry.keys()) if (!dbosFns.has(name)) registerDbos(name);
         // DBOS hashes registered functions into the app version by default; our registrations are one wrapper whose
         // count changes with the code, which would orphan PENDING workflows on every deploy. Pin it instead.
-        DBOS.setConfig({ name: "ai-collab", systemDatabaseUrl: pgUrl, applicationVersion: "ai-collab-1" });
+        DBOS.setConfig({ name: "ai-collab", systemDatabaseUrl: pgUrl, applicationVersion });
         await DBOS.launch();
       })();
     }
