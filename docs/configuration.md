@@ -95,6 +95,18 @@ A graceful close (a runner restart) aborts every run's signal; a run that unwind
 
 The UI server reads its own variables; see [Phone UI](phone-ui.md#ui-settings) and [wake settings](phone-ui.md#wake-compact-and-context-alerts).
 
+## Bus store
+
+`ai-collab-bus` keeps events and attachments in SQLite (`bus.db` under its data directory) unless `AI_COLLAB_BUS_STORE` or `defaults.json` `busStore` selects `postgres`. The environment variable wins over `defaults.json`; any other value stops the bus at start.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `AI_COLLAB_BUS_STORE` | `defaults.json` `busStore`, else `sqlite` | `sqlite` or `postgres`. |
+
+The Postgres store writes to schema `bus` of the database `AI_COLLAB_PG_DATABASE` names (default `ai_collab`), on the container and with the variables of the DBOS engine above. It creates the schema on first open. Ids come from a `bigserial`; each publish runs `NOTIFY bus_events`, and every open stream reads when that notification arrives, so no stream polls. Ids, ordering, `since` values, retention and attachments behave as in the SQLite store.
+
+Events in `bus.db` do not move to Postgres: a bus switched to `postgres` starts with an empty `bus` schema.
+
 ## Topics
 
 Topics are project-scoped, DNS-friendly, and at most 64 characters:
