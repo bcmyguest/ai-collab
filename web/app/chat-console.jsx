@@ -24,12 +24,12 @@ import { ProjectNav } from "./project-nav";
 import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
 import { projectNavigation, projectViewCounts, selectionHash } from "@/lib/selection";
 import { agentName } from "@/lib/sidebar";
-import { isLive, sessionState } from "@/lib/session-state";
+import { sessionState } from "@/lib/session-state";
 import { ActivityRow, Working } from "./activity";
 import { SurfaceContext } from "@/components/a2ui/surface";
 import { NotifyToggle } from "./notify";
 import { DecisionQueue } from "./decisions";
-import { InactiveSessions, SessionList, SessionMenu, StateChip, SubagentList } from "./home";
+import { SessionList, SessionMenu, StateChip, SubagentList } from "./home";
 import { RunningCount } from "./subagent-runs";
 import { Shipped } from "./shipped";
 import { CompactionMap } from "./compactions";
@@ -46,6 +46,8 @@ import { Composer, modelsOf, useModels } from "./chat-composer";
 const PULL_THRESHOLD_PX = 70;
 const PULL_MAX_PX = 110;
 const TICK_MS = 1000;
+// The composer's runtime only sends; the thread list has its own runtime.
+const NO_ENTRIES = [];
 
 // The session's context: tokens used (with the window and a warning when the harness reported one) and its files.
 function ContextChip({ context, rows }) {
@@ -458,9 +460,8 @@ export function Console({ account }) {
         decide={(id, answer) => action("decide", { id, answer }, "Decided")}
         review={(id, decision, note, packet) => action("review", { id, decision, note, ...packet }, decision === "accept" ? "Build accepted" : "Build returned")}
         skip={taskId => action("skip", { taskId }, "Skipped")}
-        open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatRuntimeProvider key={requested + ":" + composeTask} entries={thread} operator={data.operator} onSend={body => sendBridgeRef.current?.(body)}>
-        <>
-        <ChatContainerRoot key={inbox ? "inbox" : home ? "home" : "conversation"} initial={home ? false : "instant"} contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
+        open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatContainerRoot key={inbox ? "inbox" : home ? "home" : "conversation"} initial={home ? false : "instant"} contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
+        <ChatRuntimeProvider key={requested} entries={thread} operator={data.operator}>
         <ChatContainerContent key={requested} className="mx-auto w-full max-w-3xl gap-5 px-3 py-4">
           {!ready && (home || listing || subagents || compactions) && !loadError && <p className="py-16 text-center text-sm text-muted-foreground">Loading sessions…</p>}
           {ready && (home || listing) && <>
@@ -510,6 +511,7 @@ export function Console({ account }) {
           {ready && inline && <Working rows={rows} now={now}/>}
           <ChatContainerScrollAnchor/>
         </ChatContainerContent>
+        </ChatRuntimeProvider>
         <div aria-hidden className={cn("pointer-events-none absolute inset-x-0 z-20 flex justify-center", pullSide === "top" ? "top-0" : "bottom-0")} style={{ transform: `translateY(${pullSide === "top" ? Math.min(pull, PULL_MAX_PX) - 44 : 44 - Math.min(pull, PULL_MAX_PX)}px)`, opacity: pull ? 1 : 0 }}>
           <span data-pull={pull >= PULL_THRESHOLD_PX ? "ready" : "pulling"} className={cn("grid size-9 place-items-center rounded-full border bg-card shadow-md", pull >= PULL_THRESHOLD_PX && "border-primary text-primary")}>
             <RotateCw className="size-4" style={{ transform: `rotate(${pull * 4}deg)` }}/></span>
@@ -517,9 +519,9 @@ export function Console({ account }) {
         <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
           <ScrollButton className="pointer-events-auto shadow-md" aria-label="Scroll to newest"/>
         </div>
-      </ChatContainerRoot>
+      </ChatContainerRoot>)}
       <div role="status" hidden={!notice} className="mx-auto w-full max-w-3xl px-4 text-center text-xs text-muted-foreground">{notice}</div>
-      {queue.length > 0 && <section aria-label="Queued messages" className="mx-auto w-full max-w-3xl border-t bg-background">
+      {!composing && queue.length > 0 && <section aria-label="Queued messages" className="mx-auto w-full max-w-3xl border-t bg-background">
         <h2 className="px-3 py-1 text-xs font-medium text-muted-foreground">Queued messages ({queue.length})</h2>
         <ul className="max-h-48 overflow-y-auto">
           {queue.map(message => <QueueRow key={project + ":" + message.id} message={message} disabled={working || Boolean(message.by && message.by !== account.user?.login)}
@@ -527,7 +529,8 @@ export function Console({ account }) {
               { edit: "Queue updated", cancel: "Message canceled", steer: "Prioritized for delivery" }[queueAction])}/>)}
         </ul>
       </section>}
-      {!home && !listing && <Composer sendBridgeRef={sendBridgeRef} key={requested + ":" + composeTask} conversation={conversationKey(project, composeTask ? "#" + composeTask : level === "session" ? selected.session : "")} initialDraft={composeTask ? `#${composeTask} ` : ""} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
+      {!home && !listing && !patterns && !tasksView && !composing && <ChatRuntimeProvider key={requested + ":" + composeTask} entries={NO_ENTRIES} operator={data.operator} onSend={body => sendBridgeRef.current?.(body)}>
+        <Composer sendBridgeRef={sendBridgeRef} conversation={conversationKey(project, composeTask ? "#" + composeTask : level === "session" ? selected.session : "")} initialDraft={composeTask ? `#${composeTask} ` : ""} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
         placeholder={placeholder} routing={routing} question={question} cancel={() => setQuestion("")} urgentable={!question} replying={replyTo} cancelReply={() => setReplyTo(null)}
         onSend={async (body, urgent, command, sendAnyway, image) => {
           // Project chat never runs commands: a leading / there is ordinary chat.
@@ -540,9 +543,8 @@ export function Console({ account }) {
             if (composeHash && location.hash === composeHash) navigate({ project, level: "project" });
           }
           return sent;
-        }}/>}
-        </>
-      </ChatRuntimeProvider>)}
+        }}/>
+      </ChatRuntimeProvider>}
       <ProjectNav links={navLinks}/>
     </main>
   </div></SurfaceContext.Provider>;

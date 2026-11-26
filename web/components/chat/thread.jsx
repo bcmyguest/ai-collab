@@ -13,7 +13,7 @@ import { withMentions } from "@/lib/mentions";
  * Runtime over the thread entries from web/lib/chat-turns.js and project-feed.js.
  * A chat message becomes a text part; an activity row becomes a data part so one ordered
  * list drives the thread, and the renderer dispatches on the entry bound to each message.
- * The composer rides the same runtime: onSend is the console's send path; a result that is
+ * The composer gets its own instance with no entries: onSend is the console's send path; a result that is
  * not true throws MessageNotSentError, which makes the runtime hand the draft back to the input.
  */
 export function ChatRuntimeProvider({ entries, operator, onSend, children }) {
