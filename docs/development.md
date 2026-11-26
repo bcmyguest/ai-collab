@@ -52,7 +52,7 @@ Set `CELLD_BIN` to use a specific binary. The smoke test runs the product DOT in
 
 The runner runs the commands in `~/.config/ai-collab/schedules.json` on a timer: a JSON array of `{name, everyMinutes, cwd, command, timeoutSec, wakeOnTasks, workspace}`. `wakeOnTasks` names a project: when one of its tasks moves to `done` or `blocked`, the runner starts the schedule at once (checked every 15 s, retried while a tick still runs), so the PM hands off the next task without waiting for the timer. Each tick is a durable workflow whose id starts at most once while `runner.db` is intact; a start after downtime runs only the latest due tick. An invalid entry is reported in `configError` and skipped. Keys, the skip and cut rules, and the control routes are in [Scheduled workflows](owned-sessions-contract.md#scheduled-workflows). `GET /v1/schedules` and `POST /v1/schedules/:name/run` on the control socket show and trigger them.
 
-A tick's command runs in its own transient systemd user scope, the same wrapper a start from the phone uses (`runner/schedules.mjs` calls `lib/sessions.ts`), so an agent a tick started survives `systemctl --user restart ai-collab-runner`. `timeoutSec` is passed to the scope as `RuntimeMaxSec` as well as enforced by the runner, so a command cut off by a restart is still held to its deadline. The runner's timeout and abort still send SIGTERM to the command's process group, which reaches a scoped payload because the scope execs in place. Without systemd, or with `AI_COLLAB_SCOPE=off`, the command is spawned detached exactly as before.
+A tick's command runs in its own transient systemd user scope, the same wrapper a start from the phone uses (`runner/schedules.mjs` calls `lib/sessions/scope.ts`), so an agent a tick started survives `systemctl --user restart ai-collab-runner`. `timeoutSec` is passed to the scope as `RuntimeMaxSec` as well as enforced by the runner, so a command cut off by a restart is still held to its deadline. The runner's timeout and abort still send SIGTERM to the command's process group, which reaches a scoped payload because the scope execs in place. Without systemd, or with `AI_COLLAB_SCOPE=off`, the command is spawned detached exactly as before.
 
 Migrate the feature-request PM tick from the `ai-collab-pm.timer` systemd user timer. The runner must run first: its unit is a template and not installed.
 
@@ -77,6 +77,25 @@ Allow the `builder_start` tool on the `ai-collab` MCP server in the host PM's to
 To read a brief from a file, use `ai-collab builder start --task <id> --brief <file>` on the host.
 
 `harness` and `model` use the CLI defaults when omitted. The tool uses the PM's configured project and returns the task, sandbox, worktree, branch, and either the runner session or the systemd unit. It applies the same project pause and sandbox capacity checks as `ai-collab builder start`. The tool is available through direct host MCP calls. The code-mode allowlists exclude builder launches, and sandboxed builders and scheduled ticks have no direct `builder_start` tool.
+
+## Session registry
+
+### Session names
+
+The operator UI shows the harness's own name for a session, recorded in the registry (`lib/sessions/registry.ts` `sessionName`):
+
+- Claude Code: hook input `session_title` (SessionStart, UserPromptSubmit; Claude 2.1.330 schema).
+- Codex: `thread_name` of the thread's newest line in `$CODEX_HOME/session_index.jsonl`.
+- OpenCode: `session_title`, the session title the plugin reads from OpenCode.
+- Cursor exposes none; the UI falls back to the folder and the first prompt's words.
+
+A hook inside a subagent carries the parent's session id, so it reports no name. For Claude Code and OpenCode, a machine label (`agent-<hex>`) is dropped.
+
+### Scoped children
+
+Children start in a transient systemd user scope (`lib/sessions/scope.ts`), so a restart of the unit that started them does not kill them. A unit's default `KillMode=control-group` kills every process in its cgroup; a scope is a sibling cgroup, not a child. The scope execs the payload, so the caller keeps stdio, exit code and PID, and `--collect` drops the unit once the payload exits.
+
+A scope is used only where it helps: systemd-run installed, a user manager reachable, and this process started by systemd (a process started by hand leaves nothing to escape). `AI_COLLAB_SCOPE=on` forces it on, `=off` turns it off. Everywhere else, and whenever a live probe of systemd-run fails, callers spawn exactly as before.
 
 ## Git hooks
 

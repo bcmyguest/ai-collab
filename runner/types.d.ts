@@ -56,7 +56,7 @@ export interface OpenOptions {
   // The harness settings for permissionMode, from PERMISSION_TABLE in runner/contract.mjs.
   permission: Record<string, unknown>;
   place: Place;
-  // Child environment: lib/start.mjs childEnv plus AI_COLLAB_OWNED=<harness>.
+  // Child environment: lib/sessions/launch.ts childEnv plus AI_COLLAB_OWNED=<harness>.
   env: Record<string, string>;
 }
 

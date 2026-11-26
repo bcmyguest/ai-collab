@@ -301,7 +301,7 @@ Verified means the string appears in the local OpenCode 2.2.5 binary (`strings`)
 | `GET /api/model` and `GET /api/command` response items | UNVERIFIED | none |
 | Approval id is the `permission.asked` `data.id`; asks with an auto-reply action get `once` without a card | Adapter behaviour; not run against a live service | test file |
 | `AI_COLLAB_PARENT` export into the agent shell | Not done: the service runs its own shell, so the adapter cannot set a per-session env | owned-sessions.md |
-| Hook stand-down | Keyed by owned record (session id), not by env, because the service is shared | `lib/sessions.ts` `standsDown` |
+| Hook stand-down | Keyed by owned record (session id), not by env, because the service is shared | `lib/sessions/registry.ts` `standsDown` |
 | Model switch | `setModel` calls the live Claude SDK query while idle. The runner saves the selection for resume. |
 | Not implemented | `contextUsage`, question forms (`/form` replies), `resumeData` | |
 ### Codex adapter status
@@ -320,7 +320,7 @@ The CLI handshake at `open` and `resume` is bounded at 60 s: a CLI that does not
 - `steer` with `priority: "now"` folds into the running turn.
 - `listModels` and `listCommands` via a prompt-less probe query, and `supportedCommands` names (with or without `/`).
 - The SDK `env` option replaces the child environment; the adapter passes the runner's `childEnv` plus `AI_COLLAB_OWNED=claude` and `AI_COLLAB_PARENT`.
-- `AI_COLLAB_OWNED` is set but no code reads it. Hooks stand down by the owned record (`lib/sessions.ts` `standsDown`). `docs/research/owned-sessions.md` L158 says the value is `"1"`; `runner/types.d.ts` says `<harness>`. The adapter uses `claude`.
+- `AI_COLLAB_OWNED` is set but no code reads it. Hooks stand down by the owned record (`lib/sessions/registry.ts` `standsDown`). `docs/research/owned-sessions.md` L158 says the value is `"1"`; `runner/types.d.ts` says `<harness>`. The adapter uses `claude`.
 
 ## Adapter events
 
@@ -353,7 +353,7 @@ Activity and control events publish through: `publishActivity` (`lib/activity.mj
 | Native id | The harness's own id: Claude session UUID (chosen by the adapter), Codex `threadId`, OpenCode session id, Cursor ACP `sessionId` |
 | Label | `sessionLabel(nativeId)`: first 16 hex of SHA-256 (`lib/config.mjs`), the same label hooks compute from the same id |
 | Address | `<harness>#<label>`, for example `codex#3f2a9c0d1e4b5a69`; peer name = harness name |
-| Owned record | `$AI_COLLAB_STATE_DIR/<project>/owned/<label>.json`, written by `lib/sessions.ts` `writeOwned` (0600 file, 0700 dir); shape `OwnedRecord` in `runner/types.d.ts` |
+| Owned record | `$AI_COLLAB_STATE_DIR/<project>/owned/<label>.json`, written by `lib/sessions/registry.ts` `writeOwned` (0600 file, 0700 dir); shape `OwnedRecord` in `runner/types.d.ts` |
 | Registry entry | `$AI_COLLAB_STATE_DIR/<project>/registry/<address>.json` via `lib/sessions.mjs` `recordSession`, with `pid`/`pidStart` = the runner, `event: "owned"`; `list_agents`, `list_sessions` and the UI's agent list read it unchanged. At session end the entry is rewritten without a pid, so it shows offline |
 | Workflow | `OwnedRecord.workflowId` = `session-<uuid>` in `runner.db` |
 
@@ -361,7 +361,7 @@ Activity and control events publish through: `publishActivity` (`lib/activity.mj
 
 ## Hook stand-down
 
-`scripts/ai-collab-hook.mjs` calls `lib/sessions.ts` `standsDown(cfg, {label})` right after loading its config. When it returns true, the hook prints its neutral output (`{}`; `{permission:"ask"}` for Cursor permission hooks; `{continue:true}` for Cursor `beforeSubmitPrompt`) and publishes nothing: no activity, status, approval, inbox claim, receipt, Stop wait or registry write. It returns true when `owned/<label>.json` exists for the hook input's session id and its status is not `ended`. Only the process the runner spawned matches: its native session id is the one in the record.
+`scripts/ai-collab-hook.mjs` calls `lib/sessions/registry.ts` `standsDown(cfg, {label})` right after loading its config. When it returns true, the hook prints its neutral output (`{}`; `{permission:"ask"}` for Cursor permission hooks; `{continue:true}` for Cursor `beforeSubmitPrompt`) and publishes nothing: no activity, status, approval, inbox claim, receipt, Stop wait or registry write. It returns true when `owned/<label>.json` exists for the hook input's session id and its status is not `ended`. Only the process the runner spawned matches: its native session id is the one in the record.
 
 An agent started inside an owned session (say `claude -p` from an owned Claude's Bash) has its own native session id, matches no record, and reports normally. It registers as the owned session's child through `AI_COLLAB_PARENT` (`lib/family.mjs`, `lib/config.mjs` `ownEnv`); the adapter exports that variable into the shell its agent runs commands in (see the adapter rules).
 
@@ -563,7 +563,7 @@ entry points, see [Live OpenShell bootstrap smoke](sandbox-smoke.md).
 | `test/cursor-sandbox.test.mjs`, `test/runner-sandbox.test.mjs` | Sandbox staging (CLI tree, auth, worktree round trip, release on failure) and the sandbox module's argv and lifecycle |
 | `runner/delivery.mjs` | Delivery workflow: reserve, push, confirm, mark or release, expect-reply redelivery |
 | `lib/deliver-push.mjs` | Live push paths (socket, `codex queue`, OpenCode HTTP) and the ack tracker, shared with the UI dispatcher |
-| `lib/sessions.ts` | Owned-record read/write and `standsDown` |
+| `lib/sessions/registry.ts` | Owned-record read/write and `standsDown` |
 | `deploy/ai-collab-runner.service` | User unit template; not installed |
 | `test/runner*.test.mjs` | Tests with the fake adapter and the in-process bus |
 
