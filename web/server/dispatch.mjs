@@ -12,7 +12,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { broadcastTopic, inboxTopic, receiptsTopic } from "../../lib/config.mjs";
-import { BACKOFF_BASE_MS, BACKOFF_MAX_MS, MAX_ATTEMPTS, PUSHED, REDELIVER_MS, TTL_MS, busyWithPush, direct, pushSession, readySession, runCommand } from "../../lib/deliver-push.mjs";
+import { backoffMs, MAX_ATTEMPTS, nextAction, REDELIVER_MS, TTL_MS } from "../../lib/delivery.ts";
+import { PUSHED, busyWithPush, direct, pushSession, readySession, runCommand } from "../../lib/deliver-push.mjs";
 import { formatInbox } from "../../lib/format.mjs";
 import { sessionIdleState } from "../../lib/idle.mjs";
 import { claimInbox, ATTACHMENT_BUDGET_MS, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery, reservedMessage } from "../../lib/inbox.mjs";
@@ -27,6 +28,8 @@ export { MAX_ATTEMPTS, REDELIVER_MS, TTL_MS };
 const TICK_MS = 5000;
 const CLAIM_LIMIT = 4;
 const ANSWERS_MAX = 5000;
+// An undelivered message has no record here yet: no start for the TTL, no redelivery schedule.
+const FIRST_PUSH = { firstAt: null, pushes: 0, dueAt: null };
 
 function ledgerFile(cfg) {
   return join(cfg.stateDir, cfg.project, "dispatch.json");
@@ -72,7 +75,7 @@ export function createDispatcher({
   function failed(session, ids) {
     for (const id of ids) {
       const failures = (backoff.get(slot(session, id))?.failures ?? 0) + 1;
-      backoff.set(slot(session, id), { failures, nextAt: now() + Math.min(BACKOFF_BASE_MS * 2 ** (failures - 1), BACKOFF_MAX_MS) });
+      backoff.set(slot(session, id), { failures, nextAt: now() + backoffMs(failures) });
     }
   }
 
@@ -164,7 +167,7 @@ export function createDispatcher({
     const entries = readLedger(cfg);
     const sessions = listSessions(cfg).filter((s) => PUSHED.has(s.harness) && s.online);
     for (const session of sessions) {
-      if (!await ready(session, active)) continue;
+      if (nextAction(FIRST_PUSH, now(), { acked: false, busy: false, ready: await ready(session, active), cut: false }) !== "push") continue;
       const scfg = { ...cfg, peer: session.peer, session: session.session };
       // The predicate runs before the cap: fyi, broadcasts and messages in backoff or reserved do not use up the claim.
       // A project-chat @mention is not pushed here. claimInbox and the runner deliver it to the session it names.
@@ -197,26 +200,32 @@ export function createDispatcher({
       await refreshAcks(cfg, entries);
       for (const [id, e] of Object.entries(entries)) {
         const session = sessions.find((s) => s.id === e.address);
-        const due = now() - e.lastAt >= REDELIVER_MS;
-        if (acked(id, e.address) || now() - e.firstAt >= TTL_MS || (due && e.attempts >= MAX_ATTEMPTS)) {
+        const state = { firstAt: e.firstAt, pushes: e.attempts, dueAt: e.lastAt + REDELIVER_MS };
+        const decide = async () => nextAction(state, now(), {
+          acked: acked(id, e.address),
+          busy: Boolean(session && busyWithPush(session, active)),
+          ready: Boolean(session) && await ready(session, active),
+          cut: false,
+        });
+        let action = await decide();
+        // Re-check the answer right before redelivering, so one that arrived during the awaits above gets no copy.
+        if (action === "push" && !cooling(session, id)) {
+          await refreshAcks(cfg, { [id]: e });
+          action = await decide();
+        }
+        if (action === "answered" || action === "expired" || action === "dropped") {
           delete entries[id];
           counts.dropped += 1;
-        } else if (due && session && !cooling(session, id) && !busyWithPush(session, active) && await ready(session, active)) {
-          // Re-check the answer right before redelivering, so one that arrived during the awaits above gets no copy.
-          await refreshAcks(cfg, { [id]: e });
-          if (acked(id, e.address)) {
-            delete entries[id];
-            counts.dropped += 1;
-            continue;
-          }
-          const scfg = { ...cfg, peer: session.peer, session: session.session };
-          const again = { ...e.message, attempt: e.attempts + 1, attempts: MAX_ATTEMPTS };
-          // Redelivery reserves an id that is already seen, so the seen list can be trimmed without exposing it.
-          const owned = await reserveDelivery(scfg, [id], { allowSeen: true });
-          if (owned.length && await dispatchIds(session, scfg, await textFor(scfg, [again]), { urgent: again.urgent === true, ids: [id] }) === "delivered") {
-            Object.assign(e, { lastAt: now(), attempts: e.attempts + 1 });
-            counts.redelivered += 1;
-          }
+          continue;
+        }
+        if (action !== "push" || cooling(session, id)) continue;
+        const scfg = { ...cfg, peer: session.peer, session: session.session };
+        const again = { ...e.message, attempt: e.attempts + 1, attempts: MAX_ATTEMPTS };
+        // Redelivery reserves an id that is already seen, so the seen list can be trimmed without exposing it.
+        const owned = await reserveDelivery(scfg, [id], { allowSeen: true });
+        if (owned.length && await dispatchIds(session, scfg, await textFor(scfg, [again]), { urgent: again.urgent === true, ids: [id] }) === "delivered") {
+          Object.assign(e, { lastAt: now(), attempts: e.attempts + 1 });
+          counts.redelivered += 1;
         }
       }
     }

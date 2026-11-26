@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { mock, test } from "node:test";
 import fc from "fast-check";
-import { MAX_ATTEMPTS, REDELIVER_MS, TTL_MS } from "../lib/deliver-push.mjs";
+import { MAX_ATTEMPTS, nextAction, REDELIVER_MS, TTL_MS } from "../lib/delivery.ts";
 import { openDurable } from "../runner/durable.mjs";
 
 // DELIVERY_IMPL points the model at another delivery.mjs, e.g. a scratch copy with a planted bug.
@@ -95,6 +95,13 @@ async function checkInvariants(m, r) {
     assert.ok(rows.every((p) => p.attempt === 1 || !p.busy), `push while busy on ${msg.id}`);
     assert.ok(rows.length <= MAX_ATTEMPTS, `${rows.length} pushes on ${msg.id}, limit ${MAX_ATTEMPTS}`);
     msg.pushed = rows.length > 0;
+    // Every push must be one the shared policy allows at its time: TTL, redelivery gap, answer, attempt cap, busy.
+    for (const [i, p] of rows.entries()) {
+      const dueAt = i === 0 ? null : rows[i - 1].at + REDELIVER_MS;
+      const acked = msg.ackSeq !== null && msg.ackSeq < p.seq;
+      const action = nextAction({ firstAt: msg.createdAt, pushes: p.attempt - 1, dueAt }, p.at, { acked, busy: p.busy, ready: true, cut: false });
+      assert.equal(action, "push", `policy forbids attempt ${p.attempt} on ${msg.id}: ${action}`);
+    }
     const attempts = rows.map((p) => p.attempt);
     assert.equal(new Set(attempts).size, attempts.length, `an attempt was pushed twice on ${msg.id}`);
     const status = r.durable.status(workflowId(msg.id));
