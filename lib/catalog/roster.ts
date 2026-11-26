@@ -44,9 +44,9 @@ export async function createTeam(cfg: CatalogConfig, name: string, members: stri
 }
 
 /** Starts a team member, or a pattern run when `member` is a role of a pattern named `name`. */
-export async function teamStart(cfg: CatalogConfig, name: string, member: string, task: string, env: NodeJS.ProcessEnv = process.env, { start = startSession as StartFn, models }: { start?: StartFn; models?: Models } = {}): Promise<Record<string, unknown>> {
+export async function teamStart(cfg: CatalogConfig, name: string, member: string, task: string, env: NodeJS.ProcessEnv = process.env, { start = startSession as unknown as StartFn, models }: { start?: StartFn; models?: Models } = {}): Promise<Record<string, unknown>> {
   if (patternWithRole(cfg, name, member, env)) {
-    const { startRun } = await import("../pattern-runs.mjs") as { startRun: StartRunFn };
+    const { startRun } = await import("../pattern-runs.mjs") as unknown as { startRun: StartRunFn };
     const result = await startRun(cfg, name, task, env, { start, models });
     return { team: name, member, status: result.status, session: result.session || "", detail: result.detail || "", ...(result.id ? { id: result.id } : {}) };
   }
