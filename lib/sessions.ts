@@ -69,8 +69,7 @@ const INDEX_TAIL_BYTES = 256 * 1024;
 // A worktree or subagent label such as agent-a3c26b3960e76171e repeats the address and names nothing.
 export const MACHINE_NAME = /^agent-[0-9a-f]{8,}$/i;
 
-// How to continue a session headless with a new prompt; resumed runs deliver queued messages through their hooks.
-// Codex's run carries CODEX_HOOK_TRUST and --skip-git-repo-check, or a run in a fresh worktree fires no hooks.
+// Headless resume command per harness; Codex needs CODEX_HOOK_TRUST or a fresh worktree fires no hooks.
 const RESUME: Record<string, (id: string, requireRunCode: boolean) => string> = {
   claude: (id) => `claude -p --resume ${id} "<prompt>"`,
   codex: (id, requireRunCode) => {
@@ -168,10 +167,7 @@ export async function recordSession(cfg: SessionCfg, { id, cwd, harness, event, 
   if (cfg.auto && isAbsolute(cfg.root || "")) writeState(join(cfg.stateDir, "auto-projects", `${cfg.project}.json`), { root: cfg.root });
 }
 
-/**
- * Stores this session's name, activity line and tags in its registry entry, shown by list_agents.
- * A field left undefined keeps its value; "" or [] clears it. Throws until a hook has registered the session.
- */
+/** Stores name, activity and tags in this session's registry entry; undefined keeps a field, "" or [] clears it. */
 export async function setIdentity(cfg: SessionCfg, { name, activity, tags }: { name?: string; activity?: string; tags?: string[] } = {}): Promise<Identity> {
   if (!cfg.session) throw new Error("Pass the session label supplied by the ai-collab hook");
   if (name !== undefined && name !== "" && !(typeof name === "string" && NAME.test(name))) throw new Error("name must be 1-40 letters, digits, spaces, or . _ -");
@@ -222,10 +218,7 @@ export function sessionDirectory(cfg: SessionCfg): Record<string, unknown>[] {
   }));
 }
 
-/**
- * list_agents: this project's sessions with their set_identity fields, newest activity first; online ones only unless all.
- * tags keeps only sessions that carry every listed tag. Shows no cwd or resume command (list_sessions has those).
- */
+/** list_agents: this project's sessions with their set_identity fields, newest first; online only unless all. */
 export function agentDirectory(cfg: SessionCfg, { all = false, tags = [] }: { all?: boolean; tags?: string[] } = {}): Record<string, unknown>[] {
   const has = (s: Session) => tags.every((tag) => cleanIdentity(s).tags?.includes(tag));
   return listSessions(cfg).filter((s) => (all || s.online || s.runningJobs) && has(s)).sort((a, b) => (b.seenAt || 0) - (a.seenAt || 0)).map((s) => ({
@@ -277,10 +270,7 @@ function worktreesDir(root: string): string {
   return root ? join(root, ".claude", "worktrees") + sep : "";
 }
 
-/**
- * The worktree folder a cwd belongs to, or "": the first folder under a worktrees directory, so a session started in
- * one of its subfolders still names (and checks) the worktree itself.
- */
+/** The worktree folder a cwd belongs to, or "": its first folder under a worktrees directory. */
 export function worktreeRoot(cwd: unknown, root = ""): string {
   if (typeof cwd !== "string" || !isAbsolute(cwd)) return "";
   const trees = worktreesDir(root);
@@ -341,10 +331,7 @@ export function listOwned(cfg: SessionCfg): OwnedRecord[] {
   return files.filter((file) => OWNED_LABEL_FILE.test(file)).map((file) => readOwned(cfg, file.slice(0, -5))).filter((r): r is OwnedRecord => Boolean(r));
 }
 
-/**
- * True when the label has an owned record that has not ended, so only the process the runner spawned stands down.
- * An agent started inside it has its own native session id and no record; it registers as the owned session's child (lib/family.mjs).
- */
+/** True when the label has an unended owned record; only the runner's own process stands down (lib/family.mjs). */
 export function standsDown(cfg: SessionCfg | undefined, { label }: { label: string }): boolean {
   if (!cfg?.stateDir || !cfg.project || !SESSION_LABEL.test(label || "")) return false;
   if (!existsSync(join(ownedDir(cfg), `${label}.json`))) return false;
@@ -412,10 +399,7 @@ export function scopeUnitName(kind: string, at: number, label = "", random: () =
   return ["ai-collab", kind, slug, utcStamp(at), random()].filter(Boolean).join("-");
 }
 
-/**
- * Whether trying a scope is right here: systemd-run is installed, this process is a systemd unit with a cgroup to
- * leave, and a user manager socket is there. Returns {ok, why}; why names the reason in either case.
- */
+/** Whether a scope may be tried: systemd-run installed, a systemd parent to leave, a user manager; {ok, why}. */
 export function scopeSupport({ env = process.env, systemdRun = "" }: { env?: NodeJS.ProcessEnv; systemdRun?: string } = {}): ScopeVerdict {
   const mode = env[SCOPE_ENV] || "";
   if (mode && mode !== "on" && mode !== "off") return { ok: false, why: `${SCOPE_ENV} must be on or off` };
@@ -459,10 +443,7 @@ export function resetScopeProbe(): void {
   probed.clear();
 }
 
-/**
- * The argv that runs [file, ...args] in a transient scope. `--` separates the command, so a harness flag is never read
- * as a systemd-run option; RuntimeMaxSec holds the payload to its deadline even if the caller dies.
- */
+/** The systemd-run argv that runs [file, ...args] in a scope; `--` guards flags, RuntimeMaxSec holds the deadline. */
 export function scopeWrap([file, ...args]: string[], { systemdRun, unit, cwd = "", description = "", runtimeMaxSec }: {
   systemdRun: string; unit: string; cwd?: string; description?: string; runtimeMaxSec?: number;
 }): Command {
@@ -475,10 +456,7 @@ export function scopeWrap([file, ...args]: string[], { systemdRun, unit, cwd = "
   ]];
 }
 
-/**
- * The command to spawn for one unit of work: [file, ...args] wrapped in a scope when this host can make one, else as
- * given. Returns {file, args, scoped, unit, why}, why naming the reason either way.
- */
+/** The spawn command for one unit of work: wrapped in a scope when this host can make one; {file, args, scoped, unit, why}. */
 export function scopeLaunch([file, ...args]: string[], { env = process.env, path = env.PATH || "", kind = "session", label = "", at = Date.now(), cwd = "", description = "", runtimeMaxSec }: {
   env?: NodeJS.ProcessEnv; path?: string; kind?: string; label?: string; at?: number; cwd?: string; description?: string; runtimeMaxSec?: number;
 } = {}): LaunchStart {
@@ -545,10 +523,7 @@ async function sdkCompact(sessionId: string, cwd: string): Promise<{ boundary: {
   return { boundary, result };
 }
 
-/**
- * Compaction of a running session. Codex: compact over the local app-server daemon when the thread is loaded there and
- * idle. Otherwise (Claude, Cursor, a busy or unattached Codex thread) send an urgent operator message asking the session to finish its step.
- */
+/** Compacts a running session: Codex through its daemon when idle, else an urgent request to finish the step. */
 async function compactRunning(peer: Session, { cfg, codexLive, runner, env }: {
   cfg?: SessionCfg; codexLive: CodexLive; runner: { kind: string; sandbox?: string }; env: NodeJS.ProcessEnv;
 }): Promise<Outcome> {
@@ -647,10 +622,7 @@ export function controlSession(action: string, peer: Session | undefined, option
   return promise;
 }
 
-/**
- * Interrupts the in-progress turn of a thread loaded in the app-server daemon.
- * Resolves {status:"interrupted"}, {status:"not-running"} (no turn in progress) or {status:"not-loaded"}.
- */
+/** Interrupts a thread's turn in the app-server daemon; resolves interrupted, not-running or not-loaded. */
 export async function codexLiveInterrupt(threadId: string, { cwd, env, command = argv("codex", "interrupt", {}) as Command, timeoutMs = 15_000 }: {
   cwd?: string; env?: NodeJS.ProcessEnv; command?: Command; timeoutMs?: number;
 } = {}): Promise<{ status: string }> {
@@ -822,10 +794,7 @@ function runGit(file: string, args: string[], options: SpawnOptions): Promise<nu
   });
 }
 
-/**
- * The folder a start runs in: the project root, or the origin folder (a session's worktree) when it lies inside the root
- * and still exists. Returns {cwd} or {error}; a missing origin is refused, not replaced by the root.
- */
+/** The folder a start runs in: the root, or the origin folder inside it if it still exists; a missing origin is refused. */
 export function startFolder(root: string, origin = ""): { cwd: string; error?: undefined } | { error: string; cwd?: undefined } {
   if (!origin) return { cwd: root };
   const folder = resolve(origin);
@@ -884,11 +853,7 @@ function readHead(file: string): string {
   }
 }
 
-/**
- * Spawns the harness detached in the project root with its output in a log file under the state dir, then waits up to
- * waitMs for the session id it prints. Resolves {status:"started"|"failed", detail, session?, log}.
- * onEnd({code, signal, log}) runs when the process exits, with the log text of a short session.
- */
+/** Spawns the harness detached with its log file, waits up to waitMs for its session id, and reports onEnd at exit. */
 export async function startSession(cfg: SessionCfg, { harness, prompt, model, mode = "agent", place = "folder", origin = "", codeMode, requireRunCode = false, system = false, env = process.env, run: spawnChild = spawn, git = runGit, now = Date.now, waitMs = ID_WAIT_MS, onEnd }: {
   harness: string; prompt: string; model?: string; mode?: string; place?: string; origin?: string; codeMode?: unknown; requireRunCode?: boolean; system?: boolean;
   env?: NodeJS.ProcessEnv; run?: typeof spawn; git?: typeof runGit; now?: () => number; waitMs?: number;
