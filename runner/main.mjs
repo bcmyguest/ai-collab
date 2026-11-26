@@ -54,7 +54,7 @@ export async function main(env = process.env) {
   try {
     // "dbos" runs the workflows on Postgres (ai-collab postgres up); the sqlite durable log stays the default.
     const engine = env.AI_COLLAB_WORKFLOW_ENGINE || autoDefaults(env)?.workflowEngine || "sqlite";
-    durable = await openWorkflows({ engine, file: db, ...(engine === "dbos" ? { pgUrl: pgUrl(env) } : {}) });
+    durable = await openWorkflows({ engine, file: db, log, ...(engine === "dbos" ? { pgUrl: pgUrl(env) } : {}) });
     // Registered before boot so PENDING ticks recover with the sessions; invalid entries are reported, not fatal.
     const { entries, errors } = loadSchedules(env);
     for (const error of errors) log(`schedule skipped: ${error}`);

@@ -12,6 +12,9 @@ import { runWithTopContext } from "@dbos-inc/dbos-sdk/internal/context";
 import pg from "pg";
 import { openDurable } from "./durable.mjs";
 
+/** The DBOS applicationVersion: bump it whenever a workflow's recorded op sequence changes (test/dbos-step-sequences.test.mjs). */
+export const DBOS_APP_VERSION = "ai-collab-1";
+
 type Json = Record<string, unknown>;
 /** A workflow's result, kv value, or message: the JSON the engines checkpoint verbatim. */
 type WfValue = Json | string | number | boolean | null | undefined | WfValue[];
@@ -19,6 +22,7 @@ type NowFn = () => number;
 type WfFn = (wf: Json, input: Json) => Promise<WfValue>;
 type Schedule = { name: string; everyMs: number; firstStep: string | null; timer: ReturnType<typeof setTimeout> | null };
 type StepRow = { functionID: number; name: string; output: unknown; error: Error | null };
+type StepQuery = (sql: string, params: unknown[]) => Promise<{ rows: { function_name: string }[] }>;
 
 export interface Workflows {
   register(name: string, fn: WfFn): void;
@@ -50,7 +54,7 @@ export interface Workflows {
 }
 
 /** Opens the engine named by `engine`: "sqlite" (default) or "dbos". */
-export async function openWorkflows(opts: { engine?: string; file?: string; pgUrl?: string; now?: NowFn; log?: (m: string) => void; applicationVersion?: string }): Promise<Workflows> {
+export async function openWorkflows(opts: { engine?: string; file?: string } & DbosOpts): Promise<Workflows> {
   if ((opts.engine || "sqlite") === "sqlite") {
     if (!opts.file) throw new Error("openWorkflows: the sqlite engine needs a file");
     return adaptSqlite(openDurable(opts.file, { now: opts.now }));
@@ -130,9 +134,36 @@ const asJson = (value: unknown): Json => (value && typeof value === "object" ? v
 /** DBOS stores workflow arguments as an array; the engine passes one object argument. */
 const wfInput = (r: WorkflowStatus): Json => (Array.isArray(r.input) ? asJson(r.input[0]) : asJson(r.input));
 
+/**
+ * A run's recorded op names, read straight from DBOS's operation table: a DBOS.listWorkflowSteps call inside a
+ * workflow would itself be recorded and replay stale. Retries a failing query with backoff, then throws: an
+ * empty answer would read as "no prior record" and re-run a cut step.
+ */
+export async function readPriorSteps(query: StepQuery, id: string, { attempts = 5, delayMs = 200, log = () => {} }: { attempts?: number; delayMs?: number; log?: (m: string) => void } = {}): Promise<string[]> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      const { rows } = await query("SELECT function_name FROM dbos.operation_outputs WHERE workflow_uuid = $1", [id]);
+      return rows.map((r) => r.function_name);
+    } catch (error) {
+      const why = error instanceof Error ? error.message : String(error);
+      if (attempt >= attempts) throw new Error(`prior steps of ${id} unreadable after ${attempts} attempts: ${why}`, { cause: error });
+      log(`workflows: prior step lookup for ${id} failed (attempt ${attempt} of ${attempts}), retrying: ${why}`);
+      await new Promise((r) => setTimeout(r, delayMs * 2 ** (attempt - 1)));
+    }
+  }
+}
+
+type DbosOpts = {
+  pgUrl?: string; now?: NowFn; log?: (m: string) => void; applicationVersion?: string;
+  /** Test seam: replaces the prior-steps query (default: the engine's pool). */
+  priorStepsQuery?: StepQuery;
+  priorStepsRetry?: { attempts?: number; delayMs?: number };
+};
+
 /** The DBOS-backed engine. Same surface as openDurable; every query is async (Postgres). */
-async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, applicationVersion = "ai-collab-1" }: { pgUrl?: string; now?: NowFn; log?: (m: string) => void; applicationVersion?: string }): Promise<Workflows> {
+async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, applicationVersion = DBOS_APP_VERSION, priorStepsQuery, priorStepsRetry = {} }: DbosOpts): Promise<Workflows> {
   const pool = new pg.Pool({ connectionString: pgUrl, max: 5 });
+  const stepQuery: StepQuery = priorStepsQuery ?? ((sql, params) => pool.query(sql, params));
   await pool.query(`CREATE SCHEMA IF NOT EXISTS ai_collab;
     CREATE TABLE IF NOT EXISTS ai_collab.kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS ai_collab.skipped (id TEXT PRIMARY KEY, name TEXT NOT NULL, input TEXT NOT NULL, reason TEXT NOT NULL, created_at BIGINT NOT NULL, app_version TEXT);
@@ -163,12 +194,11 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
   }
 
   // Upgrade rule: DBOS only recovers PENDING runs recorded under the CURRENT applicationVersion, so a
-  // deliberate bump orphans the old ones (dropped records and reservations). Default "off" leaves them
-  // alone — shared dev databases and parallel test runs hold stale rows. When deploying a bump, set
-  // AI_COLLAB_DBOS_VERSION_GUARD=refuse (boot fails listing foreign-version runs of our own workflows)
-  // or =drain (cancel them, then boot). Bump applicationVersion only after the old fleet has drained.
+  // bump orphans the old ones (dropped records and reservations). AI_COLLAB_DBOS_VERSION_GUARD: refuse
+  // (default: boot fails listing every foreign-version run of our own workflows), drain (cancel them,
+  // then boot) or off (the test suite, whose shared database holds stale rows). Bump only after the old fleet drains.
   async function versionGuard(): Promise<void> {
-    const mode = process.env.AI_COLLAB_DBOS_VERSION_GUARD || "off";
+    const mode = process.env.AI_COLLAB_DBOS_VERSION_GUARD || "refuse";
     if (mode !== "refuse" && mode !== "drain") return;
     const names = [...registry.keys()];
     if (!names.length) return;
@@ -179,27 +209,15 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
         [applicationVersion, names]);
       ids = rows.map((r: { workflow_uuid: string }) => r.workflow_uuid);
     } catch (error) {
-      log(`workflows: version guard query failed, booting unchecked: ${error instanceof Error ? error.message : String(error)}`);
-      return;
+      // A fresh database has no dbos schema until launch() migrates it, so it holds no foreign runs either.
+      const code = (error as { code?: string } | null)?.code;
+      if (code === "42P01" || code === "3F000") return;
+      throw new Error(`workflows: version guard query failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     }
     if (!ids.length) return;
-    const listed = `${ids.slice(0, 5).join(", ")}${ids.length > 5 ? `, … ${ids.length} total` : ""}`;
-    if (mode === "refuse") throw new Error(`workflows: ${ids.length} PENDING run(s) recorded under another application version (${listed}); drain the old fleet first, or boot with AI_COLLAB_DBOS_VERSION_GUARD=drain to cancel them`);
+    if (mode === "refuse") throw new Error(`workflows: ${ids.length} PENDING run(s) recorded under another application version (${ids.join(", ")}); drain the old fleet first, or boot with AI_COLLAB_DBOS_VERSION_GUARD=drain to cancel them`);
     await pool.query("UPDATE dbos.workflow_status SET status = 'CANCELLED', updated_at = $2 WHERE workflow_uuid = ANY($1) AND status IN ('PENDING', 'ENQUEUED')", [ids, now()]);
-    log(`workflows: drained ${ids.length} PENDING run(s) recorded under another application version`);
-  }
-
-  // Prior recorded step names, read straight from DBOS's operation table: a DBOS.listWorkflowSteps
-  // call inside a workflow would itself be recorded and replay stale on recovery. A query blip here
-  // must not error every workflow: fall back to "no prior record" (fn re-runs, cuts go unanswered).
-  async function priorStepNames(id: string): Promise<string[]> {
-    try {
-      const { rows } = await pool.query("SELECT function_name FROM dbos.operation_outputs WHERE workflow_uuid = $1", [id]);
-      return rows.map((r: { function_name: string }) => r.function_name);
-    } catch (error) {
-      log(`workflows: prior step lookup failed for ${id}, treating the run as fresh: ${error instanceof Error ? error.message : String(error)}`);
-      return [];
-    }
+    log(`workflows: drained ${ids.length} PENDING run(s) recorded under another application version: ${ids.join(", ")}`);
   }
 
   function registerDbos(name: string): (input: Json) => Promise<WfValue> {
@@ -211,8 +229,16 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
       ctrls.set(id, ctrl);
       try {
         // Steps recorded by an earlier life of this run: they mark cuts (started, never finished)
-        // and tell the workflow it is replaying.
-        return await wf(makeContext(id, input, ctrl, await priorStepNames(id)), input);
+        // and tell the workflow it is replaying. Without them a cut step would re-run (a second harness
+        // turn), and a thrown error would record a terminal ERROR: park the run PENDING for the next boot.
+        let prior: string[];
+        try {
+          prior = await readPriorSteps(stepQuery, id, { ...priorStepsRetry, log });
+        } catch (error) {
+          log(`workflows: ${id} parked PENDING until the next boot: ${error instanceof Error ? error.message : String(error)}`);
+          return await new Promise<never>(() => {});
+        }
+        return await wf(makeContext(id, input, ctrl, prior), input);
       } finally {
         ctrls.delete(id);
       }
@@ -224,7 +250,7 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
   function makeContext(id: string, input: Json, ctrl: AbortController, prior: string[]) {
     const signal = AbortSignal.any([closing.signal, ctrl.signal]);
     const priorOps = prior.length;
-    let consumed = 0; // recorded ops this run issued or replayed: a step costs 2 (marker + result), each recv and sleep 1
+    let consumed = 0; // recorded rows this run issued or replayed: a step 2 (marker + result), a recv 1 or 2, a sleep 0 or 1
     // Cut detection keys on the occurrence, not the name: the runner repeats step names in loops
     // (wake.reserve, wake.send, wake.wait), so a name anywhere in the record says nothing about *this*
     // occurrence. Occurrence k of a name is cut when the record holds >= k markers but < k results.
@@ -236,7 +262,8 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
     }
     const issued = new Map<string, number>();
     const recvOp = async (topic: string, opts: { timeoutSeconds: number }) => {
-      consumed += 1; // DBOS records every recv, timeouts included, as one operation_outputs row
+      // DBOS records each recv as a DBOS.recv row; a timeout above 0 first records its deadline as a DBOS.sleep row.
+      consumed += opts.timeoutSeconds > 0 ? 2 : 1;
       return await DBOS.recv(topic, opts);
     };
     return {
@@ -288,7 +315,7 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
         function onAbort() { clearTimeout(t); reject(signal.reason); }
         signal.addEventListener("abort", onAbort, { once: true });
       }),
-      sleep: async (ms: number) => { consumed += 1; await DBOS.sleep(ms); },
+      sleep: async (ms: number) => { consumed += ms > 0 ? 1 : 0; await DBOS.sleep(ms); }, // DBOS records no row for ms <= 0
     };
   }
 
@@ -320,20 +347,26 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
     return rows[0] ? mapStatus(rows[0]) : null;
   }
 
-  // DBOS forbids starting a workflow from inside a step; the runner's pattern flow does exactly that
-  // (a step starts role sessions). Such starts are independent workflows, like on the sqlite engine:
-  // run them with a cleared context so DBOS treats them as top-level starts, not child workflows.
-  function startOutsideStep<T>(fn: () => Promise<T>): Promise<T> {
-    return DBOS.isWithinWorkflow() && !DBOS.isInWorkflow() ? runWithTopContext({}, fn) : fn();
+  // A start from inside a workflow is an independent workflow, like on the sqlite engine. DBOS forbids it
+  // inside a step (the pattern flow's steps start role sessions), and from a workflow body it records a
+  // child start, a DBOS.listWorkflows and a late DBOS.getResult row in the caller (the wake's late handoff),
+  // rows `replaying` cannot count. A cleared context makes it a top-level start that records nothing in the
+  // caller; the deterministic workflow id keeps a replayed start idempotent.
+  function outsideWorkflow<T>(fn: () => Promise<T>): Promise<T> {
+    return DBOS.isWithinWorkflow() ? runWithTopContext({}, fn) : fn();
   }
 
-  async function startOnce(name: string, id: string, input: Json): Promise<boolean> {
+  function startOnce(name: string, id: string, input: Json): Promise<boolean> {
+    return outsideWorkflow(() => startOnceTop(name, id, input));
+  }
+
+  async function startOnceTop(name: string, id: string, input: Json): Promise<boolean> {
     await ready();
     // Start first: DBOS dedupes by workflowID (a repeat start returns the first run's handle), so no guard row
     // can strand a message when a crash lands between the guard and the start. The pre-check only informs the
     // boolean; two racing callers both reporting "started" is harmless because the workflow itself runs once.
     const existed = Boolean(await statusRow(id));
-    const h = await startOutsideStep(() => DBOS.startWorkflow(dbosFn(name), { workflowID: id })({ ...input, __id: id }));
+    const h = await DBOS.startWorkflow(dbosFn(name), { workflowID: id })({ ...input, __id: id });
     h.getResult().catch(() => {});
     return !existed;
   }
@@ -448,11 +481,11 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
       // Newest scheduledTime first; a skip sorts above the run it skipped, like the sqlite engine.
       return [...skipped, ...real].sort((a, b) => Date.parse(String(b.scheduledTime)) - Date.parse(String(a.scheduledTime))).slice(0, limit);
     },
-    async startWorkflow(name, id, input) {
+    startWorkflow: (name, id, input) => outsideWorkflow(async () => {
       await ready();
-      const h = await startOutsideStep(() => DBOS.startWorkflow(dbosFn(name), { workflowID: id })({ ...input, __id: id }));
+      const h = await DBOS.startWorkflow(dbosFn(name), { workflowID: id })({ ...input, __id: id });
       return await h.getResult();
-    },
+    }),
     startWorkflowOnce: startOnce,
     async listNamed(name, limit = 100) {
       const rows = await DBOS.listWorkflows({ workflowName: name, limit, sortDesc: true, loadInput: true, loadOutput: true });
@@ -468,11 +501,12 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
       // DBOS dedupes a repeat send by idempotencyKey itself, so a failed send never spends the key and a crash
       // after the send cannot lose the message. The boolean is a presence probe on the notification the key
       // names; DBOS scopes its own key per destination, so the probe matches the sqlite engine's global
-      // dedupe by looking for the key toward ANY destination. If the internal schema ever moves, the probe
-      // degrades to "fresh" and delivery stays exactly-once.
+      // dedupe by looking for the key toward ANY destination. DBOS stores the key as "<key>::<destination>":
+      // match that exactly, since a prefix match makes "k" collide with "k:" or "k::x" (an empty session
+      // label). If the internal schema ever moves, the probe degrades to "fresh" and delivery stays exactly-once.
       if (dedupe) {
         try {
-          const { rows } = await pool.query("SELECT 1 FROM dbos.notifications WHERE LEFT(message_uuid, char_length($1) + 2) = $1 || '::'", [dedupe]);
+          const { rows } = await pool.query("SELECT 1 FROM dbos.notifications WHERE message_uuid = $1 || '::' || destination_uuid LIMIT 1", [dedupe]);
           if (rows.length) return false;
         } catch { /* unknown schema: let idempotencyKey enforce dedupe and report fresh */ }
       }

@@ -1,0 +1,64 @@
+{
+  "ai-collab-1": {
+    "session": [
+      "step:builder.stage",
+      "step:builder.fail",
+      "step:place",
+      "step:open",
+      "step:builder.fail",
+      "step:claim",
+      "step:builder.fail",
+      "step:builder.finish",
+      "recv:\"input\", { all: true }",
+      "step:run.send",
+      "step:run.wait",
+      "step:close",
+      "step:pattern.advance",
+      "step:close"
+    ],
+    "wake": [
+      "step:adopt.check",
+      "step:adopt",
+      "step:wake.reserve",
+      "sleep",
+      "step:wake.send",
+      "step:wake.wait",
+      "step:wake.more",
+      "recv:WAKE_TOPIC, { all: true, timeoutSeconds: 0 }",
+      "step:wake.close",
+      "recv:WAKE_TOPIC, { all: true, timeoutSeconds: 0 }"
+    ],
+    "delivery": [
+      "step:start",
+      "step:snapshot",
+      "step:recheck",
+      "step:mark",
+      "step:reserve",
+      "step:push",
+      "step:mark",
+      "step:release",
+      "step:renew",
+      "step:confirm",
+      "step:mark",
+      "step:release",
+      "step:late",
+      "step:mark",
+      "step:release",
+      "sleep",
+      "sleep",
+      "step:acked"
+    ],
+    "pattern": [
+      "step:pattern.entry",
+      "recv:\"advance\"",
+      "step:pattern.advance",
+      "step:enter",
+      "recv:\"advance\", { name: \"event\" }",
+      "step:leave",
+      "step:enter"
+    ],
+    "scheduled:*": [
+      "step:TICK_STEP"
+    ]
+  }
+}
