@@ -1019,9 +1019,14 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     const request = randomUUID();
     const response = new Promise((resolve) => patternReplies.set(request, resolve));
     try {
-      submit(request);
+      // A rejecting submit (a DBOS start guard, say) answers this request through the race; left
+      // unhandled it would crash the runner instead. On success the branch never settles.
+      // submit must run synchronously here: the result branch below reads the workflow it starts.
+      let started;
+      try { started = Promise.resolve(submit(request)); } catch (error) { started = Promise.reject(error); }
       const outcome = await Promise.race([
         response,
+        started.then(() => new Promise(() => {}), (error) => ({ error: `pattern submit failed: ${error.message}` })),
         durable.result(id).then((reply) => ({ error: reply ? `run ${reply.id} is ${reply.status}` : "Pattern runner stopped" })),
       ]);
       if (outcome.error) fail(409, outcome.error);
