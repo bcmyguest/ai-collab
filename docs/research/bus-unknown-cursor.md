@@ -42,4 +42,15 @@ Ids are per-store sequences — SQLite AUTOINCREMENT (lib/bus.mjs:125,157-160), 
 
 ## The contract batch 3 must add
 
-For every unknown cursor — pruned, future, garbage, foreign — the server replays from the oldest retained event and marks the replay: `reset: true` in the poll JSON and in the first stream line. That turns (b), (c) and the foreign-high form of (d) from silent skips into replays, gives (a) and every poll path a signal clients can act on instead of silent dedup, and transport.mjs must pass the marker through (lib/transport.mjs:161,168) before any client can use it. test/bus-unknown-cursor.test.mjs asserts this contract, one test per case, marked todo until the server implements it.
+For every unknown cursor — pruned, future, garbage, foreign — the server replays from the oldest retained event and marks the replay: `reset: true` in the poll JSON and in the first stream line. That turns (b), (c) and the foreign-high form of (d) from silent skips into replays, gives (a) and every poll path a signal clients can act on instead of silent dedup, and transport.mjs must pass the marker through (lib/transport.mjs:161,168) before any client can use it. test/bus-unknown-cursor.test.mjs asserts this contract, one test per case, on SQLite and Postgres.
+
+## Implemented in batch 3
+
+- `resolve(topics, since)` on each store returns `{since, reset}`. A numeric id that exists in a subscribed topic keeps its since. Any other unknown value (pruned, future, garbage, foreign) returns `since: "all", reset: true`. Durations and unix seconds never reset. Poll checks the id against its topic; stream checks it against every subscribed topic.
+- Poll puts `reset: true` on every JSON line of the replayed response, including the keepalive. Stream puts it on the open line. `messageEvent` keeps the flag, and `streamEvents` calls `onReset` once when the open line carries it.
+- The runner, the dispatcher and the inbox log one line per response that carries a reset.
+- The test (d) foreign id (8) sits above the local newest id (5). It covers only the non-colliding case.
+
+## Known limitation: a colliding foreign id
+
+A foreign id equal to a retained local id passes the existence check and reads as a real position: the client skips every event at or below it, and nothing marks the response. Detecting it needs a bus epoch or a provenance field on the cursor. Batch 3 adds neither. The id format stays unchanged.

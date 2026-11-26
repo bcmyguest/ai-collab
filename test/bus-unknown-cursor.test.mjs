@@ -1,22 +1,41 @@
 // Unknown-cursor contract for the bus (4b batch 3): when `since` names an event the store cannot place —
 // pruned, newer than everything, not an id, or from another bus — the server replays from the oldest
 // retained event and says so with reset: true in the poll JSON and in the first stream line.
-// Today the bus replays silently on poll and not at all on stream (docs/research/bus-unknown-cursor.md),
-// so every test here is marked todo until the server implements the contract.
+// Each case runs on SQLite and Postgres (test/bus-store.test.mjs pattern); docs/research/bus-unknown-cursor.md.
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { createBusServer, openBusStore } from "../lib/bus.mjs";
+import { openPostgresBusStore } from "../lib/bus-postgres.mjs";
+import { pgUrl } from "../lib/postgres.mjs";
+import { dbosTestDb } from "./helpers/dbos-env.mjs";
 
 const TOKEN = "tk_unknown_cursor";
 const RETENTION_MS = 3_600_000;
 const STREAM_QUIET_MS = 400;
+const KINDS = ["sqlite", "postgres"];
+const pgUp = await dbosTestDb();
 
-async function openBusTmp() {
+async function dropSchema(schema) {
+  const { default: pg } = await import("pg");
+  const pool = new pg.Pool({ connectionString: pgUrl(process.env), max: 1 });
+  try {
+    await pool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+  } finally {
+    await pool.end();
+  }
+}
+
+async function openBusTmp(kind) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bus-unknown-cursor-"));
-  const store = openBusStore({ file: path.join(dir, "bus.db"), filesDir: path.join(dir, "files"), retentionMs: RETENTION_MS });
+  const filesDir = path.join(dir, "files");
+  const schema = `bus_uc_${randomBytes(4).toString("hex")}`;
+  const store = kind === "sqlite"
+    ? openBusStore({ file: path.join(dir, "bus.db"), filesDir, retentionMs: RETENTION_MS })
+    : await openPostgresBusStore({ url: pgUrl(process.env), filesDir, schema, retentionMs: RETENTION_MS });
   const server = createBusServer({ store, token: TOKEN });
   const url = await server.listen(0);
   return {
@@ -33,8 +52,9 @@ async function openBusTmp() {
     },
     close: async () => {
       await server.close();
-      store.close();
+      await store.close();
       fs.rmSync(dir, { recursive: true, force: true });
+      if (kind === "postgres") await dropSchema(schema);
     },
   };
 }
@@ -87,54 +107,59 @@ async function assertReplayWithReset(bus, topic, since, retainedIds) {
   assert.deepEqual(messageIds(streamed), retainedIds, `stream since=${since} must replay from the oldest retained event`);
 }
 
-test("a pruned cursor replays from the oldest retained event with reset", { todo: "4b batch 3" }, async () => {
-  const bus = await openBusTmp();
-  try {
-    const early = [];
-    for (const m of ["e1", "e2", "e3"]) early.push(await bus.publish("cur", m));
-    bus.store.prune(Math.floor(Date.now() / 1000) + Math.floor(RETENTION_MS / 1000) + 60);
-    const retained = [];
-    for (const m of ["e4", "e5"]) retained.push(await bus.publish("cur", m));
-    await assertReplayWithReset(bus, "cur", early[1], retained);
-  } finally {
-    await bus.close();
-  }
-});
+for (const kind of KINDS) {
+  const skip = kind === "postgres" && !pgUp && "Postgres not reachable";
 
-test("a cursor newer than every event replays the whole topic with reset", { todo: "4b batch 3" }, async () => {
-  const bus = await openBusTmp();
-  try {
-    const ids = [];
-    for (const m of ["e1", "e2", "e3", "e4", "e5"]) ids.push(await bus.publish("cur", m));
-    await assertReplayWithReset(bus, "cur", String(Number(ids.at(-1)) + 1000), ids);
-  } finally {
-    await bus.close();
-  }
-});
+  test(`${kind}: a pruned cursor replays from the oldest retained event with reset`, { skip }, async () => {
+    const bus = await openBusTmp(kind);
+    try {
+      const early = [];
+      for (const m of ["e1", "e2", "e3"]) early.push(await bus.publish("cur", m));
+      await bus.store.prune(Math.floor(Date.now() / 1000) + Math.floor(RETENTION_MS / 1000) + 60);
+      const retained = [];
+      for (const m of ["e4", "e5"]) retained.push(await bus.publish("cur", m));
+      await assertReplayWithReset(bus, "cur", early[1], retained);
+    } finally {
+      await bus.close();
+    }
+  });
 
-test("a garbage cursor replays the whole topic with reset", { todo: "4b batch 3" }, async () => {
-  const bus = await openBusTmp();
-  try {
-    const ids = [];
-    for (const m of ["e1", "e2", "e3", "e4", "e5"]) ids.push(await bus.publish("cur", m));
-    await assertReplayWithReset(bus, "cur", "not-a-cursor", ids);
-  } finally {
-    await bus.close();
-  }
-});
+  test(`${kind}: a cursor newer than every event replays the whole topic with reset`, { skip }, async () => {
+    const bus = await openBusTmp(kind);
+    try {
+      const ids = [];
+      for (const m of ["e1", "e2", "e3", "e4", "e5"]) ids.push(await bus.publish("cur", m));
+      await assertReplayWithReset(bus, "cur", String(Number(ids.at(-1)) + 1000), ids);
+    } finally {
+      await bus.close();
+    }
+  });
 
-test("a cursor from another bus replays this bus from the oldest event with reset", { todo: "4b batch 3" }, async () => {
-  const bus = await openBusTmp();
-  const foreign = await openBusTmp();
-  try {
-    const ids = [];
-    for (const m of ["e1", "e2", "e3", "e4", "e5"]) ids.push(await bus.publish("cur", m));
-    let foreignId = "";
-    for (const m of ["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8"]) foreignId = await foreign.publish("cur", m);
-    // foreignId is the foreign bus's 8th id: a number this store cannot place at all.
-    await assertReplayWithReset(bus, "cur", foreignId, ids);
-  } finally {
-    await bus.close();
-    await foreign.close();
-  }
-});
+  test(`${kind}: a garbage cursor replays the whole topic with reset`, { skip }, async () => {
+    const bus = await openBusTmp(kind);
+    try {
+      const ids = [];
+      for (const m of ["e1", "e2", "e3", "e4", "e5"]) ids.push(await bus.publish("cur", m));
+      await assertReplayWithReset(bus, "cur", "not-a-cursor", ids);
+    } finally {
+      await bus.close();
+    }
+  });
+
+  test(`${kind}: a cursor from another bus replays this bus from the oldest event with reset`, { skip }, async () => {
+    const bus = await openBusTmp(kind);
+    const foreign = await openBusTmp(kind);
+    try {
+      const ids = [];
+      for (const m of ["e1", "e2", "e3", "e4", "e5"]) ids.push(await bus.publish("cur", m));
+      let foreignId = "";
+      for (const m of ["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8"]) foreignId = await foreign.publish("cur", m);
+      // foreignId is the foreign bus's 8th id, above this bus's newest (5), so it cannot collide with a retained id.
+      // A foreign id equal to a retained local id is undetectable by id alone (docs/research/bus-unknown-cursor.md).
+      await assertReplayWithReset(bus, "cur", foreignId, ids);
+    } finally {
+      await bus.close();
+      await foreign.close();
+    }
+  });
+}
