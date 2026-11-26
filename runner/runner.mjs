@@ -621,6 +621,10 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
         });
         if (!sent.runId) break;
         await wf.step("wake.wait", () => waitRun(s, sent.runId), { onCut: () => cutRun(s, sent.runId, "runner restarted") });
+        // Keep the recorded "wake.more" step from before the recv-all change: a wake replaying its
+        // second+ batch meets that row at this sequence position, and a recv here threw NonDeterminismError.
+        const more = await wf.step("wake.more", async () => (await wf.pending(WAKE_TOPIC)) > 0);
+        if (!more) break;
         // Non-blocking recv-all: the backlog (empty included) decides whether another turn runs.
         batch = await wf.recv(WAKE_TOPIC, { all: true, timeoutSeconds: 0 });
         if (!batch.length) break;
