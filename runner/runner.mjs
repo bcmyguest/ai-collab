@@ -1,5 +1,6 @@
 // Runner core: one durable "session" workflow per owned session; control calls and ntfy input become durable messages.
 import { isProjectPaused, PROJECT_PAUSED } from "../lib/project-pause.ts";
+import { adaptSqlite } from "../lib/workflows.ts";
 import { randomBytes, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
@@ -112,12 +113,42 @@ function view(s) {
   };
 }
 
+/** Claim handoff between a session workflow and its waiter. On DBOS, boot's pending() launches and
+ * recovers before waiters exist, so a claim that arrives early is kept and delivered to the next take.
+ * An early claim whose waiter never comes (it timed out and dropped before the claim landed) expires
+ * after the TTL instead of leaking; any set or take prunes the stale entries. */
+export function createClaims({ now = Date.now } = {}) {
+  const EARLY_TTL_MS = 10 * 60_000;
+  const waiters = new Map();
+  const early = new Map(); // id → { value, at }: kept until the next take or the TTL
+  function prune() {
+    const at = now();
+    for (const [id, entry] of early) if (at - entry.at >= EARLY_TTL_MS) early.delete(id);
+  }
+  return {
+    take(id) {
+      prune();
+      if (early.has(id)) return Promise.resolve(early.get(id).value);
+      return new Promise((resolve) => waiters.set(id, resolve));
+    },
+    set(id, value) {
+      prune();
+      const resolve = waiters.get(id);
+      if (resolve) { waiters.delete(id); resolve(value); }
+      else early.set(id, { value, at: now() });
+    },
+    drop(id) { waiters.delete(id); early.delete(id); },
+  };
+}
+
 /** Creates the runner over project configs, a Map harness → Adapter and a durable log (runner/durable.mjs). */
-export function createRunner({ projects, adapters, durable, env = process.env, git = runGit, now = Date.now, startGapMs = START_GAP_MS, approvalMs = approvalTimeoutMs(env), watch = true, log = () => {}, scheduleErrors = [], scheduleEntries = [], pumpMs = PUMP_MS, delivery = {} }) {
+export function createRunner({ projects, adapters, durable: rawDurable, env = process.env, git = runGit, now = Date.now, startGapMs = START_GAP_MS, approvalMs = approvalTimeoutMs(env), watch = true, log = () => {}, scheduleErrors = [], scheduleEntries = [], pumpMs = PUMP_MS, delivery = {} }) {
+  // Tests hand createRunner a raw sqlite log; the runner itself passes an openWorkflows engine. One async surface either way.
+  const durable = rawDurable.isAsync === true ? rawDurable : adaptSqlite(rawDurable);
   const configs = new Map(projects.map((cfg) => [cfg.project, cfg]));
   const manualAt = new Map();
   const sessions = new Map();
-  const claims = new Map();
+  const claims = createClaims({ now });
   const continuing = new Set();
   // The wake gate per closed session address: a wake runs after the previous wake of that session.
   const wakeTail = new Map();
@@ -128,6 +159,8 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   let lastPruneAt = -Infinity;
   // In-memory read positions of the pump's peeks, keyed by lane, state file and topic; see recordPeek in lib/inbox.mjs.
   const pumpPeeks = new Map();
+  // Delivery workflow ids this runner has started or recovered; keeps the pump's sync claim filter (accept) off the async status query.
+  const deliveryIds = new Set();
   let pumping = false;
   let pumpSkipTicks = 0;
   let pumpLimitStreak = 0;
@@ -419,7 +452,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     const s = runtime(wf, readOwned(cfg, label) || fail(500, "owned record missing"), holder);
     await recordSession(cfg, { id: opened.nativeId, cwd, harness, event: "owned", proc }).catch(() => {});
     if (!wf.replaying) await enqueuePublish(s, () => publishEvent(cfg, harness, { type: EventType.CUSTOM, name: NOTICE, value: `owned session started (${permissionMode})` }));
-    claims.get(wf.id)?.(s);
+    claims.set(wf.id, s);
     const finishBuilder = (finished) => wf.step("builder.finish", async () => {
       await s.live?.close().catch(() => {});
       s.live = null;
@@ -499,11 +532,10 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   }
 
   // Starts a wake for messages to one closed session; messages that arrive while it runs join its queue instead.
-  function startWake(project, address, messages, { adopt = null } = {}) {
+  async function startWake(project, address, messages, { adopt = null } = {}) {
     const id = `${WAKE}:${address}:${messages.at(-1).id}`;
-    const run = durable.startWorkflowOnce(WAKE, id, { project, address, messages, ...(adopt ? { adopt } : {}) });
-    if (run) run.catch(() => {});
-    return run ? id : null;
+    const started = await durable.startWorkflowOnce(WAKE, id, { project, address, messages, ...(adopt ? { adopt } : {}) });
+    return started ? id : null;
   }
 
   // Wakes a closed session for its queued direct messages: one run takes every unseen message queued before it starts.
@@ -598,9 +630,13 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         });
         if (!sent.runId) break;
         await wf.step("wake.wait", () => waitRun(s, sent.runId), { onCut: () => cutRun(s, sent.runId, "runner restarted") });
-        const more = await wf.step("wake.more", () => durable.pendingCount(wf.id, WAKE_TOPIC) > 0);
+        // Keep the recorded "wake.more" step from before the recv-all change: a wake replaying its
+        // second+ batch meets that row at this sequence position, and a recv here threw NonDeterminismError.
+        const more = await wf.step("wake.more", async () => (await wf.pending(WAKE_TOPIC)) > 0);
         if (!more) break;
-        batch = await wf.recv(WAKE_TOPIC, { all: true });
+        // Non-blocking recv-all: the backlog (empty included) decides whether another turn runs.
+        batch = await wf.recv(WAKE_TOPIC, { all: true, timeoutSeconds: 0 });
+        if (!batch.length) break;
       }
       const result = await wf.step("wake.close", () => endSession(s, "closed again after a message"));
       finished = true;
@@ -610,8 +646,8 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       if (wakeTail.get(address) === gate) wakeTail.delete(address);
       // A finished wake hands any message that arrived after its last check to a new wake.
       if (finished) {
-        const late = durable.drain(wf.id, WAKE_TOPIC);
-        if (late.length) startWake(input.project, address, late, { adopt: input.adopt ?? null });
+        const late = await wf.recv(WAKE_TOPIC, { all: true, timeoutSeconds: 0 });
+        if (late.length) await startWake(input.project, address, late, { adopt: input.adopt ?? null });
       }
     }
   }
@@ -680,15 +716,17 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   durable.register(WAKE, wakeWorkflow);
 
   // An expect-reply message the dispatcher delivered keeps its redelivery: its ledger entry becomes a delivery workflow.
-  function migrateLedger(cfg, started) {
+  async function migrateLedger(cfg, started) {
     const entries = readDispatchLedger(cfg);
     const left = { ...entries };
     for (const [msgId, e] of Object.entries(entries)) {
       if (!e || typeof e !== "object" || !e.message || typeof e.address !== "string") continue;
       const id = `${DELIVERY}:${e.address}:${msgId}`;
-      const run = durable.startWorkflowOnce(DELIVERY, id, { project: cfg.project, address: e.address, message: e.message, redeliver: { pushes: e.attempts ?? 1, firstAt: e.firstAt } });
-      if (run) { run.catch(() => {}); started.push(id); }
-      if (run || durable.status(id)) delete left[msgId];
+      const run = await durable.startWorkflowOnce(DELIVERY, id, { project: cfg.project, address: e.address, message: e.message, redeliver: { pushes: e.attempts ?? 1, firstAt: e.firstAt } });
+      // Any existing run (cut, expired or skipped) counts: the ledger entry is spent and the pump must stop re-claiming it.
+      const known = run || Boolean(await durable.status(id));
+      if (known) { deliveryIds.add(id); delete left[msgId]; }
+      if (run) started.push(id);
     }
     if (Object.keys(left).length !== Object.keys(entries).length) writeDispatchLedger(cfg, left);
   }
@@ -721,7 +759,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     const started = [];
     if (now() - lastPruneAt >= PRUNE_EVERY_MS) {
       lastPruneAt = now();
-      durable.prune([DELIVERY, WAKE], now() - PRUNE_AFTER_MS);
+      await durable.prune([DELIVERY, WAKE], now() - PRUNE_AFTER_MS);
     }
     let wakes = 0;
     // One poll per topic and read position per tick, shared by every session that reads it; a 429 skips its topic for the tick. One tick time keeps first reads on one position.
@@ -731,7 +769,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     const known = new Set();
     for (const cfg of configs.values()) {
       if (!cfg.enabled) continue;
-      migrateLedger(cfg, started);
+      await migrateLedger(cfg, started);
       known.add(statePath(cfg));
       for (const session of listSessions(cfg)) {
         known.add(statePath({ ...cfg, peer: session.peer, session: session.session }));
@@ -745,12 +783,15 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         const scfg = deps.scfgOf(cfg.project, session);
         if (session.online) {
           if (!PUSHED.has(session.harness)) continue;
-          const fresh = (m) => !durable.status(`${DELIVERY}:${session.id}:${m.id}`);
+          const fresh = (m) => !deliveryIds.has(`${DELIVERY}:${session.id}:${m.id}`);
           const messages = await deps.claim(scfg, { commit: false, limit: CLAIM_LIMIT, accept: (m) => direct(m) && fresh(m), ...live }).catch(() => []);
           for (const message of messages) {
             const id = `${DELIVERY}:${session.id}:${message.id}`;
-            const run = durable.startWorkflowOnce(DELIVERY, id, { project: cfg.project, address: session.id, message });
-            if (run) { run.catch(() => {}); started.push(id); }
+            // A false return means the id already has a run (cut, expired or skipped): remember it too, or the same
+            // messages are re-claimed every tick and starve the session once they leave the boot seed window.
+            const startedNow = await durable.startWorkflowOnce(DELIVERY, id, { project: cfg.project, address: session.id, message });
+            deliveryIds.add(id);
+            if (startedNow) started.push(id);
           }
           continue;
         }
@@ -760,7 +801,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         const messages = await deps.claim(scfg, { commit: false, limit: WAKE_BATCH, accept: (m) => direct(m) && m.to === session.id, ...wake }).catch(() => []);
         if (!messages.length) continue;
         const adopt = { nativeId: session.sessionId, cwd: session.cwd, ...(session.model ? { model: session.model } : {}) };
-        const id = startWake(cfg.project, session.id, messages, { adopt });
+        const id = await startWake(cfg.project, session.id, messages, { adopt });
         if (id) { started.push(id); wakes += 1; }
       }
     }
@@ -770,8 +811,8 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   }
 
   /** Delivery and wake workflows, newest first, for the UI and the operator. */
-  function deliveries() {
-    const rows = [...durable.listNamed(DELIVERY, 100), ...durable.listNamed(WAKE, 100)].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 100);
+  async function deliveries() {
+    const rows = [...await durable.listNamed(DELIVERY, 100), ...await durable.listNamed(WAKE, 100)].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 100);
     return { deliveries: rows.map((r) => ({
       id: r.id, kind: r.name === WAKE ? "wake" : "delivery", status: r.status, address: r.input?.address ?? null,
       messageId: r.input?.message?.id ?? r.input?.messages?.at(-1)?.id ?? null, outcome: r.output?.status ?? null, error: r.error ?? null, updatedAt: r.updatedAt,
@@ -823,7 +864,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     if (!patternRun && !builder && now() - lastStartAt < startGapMs) fail(429, "Wait 10 seconds between starts");
     if (!patternRun && !builder) lastStartAt = now();
     const workflowId = `session-${randomUUID()}`;
-    const claimed = new Promise((resolve) => claims.set(workflowId, resolve));
+    const claimed = claims.take(workflowId);
     const timer = new AbortController();
     const timeout = builder ? BUILDER_START_TIMEOUT_MS : START_TIMEOUT_MS;
     try {
@@ -838,12 +879,12 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       ]);
       return { status: "started", session: s.record.address, nativeId: s.record.nativeId, workflowId, ...(taskId ? { taskId } : {}), detail: `${harness} owned session started` };
     } catch (error) {
-      if (continuation && error.status === 504) durable.cancel(workflowId);
+      if (continuation && error.status === 504) await durable.cancel(workflowId);
       if (error.status) throw error;
       throw Object.assign(new Error(`${harness} failed to start: ${error.message}`), { status: 502 });
     } finally {
       timer.abort();
-      claims.delete(workflowId);
+      claims.drop(workflowId);
     }
   }
 
@@ -987,9 +1028,14 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     const request = randomUUID();
     const response = new Promise((resolve) => patternReplies.set(request, resolve));
     try {
-      submit(request);
+      // A rejecting submit (a DBOS start guard, say) answers this request through the race; left
+      // unhandled it would crash the runner instead. On success the branch never settles.
+      // submit must run synchronously here: the result branch below reads the workflow it starts.
+      let started;
+      try { started = Promise.resolve(submit(request)); } catch (error) { started = Promise.reject(error); }
       const outcome = await Promise.race([
         response,
+        started.then(() => new Promise(() => {}), (error) => ({ error: `pattern submit failed: ${error.message}` })),
         durable.result(id).then((reply) => ({ error: reply ? `run ${reply.id} is ${reply.status}` : "Pattern runner stopped" })),
       ]);
       if (outcome.error) fail(409, outcome.error);
@@ -1032,8 +1078,8 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       fail(404, "Unknown runner pattern");
     }
     const currentWorkflow = patternWorkflowId(id);
-    const workflow = durable.status(currentWorkflow) ? currentWorkflow : legacyPatternId(project, id);
-    const status = durable.status(workflow);
+    const workflow = (await durable.status(currentWorkflow)) ? currentWorkflow : legacyPatternId(project, id);
+    const status = await durable.status(workflow);
     if (!status) fail(404, "Unknown runner pattern");
     if (status.status !== "PENDING") fail(409, `run ${id} is ${run.status}`);
     if (!(override === true && typeof confirmation === "string" && RUN_ID.test(confirmation))
@@ -1061,7 +1107,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
         return { status: "steered" };
       }
     }
-    const fresh = durable.send(s.record.workflowId, "input", { text, messageIds }, { dedupe });
+    const fresh = await durable.send(s.record.workflowId, "input", { text, messageIds }, { dedupe });
     if (!fresh) return { status: "duplicate" };
     return { status: s.record.status === "running" ? "queued" : "sent" };
   }
@@ -1160,7 +1206,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
 
   async function reconcileFailedBuilder(record) {
     if (!record.builder || record.status === "ended") return;
-    const workflow = durable.status(record.workflowId);
+    const workflow = await durable.status(record.workflowId);
     if (workflow?.status !== "ERROR") return;
     const reason = workflow.error || "Builder workflow failed";
     try {
@@ -1183,7 +1229,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     await reconcileFailedBuilder(s.record);
     if (s.record.status === "ended") return { status: "ended" };
     if (s.record.status === "running") await s.live?.interrupt().catch(() => {});
-    durable.send(s.record.workflowId, "input", { close: true });
+    await durable.send(s.record.workflowId, "input", { close: true }).catch(() => {});
     const timer = new AbortController();
     await Promise.race([durable.result(s.record.workflowId).catch(() => {}), delay(CLOSE_WAIT_MS, null, { signal: timer.signal }).catch(() => {})]);
     timer.abort();
@@ -1194,16 +1240,19 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   /** Re-runs PENDING session workflows from the durable log (restart rules), then watches ntfy. */
   async function boot() {
     // Scheduled ticks recover too, but only session workflows hold the boot until they claim.
-    const isSession = (id) => durable.status(id)?.name === "session";
-    const sessionIds = durable.pending().filter(isSession);
-    const claimed = sessionIds.map((id) => new Promise((resolve) => claims.set(id, resolve)));
-    const ids = durable.recover();
+    const isSession = async (id) => (await durable.status(id))?.name === "session";
+    const pending = await durable.pending();
+    const sessionIds = [];
+    for (const id of pending) if (await isSession(id)) sessionIds.push(id);
+    for (const r of await durable.listNamed(DELIVERY, 100)) deliveryIds.add(r.id); // the pump's fresh filter survives restarts for the recent window
+    const claimed = sessionIds.map((id) => claims.take(id));
+    const ids = await durable.recover();
     for (const id of sessionIds) watchBuilderFailure(id, durable.result(id));
     const waits = sessionIds.map((id, i) => Promise.race([claimed[i], durable.result(id).catch(() => {})]));
     const timer = new AbortController();
     await Promise.race([Promise.all(waits), delay(START_TIMEOUT_MS, null, { signal: timer.signal }).catch(() => {})]);
     timer.abort();
-    for (const id of sessionIds) claims.delete(id);
+    for (const id of sessionIds) claims.drop(id);
     for (const cfg of configs.values()) {
       for (const record of listOwned(cfg)) await reconcileFailedBuilder(record);
     }
@@ -1212,7 +1261,9 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
       pumpTimer = setInterval(() => pumpDeliveries().catch((error) => log(`delivery pump failed: ${error.message}`)), pumpMs);
       pumpTimer.unref();
     }
-    return ids.filter(isSession);
+    const recovered = [];
+    for (const id of ids) if (await isSession(id)) recovered.push(id);
+    return recovered;
   }
 
   /** Runs a schedule's tick now; fails 404 for an unknown schedule and 429 within MANUAL_RUN_GAP_MS of the last one. */
@@ -1221,9 +1272,10 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     const at = now();
     if (at - (manualAt.get(name) ?? -Infinity) < MANUAL_RUN_GAP_MS) fail(429, `Wait ${MANUAL_RUN_GAP_MS / 1000} seconds between manual runs`);
     manualAt.set(name, at);
-    const result = durable.runScheduled(name);
-    log(`manual run of ${name} as ${result.id} (${result.status}) by ${caller}`);
-    return result;
+    return durable.runScheduled(name).then((result) => {
+      log(`manual run of ${name} as ${result.id} (${result.status}) by ${caller}`);
+      return result;
+    });
   }
 
   // An ntfy event: a phone reply to an owned approval, or a message for an owned session.
@@ -1281,15 +1333,15 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
 
   // A direct message to a closed owned session wakes it. While a wake runs, the message joins that wake's queue.
   // A session seen online outside the runner is left to the hooks and live delivery.
-  function wake(cfg, s, message) {
+  async function wake(cfg, s, message) {
     const address = s.record.address;
     if (seenOutside(cfg, address)) return;
     const inflight = wakeTail.get(address);
     if (inflight) {
-      durable.send(inflight.id, WAKE_TOPIC, message, { dedupe: `ntfy:${message.id}` });
+      await durable.send(inflight.id, WAKE_TOPIC, message, { dedupe: `ntfy:${message.id}` });
       return;
     }
-    startWake(cfg.project, address, [message]);
+    await startWake(cfg.project, address, [message]);
   }
 
   // Queues one inbox item as the session's next input; skips other projects and the session's own messages.
@@ -1297,7 +1349,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     if (s.record.project !== cfg.project) return;
     if (from === s.record.harness && (!sender || sender === s.record.label)) return;
     if (s.record.status === "ended" || wakeTail.has(s.record.address)) {
-      if (isDirect && !s.record.builder) wake(cfg, s, message);
+      if (isDirect && !s.record.builder) await wake(cfg, s, message);
       return;
     }
     // A live session gets the message only after any attachment is in the shared cache, so it reads the file
@@ -1311,14 +1363,14 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   async function watchProject(cfg) {
     const topics = [broadcastTopic(cfg.project), ...[...adapters.keys()].map((h) => inboxTopic(cfg.project, h))];
     const key = `ntfy-cursor:${cfg.project}`;
-    let since = durable.getKv(key) || String(Math.floor(now() / 1000));
+    let since = (await durable.getKv(key)) || String(Math.floor(now() / 1000));
     let backoff = 1000;
     while (!watchers.signal.aborted) {
       try {
         for await (const ev of streamEvents(cfg, topics, { since, signal: watchers.signal, onOpen: () => { backoff = 1000; } })) {
           await onNtfy(cfg, ev.topic, ev);
           since = ev.id;
-          durable.setKv(key, since);
+          await durable.setKv(key, since);
         }
       } catch { /* outage or idle timeout */ }
       if (watchers.signal.aborted) break;
@@ -1358,11 +1410,11 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     start, continueBuilder, startPattern, advancePattern, send, interrupt, compact, respond, setModel, setMode, close, boot, stop, harnesses, deliveries, pump: pumpDeliveries,
     list: () => [...sessions.values()].map(view),
     // Each schedule with the command and folder its schedules.json entry names, and the session it resumes.
-    schedules: () => ({ schedules: durable.schedules().map((s) => ({ ...s, ...entryOf(s.name) })), configError: scheduleErrors }),
+    schedules: async () => ({ schedules: (await durable.schedules()).map((s) => ({ ...s, ...entryOf(s.name) })), configError: scheduleErrors }),
     // One schedule's ticks, each with the session its command resumes so the UI can open that run's timeline.
-    scheduleRuns: (name) => {
+    scheduleRuns: async (name) => {
       const session = sessionOfCommand(scheduleEntries.find((item) => item.name === name)?.command);
-      return durable.scheduleRuns(name).map((run) => (session ? { ...run, session } : run));
+      return (await durable.scheduleRuns(name)).map((run) => (session ? { ...run, session } : run));
     },
     runSchedule,
     get: (address) => view(find(address)),

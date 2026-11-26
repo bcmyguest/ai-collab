@@ -54,6 +54,17 @@ test("a step cut by a close runs its onCut once at recovery and never re-execute
   await second.close();
 });
 
+test("recv-all with timeoutSeconds 0 takes the backlog without waiting", { timeout: 5000 }, async () => {
+  const log = openDurable(":memory:");
+  log.register("empty", async (wf) => await wf.recv("in", { all: true, timeoutSeconds: 0 }));
+  log.register("full", async (wf) => await wf.recv("in", { all: true, timeoutSeconds: 0 }));
+  assert.deepEqual(await log.startWorkflow("empty", "e", {}), [], "an empty backlog returns at once");
+  log.send("f", "in", 1);
+  log.send("f", "in", 2);
+  assert.deepEqual(await log.startWorkflow("full", "f", {}), [1, 2]);
+  await log.close();
+});
+
 test("recv consumes durable messages in order, drops a repeated dedupe key, and all takes the backlog", async () => {
   const log = openDurable(":memory:");
   log.register("flow", async (wf) => [await wf.recv("in"), await wf.recv("in", { all: true })]);

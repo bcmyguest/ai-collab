@@ -1,0 +1,26 @@
+# Local Postgres for the DBOS workflow engine (workflowEngine: "dbos"). Loopback only; the data
+# directory and password live under the user's own paths, so no root and no exposed port are needed.
+# Setup: npm run postgres:setup (creates the password file and starts the container).
+name: ai-collab-postgres
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: ai_collab
+      POSTGRES_DB: ai_collab
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg-password
+    secrets:
+      - pg-password
+    volumes:
+      - ${AI_COLLAB_PG_DATA:-$HOME/.local/state/ai-collab/postgres}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai_collab -d ai_collab"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+secrets:
+  pg-password:
+    file: ${AI_COLLAB_PG_PASSWORD_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/ai-collab/pg-password}

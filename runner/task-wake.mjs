@@ -9,17 +9,17 @@ export function watchTaskFinishes({ file, wake, log = () => {}, everyMs = TASK_W
   let last = null;
   let pending = [];
   const statuses = () => new Map(readStore(file).tasks.map((task) => [task.id, task.status]));
-  const tick = () => {
+  const tick = async () => {
     let now;
     try { now = statuses(); } catch (error) { log(`task wake: ${error.message}`); return; }
     if (last) for (const [id, status] of now) if (FINISHED.has(status) && last.get(id) !== status && !pending.includes(id)) pending.push(id);
     last = now;
     if (!pending.length) return;
     let started = false;
-    try { started = wake(pending) === true; } catch (error) { log(`task wake: ${error.message}`); }
+    try { started = await wake(pending) === true; } catch (error) { log(`task wake: ${error.message}`); }
     if (started) pending = [];
   };
-  tick();
+  void tick();
   const timer = setInterval(tick, everyMs);
   timer.unref();
   return () => clearInterval(timer);
@@ -31,9 +31,9 @@ export function startTaskWakes(entries, runner, { env = process.env, log = () =>
     file: taskStoreFile(entry.wakeOnTasks, env),
     everyMs,
     log,
-    wake: (ids) => {
+    wake: async (ids) => {
       try {
-        const result = runner.runSchedule(entry.name, "task-wake");
+        const result = await runner.runSchedule(entry.name, "task-wake");
         log(`task wake: ${ids.join(", ")} finished; ${entry.name} ${result.status}`);
         return result.status === "started";
       } catch (error) {

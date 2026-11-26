@@ -151,12 +151,12 @@ test("a manual run gets its own id, is rate-limited, logs its caller, and is ski
   const logs = [];
   const runner = createRunner({ projects: [], adapters: new Map(), durable, env: {}, watch: false, now: () => clock.at, log: (m) => logs.push(m) });
 
-  const first = runner.runSchedule("pm", "test-cli");
+  const first = await runner.runSchedule("pm", "test-cli");
   assert.equal(first.status, "started");
   assert.match(first.id, /^pm@manual@[0-9a-f-]{36}$/);
 
   clock.at += 11_000;
-  const second = runner.runSchedule("pm", "test-cli");
+  const second = await runner.runSchedule("pm", "test-cli");
   assert.equal(second.status, "skipped");
   assert.equal(durable.status(second.id).status, "SKIPPED");
   assert.throws(() => runner.runSchedule("pm", "test-cli"), { status: 429 });
@@ -167,10 +167,10 @@ test("a manual run gets its own id, is rate-limited, logs its caller, and is ski
   await durable.close();
 });
 
-test("the schedules view carries the config errors", () => {
+test("the schedules view carries the config errors", async () => {
   const durable = openDurable(":memory:");
   const runner = createRunner({ projects: [], adapters: new Map(), durable, env: {}, watch: false, scheduleErrors: ["schedules.json entry 0: cwd is wrong"] });
-  assert.deepEqual(runner.schedules(), { schedules: [], configError: ["schedules.json entry 0: cwd is wrong"] });
+  assert.deepEqual(await runner.schedules(), { schedules: [], configError: ["schedules.json entry 0: cwd is wrong"] });
   return durable.close();
 });
 
