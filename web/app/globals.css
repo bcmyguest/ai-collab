@@ -124,19 +124,22 @@
 }
 
 /* Touch pointers get a 44px minimum hit area (R-03) without changing the compact visual scale:
-   the invisible expander grows the tap target, never the button. data-tap marks small raw buttons. */
-@media (pointer: coarse) {
-  [data-slot="button"], [data-tap] {
-    position: relative;
-  }
-  [data-slot="button"]::before, [data-tap]::before {
-    content: "";
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    translate: -50% -50%;
-    width: max(100%, 44px);
-    height: max(100%, 44px);
+   the invisible expander grows the tap target, never the button. data-tap marks small raw buttons.
+   The components layer lets a button's own absolute or fixed utility win over position: relative. */
+@layer components {
+  @media (pointer: coarse) {
+    [data-slot="button"], [data-tap] {
+      position: relative;
+    }
+    [data-slot="button"]::before, [data-tap]::before {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      translate: -50% -50%;
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+    }
   }
 }
 
