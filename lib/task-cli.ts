@@ -3,6 +3,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { projectRoot } from "./start.mjs";
 import { STATUSES, TASK_PRIORITIES, clipProgress, importReport, openTasks, priorityOf, renderFeatureRequests, sortTasks, validateTasks } from "./tasks.mjs";
+// Any loadConfig result, the disabled one included; task reads only these fields.
+type TaskCfg = { enabled?: boolean; project?: string; peer?: string; session?: string };
+type Writer = { write: (chunk: string) => void };
+type TaskLine = { id: string; status: string; owner?: string | null; run?: string | null; title: string };
 
 const SET_FIELDS = ["status", "title", "detail", "run", "priority"];
 const USAGE = {
@@ -26,22 +30,22 @@ const HELP_FLAGS = ["--help", "-h"];
 const helpText = () => ["usage: ai-collab task <command>", ...Object.values(USAGE)].join("\n");
 
 // The address of the calling session (peer#label), else the peer name, else "cli".
-function author(cfg) {
+function author(cfg: TaskCfg): string {
   if (cfg.session && cfg.peer) return `${cfg.peer}#${cfg.session}`;
   return cfg.peer || "cli";
 }
 
-function line(task) {
+function line(task: TaskLine): string {
   return `${task.id}\t${task.status}\t${priorityOf(task)}\t${task.owner ?? "-"}\t${task.run ?? "-"}\t${task.title}`;
 }
 
-export async function task([sub, ...rest], { env, cfg, out, err }) {
-  const fail = (key) => { err.write(`ai-collab: ${USAGE[key]}\n`); return 1; };
+export async function task([sub, ...rest]: string[], { env, cfg, out, err }: { env: NodeJS.ProcessEnv; cfg: TaskCfg; out: Writer; err: Writer }): Promise<number> {
+  const fail = (key: keyof typeof USAGE) => { err.write(`ai-collab: ${USAGE[key]}\n`); return 1; };
   // `task --help` and `task <command> --help` print usage instead of treating the flag as an argument.
   if (sub === undefined || sub === "help" || HELP_FLAGS.includes(sub)) { out.write(`${helpText()}\n`); return 0; }
   if (rest.some((a) => HELP_FLAGS.includes(a))) {
     if (!(sub in USAGE)) { err.write(`ai-collab: task: unknown command "${sub}"\n${helpText()}\n`); return 1; }
-    out.write(`ai-collab: ${USAGE[sub]}\n`);
+    out.write(`ai-collab: ${USAGE[sub as keyof typeof USAGE]}\n`);
     return 0;
   }
   if (!cfg.project) { err.write("ai-collab: task: AI_COLLAB_PROJECT is not set and no project matches this folder\n"); return 2; }
@@ -50,7 +54,7 @@ export async function task([sub, ...rest], { env, cfg, out, err }) {
     if (sub === "outcomes") {
       if (rest.length) return fail(sub);
       const { outcomes = [] } = openTasks(cfg.project, env).projectBoard();
-      out.write(JSON.stringify(outcomes.filter(entry => entry.state !== "closed"), null, 2) + "\n");
+      out.write(JSON.stringify(outcomes.filter((entry: { state?: string }) => entry.state !== "closed"), null, 2) + "\n");
       return 0;
     }
     if (sub === "propose-outcome" || sub === "report-outcome") {
@@ -99,7 +103,7 @@ export async function task([sub, ...rest], { env, cfg, out, err }) {
     if (sub === "set") {
       const [id, ...assignments] = rest;
       if (!id || assignments.length < 1) return fail("set");
-      const patch = {};
+      const patch: Record<string, string> = {};
       for (const a of assignments) {
         const at = a.indexOf("=");
         const key = at > 0 ? a.slice(0, at) : "";
@@ -187,7 +191,7 @@ export async function task([sub, ...rest], { env, cfg, out, err }) {
       return 0;
     }
   } catch (error) {
-    err.write(`ai-collab: task ${sub}: ${error.message}\n`);
+    err.write(`ai-collab: task ${sub}: ${(error as Error).message}\n`);
     return 1;
   }
   err.write(`${Object.values(USAGE).join("\n")}\n`);

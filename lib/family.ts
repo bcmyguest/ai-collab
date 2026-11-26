@@ -6,12 +6,13 @@
 import { appendFileSync, readFileSync } from "node:fs";
 import { basename, isAbsolute } from "node:path";
 import { sendMessage } from "./messaging.ts";
+import type { Cfg } from "./messaging.ts";
 import { claimParentNotice } from "./sessions.mjs";
 
-const address = (cfg) => `${cfg.peer}#${cfg.session}`;
+const address = (cfg: Cfg) => `${cfg.peer}#${cfg.session}`;
 
 /** Appends `export AI_COLLAB_PARENT=<this session>` to Claude's env file once, so later Bash commands carry it. */
-export function exportParent(cfg, file) {
+export function exportParent(cfg: Cfg, file: unknown): boolean {
   if (!cfg.session || typeof file !== "string" || !isAbsolute(file)) return false;
   const line = `export AI_COLLAB_PARENT=${address(cfg)}`;
   try {
@@ -26,7 +27,7 @@ export function exportParent(cfg, file) {
 }
 
 /** Sends the parent "started: <child> (<harness>, <folder>)" once per session; the folder name only, never the path. */
-export async function greetParent(cfg, { harness, cwd }) {
+export async function greetParent(cfg: Cfg, { harness, cwd }: { harness?: string; cwd?: unknown }): Promise<boolean> {
   if (!cfg.parent || !cfg.session || !(await claimParentNotice(cfg))) return false;
   const folder = typeof cwd === "string" && cwd ? basename(cwd) : "";
   await sendMessage(cfg, cfg.parent, `started: ${address(cfg)} (${[harness, folder].filter(Boolean).join(", ")})`);
@@ -34,7 +35,7 @@ export async function greetParent(cfg, { harness, cwd }) {
 }
 
 /** How this session starts a child agent that reports back; Claude's shell already carries AI_COLLAB_PARENT. */
-export function childHint(cfg, host) {
+export function childHint(cfg: Cfg, host: string): string {
   if (!cfg.session) return "";
   const prefix = host === "claude" ? "" : `AI_COLLAB_PARENT=${address(cfg)} `;
   return `[ai-collab] An agent you start from your shell in this project joins AI Collab and messages you its address: `
@@ -42,7 +43,7 @@ export function childHint(cfg, host) {
 }
 
 /** Hook context for a child: its own address, its parent's, and how to answer it. */
-export function parentLine(cfg) {
+export function parentLine(cfg: Cfg): string {
   if (!cfg.parent || !cfg.session) return "";
   return `[ai-collab] You were started by the agent ${cfg.parent}; your address is ${address(cfg)}. `
     + `Report to it with the ai-collab send_to_peer tool (to=${JSON.stringify(cfg.parent)}, session=${JSON.stringify(cfg.session)}) `

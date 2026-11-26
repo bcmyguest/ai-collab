@@ -125,7 +125,7 @@ A tick id is recorded with its first step, so a tick starts at most once while `
 
 The command runs with `spawn` (argv, no shell) in its own process group, stdin closed, in `cwd`, with `timeoutSec` as the deadline. A timeout or abort kills the group. A clean exit leaves processes the command started in the background (agents it handed work to) running. Its result is `{ok, exitCode, signal, timedOut, durationMs, tail, scheduledTime, actualTime}`, where `tail` is the last 2000 characters of stdout and stderr. Ticks publish no bus rows: a schedule has no session to publish under.
 
-**Prompt blocks.** A harness command's prompt is the schedule's own prompt, then the project's [mission file](mission.md) (`withMission`, `lib/mission.mjs`), then the [run review](mission.md#the-run-review) (`withReview`, `lib/pm-review.mjs`). Both are appended at run time, so a tick always reads the current files, and a plain script is left exactly as `schedules.json` wrote it.
+**Prompt blocks.** A harness command's prompt is the schedule's own prompt, then the project's [mission file](mission.md) (`withMission`, `lib/mission.mjs`), then the [run review](mission.md#the-run-review) (`withReview`, `lib/pm-review.ts`). Both are appended at run time, so a tick always reads the current files, and a plain script is left exactly as `schedules.json` wrote it.
 
 **PM workspace.** A `pm` entry may set `workspace` to an absolute path. That path is a separate clone of the `cwd` repo's origin, not a linked worktree. At the start of the tick the runner clones it when the directory is missing, and when the clone is clean it runs `git fetch` and `git pull --ff-only` there. A dirty clone is left as it is and the reason is logged. The tick never resets or checks out `cwd`. An existing clone is not reset, even when it has local commits. The command runs in the workspace and the mission is read from there; `projectOfFolder` still uses `cwd`, so the run stays on the registered project. Builder start and merge start keep using that project. Omitting `workspace` leaves the tick in `cwd`.
 
@@ -274,7 +274,7 @@ Rules for every adapter:
 
 - Emit only the events below, through `ctx.emit`. The runner validates each with `eventProblem` and drops malformed ones.
 - Spawn children with `options.env`, `shell: false`, and argv from a fixed template; the prompt is never an argv element that a CLI could read as a flag (`checkPrompt` already rejects a leading `-`).
-- Export `AI_COLLAB_PARENT=<harness>#<label>` (`label` = `sessionLabel(nativeId)`) into the shell environment the agent runs commands in, as `lib/family.mjs` does for hook-driven sessions, so an agent it starts registers as the owned session's child.
+- Export `AI_COLLAB_PARENT=<harness>#<label>` (`label` = `sessionLabel(nativeId)`) into the shell environment the agent runs commands in, as `lib/family.ts` does for hook-driven sessions, so an agent it starts registers as the owned session's child.
 - Map `options.permission` (from the permission table) onto the harness; never widen it.
 - Emit completed text and tool calls as `TEXT_MESSAGE_CHUNK` and `TOOL_CALL_CHUNK`. The bus publisher skips incremental `TEXT_MESSAGE_CONTENT` fragments.
 - Reject `open` with an `Error` whose message the operator can act on. Never print secrets into it.
@@ -363,7 +363,7 @@ Activity and control events publish through: `publishActivity` (`lib/activity.mj
 
 `scripts/ai-collab-hook.mjs` calls `lib/sessions/registry.ts` `standsDown(cfg, {label})` right after loading its config. When it returns true, the hook prints its neutral output (`{}`; `{permission:"ask"}` for Cursor permission hooks; `{continue:true}` for Cursor `beforeSubmitPrompt`) and publishes nothing: no activity, status, approval, inbox claim, receipt, Stop wait or registry write. It returns true when `owned/<label>.json` exists for the hook input's session id and its status is not `ended`. Only the process the runner spawned matches: its native session id is the one in the record.
 
-An agent started inside an owned session (say `claude -p` from an owned Claude's Bash) has its own native session id, matches no record, and reports normally. It registers as the owned session's child through `AI_COLLAB_PARENT` (`lib/family.mjs`, `lib/config.mjs` `ownEnv`); the adapter exports that variable into the shell its agent runs commands in (see the adapter rules).
+An agent started inside an owned session (say `claude -p` from an owned Claude's Bash) has its own native session id, matches no record, and reports normally. It registers as the owned session's child through `AI_COLLAB_PARENT` (`lib/family.ts`, `lib/config.mjs` `ownEnv`); the adapter exports that variable into the shell its agent runs commands in (see the adapter rules).
 
 Known limits:
 

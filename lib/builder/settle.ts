@@ -6,7 +6,7 @@ import { basename, dirname, join } from "node:path";
 import { clipProgress, openTasks, reviewPacket, STATUSES } from "../tasks.mjs";
 import { cleanBuilders } from "../builder-clean.ts";
 import { loadConfig } from "../config.mjs";
-import { task } from "../task-cli.mjs";
+import { task } from "../task-cli.ts";
 import { WORK } from "../sandbox.ts";
 import { BUILDER_HARNESSES, BASE_REF, GIT_TIMEOUT_MS, readState, updateState, oneLine } from "./state.ts";
 import type { BuilderPaths, BuilderState, Env } from "./state.ts";
@@ -170,6 +170,6 @@ async function oncebittenCheck(state: BuilderState, env: Env) {
 async function taskCli(argv: string[], env: Env) {
   let errText = "";
   const sink = { write: () => true };
-  const code = await task(argv.slice(1) as Parameters<typeof task>[0], { env, cfg: loadConfig(env), out: sink, err: { write: (s: string) => { errText += s; return true; } } });
+  const code = await task(argv.slice(1), { env, cfg: loadConfig(env), out: sink, err: { write: (s: string) => { errText += s; return true; } } });
   if (code !== 0) throw new Error(oneLine(errText) || `ai-collab ${argv.join(" ")} exited ${code}`);
 }

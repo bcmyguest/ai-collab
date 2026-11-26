@@ -2,13 +2,25 @@
 // required-edge, and done rules. This walk only records enter, event, and leave.
 import { commitDecided, decide } from "./pattern-runs.mjs";
 
-const countOf = (role) => role.count ?? 1;
+type Role = { id: string; count?: number };
+export type TraceDefinition = { name: string; roles: Role[]; [key: string]: unknown };
+type Token = { role: string; index: number };
+export type TraceOutcome = string | { event: string; role: string; index: number };
+export type TraceStep = { step: "enter" | "event" | "leave" | "done"; role?: string; index?: number; event?: string; refused?: string; kind?: string; to?: string };
+export type Trace = { status: string; reason?: string; active: string; steps: TraceStep[] };
+type TraceRun = {
+  id: string; pattern: string; definition: TraceDefinition; task: string; status: string; active: string; live: Token[];
+  sessions: Record<string, string>; instances: Record<string, string[]>; arrivals: Record<string, unknown>; visits: Record<string, number[]>;
+  handoffs: unknown[]; notes: string[]; error?: string;
+};
+
+const countOf = (role: Role) => role.count ?? 1;
 
 /** The run shape decide reads, with one stand-in session per instance so a trace needs no harness. */
-function traceRun(definition) {
+function traceRun(definition: TraceDefinition): TraceRun {
   const entry = definition.roles[0];
-  const instances = {};
-  const sessions = {};
+  const instances: Record<string, string[]> = {};
+  const sessions: Record<string, string> = {};
   for (const role of definition.roles) {
     const count = countOf(role);
     instances[role.id] = Array.from({ length: count }, (_, index) => `${role.id}#${index}`);
@@ -27,10 +39,10 @@ function traceRun(definition) {
  * Returns { status, reason, active, steps }. status is done, refused, or running.
  * A refused leave leaves the live role where it was.
  */
-export function compileTrace(definition, outcomes, now = () => 0) {
+export function compileTrace(definition: TraceDefinition, outcomes: TraceOutcome[], now = () => 0): Trace {
   const run = traceRun(definition);
-  const steps = [];
-  const enter = (tokens) => {
+  const steps: TraceStep[] = [];
+  const enter = (tokens: Token[]) => {
     for (const token of tokens) steps.push({ step: "enter", role: token.role, index: token.index });
   };
   enter(run.live);
@@ -49,8 +61,8 @@ export function compileTrace(definition, outcomes, now = () => 0) {
     try {
       plan = decide(run, event, caller, false);
     } catch (error) {
-      steps.push({ step: "leave", role: token.role, index: token.index, event, refused: error.message });
-      return { status: "refused", reason: error.message, active: run.active, steps };
+      steps.push({ step: "leave", role: token.role, index: token.index, event, refused: (error as Error).message });
+      return { status: "refused", reason: (error as Error).message, active: run.active, steps };
     }
     if (plan.limit) {
       steps.push({ step: "leave", role: token.role, index: token.index, event, refused: plan.limit });
@@ -60,7 +72,7 @@ export function compileTrace(definition, outcomes, now = () => 0) {
     steps.push({ step: "leave", role: token.role, index: token.index, event, kind: committed.kind, to: plan.handoff.to });
     if (committed.kind === "done" && run.status === "done") steps.push({ step: "done" });
     if (committed.kind === "stall") return { status: "refused", reason: run.error, active: run.active, steps };
-    if (committed.kind === "move") enter(committed.targets.map((target) => ({ role: target.role.id, index: target.index })));
+    if (committed.kind === "move") enter(committed.targets.map((target: { role: Role; index: number }) => ({ role: target.role.id, index: target.index })));
   }
   return { status: run.status, active: run.active, steps };
 }

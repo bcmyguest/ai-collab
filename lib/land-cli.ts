@@ -6,6 +6,13 @@ import { HOST_CHECKOUT } from "./merge-cli.mjs";
 import { operatorConfigs } from "./mode.mjs";
 import { publish } from "./messaging.ts";
 import { withLock } from "./state.mjs";
+import { passJs } from "./surfaces/types.ts";
+import type { Cfg } from "./messaging.ts";
+
+type Writer = { write: (chunk: string) => void };
+type Run = typeof execRun;
+type Publish = (line: string, env: NodeJS.ProcessEnv) => Promise<void>;
+type DeployResult = { status: string; line?: string; to?: string };
 
 const LAND_USAGE = `Usage: ai-collab land request <branch>
 Pushes <branch> (never main) and opens its PR into main, or reuses the open one. Prints the PR URL.
@@ -21,12 +28,16 @@ Prints: deployed <old>..<new> | skipped: <reason> | failed: <reason>
 const lastLine = (text = "") => text.trim().split("\n").pop() ?? "";
 
 // The operator channel: one line per operator config on its broadcast topic.
-async function publishToOperators(line, env) {
-  await Promise.all(operatorConfigs(env).map((cfg) =>
+async function publishToOperators(line: string, env: NodeJS.ProcessEnv): Promise<void> {
+  // operatorConfigs keeps only enabled configs.
+  const configs: Cfg[] = passJs(operatorConfigs(env));
+  await Promise.all(configs.map((cfg) =>
     publish(cfg, broadcastTopic(cfg.project), line, { title: "ai-collab: deploy" })));
 }
 
-export async function land(args, { env = process.env, out, err, run = execRun, cwd = process.cwd() }) {
+export async function land(args: string[], { out, err, run = execRun, cwd = process.cwd() }: {
+  env?: NodeJS.ProcessEnv; out: Writer; err: Writer; run?: Run; cwd?: string;
+}): Promise<number> {
   if (args.length === 0 || args[0] === "help" || args.includes("--help")) {
     out.write(LAND_USAGE);
     return 0;
@@ -41,15 +52,17 @@ export async function land(args, { env = process.env, out, err, run = execRun, c
     out.write(`${url}\n`);
     return 0;
   } catch (error) {
-    err.write(`ai-collab: land: ${error.message}\n`);
+    err.write(`ai-collab: land: ${(error as Error).message}\n`);
     return 1;
   }
 }
 
-export async function deploy(args, {
+export async function deploy(args: string[], {
   env = process.env, out, err, run = execRun, hostCheckout = HOST_CHECKOUT, npm, nodePath = process.execPath,
   publish: send = publishToOperators,
-}) {
+}: {
+  env?: NodeJS.ProcessEnv; out: Writer; err: Writer; run?: Run; hostCheckout?: string; npm?: string[]; nodePath?: string; publish?: Publish;
+}): Promise<number> {
   if (args.includes("--help") || args[0] === "help") {
     out.write(DEPLOY_USAGE);
     return 0;
@@ -61,7 +74,7 @@ export async function deploy(args, {
   // One deploy at a time: a second run (the timer while a deploy is slow) reports and leaves.
   // The lock records its owner pid, so a lock left by a crash is taken over; staleMs covers a full deploy.
   const deployed = readLastDeploy(env)?.deployed;
-  const locked = await withLock(join(stateDir(env), "deploy"), () => deployHost({ run, hostCheckout, env, ifMoved: args.includes("--if-moved"), nodePath, npm, deployed }),
+  const locked = await withLock(join(stateDir(env), "deploy"), async (): Promise<DeployResult> => deployHost(passJs({ run, hostCheckout, env, ifMoved: args.includes("--if-moved"), nodePath, npm, deployed })),
     { waitMs: 0, staleMs: AUTO_DEPLOY_TIMEOUT_MS });
   if (!locked.locked) {
     out.write("skipped: another deploy is running\n");
@@ -73,7 +86,7 @@ export async function deploy(args, {
   // A repeated skip (same reason as the last recorded result) stays off the operator channel.
   const last = readLastDeploy(env);
   const repeat = result.status === "skipped" && last?.status === "skipped" && last.line === result.line;
-  if (!repeat) await send(result.line, env).catch((error) => err.write(`ai-collab: deploy: publish failed: ${error.message}\n`));
+  if (!repeat) await send(result.line ?? "", env).catch((error: Error) => err.write(`ai-collab: deploy: publish failed: ${error.message}\n`));
   // The shipped commit carries over skips and failures, so the next deploy compares against it.
   const shipped = result.status === "deployed" ? result.to : last?.deployed;
   writeLastDeploy(env, { at: new Date().toISOString(), status: result.status, line: result.line, ...(shipped ? { deployed: shipped } : {}) });

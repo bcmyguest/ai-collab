@@ -58,7 +58,7 @@ The result: edit `MISSION.md`, commit it, and the next tick sees it. Nothing in 
 
 ## The run review
 
-Every scheduled harness command gets one more block after the mission: the run review (`lib/pm-review.mjs`, `withReview`). The mission says what to aim at; the review asks for a closing account of how the run went:
+Every scheduled harness command gets one more block after the mission: the run review (`lib/pm-review.ts`, `withReview`). The mission says what to aim at; the review asks for a closing account of how the run went:
 
 - A short review of the run — at most three lines: what worked, what did not, what to do differently — posted last, so the operator reads it in the phone chat.
 - Lessons kept before the run stops: a fact about the setup goes to openmem under the project's bank (`coding-agent::<project>`), and a standing rule goes into `MISSION.md` with `ai-collab mission add-rule` (or a new file when the project has none). Work left open becomes a task.

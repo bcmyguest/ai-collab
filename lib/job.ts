@@ -6,12 +6,15 @@ import { join } from "node:path";
 import { assertHostAgent } from "./agent-guard.mjs";
 import { isRunning, processStart } from "./process.mjs";
 import { writeState } from "./state.mjs";
+import type { Cfg } from "./messaging.ts";
 
-const SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
+type Writer = { write: (chunk: string) => void };
+
+const SIGNALS: NodeJS.Signals[] = ["SIGINT", "SIGTERM", "SIGHUP"];
 const USAGE = "usage: ai-collab job run -- <command> [args...]";
 
 /** Active commands for a local session. Process start times distinguish reused PIDs. */
-export function runningJobs(registry, address, files) {
+export function runningJobs(registry: string, address: string, files: string[]): number {
   const prefix = address + ".job-";
   let count = 0;
   for (const name of files) {
@@ -26,7 +29,9 @@ export function runningJobs(registry, address, files) {
   return count;
 }
 
-export async function job(argv, { cfg, env, out, err, registered }) {
+export async function job(argv: string[], { cfg, env, out, err, registered }: {
+  cfg: Cfg; env: NodeJS.ProcessEnv; out: Writer; err: Writer; registered: (cfg: Cfg, address: string) => boolean;
+}): Promise<number> {
   if (argv.length === 0 || ["help", "--help", "-h"].includes(argv[0]) ||
       (argv[0] === "run" && ["--help", "-h"].includes(argv[1]))) {
     out.write(USAGE + "\n");
@@ -46,11 +51,11 @@ export async function job(argv, { cfg, env, out, err, registered }) {
     assertHostAgent([command, ...args], { env });
     const file = join(cfg.stateDir, cfg.project, "registry", address + ".job-" + randomUUID() + ".json");
     const child = spawn(command, args, { env, stdio: "inherit" });
-    const completion = new Promise((resolve, reject) => {
+    const completion = new Promise<number>((resolve, reject) => {
       child.once("error", reject);
-      child.once("exit", (code, signal) => resolve(code ?? 128 + (constants.signals[signal] ?? 0)));
+      child.once("exit", (code, signal) => resolve(code ?? 128 + (signal ? constants.signals[signal] : 0)));
     });
-    const handlers = SIGNALS.map(signal => [signal, () => child.kill(signal)]);
+    const handlers = SIGNALS.map((signal) => [signal, () => child.kill(signal)] as const);
     for (const [signal, handler] of handlers) process.on(signal, handler);
     try {
       const start = child.pid && processStart(child.pid);
@@ -65,7 +70,7 @@ export async function job(argv, { cfg, env, out, err, registered }) {
       rmSync(file, { force: true });
     }
   } catch (error) {
-    err.write(`ai-collab: job: ${error.message}\n`);
-    return error.code === "ENOENT" ? 127 : 1;
+    err.write(`ai-collab: job: ${(error as Error).message}\n`);
+    return (error as NodeJS.ErrnoException).code === "ENOENT" ? 127 : 1;
   }
 }

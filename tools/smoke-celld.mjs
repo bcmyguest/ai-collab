@@ -6,7 +6,7 @@ import {createServer} from "node:http";
 import {tmpdir} from "node:os";
 import {join, resolve} from "node:path";
 import {setTimeout as delay} from "node:timers/promises";
-import {compileTrace} from "../lib/pattern-compiler.mjs";
+import {compileTrace} from "../lib/pattern-compiler.ts";
 import {BUILT_IN_PATTERNS} from "../lib/patterns.mjs";
 
 const definition = BUILT_IN_PATTERNS.product;

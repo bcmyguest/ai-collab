@@ -3,6 +3,11 @@ import { readFileSync } from "node:fs";
 import { listModels } from "./models.mjs";
 import { createPattern, deletePattern, getPattern, listPatterns } from "./patterns.mjs";
 import { advanceRun, listRuns, runStatus, startRun } from "./pattern-runs.mjs";
+import { passJs } from "./surfaces/types.ts";
+import type { Cfg } from "./messaging.ts";
+
+type Writer = { write: (chunk: string) => void };
+type Io = { readStdin?: () => Promise<string> | string };
 
 const USAGE = {
   list: "usage: pattern list",
@@ -15,18 +20,18 @@ const USAGE = {
   advance: "usage: pattern advance <run-id> \"<event>\" [\"note\"]",
 };
 
-async function readText(file, io) {
+async function readText(file: string | undefined, io: Io): Promise<string> {
   if (file && file !== "-") return readFileSync(file, "utf8");
   return io.readStdin ? io.readStdin() : "";
 }
 
-export async function pattern([sub, ...rest], { env, cfg, out, err, io }) {
+export async function pattern([sub, ...rest]: string[], { env, cfg, out, err, io }: { env: NodeJS.ProcessEnv; cfg: Cfg; out: Writer; err: Writer; io: Io }): Promise<number> {
   if (!cfg.enabled) {
     err.write(`ai-collab: disabled: ${cfg.reason}\n`);
     return 2;
   }
   const models = () => listModels(cfg.stateDir, env, { peers: cfg.peers });
-  const fail = (key) => { err.write(`ai-collab: ${USAGE[key]}\n`); return 1; };
+  const fail = (key: keyof typeof USAGE) => { err.write(`ai-collab: ${USAGE[key]}\n`); return 1; };
   try {
     if (sub === undefined || sub === "list") {
       if (rest.length) return fail("list");
@@ -64,7 +69,7 @@ export async function pattern([sub, ...rest], { env, cfg, out, err, io }) {
       if (!name) return fail("start");
       const task = words.join(" ") || String(await readText("", io) || "").trim();
       if (!task) { err.write("ai-collab: pattern start: missing task\n"); return 1; }
-      const result = await startRun(cfg, name, task, env, { models: await models() });
+      const result = await startRun(cfg, name, task, env, passJs({ models: await models() }));
       out.write(`${result.id}\t${result.status}\t${result.active}\t${result.session || "-"}\t${result.detail || ""}\n`);
       return result.status === "failed" ? 1 : 0;
     }
@@ -99,7 +104,7 @@ export async function pattern([sub, ...rest], { env, cfg, out, err, io }) {
     err.write(`ai-collab: unknown pattern command "${sub}"\n`);
     return 1;
   } catch (e) {
-    err.write(`ai-collab: pattern: ${e.message}\n`);
+    err.write(`ai-collab: pattern: ${(e as Error).message}\n`);
     return 1;
   }
 }

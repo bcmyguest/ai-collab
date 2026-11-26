@@ -3,11 +3,11 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { childHint, exportParent, parentLine } from "../lib/family.mjs";
-import { job, runningJobs } from "../lib/job.mjs";
-import { pattern } from "../lib/pattern-cli.mjs";
+import { childHint, exportParent, parentLine } from "../lib/family.ts";
+import { job, runningJobs } from "../lib/job.ts";
+import { pattern } from "../lib/pattern-cli.ts";
 import { processStart } from "../lib/process.mjs";
-import { task } from "../lib/task-cli.mjs";
+import { task } from "../lib/task-cli.ts";
 
 const UUID = "0123abcd-0123-4abc-8def-0123456789ab";
 const OTHER = "fedcba98-0123-4abc-8def-0123456789ab";

@@ -25,7 +25,7 @@ export function reviewBlock({ project = "" } = {}) {
 }
 
 /** The command with the review appended to its last argument (the prompt, for a harness); a plain script is unchanged. */
-export function withReview(command, { project = "" } = {}) {
+export function withReview(command: string[], { project = "" } = {}): string[] {
   if (!harnessOfCommand(command)) return command;
   const block = reviewBlock({ project });
   const last = command.length - 1;
