@@ -29,7 +29,7 @@ test("MCP interrupt rejects unknown sessions and reports Claude sessions unsuppo
     assert.equal(response.id, id);
     return response.result;
   }
-  await request("initialize", { protocolVersion: "2025-11-25" });
+  await request("initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
   const unknown = await request("tools/call", { name: "interrupt", arguments: { to: "codex#0123456789abcdef" } });
   assert.equal(unknown.isError, true);
   assert.match(unknown.content[0].text, /Unknown session/);

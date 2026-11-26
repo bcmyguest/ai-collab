@@ -114,7 +114,7 @@ test("MCP: version comes from package.json; send_to_all replies to broadcasts an
     return JSON.parse(r.content[0].text);
   };
 
-  const init = await request("initialize", { protocolVersion: "2025-11-25" });
+  const init = await request("initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
   assert.equal(init.serverInfo.version, VERSION);
   assert.match(init.instructions, /send_to_all/);
   const ask = (await request("tools/list")).tools.find((tool) => tool.name === "ask_question");
