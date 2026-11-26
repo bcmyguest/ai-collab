@@ -45,6 +45,7 @@ Then open the UI on your phone: [Quick start](https://bcmyguest.github.io/ai-col
 | [Phone UI](https://bcmyguest.github.io/ai-collab/phone-ui/) | Home, chat, task tags, activity, starting sessions, push |
 | [AFK mode](https://bcmyguest.github.io/ai-collab/afk/) | Progress posts and phone questions while you are away |
 | [Approvals and questions](https://bcmyguest.github.io/ai-collab/approvals/) | Permission prompts answered from the phone |
+| [Landing from the phone](docs/phone-ui.md#landing-from-the-phone) | `ai-collab land request` opens a PR; the Land panel merges green PRs; `ai-collab deploy` updates the host |
 | [Builders](docs/builders.md) | One agent per task in OpenShell, with `oncebitten` checks when installed on the host |
 | [Teams and patterns](docs/teams.md) | Define roles and handoffs in DOT and verify their transitions with local traces |
 | [Code mode](docs/code-mode.md) | Native code mode and `run_code` for AI Collab reads, required for new sessions launched by tags |

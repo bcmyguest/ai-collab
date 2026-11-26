@@ -269,6 +269,34 @@ Home's **Operator decisions** list and the decision inbox (`#inbox`, **Waiting o
 
 A closed card shows **Skipped**. A second Skip, or an answer after a Skip, returns 409. A runner-owned approval offers no Skip and the route answers 409, because the runner session has no terminal prompt to take over.
 
+## Landing from the phone
+
+An agent lands a branch with `ai-collab land request <branch>`. It pushes the branch to `origin` (never `main`), opens a PR into `main` or reuses the open one, and prints the PR URL.
+
+The Home **Land** panel lists the open PRs into `main`: title, branch, `+` and `-` lines, check state, and a link to the PR's files. **Merge** is enabled only when every check succeeded. A PR with pending, failing or no checks cannot merge.
+
+**Merge** sends `POST /api/land {number, headSha}`. It takes the same sign-in and same-origin checks as approvals. The host runs `gh pr merge <n> --merge --match-head-commit <headSha>`, so a push made after the operator looked returns 409 and merges nothing. After a merge, the UI starts `ai-collab deploy` as a transient unit with `systemd-run --user --collect`.
+
+### `ai-collab deploy`
+
+Runs in the host checkout (`/home/b/ai-collab`):
+
+| Step | Result line |
+|---|---|
+| Tracked files changed, or checkout not on `main` | `skipped: <reason>`; nothing pulled |
+| `git pull --ff-only` fails | `skipped: git pull --ff-only: <git message>` |
+| HEAD unchanged after the pull | `skipped: HEAD unchanged at <sha>` |
+| `npm ci --include=dev` or the UI deploy step fails | `failed: <step>` |
+| Pull moved HEAD and the deploy succeeds | `deployed <old>..<new>` |
+
+On `deployed`, `failed` and `skipped`, the CLI publishes the line to each operator's broadcast topic, writes it to `deploy-last.json` in the state directory, and restarts `ai-collab-bus`, `ai-collab-ui` and `ai-collab-runner` in one transient unit. The Land panel shows the last line. Only a deploy that moved HEAD restarts services.
+
+Two deploys never run at once: the first holds `deploy.lock` in the state directory, and a second run prints `skipped: another deploy is running`. A crash can leave the lock behind; remove `deploy.lock` after checking that no deploy runs.
+
+### Auto deploy
+
+Set `AI_COLLAB_AUTO_DEPLOY=1`, or `"autoDeploy": true` in `defaults.json`, to add a runner schedule named `auto-deploy`. It runs `ai-collab deploy --if-moved` every 5 minutes with a 4-minute timeout. Without a change on `origin/main` it does nothing and publishes nothing. The flag is off by default; `AI_COLLAB_AUTO_DEPLOY` overrides `defaults.json`.
+
 ## Run in terminal
 
 With `runInTerminal` on in `defaults.json`, a host agent's `run_in_terminal` request appears as a card at the top of the project's screens (a session chat shows only that session's requests) and sends a push like an approval. The card shows the reason, the session, the cwd, the numbered script, and its sha256 with the browser's own hash check. **Run** runs the shown bytes with bash on the host as the UI service's user; **Reject** closes the request. Each request runs at most once and expires after 15 minutes. Approval comes only from this card over `POST /api/a2ui`; a bus reply cannot run a script. See [Run in terminal](run-in-terminal.md).
