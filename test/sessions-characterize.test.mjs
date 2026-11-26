@@ -5,9 +5,9 @@ import os from "node:os";
 import path from "node:path";
 import { sessionLabel } from "../lib/config.mjs";
 import { claimParentNotice, listSessions, recordSession, sessionPlace, setIdentity, worktreeGone } from "../lib/sessions.mjs";
-import { harnessCommand } from "../lib/controls.mjs";
-import { interruptSession } from "../lib/interrupt.mjs";
-import { scopeLaunch, scopeSupport } from "../lib/scope.mjs";
+import { harnessCommand } from "../lib/sessions.ts";
+import { interruptSession } from "../lib/sessions.ts";
+import { scopeLaunch, scopeSupport } from "../lib/sessions.ts";
 import { defaultStartPlace, startRefusal } from "../lib/start.mjs";
 
 const UUID = "0b1c2d3e-4f50-4617-8899-aabbccddeeff";

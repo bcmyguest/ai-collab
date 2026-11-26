@@ -23,8 +23,8 @@ import { parsePhoneReply, parseQuestionText } from "../../lib/questions.mjs";
 import { disposeSession, listSessions, sessionPlace, worktreeGone } from "../../lib/sessions.mjs";
 import { readState, statePath } from "../../lib/state.mjs";
 import { readReceipts } from "../../lib/receipts.mjs";
-import { controlSession } from "../../lib/controls.mjs";
-import { interruptSession } from "../../lib/interrupt.mjs";
+import { controlSession } from "../../lib/sessions.ts";
+import { interruptSession } from "../../lib/sessions.ts";
 import { slashCommand } from "../../lib/slash.mjs";
 import { readContext } from "../../lib/usage.mjs";
 import { parseCommand } from "../lib/slash-commands.js";
@@ -32,7 +32,7 @@ import { startModes } from "../lib/start-mode.js";
 import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } from "../../lib/approvals.mjs";
 import { START_HARNESSES, availableHarnesses, availablePlaces, defaultStartPlace, openshellHarnesses, openshellRunner, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
 import { codeModeDefault } from "../../lib/code-mode.mjs";
-import { cleanName } from "../../lib/names.mjs";
+import { cleanName } from "../../lib/sessions.ts";
 import { listModels } from "../../lib/models.mjs";
 import { LIMIT_TOOL, chooseLimit, limitEndMessage, skipLimit } from "../../lib/limit-alert.mjs";
 import { limitEndNotice } from "../../lib/start-limit.mjs";
@@ -41,7 +41,7 @@ import { clearFields, modelFields, sessionHistory } from "../../lib/session-even
 import { compactionFields } from "../../lib/compaction.mjs";
 import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern, savePattern, saveTeamText, teamTemplates, teamTextOf } from "../../lib/patterns.mjs";
 import { authorModel, authorTeam, saveAuthoredTeam } from "../../lib/team-author.mjs";
-import { listOwned, readOwned } from "../../lib/owned.mjs";
+import { listOwned, readOwned } from "../../lib/sessions.ts";
 import { builderAssignment, recoverBuilder, stoppedBuilder } from "../../lib/builder.mjs";
 import { REVIEW_ACTIONS, STATUSES, TaskNotFoundError, openTasks } from "../../lib/tasks.mjs";
 import { priorityOf } from "../../lib/task-order.mjs";
@@ -352,7 +352,7 @@ function tasksOf(name, env) {
 /**
  * Compacts through the runner when it owns the session: its adapters run the harness's own trigger (Claude /compact,
  * Codex thread/compact/start, OpenCode session.compact). Resolves null when the runner does not own the address, so the
- * caller falls back to lib/controls.mjs (a terminal session, or a session outside the runner). `runner` is the
+ * caller falls back to lib/sessions.ts (a terminal session, or a session outside the runner). `runner` is the
  * runnerClient factory, injected in tests.
  */
 async function runnerCompact(address, runner, env) {

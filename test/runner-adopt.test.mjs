@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { procStart, makeRunner, setup, until } from "./helpers/runner-ctx.mjs";
 import { sessionLabel } from "../lib/config.mjs";
-import { ownedFile } from "../lib/owned.mjs";
+import { ownedFile } from "../lib/sessions.ts";
 import { recordSession } from "../lib/sessions.mjs";
 import { WAKE } from "../runner/runner.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";

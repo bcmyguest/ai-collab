@@ -4,7 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileS
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { resetScopeProbe, scopeAvailable, scopeLaunch, scopeSupport, scopeUnitName, scopeWrap, systemdRunOnPath } from "../lib/scope.mjs";
+import { resetScopeProbe, scopeAvailable, scopeLaunch, scopeSupport, scopeUnitName, scopeWrap, systemdRunOnPath } from "../lib/sessions.ts";
 
 const tmp = () => mkdtempSync(path.join(os.tmpdir(), "ai-collab-scope-"));
 const UNIT = /^ai-collab-[a-z]+(-[a-z0-9-]+)*-\d{8}T\d{6}Z-[0-9a-f]{6}$/;

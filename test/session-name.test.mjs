@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { sessionName } from "../lib/names.mjs";
+import { sessionName } from "../lib/sessions.ts";
 
 test("a subagent's hook or a worktree label never renames the parent session", () => {
   assert.equal(sessionName("claude", { session_title: "Fix login bug" }), "Fix login bug");

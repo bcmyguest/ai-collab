@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { startCommand } from "../lib/start.mjs";
 import { harnessCommand as builderCommand } from "../lib/builder.mjs";
-import { harnessCommand as wakeCommand } from "../lib/controls.mjs";
+import { harnessCommand as wakeCommand } from "../lib/sessions.ts";
 import { codexRequiredRunCodeArgs } from "../lib/code-mode.mjs";
 import { authorCommand } from "../lib/team-author.mjs";
 import { pushSession } from "../lib/deliver-push.mjs";

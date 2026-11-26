@@ -12,7 +12,7 @@ import { sendMessage } from "../lib/inbox.mjs";
 import { activityEvents, buildActivity } from "../lib/activity.mjs";
 import { approvalOutput, approvalRequest } from "../lib/approvals.mjs";
 import { contextTokens } from "../lib/usage.mjs";
-import { sessionName } from "../lib/names.mjs";
+import { sessionName } from "../lib/sessions.ts";
 import { appendContent, createPlugin, permissionInput, resultOutput, runHook, stepTokens } from "../lib/opencode-plugin.mjs";
 
 const DIR = "/work/verify-opencode";

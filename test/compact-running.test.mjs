@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { COMPACT_REQUEST, controlSession } from "../lib/controls.mjs";
+import { COMPACT_REQUEST, controlSession } from "../lib/sessions.ts";
 import { codexLiveCompact } from "../lib/codex-compact.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, parseEnvelope } from "../lib/inbox.mjs";

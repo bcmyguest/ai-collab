@@ -13,7 +13,7 @@ import {
   briefNotes, builderPaths, builderAssignment, builderSandbox, builderPolicy, captureHooks, cursorLimitPath, harnessCommand, hostCaptureEvents, parseRecordedCall, replayable, sharedLibs, toolSources,
 } from "../lib/builder.mjs";
 import { createUi } from "../web/server/ui.mjs";
-import { listOwned } from "../lib/owned.mjs";
+import { listOwned } from "../lib/sessions.ts";
 import { taskStoreFile } from "../lib/tasks.mjs";
 import { saveTeamText } from "../lib/patterns.mjs";
 import { loadConfig } from "../lib/config.mjs";
