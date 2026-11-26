@@ -40,7 +40,7 @@ sequenceDiagram
 | Tool | Arguments | Returns |
 |---|---|---|
 | `run_in_terminal` | `script` (≤ 64 KB), `cwd` (absolute, existing directory), `reason` (≤ 300 chars), `session` (hook label), optional `timeout_s` (1 to 3600, default 300) | `{id, status: "pending", sha256, expiresAt}` at once |
-| `run_in_terminal_result` | `id`, optional `wait_seconds` (0 to 45, default 25) | `status` (`pending`, `running`, `done`, `rejected`, `expired`, `refused`); once done, `exitCode`, `signal`, `timedOut`, `stdoutTail`, `stderrTail` (last 16 KB each), `durationMs`, `startedAt`, `finishedAt`, `by` |
+| `run_in_terminal_result` | `id`, optional `wait_seconds` (0 to 45, default 25) | `status` (`pending`, `running`, `done`, `lost`, `rejected`, `expired`, `refused`); once done, `exitCode`, `signal`, `timedOut`, `stdoutTail`, `stderrTail` (last 16 KB each), `durationMs`, `startedAt`, `finishedAt`, `by` |
 
 Both tools are listed only on the host with the flag on. In an OpenShell sandbox or a builder (`OPENSHELL_SANDBOX`, `AI_COLLAB_BUILDER`, `AI_COLLAB_SANDBOX_OUT`), they are neither listed nor callable, and `createRunRequest` refuses as well. They are not in the `run_code` client.
 
@@ -56,21 +56,22 @@ A request expires 15 minutes after it is created (`AI_COLLAB_RUN_TTL_S` on the a
 |---|---|
 | The script runs without the operator's click | Only `decideRun` runs a script, and the UI server calls it only from `POST /api/a2ui` (same-origin check, GitHub sign-in when configured, not in hosted mode). No auto-approve, no "always allow", no default decision on timeout. |
 | Approval through the bus, an agent message, or `ask_question` | Nothing in `lib/run-terminal.mjs` reads the bus. A `reply <id> run`, an approval envelope with the id, or `POST /api/approve` leaves the request pending (`test/run-terminal.test.mjs`). |
-| The script changes between display and run | The server re-reads `request.json`, recomputes sha256 over the bytes it is about to run, and requires it to equal the browser's digest. A mismatch closes the request as `refused`. |
-| Bytes the operator cannot see | Requests with control characters other than tab and newline, carriage returns, bidi overrides, or zero-width characters are refused, as is invalid Unicode. |
+| The script changes between display and run | The UI server pins each request's shown fields (script, hash, cwd, reason, session, timeout, creation and expiry times) the first time it lists it. The card keeps showing the pinned fields, and a stored request that no longer matches them is closed as `refused`. On Run, the server re-reads `request.json`, compares it with the pin, recomputes sha256 over the bytes it is about to run, and requires it to equal the browser's digest. |
+| Bytes the operator cannot see | Requests with control, format, separator or default-ignorable characters other than tab, newline and space are refused: carriage returns, ANSI escapes, bidi marks, zero-width and tag characters, soft hyphens, variation selectors, line separators and look-alike spaces. So are invalid Unicode and runs of more than 64 blanks, which could push the rest of a wrapped line out of view. |
 | Replay or double click | `decision.json` is created with `O_EXCL`; a second decision of any kind gets 409. |
 | A stale request | Expiry is computed from the creation time, clamped to 60 minutes, and a creation time in the future invalidates the request. The first read after expiry closes it. |
 | Sandboxed caller | The tools are host-only, like `builder_start`. |
+| A run cut off by a UI restart | On start, the UI server marks each run still at `running` as `lost`, with an audit line; `run_in_terminal_result` returns it as final. |
 | Runaway script | `timeout_s` sends SIGTERM to the script's process group, then SIGKILL 5 s later. |
-| Lost accountability | Every request, run, rejection, refusal, expiry, and finish is a line in `<stateDir>/run-terminal-audit.jsonl` (mode 0600) with id, project, session, script hash, decision, exit code, who clicked, and an ISO timestamp. |
+| Lost accountability | Every request, run (with the script), rejection, refusal, expiry, loss, and finish is a line in `<stateDir>/run-terminal-audit.jsonl` (mode 0600) with id, project, session, script hash, decision, exit code, who clicked, and an ISO timestamp. |
 
 ### Limits
 
-- The request files live in the state dir, which every process of the operator's user can write. Such a process can forge a request (it still needs a click), forge `result.json` (it misleads only the agent that reads it), or write `decision.json` (it blocks the request; nothing runs). The hash check stops a changed script from running.
-- A same-user process on the host can also send a same-origin `POST` to `127.0.0.1:8795` when GitHub sign-in is off. That process can already run commands as the user, so the feature adds no privilege, but the click guarantee holds only against agents restricted to ai-collab's channels and against sandboxed sessions. Turn on [GitHub sign-in](github-sign-in.md) to require a browser session cookie.
-- The script runs with the UI server's environment, including its `PATH`, not a login shell's.
-- A script still running when the UI service restarts is not tracked further; its card stays at `running`.
-- Whether an OpenShell sandbox can reach the host's `127.0.0.1:8795` depends on its network policy; this was not tested.
+- The request files live in the state dir, which every process of the operator's user can write. Such a process can forge a request (it still needs a click), forge `result.json` (it misleads only the agent that reads it), or write `decision.json` (it blocks the request; nothing runs). A request changed after the UI showed it cannot run, but the pins live in the UI server's memory: a request changed before a UI restart is pinned as it reads after the restart.
+- Run does not require GitHub sign-in. Without it, a local process running as the operator can POST to the loopback UI (`127.0.0.1:8795`) with a forged `Origin` header and press Run; so can any client that reaches the UI's Tailscale origin. Such a local process can already run commands as the user, so the feature adds no privilege to it, but the click guarantee then holds only against agents restricted to ai-collab's channels and against sandboxed sessions. Turn on [GitHub sign-in](github-sign-in.md) to require a browser session cookie.
+- The script runs with the UI server's environment, including its `PATH`, minus the server's own variables (`AI_COLLAB_*`, `NEXT_*`, `__NEXT*`, `NODE_ENV`, `NODE_OPTIONS`); it gets no login shell.
+- A `lost` run's process died with the UI service under systemd's default `KillMode`; processes the script detached from its group, such as `setsid` or `nohup` children, outlive it and its timeout.
+- The shipped sandbox policies give no route to the UI: a builder reaches only `host.openshell.internal:8794` (`lib/builder/policy.mjs`), `run_read_code` has no egress (`lib/code-read-policy.yaml`), and `run_code` uses OpenShell's default policy unless `AI_COLLAB_CODE_POLICY` names one. A policy that opens `host.openshell.internal:8795` lets that sandbox press Run when sign-in is off. This was read from the policies, not tested against a live sandbox.
 
 ## A2UI and AG-UI
 
