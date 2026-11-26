@@ -206,6 +206,25 @@ export function listSessions(cfg: Pick<SessionCfg, "stateDir" | "project" | "pee
   });
 }
 
+/** Every registry record with a live flag, peers outside cfg.peers included; an unreadable record is marked unreadable. */
+export function sessionRecords(cfg: Pick<SessionCfg, "stateDir" | "project">): Array<(Session & { live: boolean }) | { file: string; unreadable: true }> {
+  let files: string[];
+  try { files = readdirSync(registry(cfg)); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  return files.filter(file => file.endsWith(".json")).map(file => {
+    try {
+      const session = JSON.parse(readFileSync(join(registry(cfg), file), "utf8")) as Session;
+      const jobs = runningJobs(registry(cfg), session.id, files);
+      const live = isRunning({ pid: session.pid as number, start: session.pidStart as string }) || Boolean(jobs);
+      return { ...session, live };
+    } catch {
+      return { file, unreadable: true as const };
+    }
+  });
+}
+
 function httpError(status: number, message: string): Error & { status: number } {
   return Object.assign(new Error(message), { status });
 }
