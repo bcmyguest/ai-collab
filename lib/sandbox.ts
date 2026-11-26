@@ -414,8 +414,18 @@ export async function stageAndUpload(a: UploadArgs): Promise<{ authHash: string 
 export async function commitUncommitted({ git, repo, message, trailer }: { git: GitRunner; repo: string; message: string; trailer?: string }): Promise<boolean> {
   if (!(await git(repo, ["status", "--porcelain"])).trim()) return false;
   await git(repo, ["add", "-A"]);
-  await git(repo, ["commit", "--quiet", "--no-verify", "-m", message, ...(trailer ? ["-m", trailer] : [])]);
+  await git(repo, [...(await commitIdentity({ git, repo })), "commit", "--quiet", "--no-verify", "-m", message, ...(trailer ? ["-m", trailer] : [])]);
   return true;
+}
+
+/** Identity flags for a commit the host makes for an agent: none when git can name the committer, else a fixed ai-collab one (a CI runner has none). */
+export async function commitIdentity({ git, repo }: { git: GitRunner; repo: string }): Promise<string[]> {
+  try {
+    await git(repo, ["var", "GIT_COMMITTER_IDENT"]);
+    return [];
+  } catch {
+    return ["-c", "user.name=ai-collab", "-c", "user.email=ai-collab@localhost"];
+  }
 }
 
 /** The commits a clone has on top of its base. */

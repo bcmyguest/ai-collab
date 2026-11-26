@@ -12,7 +12,7 @@ import { argv, LAUNCH_BINARY } from "../../lib/harness.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, permissionSettings } from "../contract.mjs";
 import { builderPolicy } from "../../lib/builder.mjs";
 import {
-  destroyOwnedSandboxes, downloadTree, ensureSandbox as ensureSandboxIn, execArgv as sandboxExecArgv, runTool,
+  commitUncommitted, destroyOwnedSandboxes, downloadTree, ensureSandbox as ensureSandboxIn, execArgv as sandboxExecArgv, runTool,
   sandboxLabels, sandboxName as sandboxNameFor, teamSandboxName, uploadFile, uploadLogins, uploadSecret, uploadTree,
 } from "../sandbox.mjs";
 
@@ -313,10 +313,7 @@ async function landClone({ openshell, env, sandbox, cwd, log }) {
   try {
     await downloadTree({ openshell, env, sandbox, remote: `${SANDBOX_ROOT}/work/${basename(cwd)}`, local: back });
     if (!existsSync(join(back, ".git"))) throw new Error("the downloaded workspace has no git repository");
-    if ((await git(back, ["status", "--porcelain"], env)).trim()) {
-      await git(back, ["add", "-A"], env);
-      await git(back, ["commit", "--quiet", "--no-verify", "-m", "chore(openshell): uncommitted work from a sandboxed session", "-m", "Assisted-by: Cursor:cursor-agent"], env);
-    }
+    await commitUncommitted({ git: (repo, args) => git(repo, args, env), repo: back, message: "chore(openshell): uncommitted work from a sandboxed session", trailer: "Assisted-by: Cursor:cursor-agent" });
     const ahead = Number((await git(back, ["rev-list", "--count", "HEAD", "--not", (await git(cwd, ["rev-parse", "HEAD"], env)).trim()], env).catch(() => "0")).trim()) || 0;
     if (!ahead) return true;
     await git(cwd, ["fetch", "--quiet", back, "HEAD"], env);
