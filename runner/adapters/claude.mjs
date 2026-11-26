@@ -333,7 +333,9 @@ export function createClaudeAdapter({ query = sdkQuery, handshakeMs = HANDSHAKE_
       return attach(session, "claude session", handshakeMs);
     },
     async resume(record, ctx, childVars) {
-      const { settings } = permissionSettings("claude", record.permissionMode, record.place);
+      // A /permission value is the SDK mode for this resume; without one the runner's mode for the record stands.
+      const { settings: runnerSettings } = permissionSettings("claude", record.permissionMode, record.place);
+      const settings = record.claudePermission ? { permissionMode: record.claudePermission } : runnerSettings;
       const session = startSession({
         query, ctx, nativeId: record.nativeId, cwd: record.cwd, model: record.model, permission: settings, env: childVars, resume: true, codeMode: record.codeMode,
       });

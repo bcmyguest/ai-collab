@@ -30,7 +30,7 @@ import { readContext } from "../../lib/usage.mjs";
 import { parseCommand } from "../lib/slash-commands.js";
 import { startModes } from "../lib/start-mode.js";
 import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } from "../../lib/approvals.mjs";
-import { START_HARNESSES, availableHarnesses, availablePlaces, defaultStartPlace, openshellHarnesses, openshellRunner, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
+import { START_HARNESSES, availableHarnesses, availablePlaces, claudePermissionFor, defaultStartPlace, openshellHarnesses, openshellRunner, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
 import { codeModeDefault } from "../../lib/code-mode.mjs";
 import { cleanName } from "../../lib/sessions/registry.ts";
 import { listModels } from "../../lib/models.mjs";
@@ -41,7 +41,8 @@ import { clearFields, modelFields, sessionHistory } from "../../lib/session-even
 import { compactionFields } from "../../lib/compaction.mjs";
 import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern, savePattern, saveTeamText, teamTemplates, teamTextOf } from "../../lib/patterns.mjs";
 import { authorModel, authorTeam, saveAuthoredTeam } from "../../lib/catalog/author.ts";
-import { listOwned, readOwned } from "../../lib/sessions/registry.ts";
+import { listOwned, readOwned, setNextPermission } from "../../lib/sessions/registry.ts";
+import { requestTeamPermission } from "../../lib/team-permission.mjs";
 import { builderAssignment, recoverBuilder, stoppedBuilder } from "../../lib/builder.mjs";
 import { REVIEW_ACTIONS, STATUSES, TaskNotFoundError, openTasks } from "../../lib/tasks.mjs";
 import { priorityOf } from "../../lib/task-order.mjs";
@@ -1478,7 +1479,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       if (!upload && contentType !== "application/json") reject(415, "JSON required");
       if (action === "history") return history(request, by, await payload(request));
       const { input, attachment } = upload ? await imagePayload(request) : { input: await payload(request) };
-      const { project: name, paused, target, body, queueAction, question, mode, level: alertLevel, id, status: taskStatus, decision, answers, harness, prompt, place, worktree, openshell, urgent, sendAnyway, model, startMode, codeMode, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText, commit, submission, note: reviewNote, taskId } = input;
+      const { project: name, paused, target, body, queueAction, question, mode, level: alertLevel, id, status: taskStatus, decision, answers, harness, prompt, place, worktree, openshell, urgent, sendAnyway, model, startMode, codeMode, permission, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText, commit, submission, note: reviewNote, taskId } = input;
       if (action === "afk") {
         if (!MODES.includes(mode)) reject(400, "Mode must be on, off, or quiet");
         await setMode([...projects.values()].map(item => item.cfg), mode, by);
@@ -1695,6 +1696,15 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (harness === "claude" && codeMode === true && (chosenMode !== "agent" || where === "openshell")) {
           reject(400, "Claude code mode requires Agent mode in a folder or worktree");
         }
+        // --permission on a start: a Claude permission mode for this launch only (the same check as the runner's).
+        const permissionChosen = permission === undefined || permission === null || permission === "" ? undefined : permission;
+        if (permissionChosen !== undefined) {
+          if (harness !== "claude") reject(400, "permission applies to Claude starts only");
+          const named = claudePermissionFor(harness, cfg, env, { sandboxed: where === "openshell", setting: permissionChosen });
+          if (named.error) reject(400, named.error);
+          if (codeMode === true) reject(400, "A code-mode start runs supervised; drop permission or code mode");
+          if (where === "openshell") reject(400, "An OpenShell start runs full-access; drop permission or pick folder or worktree");
+        }
         if (Date.now() - lastStartAt < START_GAP_MS) reject(429, "Wait 10 seconds between starts");
         lastStartAt = Date.now();
         // Without a configured shared sandbox, OpenShell starts are runner-owned: one sandbox per project, commits landed on close.
@@ -1712,7 +1722,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           if (result.status !== 201) reject(result.status, result.body.error || "The runner refused the start");
           return json(201, result.body);
         }
-        return json(201, await start(cfg, { harness, prompt: checked.text, env, place: where, mode: chosenMode, ...(chosen !== undefined ? { model: chosen } : {}), ...(typeof codeMode === "boolean" ? { codeMode } : {}) }));
+        return json(201, await start(cfg, { harness, prompt: checked.text, env, place: where, mode: chosenMode, ...(permissionChosen !== undefined ? { claudePermission: permissionChosen } : {}), ...(chosen !== undefined ? { model: chosen } : {}), ...(typeof codeMode === "boolean" ? { codeMode } : {}) }));
       }
       // A queued message is already on ntfy: the urgent marker makes the recipient's next hook poll at once.
       if (action === "nudge") {
@@ -1772,7 +1782,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         const compact = parsed.name === "compact"
           ? async peer => (await runnerCompact(peer.id, runner, env)) ?? control("compact", peer, { cfg })
           : peer => control("compact", peer, { cfg });
-        return json(200, await slashCommand(session, parsed, { compact }));
+        // /permission stores the next-start mode on the session; /team-permission asks the operator before writing team.dot.
+        const setPermission = (peer, mode) => setNextPermission(cfg, { id: peer.id, label: String(peer.id).split("#")[1] ?? "", value: mode });
+        const askTeamPermission = (team, mode) => { const { done, ...reply } = requestTeamPermission(cfg, team, mode, { env }); void done; return reply; };
+        return json(200, await slashCommand(session, parsed, { compact, setPermission, askTeamPermission }));
       }
       if (action === "model") {
         const harness = recipient(cfg, target, true);

@@ -28,7 +28,7 @@ import { BUILDER_START_TIMEOUT_MS, builderPaths, builderResumePrompt, stoppedBui
 import { childEnv, checkPrompt, claudePermissionFor, findExecutable, modelShape, projectRoot, worktreeNames } from "../lib/start.mjs";
 import { parseCodeMode, resolveCodeMode } from "../lib/code-mode.mjs";
 import { openTasks } from "../lib/tasks.mjs";
-import { listOwned, ownedFile, readOwned, writeOwned } from "../lib/sessions/registry.ts";
+import { listOwned, nextPermission, ownedFile, readOwned, writeOwned } from "../lib/sessions/registry.ts";
 import { modelFields } from "../lib/session-events.mjs";
 import { isBlockingLimit, limitFromRunError } from "../lib/limits.ts";
 import { alertLimit } from "../lib/limit-alert.mjs";
@@ -257,7 +257,10 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     const adapter = adapterOf(s.record.harness);
     if (adapter.capabilities.resume === "none") fail(409, `${s.record.harness} sessions cannot resume`);
     s.resuming ??= (async () => {
-      s.live = await adapter.resume(s.record, contextFor({ s }, s.record.harness, s.signal), ownedEnv(), staged);
+      // The owned record's /permission value first, else the registry entry's (setNextPermission), for this resume only.
+      const cfg = configs.get(s.record.project);
+      const claudePermission = s.record.claudePermission ?? (cfg ? nextPermission(cfg, { id: `${s.record.harness}#${s.record.label}`, label: s.record.label }) : undefined);
+      s.live = await adapter.resume({ ...s.record, ...(claudePermission ? { claudePermission } : {}) }, contextFor({ s }, s.record.harness, s.signal), ownedEnv(), staged);
       save(s);
       return s.live;
     })().finally(() => { s.resuming = null; });

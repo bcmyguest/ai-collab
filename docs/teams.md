@@ -26,6 +26,7 @@ Graph attributes:
 |---|---|---|
 | `description` | text | none |
 | `max_visits` | 1-50 | unlimited |
+| `permission` | `auto-afk`, `inherit`, or a Claude permission mode (`default`, `acceptEdits`, `auto`, `bypassPermissions`, `dontAsk`, `plan`) | `auto` for runs |
 
 Node attributes (a node is a role; its name is `[a-z][a-z0-9-]{0,23}`):
 
@@ -68,6 +69,7 @@ Does not load (the file shows `invalid` with the line):
 - `required: false` (guidance): the active role may skip it.
 - `cap`: a handoff that would exceed `cap` suspends the run and notifies the operator. Each advance that fires the handoff counts once.
 - `max_visits`: a handoff that would exceed `max_visits` for a role instance suspends the run and notifies the operator. The entry role counts as its first visit.
+- `permission`: the Claude permission mode for this team's Claude roles. A run's Claude start takes the value, else `auto`. `bypassPermissions` starts only in OpenShell or with `AI_COLLAB_ALLOW_HOST_AGENT=1`. `/team-permission <team> <mode>` in a session chat asks the operator to Apply or Cancel on a phone card, and rewrites this attribute only on Apply. `ai-collab team start <team> <member> --permission <mode> "<task>"` sets one launch of a plain (non-`team.dot`) team's member; a `team.dot` team refuses it.
 - In a suspended run, the operator can confirm the pending handoff in the run view. The confirmation applies to that handoff only and is recorded with the operator’s login.
 - `fallback`: the `harness:model` the runner starts when that role hits a usage limit, ahead of the project default. The role does not ask the operator to switch.
 - A role whose session cannot start fails the run with the reason and notifies the operator.

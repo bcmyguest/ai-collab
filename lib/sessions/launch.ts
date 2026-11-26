@@ -51,21 +51,23 @@ export function startCommand(harness: string, root: string, prompt: string, { wo
  * configured one. Claude only; {flag: undefined} passes nothing, {error} refuses the start. "auto-afk" is default while
  * AFK is on or quiet. bypassPermissions runs only in OpenShell (sandboxed) or with AI_COLLAB_ALLOW_HOST_AGENT=1.
  */
-export function claudePermissionFor(harness: string, cfg: SessionCfg, env: NodeJS.ProcessEnv = process.env, { sandboxed = false, setting: named }: { sandboxed?: boolean; setting?: string } = {}): { flag?: string; error?: string } {
+export function claudePermissionFor(harness: string, cfg: SessionCfg, env: NodeJS.ProcessEnv = process.env, { sandboxed = false, setting: named }: { sandboxed?: boolean; setting?: string } = {}) {
   if (harness !== "claude") return {};
-  let mode = named;
-  if (named === undefined) {
-    const configured = claudePermissionSetting(env) as { mode?: string; error?: string };
-    if (configured.error) return { error: configured.error };
-    mode = configured.mode;
-  } else if (claudePermissionError(named)) {
-    return { error: claudePermissionError(named) };
-  }
-  const flag = claudePermissionFlag(mode as string, ["on", "quiet"].includes((recordedMode(cfg) as { mode?: string } | null)?.mode as string));
-  if (flag === "bypassPermissions" && !sandboxed && env[ALLOW_HOST_AGENT_ENV] !== "1") {
-    return { flag: undefined, error: `bypassPermissions runs only in openshell; set ${ALLOW_HOST_AGENT_ENV}=1 to allow it on the host` };
-  }
+  if (named !== undefined && claudePermissionError(named)) return { error: claudePermissionError(named) };
+  const configured = named === undefined ? claudePermissionSetting(env) : undefined;
+  if (configured?.error) return { error: configured.error };
+  const mode = named ?? configured?.mode ?? "default";
+  const afk = ["on", "quiet"].includes(recordedMode(cfg)?.mode);
+  const flag = claudePermissionFlag(mode, afk);
+  const refusal = bypassRefusal(flag, { sandboxed }, env);
+  if (refusal) return { flag: undefined, error: refusal };
   return { flag };
+}
+
+/** Why a Claude permission of bypassPermissions may not start here, or "" when it may: outside OpenShell it needs AI_COLLAB_ALLOW_HOST_AGENT=1. */
+export function bypassRefusal(setting: string | undefined, { sandboxed = false }: { sandboxed?: boolean } = {}, env: NodeJS.ProcessEnv = process.env): string {
+  if (setting !== "bypassPermissions" || sandboxed || env[ALLOW_HOST_AGENT_ENV] === "1") return "";
+  return `bypassPermissions runs only in openshell; set ${ALLOW_HOST_AGENT_ENV}=1 to allow it on the host`;
 }
 
 /** Maps a startCommand's cursor binary onto this machine's name: `agent` when installed, else `cursor-agent`. */

@@ -8,6 +8,8 @@ export const COMMANDS = [
   { name: "compact", summary: "Compact the context" },
   { name: "model", summary: "Switch the model", args: "<provider/model>" },
   { name: "clear", summary: "Start a new context" },
+  { name: "permission", summary: "Permission mode for the next start or wake", args: "<mode>" },
+  { name: "team-permission", summary: "Permission mode for a team, after you confirm", args: "<team> <mode>" },
 ];
 
 const supported = (reason) => ({ status: "supported", reason });
@@ -20,6 +22,7 @@ export const SUPPORT = {
   claude: {
     compact: partial("A runner-owned session compacts in place: /compact on its live query. A terminal session compacts through the Agent SDK when saved, or gets a request to finish its step, then /compact in its terminal."),
     model: unsupported("Claude's messaging socket delivers text only; no model switch is documented."),
+    permission: supported("Stored for the session's next start or wake (--permission-mode); the running turn keeps its mode."),
     clear: unsupported("No clear is documented for Claude's messaging socket."),
     passthrough: unsupported("The socket wraps each message in a cross-session envelope, so /name reaches Claude as text, not a command."),
   },
