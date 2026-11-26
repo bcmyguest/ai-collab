@@ -51,7 +51,25 @@ test("auto-afk passes default only while AFK is on for the project", () => {
   recordAfk(f, "on");
   assert.deepEqual(claudePermissionFor("claude", f.cfg, f.env), { flag: "default" });
   recordAfk(f, "quiet");
+  assert.deepEqual(claudePermissionFor("claude", f.cfg, f.env), { flag: "default" });
+  recordAfk(f, "off");
   assert.deepEqual(claudePermissionFor("claude", f.cfg, f.env), { flag: undefined });
+});
+
+test("bypassPermissions is refused on the host unless the start is sandboxed or allowed", () => {
+  const f = fixture({ claudePermissionMode: "bypassPermissions" });
+  const refused = claudePermissionFor("claude", f.cfg, f.env);
+  assert.equal(refused.flag, undefined);
+  assert.match(refused.error, /bypassPermissions runs only in openshell; set AI_COLLAB_ALLOW_HOST_AGENT=1/);
+  assert.deepEqual(claudePermissionFor("claude", f.cfg, f.env, { sandboxed: true }), { flag: "bypassPermissions" });
+  assert.deepEqual(claudePermissionFor("claude", f.cfg, { ...f.env, AI_COLLAB_ALLOW_HOST_AGENT: "1" }), { flag: "bypassPermissions" });
+});
+
+test("a host start refuses bypassPermissions with the same message the runner gives", async () => {
+  const f = fixture({ claudePermissionMode: "bypassPermissions" });
+  const started = await startSession(f.cfg, { harness: "claude", prompt: "hi", env: f.env, run: () => { throw new Error("must not spawn"); } });
+  assert.equal(started.status, "failed");
+  assert.equal(started.detail, claudePermissionFor("claude", f.cfg, f.env).error);
 });
 
 test("inherit passes no flag whatever the AFK state", () => {
