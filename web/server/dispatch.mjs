@@ -152,6 +152,7 @@ export function createDispatcher({
       const key = `${cfg.project}\n${topic}`;
       let events;
       try { events = await pollCached(cfg, topic, cursors.get(key) || "all"); } catch { continue; }
+      if (events.some((e) => e.reset)) process.stderr.write(`ai-collab: bus replayed ${topic} from the oldest event (unknown cursor)\n`);
       if (events.length) cursors.set(key, events.at(-1).id);
       if (topic === receiptsTopic(cfg.project)) { readReceipts(events, reads); continue; }
       for (const ev of events) {

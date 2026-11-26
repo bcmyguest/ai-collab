@@ -1367,7 +1367,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     let backoff = 1000;
     while (!watchers.signal.aborted) {
       try {
-        for await (const ev of streamEvents(cfg, topics, { since, signal: watchers.signal, onOpen: () => { backoff = 1000; } })) {
+        const onReset = () => log(`bus replayed ${cfg.project} from the oldest event (unknown cursor)`);
+        for await (const ev of streamEvents(cfg, topics, { since, signal: watchers.signal, onOpen: () => { backoff = 1000; }, onReset })) {
           await onNtfy(cfg, ev.topic, ev);
           since = ev.id;
           await durable.setKv(key, since);
