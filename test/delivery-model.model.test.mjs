@@ -97,9 +97,10 @@ async function checkInvariants(m, r) {
     msg.pushed = rows.length > 0;
     // Every push must be one the shared policy allows at its time: TTL, redelivery gap, answer, attempt cap, busy.
     for (const [i, p] of rows.entries()) {
+      // The runner's dueAt is its wake: on this clock, the previous push plus REDELIVER_MS, as the durable sleep began at that push.
       const dueAt = i === 0 ? null : rows[i - 1].at + REDELIVER_MS;
       const acked = msg.ackSeq !== null && msg.ackSeq < p.seq;
-      const action = nextAction({ firstAt: msg.createdAt, pushes: p.attempt - 1, dueAt }, p.at, { acked, busy: p.busy, ready: true, cut: false });
+      const action = nextAction({ firstAt: msg.createdAt, pushes: p.attempt - 1, dueAt }, p.at, { acked, busy: p.busy, ready: true });
       assert.equal(action, "push", `policy forbids attempt ${p.attempt} on ${msg.id}: ${action}`);
     }
     const attempts = rows.map((p) => p.attempt);

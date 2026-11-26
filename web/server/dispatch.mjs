@@ -71,12 +71,19 @@ export function createDispatcher({
   const slot = (session, id) => `${session.id}\n${id}`;
   const cooling = (session, id) => (backoff.get(slot(session, id))?.nextAt ?? 0) > now();
 
-  // Records a failed attempt for each id; the next attempt waits BACKOFF_BASE_MS doubling, up to BACKOFF_MAX_MS.
+  // Records a failed attempt for each id; the next attempt waits backoffMs, and the first failure starts the TTL.
   function failed(session, ids) {
     for (const id of ids) {
-      const failures = (backoff.get(slot(session, id))?.failures ?? 0) + 1;
-      backoff.set(slot(session, id), { failures, nextAt: now() + backoffMs(failures) });
+      const prev = backoff.get(slot(session, id));
+      const failures = (prev?.failures ?? 0) + 1;
+      backoff.set(slot(session, id), { failures, firstAt: prev?.firstAt ?? now(), nextAt: now() + backoffMs(failures) });
     }
+  }
+
+  // Whether a message whose pushes have failed is past the TTL: it is no longer pushed, and stays for the hooks.
+  function expired(session, id) {
+    const entry = backoff.get(slot(session, id));
+    return entry?.firstAt !== undefined && nextAction({ firstAt: entry.firstAt, pushes: 0, dueAt: null }, now(), { acked: false, busy: false, ready: true }) === "expired";
   }
 
   function forget(session, ids) {
@@ -84,10 +91,6 @@ export function createDispatcher({
       backoff.delete(slot(session, id));
       rechecks.delete(slot(session, id));
     }
-  }
-
-  function pruneBackoff() {
-    for (const [key, entry] of backoff) if (entry.nextAt < now() - TTL_MS) backoff.delete(key);
   }
 
   // Delivers text to one session through its harness's API. Resolves {status}: "delivered", "unsent" or "unconfirmed" (Claude only).
@@ -167,12 +170,12 @@ export function createDispatcher({
     const entries = readLedger(cfg);
     const sessions = listSessions(cfg).filter((s) => PUSHED.has(s.harness) && s.online);
     for (const session of sessions) {
-      if (nextAction(FIRST_PUSH, now(), { acked: false, busy: false, ready: await ready(session, active), cut: false }) !== "push") continue;
+      if (nextAction(FIRST_PUSH, now(), { acked: false, busy: false, ready: await ready(session, active) }) !== "push") continue;
       const scfg = { ...cfg, peer: session.peer, session: session.session };
       // The predicate runs before the cap: fyi, broadcasts and messages in backoff or reserved do not use up the claim.
       // A project-chat @mention is not pushed here. claimInbox and the runner deliver it to the session it names.
       const candidates = await claim(scfg, {
-        commit: false, limit: CLAIM_LIMIT, accept: (m) => direct(m) && !cooling(session, m.id),
+        commit: false, limit: CLAIM_LIMIT, accept: (m) => direct(m) && !cooling(session, m.id) && !expired(session, m.id),
       }).catch(() => []);
       if (!candidates.length) continue;
       // Reserve before the push so the waiter's claim cannot take the same messages.
@@ -201,17 +204,15 @@ export function createDispatcher({
       for (const [id, e] of Object.entries(entries)) {
         const session = sessions.find((s) => s.id === e.address);
         const state = { firstAt: e.firstAt, pushes: e.attempts, dueAt: e.lastAt + REDELIVER_MS };
-        const decide = async () => nextAction(state, now(), {
-          acked: acked(id, e.address),
-          busy: Boolean(session && busyWithPush(session, active)),
-          ready: Boolean(session) && await ready(session, active),
-          cut: false,
-        });
-        let action = await decide();
+        // Live busy and ready are probed only once the redelivery is due; before that the policy reads acks and the TTL alone.
+        const probed = now() >= state.dueAt
+          ? { busy: Boolean(session && busyWithPush(session, active)), ready: Boolean(session) && await ready(session, active) }
+          : { busy: false, ready: false };
+        let action = nextAction(state, now(), { acked: acked(id, e.address), ...probed });
         // Re-check the answer right before redelivering, so one that arrived during the awaits above gets no copy.
         if (action === "push" && !cooling(session, id)) {
           await refreshAcks(cfg, { [id]: e });
-          action = await decide();
+          action = nextAction(state, now(), { acked: acked(id, e.address), ...probed });
         }
         if (action === "answered" || action === "expired" || action === "dropped") {
           delete entries[id];
@@ -242,7 +243,6 @@ export function createDispatcher({
     if (running || await Promise.resolve().then(skip).catch(() => false)) return total;
     running = true;
     try {
-      pruneBackoff();
       const probe = await opencode("GET", "/api/session/active", { env });
       const active = probe.ok ? new Set(Object.keys(probe.body?.data ?? probe.body ?? {})) : null;
       for (const cfg of projects()) {

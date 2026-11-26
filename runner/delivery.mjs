@@ -36,13 +36,19 @@ export function deliveryWorkflow(deps) {
     // Waits, without a checkpoint, until nextAction allows a push: resolves the live session, or the action that ends the message.
     async function target(state) {
       for (;;) {
+        // A replayed attempt has its outcome recorded, so it takes no live probe.
+        if (wf.replaying) {
+          const replayed = deps.sessionOf(project, address);
+          if (replayed) return replayed;
+        }
         const session = deps.sessionOf(project, address);
         // One probe per poll, shared by ready and busy.
         const active = session ? (await deps.probe?.(session)) ?? null : null;
         const ready = Boolean(session) && await deps.ready(session, active);
         const busy = ready && state.pushes > 0 && Boolean(await deps.busy?.(session, active));
-        const acked = !wf.replaying && await deps.acked(project, address, message);
-        const action = nextAction(state, deps.now(), { acked, busy, ready, cut: false });
+        // Acks matter only to a redelivery; the first push never polls them.
+        const acked = state.pushes > 0 && !wf.replaying && await deps.acked(project, address, message);
+        const action = nextAction(state, deps.now(), { acked, busy, ready });
         if (action === "push") return session;
         if (action !== "wait") return action;
         await wf.pause(readyPollMs);
@@ -120,10 +126,11 @@ export function deliveryWorkflow(deps) {
     // Redelivery: after each redeliverMs without an answer, push again, at most MAX_ATTEMPTS pushes in all.
     for (;;) {
       await wf.sleep(redeliverMs);
+      // The durable sleep has just run out, so the redelivery is due: dueAt is the wake time.
       dueAt = deps.now();
       const acked = await wf.step("acked", () => deps.acked(project, address, message));
       // Ready and busy are decided on each poll in target(); here only the answer, TTL and attempt cap can end the message.
-      const wake = nextAction(stateOf(pushes + 1), deps.now(), { acked, busy: false, ready: true, cut: false });
+      const wake = nextAction(stateOf(pushes + 1), deps.now(), { acked, busy: false, ready: true });
       if (wake !== "push") return { status: wake, pushes };
       const outcome = await deliver(pushes + 1, { allowSeen: true });
       if (["answered", "expired", "cut", "dropped"].includes(outcome)) return { status: outcome, pushes };
