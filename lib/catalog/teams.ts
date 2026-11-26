@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { configDir } from "../config.mjs";
 import { listModels } from "../models.mjs";
 import { listSessions } from "../sessions.mjs";
-import type { SessionCfg } from "../sessions/registry.ts";
 import { formatHarnessModel, parseHarnessModel } from "../harness.ts";
 import { readJson, withLock, writeJson } from "../store.ts";
 import { entryTeams, findProject, plainMap, updateProjects } from "./projects.ts";
@@ -91,7 +90,7 @@ export function teamStatus(cfg: CatalogConfig, name: string, env: NodeJS.Process
   const teams = listTeams(cfg, env);
   if (!teams[name]) throw new Error(`unknown team "${name}"`);
   const sessions = readTeamSessions(cfg, name);
-  const online = new Set<string>(listSessions(cfg as unknown as SessionCfg).filter((s) => s.online).map((s) => s.id));
+  const online = new Set<string>(listSessions(cfg).filter((s) => s.online).map((s) => s.id));
   return teams[name].map((member) => {
     const address = typeof sessions[member] === "string" ? sessions[member] : "";
     return { member, address, online: address ? online.has(address) : false };

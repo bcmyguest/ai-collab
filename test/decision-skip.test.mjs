@@ -124,6 +124,20 @@ test("Skip closes a visible limit card whose stored record was removed", async (
   assert.deepEqual(ends(fake).map((m) => [m.id, m.reason]), [[card.id, "skipped"]]);
 });
 
+test("Skip closes a visible limit card whose stored record is corrupt", async (t) => {
+  const { fake, cfg, post, stateWhere } = await setup(t);
+  const deps = { listed: async () => ({ claude: ["sonnet"] }), available: () => ["claude", "codex"] };
+  const limit = { window: null, windowName: null, resetsAt: null, wording: true, verified: true, source: "test" };
+  const card = await alertLimit({ ...cfg, peer: "codex", session: SESSION }, { harness: "codex", limit, ...deps });
+  await stateWhere("view=home", (d) => d.decisions?.some((x) => x.key === card.id));
+  writeFileSync(cardFile(cfg, card.id), "{\"id\": \"truncated");
+  const response = await post("skip", { id: card.id });
+  assert.equal(response.status, 201);
+  assert.deepEqual(await response.json(), { status: "Skipped" });
+  assert.equal(readCard(cfg, card.id), null);
+  assert.deepEqual(ends(fake).map((m) => [m.id, m.reason]), [[card.id, "skipped"]]);
+});
+
 test("Skip closes a limit card: no pick is possible afterwards, and the next report opens a fresh card", async (t) => {
   const { fake, cfg, post, stateWhere } = await setup(t);
   const deps = { listed: async () => ({ claude: ["sonnet"] }), available: () => ["claude", "codex"] };
