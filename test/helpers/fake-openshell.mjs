@@ -35,7 +35,13 @@ const inside = (sandbox, remote) => {
 };
 
 if (args[0] === "sandbox" && args[1] === "list") {
-  process.stdout.write(`${JSON.stringify({ next_page_token: "", sandboxes: load().sandboxes })}\n`);
+  // With `pageSize` in the state, a page holds that many sandboxes and names the next page's offset as its token.
+  const state = load();
+  const tokenAt = args.indexOf("--page-token");
+  const start = tokenAt >= 0 ? Number(args[tokenAt + 1]) : 0;
+  const end = start + (state.pageSize ?? state.sandboxes.length);
+  const next = end < state.sandboxes.length ? String(end) : "";
+  process.stdout.write(`${JSON.stringify({ next_page_token: next, sandboxes: state.sandboxes.slice(start, end) })}\n`);
   process.exit(0);
 }
 if (args[0] === "sandbox" && args[1] === "create") {

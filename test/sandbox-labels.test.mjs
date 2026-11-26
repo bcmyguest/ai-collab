@@ -58,6 +58,20 @@ test("ensureSandbox passes the full label set on create", async () => {
   }]);
 });
 
+test("the cap counts only real ai-collab name shapes among unlabelled sandboxes", async () => {
+  const mine = [1, 2, 3, 4, 5].map((n) => record(`m-${n}`, managed("demo", "builder", `b${n}`)));
+  const l = lab([...mine, record("s-scratch", {}), record("b-notes", {})]);
+  assert.equal(await sandboxCapRefusal({ openshell: OPENSHELL, env: l.env, name: "new" }), "", "a user's own s- and b- names are not counted");
+});
+
+test("the cap pages through every sandbox on the gateway", async () => {
+  const records = [1, 2, 3, 4, 5, 6].map((n) => record(`p-${n}`, managed(`proj${n}`, "builder", `b${n}`)));
+  const l = lab(records);
+  writeFileSync(l.state, JSON.stringify({ sandboxes: records, pageSize: 2 }));
+  const refusal = await sandboxCapRefusal({ openshell: OPENSHELL, env: l.env, name: "new" });
+  assert.match(refusal, /6 OpenShell sandboxes are running \(p-1, p-2, p-3, p-4, p-5, p-6\)/);
+});
+
 test("the cap is machine-wide: sandboxes of two projects together reach it; unmanaged and run_code ones do not count", async () => {
   const unmanaged = record("b-zz-000001", { "ai-collab.owner": "someone" });
   const codeSandbox = record("ai-collab-code", { "ai-collab.managed": "true", "ai-collab.kind": "code" });

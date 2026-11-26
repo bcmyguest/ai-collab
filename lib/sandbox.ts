@@ -51,8 +51,8 @@ const PROJECT_LABEL = "ai-collab.project";
 const KIND_LABEL = "ai-collab.kind";
 const OWNER_LABEL = "ai-collab.owner";
 const VERSION_LABEL = "ai-collab.version";
-// The names ai-collab gave sandboxes before labels; only an unlabelled sandbox is matched by these.
-const LEGACY_NAME = /^(ai-collab-|team-[0-9a-f]{14}$|b-|s-)/;
+// The names ai-collab generated before labels: sandboxName, teamSandboxName, builderSandbox (b-<8>-<6hex>), runSandboxName (s-<8>-<6hex>).
+const LEGACY_NAME = /^(ai-collab-[a-z0-9-]{1,10}|team-[0-9a-f]{14}|b-[A-Za-z0-9-]{0,8}-[0-9a-f]{6}|s-[A-Za-z0-9-]{0,8}-[0-9a-f]{6})$/;
 const PACKAGE_VERSION: string = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
 /** Lowercase DNS-label-safe sandbox name for a project. */
@@ -138,6 +138,22 @@ export function parseSandboxList(stdout: string): SandboxRecord[] {
   return Array.isArray(parsed?.sandboxes) ? parsed.sandboxes : [];
 }
 
+/** Every sandbox on the gateway: pages through `sandbox list` until a page names no next token. Stops at the first failed page. */
+export async function listAllSandboxes({ openshell, env }: { openshell: string; env?: Env }): Promise<{ code: number | null; stderr: string; records: SandboxRecord[] }> {
+  const records: SandboxRecord[] = [];
+  let token = "";
+  const seen = new Set<string>();
+  for (;;) {
+    const out = await runTool(openshell, ["sandbox", "list", "-o", "json", ...(token ? ["--page-token", token] : [])], { env });
+    if (out.code !== 0) return { code: out.code, stderr: out.stderr, records };
+    records.push(...parseSandboxList(out.stdout));
+    const next = String((JSON.parse(out.stdout) as { next_page_token?: unknown }).next_page_token ?? "");
+    if (!next || seen.has(next)) return { code: 0, stderr: "", records };
+    seen.add(next);
+    token = next;
+  }
+}
+
 /** The labels every ai-collab sandbox is created with: the managed mark, its project, kind, owner and package version. */
 export function sandboxLabels({ project, kind, owner }: { project: string; kind: SandboxKind; owner: string }): SandboxLabels {
   return { [MANAGED_LABEL]: "true", [PROJECT_LABEL]: project, [KIND_LABEL]: kind, [OWNER_LABEL]: owner, [VERSION_LABEL]: PACKAGE_VERSION };
@@ -158,9 +174,9 @@ export function labelsOf(sandbox: SandboxRecord | undefined): SandboxLabels {
  * phase says so. Throws an Error whose message the operator can act on; never prints a secret.
  */
 export async function ensureSandbox({ openshell, env, name, policy, labels = {}, recreateBroken = false }: { openshell: string; env?: Env; name: string; policy?: string; labels?: SandboxLabels; recreateBroken?: boolean }): Promise<string> {
-  const list = await runTool(openshell, ["sandbox", "list", "-o", "json"], { env });
+  const list = await listAllSandboxes({ openshell, env });
   if (list.code !== 0) throw new Error(`openshell sandbox list failed: ${list.stderr.trim() || `exit ${list.code}`}`);
-  let found: SandboxRecord | undefined = parseSandboxList(list.stdout).find((s) => s?.name === name);
+  let found: SandboxRecord | undefined = list.records.find((s) => s?.name === name);
   const foundProject = labelsOf(found)[PROJECT_LABEL];
   if (found && foundProject && labels[PROJECT_LABEL] && foundProject !== labels[PROJECT_LABEL]) throw new Error(`sandbox ${name} belongs to project ${foundProject}; it is not reused`);
   // A sandbox in Error never becomes ready; a caller whose sandbox holds no work (run_code) replaces it.
@@ -255,10 +271,9 @@ export function capCounted(records: SandboxRecord[], log: (line: string) => void
  * builders, runner sessions and schedule ticks. A name already listed is a reuse, not a new sandbox. A failed list is left to the create step.
  */
 export async function sandboxCapRefusal({ openshell, env, name = "", log }: { openshell: string; env?: Env; name?: string; log?: (line: string) => void }): Promise<string> {
-  const list = await runTool(openshell, ["sandbox", "list", "-o", "json"], { env });
-  if (list.code !== 0) return "";
-  let records: SandboxRecord[];
-  try { records = parseSandboxList(list.stdout); } catch { return ""; }
+  const list = await listAllSandboxes({ openshell, env }).catch(() => null);
+  if (!list || list.code !== 0) return "";
+  const records = list.records;
   if (name && records.some((s) => s?.name === name)) return "";
   const counted = capCounted(records, log);
   const cap = maxSandboxes(env);
@@ -272,9 +287,9 @@ export async function sandboxCapRefusal({ openshell, env, name = "", log }: { op
 export async function listManagedSandboxes({ openshell, env, project, kind, owner, legacyNames = [], log = () => {} }: {
   openshell: string; env?: Env; project: string; kind: SandboxKind; owner: string; legacyNames?: string[]; log?: (line: string) => void;
 }): Promise<ManagedSandbox[]> {
-  const list = await runTool(openshell, ["sandbox", "list", "-o", "json"], { env });
+  const list = await listAllSandboxes({ openshell, env });
   if (list.code !== 0) throw new Error(`openshell sandbox list failed: ${list.stderr.trim() || `exit ${list.code}`}`);
-  return parseSandboxList(list.stdout).flatMap((s): ManagedSandbox[] => {
+  return list.records.flatMap((s): ManagedSandbox[] => {
     const name = s?.name ?? "";
     const labels = labelsOf(s);
     if (labels[MANAGED_LABEL] === "true") {
