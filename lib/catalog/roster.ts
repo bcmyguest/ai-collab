@@ -10,7 +10,7 @@ import type { CatalogConfig } from "./records.ts";
 const UNKNOWN_PATTERN = "unknown pattern ";
 const RESERVED_TEAM_NAMES = ["all", "operator"];
 
-type StartFn = (cfg: CatalogConfig, opts: Record<string, any>) => Promise<Record<string, any>>;
+type StartFn = (cfg: CatalogConfig, opts: Record<string, unknown>) => Promise<Record<string, unknown>>;
 type RunResult = { status: string; session?: string; detail?: string; id?: string };
 type StartRunFn = (cfg: CatalogConfig, name: string, task: string, env: NodeJS.ProcessEnv, opts: { start: StartFn; models?: Models }) => Promise<RunResult>;
 

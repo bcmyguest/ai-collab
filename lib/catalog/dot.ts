@@ -178,29 +178,29 @@ function nodeFrom(id: string, attrs: Attr[], line: number, warnings: DotWarning[
   if (!NODE_ID.test(id) || id === DOT_DONE) throw new DotError(`invalid node id "${id}"`, line);
   const seen = attrMap(attrs, NODE_ATTRS, "node", warnings);
   if (!seen.has("agent")) throw new DotError(`node "${id}" needs agent="harness" or agent="harness:model"`, line);
-  const node: DotNode = { id, agent: checkAgent(seen.get("agent")!.value, seen.get("agent")!.line), count: 1 };
+  const node: DotNode = { id, agent: checkAgent(seen.get("agent")?.value ?? "", seen.get("agent")?.line ?? line), count: 1 };
   if (seen.has("count")) {
-    const { value, line: at } = seen.get("count")!;
+    const { value, line: at } = seen.get("count") ?? { value: "", line };
     const count = intIn(value, 1, DOT_COUNT_MAX);
     if (count === null) throw new DotError(`count must be a whole number 1-${DOT_COUNT_MAX}; got "${value}"`, at);
     node.count = count;
   }
   if (seen.has("skill")) {
-    const { value, line: at } = seen.get("skill")!;
+    const { value, line: at } = seen.get("skill") ?? { value: "", line };
     if (!SKILL.test(value)) throw new DotError(`invalid skill "${value}"`, at);
     node.skill = value;
   }
   if (seen.has("prompt")) {
-    const { value, line: at } = seen.get("prompt")!;
+    const { value, line: at } = seen.get("prompt") ?? { value: "", line };
     if (value.length > DOT_PROMPT_MAX) throw new DotError(`prompt is longer than ${DOT_PROMPT_MAX} characters`, at);
     if (value.trim()) node.prompt = value.trim();
   }
   if (seen.has("fallback")) {
-    const { value, line: at } = seen.get("fallback")!;
+    const { value, line: at } = seen.get("fallback") ?? { value: "", line };
     node.fallback = checkAgent(value, at);
   }
   if (seen.has("code_mode")) {
-    const { value, line: at } = seen.get("code_mode")!;
+    const { value, line: at } = seen.get("code_mode") ?? { value: "", line };
     if (value !== "on" && value !== "off") throw new DotError(`code_mode must be on or off; got "${value}"`, at);
     node.codeMode = value === "on";
   }
@@ -211,19 +211,19 @@ function nodeFrom(id: string, attrs: Attr[], line: number, warnings: DotWarning[
 function edgeFrom(attrs: Attr[], line: number, warnings: DotWarning[]): Omit<DotEdge, "from" | "to"> {
   const seen = attrMap(attrs, EDGE_ATTRS, "edge", warnings);
   if (!seen.has("on")) throw new DotError('edge needs on="event"', line);
-  const on = seen.get("on")!.value.trim();
-  if (!on || on.length > DOT_EVENT_MAX) throw new DotError(`edge event must be 1-${DOT_EVENT_MAX} characters`, seen.get("on")!.line);
-  const kind = seen.has("kind") ? seen.get("kind")!.value : "pair";
+  const on = (seen.get("on")?.value ?? "").trim();
+  if (!on || on.length > DOT_EVENT_MAX) throw new DotError(`edge event must be 1-${DOT_EVENT_MAX} characters`, seen.get("on")?.line ?? line);
+  const kind = seen.get("kind")?.value ?? "pair";
   if (!DOT_KINDS.includes(kind)) throw new DotError(`kind must be one of ${DOT_KINDS.join(", ")}; got "${kind}"`, seen.get("kind")?.line ?? line);
   let required = false;
   if (seen.has("required")) {
-    const { value, line: at } = seen.get("required")!;
+    const { value, line: at } = seen.get("required") ?? { value: "", line };
     if (value !== "true" && value !== "false") throw new DotError(`required must be true or false; got "${value}"`, at);
     required = value === "true";
   }
   const edge: Omit<DotEdge, "from" | "to"> = { on, kind, required };
   if (seen.has("cap")) {
-    const { value, line: at } = seen.get("cap")!;
+    const { value, line: at } = seen.get("cap") ?? { value: "", line };
     const cap = intIn(value, 1, DOT_CAP_MAX);
     if (cap === null) throw new DotError(`cap must be a whole number 1-${DOT_CAP_MAX}; got "${value}"`, at);
     edge.cap = cap;
@@ -290,7 +290,7 @@ export function parseDot(text: string): DotTeam {
         at += 1;
         const target = take();
         if (!isWord(target)) throw new DotError('expected a node name after "->"', token.line);
-        ids.push(target!.value);
+        ids.push(target.value);
       }
       const attrs = isPunct(peek(), "[") ? attrList() : [];
       edgeStmts.push({ ids, attrs, line: token.line });
@@ -307,7 +307,7 @@ export function parseDot(text: string): DotTeam {
   const graphAttrs = attrMap(graphs.flatMap((graph) => graph.attrs), GRAPH_ATTRS, "graph", warnings);
   let maxVisits: number | null = null;
   if (graphAttrs.has("max_visits")) {
-    const { value, line } = graphAttrs.get("max_visits")!;
+    const { value, line } = graphAttrs.get("max_visits") ?? { value: "", line: 0 };
     maxVisits = intIn(value, 1, DOT_VISITS_MAX);
     if (maxVisits === null) throw new DotError(`max_visits must be a whole number 1-${DOT_VISITS_MAX}; got "${value}"`, line);
   }
@@ -336,7 +336,7 @@ export function parseDot(text: string): DotTeam {
     }
   }
 
-  return { name: nameToken!.value, description: graphAttrs.get("description")?.value ?? "", maxVisits, nodes, edges, warnings };
+  return { name: nameToken.value, description: graphAttrs.get("description")?.value ?? "", maxVisits, nodes, edges, warnings };
 }
 
 const quote = (text: unknown): string => `"${String(text).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n")}"`;

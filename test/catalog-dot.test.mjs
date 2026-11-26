@@ -19,10 +19,10 @@ test("a team with every attribute serializes to canonical text that parses back 
   assert.deepEqual(parseDot(text), team);
   assert.equal(serializeDot(parseDot(text)), text);
   assert.equal(text.split("\n")[0], 'digraph "review-loop" {');
-  assert.match(text, /^  graph \[description="Write, then review", max_visits=4\];$/m);
-  assert.match(text, /^  "review-1" \[agent="opencode", count=1, prompt="Review it."\];$/m);
-  assert.match(text, /^  "doer" -> "review-1" \[on="written", kind="fan-in", required=false\];$/m);
-  assert.match(text, /^  "review-1" -> "done" \[on="approved", kind="pair", required=true\];$/m);
+  assert.match(text, /^ {2}graph \[description="Write, then review", max_visits=4\];$/m);
+  assert.match(text, /^ {2}"review-1" \[agent="opencode", count=1, prompt="Review it."\];$/m);
+  assert.match(text, /^ {2}"doer" -> "review-1" \[on="written", kind="fan-in", required=false\];$/m);
+  assert.match(text, /^ {2}"review-1" -> "done" \[on="approved", kind="pair", required=true\];$/m);
 });
 
 test("parsed nodes keep the DOT-only fields: count, skill, fallback and code_mode", () => {

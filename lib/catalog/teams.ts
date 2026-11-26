@@ -30,7 +30,7 @@ export function writeGlobalTeams(env: NodeJS.ProcessEnv, teams: Record<string, s
 }
 
 /** Merged team map for a project; project teams override global names. */
-export function listTeams(cfg: CatalogConfig, env: NodeJS.ProcessEnv = process.env): Record<string, string[]> {
+export function listTeams(cfg: CatalogConfig, env: NodeJS.ProcessEnv = process.env) {
   const global = readGlobalTeams(env);
   const project = entryTeams(findProject(env, cfg.project));
   const names = new Set([...Object.keys(global), ...Object.keys(project)]);
@@ -107,7 +107,7 @@ export function deleteTeam(cfg: CatalogConfig, name: string, env: NodeJS.Process
     const local = { ...entryTeams(entry) };
     delete local[name];
     const next = projects.map((item) => (item?.project === cfg.project ? { ...item, teams: local } : item));
-    return { projects: next as ProjectEntry[], result: { deleted: name } };
+    return { projects: next, result: { deleted: name } };
   });
 }
 

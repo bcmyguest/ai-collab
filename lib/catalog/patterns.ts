@@ -11,7 +11,7 @@ import { globalTeamsDir, isRegularFile, migratedNames, projectTeamsDir, readTeam
 import { checkNodePrompts, legacyPattern, patternFromTeam, reservedNames, teamFromPattern, validatePattern, withExtras } from "./pattern-model.ts";
 import type { CatalogConfig, Pattern, PatternSource } from "./records.ts";
 
-type Loose = Record<string, any>;
+type Loose = Record<string, unknown>;
 type Env = NodeJS.ProcessEnv;
 type CheckResult = { ok: true; pattern: Pattern; warnings: DotTeam["warnings"] } | { ok: false; error: string; line: number | null };
 
@@ -124,7 +124,7 @@ function checkedEntry(name: string, raw: Loose, source: PatternSource, reserved:
 }
 
 /** Merged map: built-in, then global, then another project's team, then this project's patterns and team files. Legacy teams fill names no pattern uses. Invalid saved patterns carry `invalid`. */
-export function listPatterns(cfg: CatalogConfig, env: Env = process.env): Record<string, Pattern> {
+export function listPatterns(cfg: CatalogConfig, env: Env = process.env) {
   try { migrateGlobalPatterns(env); } catch { /* a failed conversion leaves patterns.json as the source; the next call retries */ }
   const reserved = reservedNames(cfg);
   const files = teamFilesOf(cfg, env);
@@ -136,7 +136,7 @@ export function listPatterns(cfg: CatalogConfig, env: Env = process.env): Record
   for (const item of uniqueOtherTeams(cfg, env)) {
     if (!Object.hasOwn(out, item.name)) out[item.name] = checkedTeamEntry({ ...item, source: "other" }, reserved);
   }
-  for (const [name, raw] of Object.entries(entryPatterns(findProject(env, cfg.project)))) out[name] = checkedEntry(name, raw as Loose, "project", reserved);
+  for (const [name, raw] of Object.entries(entryPatterns(findProject(env, cfg.project)))) out[name] = checkedEntry(name, raw, "project", reserved);
   for (const item of files) if (item.source === "project") out[item.name] = checkedTeamEntry({ ...item, source: "project" }, reserved);
   for (const [name, members] of Object.entries(listTeams(cfg, env))) {
     if (!out[name]) out[name] = { ...legacyPattern(name, members), source: "team" };
@@ -173,7 +173,7 @@ export async function createPattern(cfg: CatalogConfig, raw: unknown, env: Env =
 }
 
 /** Parses team.dot text as the team named name: the parsed team and its checked pattern. Throws with the line of a DOT error. */
-function teamOf(cfg: CatalogConfig, name: string, text: string): { team: DotTeam; pattern: Pattern } {
+function teamOf(cfg: CatalogConfig, name: string, text: string) {
   if (!isValidName(name)) throw new Error("pattern name must be 1-24 chars of a-z, 0-9 and single hyphens");
   const team = parseDot(text);
   if (team.name !== name) throw new Error(`digraph name "${team.name}" must match "${name}"`);

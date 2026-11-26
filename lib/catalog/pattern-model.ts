@@ -5,8 +5,8 @@ import { parseHarnessModel } from "../harness.ts";
 import { DOT_PROMPT_MAX, DotError, type DotTeam, type DotTeamInput } from "./dot.ts";
 import type { Handoff, Pattern, Role } from "./records.ts";
 
-/** JSON from disk or a request: checked field by field below. */
-type Loose = Record<string, any>;
+/** JSON from disk or a request: each field is checked where it is read. */
+type Loose = Record<string, unknown>;
 
 export const DONE = "done";
 // Same shape as NODE_ID in dot.ts.
@@ -30,7 +30,7 @@ export function checkNodePrompts(team: DotTeam): void {
 }
 
 /** A parsed team in the shape validatePattern takes: a node's prompt is its role's responsibility. */
-export function patternFromTeam(team: DotTeam): Loose {
+export function patternFromTeam(team: DotTeam) {
   const counts = new Map(team.nodes.map((node) => [node.id, node.count]));
   for (const edge of team.edges) {
     if (edge.kind === "pair" && edge.to !== DONE && counts.get(edge.from) !== counts.get(edge.to)) {
@@ -94,7 +94,10 @@ export function legacyPattern(name: string, members: unknown[]): Pattern {
   const parsed = members.map((member) => parseHarnessModel(String(member)));
   const badIndex = parsed.indexOf(null);
   if (badIndex >= 0) return { name, legacy: true, invalid: `team member "${members[badIndex]}" is not a harness or harness:model`, roles: [], handoffs: [] };
-  const roles = parsed.map((item, index) => ({ id: `${item!.harness}-${index + 1}`, responsibility: "", harness: item!.harness, ...(item!.model ? { model: item!.model } : {}) }));
+  const roles = parsed.map((item, index) => {
+    const parsedItem = item ?? { harness: "", model: "" };
+    return { id: `${parsedItem.harness}-${index + 1}`, responsibility: "", harness: parsedItem.harness, ...(parsedItem.model ? { model: parsedItem.model } : {}) };
+  });
   return { name, legacy: true, roles, handoffs: [] };
 }
 
@@ -102,8 +105,8 @@ export function legacyPattern(name: string, members: unknown[]): Pattern {
 export function validatePattern(raw: unknown, reserved: string[] = []): Pattern {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("pattern must be an object");
   const input = raw as Loose;
-  const { name } = input;
-  if (!isValidName(name)) throw new Error("pattern name must be 1-24 chars of a-z, 0-9 and single hyphens");
+  const name = input.name;
+  if (typeof name !== "string" || !isValidName(name)) throw new Error("pattern name must be 1-24 chars of a-z, 0-9 and single hyphens");
   if (reserved.includes(name)) throw new Error(`pattern name cannot be "${name}"; it is reserved`);
   if (!Array.isArray(input.roles) || input.roles.length < 1 || input.roles.length > MAX_ROLES) throw new Error(`pattern needs 1-${MAX_ROLES} roles`);
   const roles: Role[] = input.roles.map((role: Loose) => {
@@ -112,10 +115,11 @@ export function validatePattern(raw: unknown, reserved: string[] = []): Pattern 
     if (!ROLE_ID.test(id) || id === DONE) throw new Error(`invalid role id "${id}"`);
     const responsibility = typeof role.responsibility === "string" ? role.responsibility.trim() : "";
     if (!responsibility || responsibility.length > RESPONSIBILITY_MAX) throw new Error(`role "${id}" needs a prompt of 1-${RESPONSIBILITY_MAX} characters`);
-    if (!START_HARNESSES.includes(role.harness)) throw new Error(`role "${id}" harness must be one of ${START_HARNESSES.join(", ")}`);
-    const out: Role = { id, responsibility, harness: role.harness };
+    const harness = role.harness;
+    if (typeof harness !== "string" || !(START_HARNESSES as readonly string[]).includes(harness)) throw new Error(`role "${id}" harness must be one of ${START_HARNESSES.join(", ")}`);
+    const out: Role = { id, responsibility, harness };
     if (role.model !== undefined && role.model !== "") {
-      if (!modelShape(role.harness, String(role.model))) throw new Error(`role "${id}" has an invalid model`);
+      if (!modelShape(harness, String(role.model))) throw new Error(`role "${id}" has an invalid model`);
       out.model = String(role.model);
     }
     return out;
@@ -135,11 +139,13 @@ export function validatePattern(raw: unknown, reserved: string[] = []): Pattern 
     const key = `${from}\n${on}`;
     if (seen.has(key)) throw new Error(`role "${from}" has two handoffs on "${on}"`);
     seen.add(key);
-    if (typeof handoff.required !== "boolean") throw new Error(`handoff "${from}" -> "${to}" needs required true or false`);
-    const out: Handoff = { from, to, on, required: handoff.required };
+    const required = handoff.required;
+    if (typeof required !== "boolean") throw new Error(`handoff "${from}" -> "${to}" needs required true or false`);
+    const out: Handoff = { from, to, on, required };
     if (handoff.cap !== undefined) {
-      if (!Number.isInteger(handoff.cap) || handoff.cap < 1 || handoff.cap > CAP_MAX || to === DONE) throw new Error(`handoff "${on}" cap must be an integer 1-${CAP_MAX} on a role-to-role handoff`);
-      out.cap = handoff.cap;
+      const cap = handoff.cap;
+      if (typeof cap !== "number" || !Number.isInteger(cap) || cap < 1 || cap > CAP_MAX || to === DONE) throw new Error(`handoff "${on}" cap must be an integer 1-${CAP_MAX} on a role-to-role handoff`);
+      out.cap = cap;
     }
     return out;
   });
