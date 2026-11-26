@@ -26,3 +26,15 @@ test("drop forgets a waiter and an early claim", async () => {
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(taken, false, "a dropped early claim must not reach a later take");
 });
+
+test("an early claim nobody takes expires instead of leaking", async () => {
+  let clock = 1_000;
+  const claims = createClaims({ now: () => clock });
+  claims.set("orphan", { id: "orphan" }); // its waiter timed out and dropped before this arrived
+  clock += 11 * 60_000;
+  claims.set("tick", 1); // any later traffic prunes the stale entry
+  let taken = false;
+  claims.take("orphan").then(() => { taken = true; });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(taken, false, "a stale unclaimed early claim must be gone, not delivered late");
+});

@@ -114,19 +114,28 @@ function view(s) {
 }
 
 /** Claim handoff between a session workflow and its waiter. On DBOS, boot's pending() launches and
- * recovers before waiters exist, so a claim that arrives early is kept and delivered to the next take. */
-export function createClaims() {
+ * recovers before waiters exist, so a claim that arrives early is kept and delivered to the next take.
+ * An early claim whose waiter never comes (it timed out and dropped before the claim landed) expires
+ * after the TTL instead of leaking; any set or take prunes the stale entries. */
+export function createClaims({ now = Date.now } = {}) {
+  const EARLY_TTL_MS = 10 * 60_000;
   const waiters = new Map();
-  const early = new Map();
+  const early = new Map(); // id → { value, at }: kept until the next take or the TTL
+  function prune() {
+    const at = now();
+    for (const [id, entry] of early) if (at - entry.at >= EARLY_TTL_MS) early.delete(id);
+  }
   return {
     take(id) {
-      if (early.has(id)) return Promise.resolve(early.get(id));
+      prune();
+      if (early.has(id)) return Promise.resolve(early.get(id).value);
       return new Promise((resolve) => waiters.set(id, resolve));
     },
     set(id, value) {
+      prune();
       const resolve = waiters.get(id);
       if (resolve) { waiters.delete(id); resolve(value); }
-      else early.set(id, value);
+      else early.set(id, { value, at: now() });
     },
     drop(id) { waiters.delete(id); early.delete(id); },
   };
@@ -139,7 +148,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   const configs = new Map(projects.map((cfg) => [cfg.project, cfg]));
   const manualAt = new Map();
   const sessions = new Map();
-  const claims = createClaims();
+  const claims = createClaims({ now });
   const continuing = new Set();
   // The wake gate per closed session address: a wake runs after the previous wake of that session.
   const wakeTail = new Map();
