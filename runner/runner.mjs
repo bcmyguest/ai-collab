@@ -777,7 +777,7 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
   durable.register("session", sessionWorkflow);
 
   /** Starts an owned session; resolves {status:"started", session, nativeId, workflowId, detail}. */
-  async function start({ project, harness, prompt, model, place: named, permissionMode, codeMode, taskId, builder: builderId, system = true } = {}, patternRun, continuation) {
+  async function start({ project, harness, prompt, model, place: named, permissionMode, claudePermission, codeMode, taskId, builder: builderId, system = true } = {}, patternRun, continuation) {
     if (!configs.has(project)) fail(400, "Unknown project");
     if (isProjectPaused(configs.get(project))) fail(409, PROJECT_PAUSED);
     const adapter = adapterOf(harness);
@@ -785,7 +785,9 @@ export function createRunner({ projects, adapters, durable, env = process.env, g
     if (!PLACES.includes(place)) fail(400, "Unknown start place");
     // OpenShell is the boundary: every harness there runs with approvals off, whatever mode the caller named.
     // An unnamed Claude start takes the configured claudePermissionMode when it names a runner mode.
-    const claude = harness === "claude" && place !== "openshell" && permissionMode === undefined ? claudePermissionFor(harness, configs.get(project), env) : {};
+    // Team, pattern and continuation starts default to auto; an instance setting replaces the team or configured one.
+    const scoped = Boolean(patternRun || continuation);
+    const claude = harness === "claude" && place !== "openshell" && permissionMode === undefined ? claudePermissionFor(harness, configs.get(project), env, { setting: claudePermission ?? (scoped ? "auto" : undefined) }) : {};
     if (claude.error) fail(400, claude.error);
     if (claude.flag && !runnerModeOfClaude(claude.flag)) fail(400, `claudePermissionMode ${claude.flag} has no runner mode; use default, acceptEdits, auto or bypassPermissions`);
     const configuredMode = claude.flag ? runnerModeOfClaude(claude.flag) : null;

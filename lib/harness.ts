@@ -32,6 +32,8 @@ export const CLAUDE_PERMISSION_MODES: readonly string[] = ["acceptEdits", "auto"
 export const CLAUDE_PERMISSION_AUTO = "auto-afk";
 // The defaults.json claudePermissionMode that passes nothing, so the user's own Claude settings apply.
 export const CLAUDE_PERMISSION_INHERIT = "inherit";
+// Every value a Claude permission setting may name: defaults.json, a team.dot attribute, or a start option.
+export const CLAUDE_PERMISSION_VALUES: readonly string[] = [CLAUDE_PERMISSION_AUTO, CLAUDE_PERMISSION_INHERIT, ...CLAUDE_PERMISSION_MODES];
 export const REQUIRE_RUN_CODE_ENV = "AI_COLLAB_REQUIRE_RUN_CODE";
 export const CODEX_CODE_MODE_KEY = "features.code_mode";
 // The harness each agent binary runs as, by the binary's name. A Map, so a name like "constructor" finds nothing.
@@ -118,6 +120,11 @@ export function cursorBinary(path = ""): string {
 /** The Cursor binary a start or wake runs: the name cursorBinary finds on `path`. */
 export function cursorCommandFor({ path = "" }: { path?: string } = {}): string {
   return cursorBinary(path);
+}
+
+/** "" when the value is a Claude permission setting, else the message naming the valid ones. */
+export function claudePermissionError(value: unknown): string {
+  return CLAUDE_PERMISSION_VALUES.includes(value as string) ? "" : `claudePermissionMode must be one of ${CLAUDE_PERMISSION_VALUES.join(", ")}; got ${JSON.stringify(value)}`;
 }
 
 /** The --permission-mode a Claude start passes: the setting itself, "default" for auto-afk while AFK is on, else undefined. */
