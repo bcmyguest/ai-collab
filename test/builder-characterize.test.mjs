@@ -19,7 +19,7 @@ const PINNED = {
   "policy.opencode": "25f11e6511838a3c2ff09c7137a430ae8bf657eeb61ccbacf7e2e719bf09be92",
   "policyNoNtfy.opencode": "1e2e0c2e7ea1f8bb1761adbf527d53a31fe586aebe5204d76ef89cc36a644c8e",
   "argv.opencode": "740d6dba67c3ca4fa30e3929f396624c48da40ad1a87bfc2d20ea18e702387d7",
-  claudeSettings: "cf617b26f12d2e8f87e0b0f5e5aa60350fda9481df4af105391a1b39b2ac96e6",
+  claudeSettings: "a7fba250b3340304bf6e961c11ed65de69a623881b0478a8da4567c9f4f46873",
   claudeMcp: "9b772447ea7eb9429d976737dc2b13a990e9cdf366aea05b2da3e5a000364f49",
   cursorHooks: "f7921b4c343ff7e958d4c2c6603f51009999303fbacc6e4a44ddacaa6aaac812",
   claudeHooks: "0803da8b7cd4b0fd42803628795691bbef180d4fcb67f0b78e5b455a548a92a6",
