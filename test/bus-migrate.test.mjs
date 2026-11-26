@@ -147,6 +147,12 @@ test("running --resume twice is idempotent", { skip }, () => withStores(async ({
   assert.equal(first.nextId, second.nextId, "the sequence does not move on an empty resume");
 }));
 
+test("an empty source copies nothing and reports next id 1", { skip }, () => withStores(async ({ dir, schema }) => {
+  const result = await migrate(dir, schema);
+  assert.deepEqual({ events: result.events, files: result.files, minId: result.minId, nextId: result.nextId },
+    { events: 0, files: 0, minId: 0, nextId: 1 }, "a never-used sequence already points at its first id");
+}));
+
 test("--dry-run prints the counts and writes nothing", { skip }, () => withStores(async ({ dir, schema, sqlite }) => {
   seedEvents(sqlite, 3);
   sqlite.putFile({ name: "note.txt", data: Buffer.from("hi") });
