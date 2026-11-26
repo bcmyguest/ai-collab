@@ -258,3 +258,11 @@ Backlog raised by the operator:
 - Harness version contract tests: pin event shapes, flags and hook payloads per harness; run against the newest release on a schedule.
 - UI: "waking the selected session" shows after every send even when the session is live.
 - Route `web/server/ui.mjs` skip/outcome loops through `operator.matchReply`.
+
+## 9. Operator feedback to act on after the migration
+
+- Landing (2026-11-26): a PR for review is fine; merging to main blindly is not. Each team declares its landing policy (e.g. always a feature branch plus a PR), customizable through the DOT compiler as a team/pattern attribute. Users without teams default to a branch plus a review packet or PR, never a direct push to main. Replace `ai-collab merge`, which pushes to origin/main.
+- OpenShell architecture is the differentiator, but deferred until the migration is done.
+- PR and review from the phone (diff view, comments, approve and land) is a focus; diffs are offered but not the product.
+- Permission mode: sessions the operator starts run in default mode; team, pattern and continuation members stay auto, overridable per team and per instance, settable by slash command.
+- A one-step `ai-collab deploy` so landing doesn't need a terminal.
