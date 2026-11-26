@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { fallbackAttempts, limitFallback } from "../lib/builder.mjs";
+import { fallbackAttempts, limitFallback } from "../lib/builder.ts";
 import { fallbackChain, replacementOptions } from "../lib/limit-alert.mjs";
 import { classifyLimit, limitFromRunError } from "../lib/limits.ts";
 
