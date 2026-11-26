@@ -27,13 +27,13 @@ async function dropSchema(schema) {
 }
 
 /** Runs fn with a fresh store of `kind` behind a bus server; closes everything and drops the test schema after. */
-async function withBus(kind, fn) {
+async function withBus(kind, fn, storeOpts = {}) {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-bus-store-"));
   const schema = `bus_t_${randomBytes(4).toString("hex")}`;
   const filesDir = path.join(dir, "files");
   const open = () => (kind === "sqlite"
     ? openBusStore({ file: path.join(dir, "bus.db"), filesDir })
-    : openPostgresBusStore({ url: pgUrl(process.env), filesDir, schema }));
+    : openPostgresBusStore({ url: pgUrl(process.env), filesDir, schema, ...storeOpts }));
   const store = await open();
   const extra = [];
   const server = createBusServer({ store, token: TOKEN });
@@ -131,7 +131,31 @@ test("postgres: ids stay unique and ordered under two concurrent publishers", { 
   polled.slice(1).forEach((id, i) => assert.ok(id > polled[i], `poll order breaks at ${id}`));
 }));
 
-test("postgres: NOTIFY wakes a stream on another connection, and unsubscribe stops it", { skip: !pgUp && "Postgres not reachable" }, () => withBus("postgres", async ({ store, open2 }) => {
+test("postgres: a terminated backend is dropped, and the stream and publishes recover", { skip: !pgUp && "Postgres not reachable" }, () => {
+  const applicationName = `bus_test_${randomBytes(4).toString("hex")}`;
+  return withBus("postgres", async ({ store }) => {
+    const got = [];
+    const stop = await store.stream(["t"], "all", (ev) => got.push(ev.message));
+    await store.publish({ topic: "t", message: "first" });
+    assert.ok(await waitFor(() => got.length === 1, 2000), "stream delivers before the kill");
+    const { default: pg } = await import("pg");
+    const admin = new pg.Client({ connectionString: pgUrl(process.env) });
+    await admin.connect();
+    try {
+      const { rowCount } = await admin.query("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = $1", [applicationName]);
+      assert.ok(rowCount >= 1, `expected bus backends to terminate, found ${rowCount}`);
+    } finally {
+      await admin.end();
+    }
+    await new Promise((r) => setTimeout(r, 200));
+    await store.publish({ topic: "t", message: "second" });
+    assert.ok(await waitFor(() => got.length === 2, 5000), "stream receives the second event within 5 s");
+    assert.deepEqual(got, ["first", "second"]);
+    stop();
+  }, { applicationName });
+});
+
+test("postgres: NOTIFY wakes a stream on another connection, and unsubscribe stops it",{ skip: !pgUp && "Postgres not reachable" }, () => withBus("postgres", async ({ store, open2 }) => {
   const writer = await open2();
   const got = [];
   const stop = await store.stream(["t"], "all", (ev) => got.push(ev.message));

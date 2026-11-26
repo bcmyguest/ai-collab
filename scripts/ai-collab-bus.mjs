@@ -51,7 +51,7 @@ export async function main(env = process.env) {
   const retentionMs = Number(env.AI_COLLAB_BUS_RETENTION_HOURS ? Number(env.AI_COLLAB_BUS_RETENTION_HOURS) * 3_600_000 : DEFAULT_RETENTION_MS);
   const kind = resolveBusStoreKind(env, busDefaults(env));
   const store = kind === "postgres"
-    ? await openPostgresBusStore({ url: pgUrl(env), filesDir: path.join(dataDir, "files"), retentionMs })
+    ? await openPostgresBusStore({ url: pgUrl(env), filesDir: path.join(dataDir, "files"), retentionMs, log })
     : undefined;
   const bus = openBus({ dataDir, token, retentionMs, baseUrl: env.AI_COLLAB_BUS_BASE_URL || "", store });
   const port = busPort(env);
