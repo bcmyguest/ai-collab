@@ -189,9 +189,22 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
 
   function makeContext(id: string, input: Json, ctrl: AbortController, prior: string[]) {
     const signal = AbortSignal.any([closing.signal, ctrl.signal]);
-    const recorded = new Set(prior);
     const priorOps = prior.length;
-    let consumed = 0; // ctx ops issued this run: a step costs 2 (marker + result), recv and sleep 1
+    let consumed = 0; // recorded ops this run issued or replayed: a step costs 2 (marker + result), each recv and sleep 1
+    // Cut detection keys on the occurrence, not the name: the runner repeats step names in loops
+    // (wake.reserve, wake.send, wake.wait), so a name anywhere in the record says nothing about *this*
+    // occurrence. Occurrence k of a name is cut when the record holds >= k markers but < k results.
+    const priorMarkers = new Map<string, number>();
+    const priorResults = new Map<string, number>();
+    for (const n of prior) {
+      if (n.endsWith("!started")) priorMarkers.set(n, (priorMarkers.get(n) ?? 0) + 1);
+      else priorResults.set(n, (priorResults.get(n) ?? 0) + 1);
+    }
+    const issued = new Map<string, number>();
+    const recvOp = async (topic: string, opts: { timeoutSeconds: number }) => {
+      consumed += 1; // DBOS records every recv, timeouts included, as one operation_outputs row
+      return await DBOS.recv(topic, opts);
+    };
     return {
       id, input, signal,
       get replaying() { return consumed < priorOps; },
@@ -199,20 +212,22 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
         // A marker step records that fn started; a marker without a result at context build time is a cut
         // (killed mid-step): onCut answers it once, mirroring the sqlite engine, and fn never re-runs.
         const marker = `${name}!started`;
+        const k = (issued.get(name) ?? 0) + 1;
+        issued.set(name, k);
         consumed += 1;
         await DBOS.runStep(async () => true, { name: marker });
         consumed += 1;
-        if (onCut && recorded.has(marker) && !recorded.has(name)) {
+        if (onCut && k > (priorResults.get(name) ?? 0) && k <= (priorMarkers.get(marker) ?? 0)) {
           return await DBOS.runStep(async () => await onCut(), { name });
         }
         return await DBOS.runStep(fn, { name });
       },
       recv: async (topic: string, { all = false, timeoutSeconds = null } = {}) => {
         if (!all) {
-          const first = await DBOS.recv(topic, { timeoutSeconds: 0 });
+          const first = await recvOp(topic, { timeoutSeconds: 0 });
           if (first !== null) return first;
           for (;;) {
-            const next = await DBOS.recv(topic, { timeoutSeconds: 60 });
+            const next = await recvOp(topic, { timeoutSeconds: 60 });
             if (next !== null) return next;
           }
         }
@@ -221,12 +236,12 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
         const values: unknown[] = [];
         if (timeoutSeconds !== 0) {
           for (;;) {
-            const first = await DBOS.recv(topic, { timeoutSeconds: 60 });
+            const first = await recvOp(topic, { timeoutSeconds: 60 });
             if (first !== null) { values.push(first); break; }
           }
         }
         for (;;) {
-          const next = await DBOS.recv(topic, { timeoutSeconds: 0 });
+          const next = await recvOp(topic, { timeoutSeconds: 0 });
           if (next === null) break;
           values.push(next);
         }
@@ -239,7 +254,7 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
         function onAbort() { clearTimeout(t); reject(signal.reason); }
         signal.addEventListener("abort", onAbort, { once: true });
       }),
-      sleep: async (ms: number) => { await DBOS.sleep(ms); },
+      sleep: async (ms: number) => { consumed += 1; await DBOS.sleep(ms); },
     };
   }
 
