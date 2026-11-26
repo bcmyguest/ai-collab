@@ -44,7 +44,7 @@ Every operator message the hooks inject says how to answer it, and the identity 
 
 Peer agents' messages carry no reply hint. An agent's own `ask_question` post is not delivered back to it.
 
-Messages ai-collab sends on its own initiative travel under the operator's address, so the reply routes above work unchanged, but carry `"system": true`. Readers show them as a system sender, not as the operator: the UI chat labels them **system**, and the hook text says they are from ai-collab, not the operator, and expect no reply. Today: the compaction request a running session cannot compact from outside (`COMPACT_REQUEST`, `lib/controls.mjs`) and pattern-run notices and role briefs (`lib/pattern-runs.mjs`).
+Messages ai-collab sends on its own initiative travel under the operator's address, so the reply routes above work unchanged, but carry `"system": true`. Readers show them as a system sender, not as the operator: the UI chat labels them **system**, and the hook text says they are from ai-collab, not the operator, and expect no reply. Today: the compaction request a running session cannot compact from outside (`COMPACT_REQUEST`, `lib/sessions.ts`) and pattern-run notices and role briefs (`lib/pattern-runs.mjs`).
 
 ### Screenshots
 

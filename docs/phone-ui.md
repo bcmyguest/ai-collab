@@ -79,7 +79,7 @@ The hash records the view: `level=session&session=<addr>&tab=activity|subagents|
 
 Tapping a message's sender avatar or name, or an `@peer#session` tag, opens that session's timeline; an `@harness` tag opens the session list. Tapping a completion or live row opens its session. The operator's own messages stay plain.
 
-**Session names** appear next to `harness#label` in the mention picker, the sidebar and the cards. Claude Code: the `session_title` field of its SessionStart and UserPromptSubmit hook input (in the Claude 2.1.330 hook schema). Codex: the thread's newest `thread_name` in `$CODEX_HOME/session_index.jsonl`. OpenCode: the session `title` from `ctx.session.get`, read when the plugin first sees the session. Hooks record it in the local registry at SessionStart, UserPromptSubmit and Stop (`lib/names.mjs`). Cursor gives none; the UI falls back to the folder name and the first six words of the session's earliest prompt still in the activity history.
+**Session names** appear next to `harness#label` in the mention picker, the sidebar and the cards. Claude Code: the `session_title` field of its SessionStart and UserPromptSubmit hook input (in the Claude 2.1.330 hook schema). Codex: the thread's newest `thread_name` in `$CODEX_HOME/session_index.jsonl`. OpenCode: the session `title` from `ctx.session.get`, read when the plugin first sees the session. Hooks record it in the local registry at SessionStart, UserPromptSubmit and Stop (`lib/sessions.ts`). Cursor gives none; the UI falls back to the folder name and the first six words of the session's earliest prompt still in the activity history.
 
 A session that holds a live role shows that team and role on the card, in the sidebar, and on its row in the project chat (`product · pm`). The label comes from a running pattern: the session address on that role. A session with no live role shows neither.
 
@@ -176,7 +176,7 @@ The prompt is one argv element, 1-4000 characters, and may not start with `-`. N
 |---|---|---|
 | In the project folder | always | as above |
 | In a new git worktree | `root/.git` exists and `git` is on `PATH` | Claude: `claude --bg --worktree ai-collab-claude-<UTC stamp> <prompt>` (Claude makes its own worktree). Codex, Cursor: `git -C <root> worktree add -b ai-collab/<harness>-<stamp> <root>/.claude/worktrees/ai-collab-<harness>-<stamp>`, then the harness argv with that folder as cwd (and Cursor's `--workspace`) |
-| In the openshell sandbox (shared) | `AI_COLLAB_OPENSHELL_SANDBOX` is a valid name and `openshell` is on `PATH` | `openshell sandbox exec --name <sandbox> --workdir <root> --no-tty --no-login-shell -- <harness argv>`, the wrapper wake uses (`lib/controls.mjs`) |
+| In the openshell sandbox (shared) | `AI_COLLAB_OPENSHELL_SANDBOX` is a valid name and `openshell` is on `PATH` | `openshell sandbox exec --name <sandbox> --workdir <root> --no-tty --no-login-shell -- <harness argv>`, the wrapper wake uses (`lib/sessions.ts`) |
 | In the openshell sandbox (runner) | no `AI_COLLAB_OPENSHELL_SANDBOX`, a git root, `openshell` on `PATH`, the runner socket present | `POST /v1/sessions` to the runner with `place: "openshell"`: a runner-owned session in the project sandbox `ai-collab-<project>` (see [OpenShell](owned-sessions-contract.md#openshell)) |
 
 The server validates the place against that list; a failed `git worktree add` starts nothing.

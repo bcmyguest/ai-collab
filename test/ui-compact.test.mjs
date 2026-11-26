@@ -1,5 +1,5 @@
 // The Compact action and /compact reach the runner's real harness compaction for owned sessions, and fall back to
-// lib/controls.mjs for a terminal session. The runner client is injected, so nothing here talks to a socket.
+// lib/sessions.ts for a terminal session. The runner client is injected, so nothing here talks to a socket.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdirSync } from "node:fs";
