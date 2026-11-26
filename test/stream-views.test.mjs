@@ -98,12 +98,14 @@ test("the console shares one cache, empty until a stream reports a state", () =>
 
 test("the console wires the cache: a stream builds it, a switch restores it, nothing renders from it before a state", async () => {
   const { readFileSync } = await import("node:fs");
-  const chat = readFileSync(new URL("../web/app/chat.jsx", import.meta.url), "utf8");
-  assert.match(chat, /import \{ streamViews \} from "@\/lib\/stream-views";/);
-  assert.match(chat, /useState\(\(\) => streamViews\.restore\(streamOf\(selected\)\.requested\)\)/, "a first render opens the cached view");
-  assert.match(chat, /const view = streamViews\.restore\(nextStream\);/, "a switch restores the screen it lands on");
-  assert.match(chat, /const view = streamViews\.connect\(requested\);/, "each stream keeps its screen's view");
+  const stream = readFileSync(new URL("../web/app/chat-stream.js", import.meta.url), "utf8");
+  const console = readFileSync(new URL("../web/app/chat-console.jsx", import.meta.url), "utf8");
+  assert.match(stream, /import \{ streamViews \} from "@\/lib\/stream-views";/);
+  assert.match(stream, /useState\(\(\) => streamViews\.restore\(requested\)\)/, "a first render opens the cached view");
+  assert.match(stream, /const view = streamViews\.restore\(nextStream\);/, "a switch restores the screen it lands on");
+  assert.match(console, /restore\(nextStream\);/, "the console restores on a hash change to another stream");
+  assert.match(stream, /const view = streamViews\.connect\(requested\);/, "each stream keeps its screen's view");
   // The cache is the one source for all three, so a reconnected stream replaces the whole screen rather than patching it.
-  assert.match(chat, /setData\(next\.data\); setActivity\(next\.activity\); setSurfaces\(next\.surfaces\);/);
-  assert.doesNotMatch(chat, /ACTIVITY_MAX/, "activity trimming lives in stream-views, not the console");
+  assert.match(stream, /setData\(next\.data\); setActivity\(next\.activity\); setSurfaces\(next\.surfaces\);/);
+  assert.doesNotMatch(stream + console, /ACTIVITY_MAX/, "activity trimming lives in stream-views, not the console");
 });

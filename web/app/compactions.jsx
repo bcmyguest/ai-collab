@@ -1,7 +1,7 @@
 "use client";
 import { Badge } from "@/components/ui/badge";
 import { axisPercent, clearText, compactionText, headroom, mapAxis, modelText, tokenCount } from "@/lib/compaction-view";
-import { Avatar, ago } from "./chat";
+import { Avatar, ago } from "./chat-shared";
 
 const MARK = { auto: "bg-amber-500", manual: "bg-primary", failed: "bg-destructive", clear: "bg-sky-500", model: "bg-emerald-500" };
 

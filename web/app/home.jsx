@@ -14,7 +14,7 @@ import { contextMeter } from "@/lib/context-view";
 import { HARNESS_LABELS } from "@/lib/new-session";
 import { ActivityRow, GoToAgent } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
-import { Avatar, ago } from "./chat";
+import { Avatar, ago } from "./chat-shared";
 
 const SUBAGENT_DOT = { running: "bg-emerald-500", finished: "bg-muted-foreground/40", stale: "bg-amber-500" };
 const CHIP = {

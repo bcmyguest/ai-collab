@@ -71,7 +71,7 @@ test("no project views, no nav", () => {
 });
 
 test("the console places the rail beside the sidebar and the bar under the composer, from one link list", () => {
-  const chat = readFileSync(new URL("../web/app/chat.jsx", import.meta.url), "utf8");
+  const chat = readFileSync(new URL("../web/app/chat-console.jsx", import.meta.url), "utf8");
   // Both layouts draw the same links, so the phone and the computer can never drift apart.
   assert.match(chat, /const navLinks = projectNavigation\(project, level, viewCounts\);/);
   assert.match(chat, /<ProjectNav links=\{navLinks\} rail\/>/);
