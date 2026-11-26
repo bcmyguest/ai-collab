@@ -7,11 +7,11 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { pgReachable } from "../lib/postgres.mjs";
+import { dbosTestDb } from "./helpers/dbos-env.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CHILD = path.join(HERE, "helpers", "dbos-versionguard-child.mjs");
-const pgUp = await pgReachable();
+const pgUp = await dbosTestDb();
 const stamp = Date.now();
 const OLD = `aic-vg-old-${stamp}`;
 const NEW = `aic-vg-new-${stamp}`;

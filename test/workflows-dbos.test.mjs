@@ -2,9 +2,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { openWorkflows } from "../lib/workflows.ts";
-import { pgReachable, pgUrl } from "../lib/postgres.mjs";
+import { pgUrl } from "../lib/postgres.mjs";
+import { dbosTestDb } from "./helpers/dbos-env.mjs";
 
-const pgUp = await pgReachable();
+const pgUp = await dbosTestDb();
 // A per-run application version: parallel dbos test files must not recover each other's stragglers.
 const opts = { engine: "dbos", pgUrl: pgUp ? pgUrl() : "", applicationVersion: `aic-parity-${Date.now()}` };
 const t = test("dbos engine", { skip: pgUp ? false : "no Postgres on 127.0.0.1:5432" }, async () => {

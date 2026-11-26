@@ -12,10 +12,11 @@ import { listenControl, runnerSocket } from "../runner/control.mjs";
 import { advanceRun, runStatus, startRun } from "../lib/pattern-runs.mjs";
 import { saveTeamText } from "../lib/patterns.mjs";
 import { openWorkflows } from "../lib/workflows.ts";
-import { pgReachable, pgUrl } from "../lib/postgres.mjs";
+import { pgUrl } from "../lib/postgres.mjs";
+import { dbosTestDb } from "./helpers/dbos-env.mjs";
 import { sessionLabel } from "../lib/config.mjs";
 
-const pgUp = await pgReachable();
+const pgUp = await dbosTestDb();
 const direct = (label, body) => JSON.stringify({ v: 1, kind: "msg", from: "operator", to: "codex", toSession: label, operatorThread: true, ts: new Date().toISOString(), body });
 
 async function until(check, what, ms = 15_000) {

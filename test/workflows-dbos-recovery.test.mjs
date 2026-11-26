@@ -6,11 +6,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { pgReachable } from "../lib/postgres.mjs";
+import { dbosTestDb } from "./helpers/dbos-env.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CHILD = path.join(HERE, "helpers", "dbos-recover-child.mjs");
-const pgUp = await pgReachable();
+const pgUp = await dbosTestDb();
 
 test("dbos kill-and-recover", { skip: pgUp ? false : "no Postgres on 127.0.0.1:5432", timeout: 120_000 }, () => {
   const id = `recover-${Date.now()}`;

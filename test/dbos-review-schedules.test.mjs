@@ -3,9 +3,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { openWorkflows } from "../lib/workflows.ts";
-import { pgReachable, pgUrl } from "../lib/postgres.mjs";
+import { pgUrl } from "../lib/postgres.mjs";
+import { dbosTestDb } from "./helpers/dbos-env.mjs";
 
-const pgUp = await pgReachable();
+const pgUp = await dbosTestDb();
 const iso = (ms) => new Date(ms).toISOString();
 
 test("dbos schedules: overlap skip, SKIPPED visibility, and a manual run that does not hide the interval", { skip: pgUp ? false : "no Postgres on 127.0.0.1:5432", timeout: 120_000 }, async () => {

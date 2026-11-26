@@ -4,9 +4,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { openWorkflows } from "../lib/workflows.ts";
-import { pgReachable, pgUrl } from "../lib/postgres.mjs";
+import { pgUrl } from "../lib/postgres.mjs";
+import { dbosTestDb } from "./helpers/dbos-env.mjs";
 
-const pgUp = await pgReachable();
+const pgUp = await dbosTestDb();
 
 test("send dedupe is global across destinations, like the sqlite engine", { skip: pgUp ? false : "no Postgres on 127.0.0.1:5432", timeout: 60_000 }, async () => {
   const wf = await openWorkflows({ engine: "dbos", pgUrl: pgUrl(), applicationVersion: `aic-dedupe-${Date.now()}` });
