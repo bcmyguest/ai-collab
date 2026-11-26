@@ -19,10 +19,12 @@
  * run_code recipe, and otherwise prints {}. Cursor beforeShellExecution and beforeReadFile use it so a
  * non-matching command is not turned into an approval prompt. A human shell never runs this hook.
  * Cursor events also feed the run's OTLP trace (lib/cursor-trace.mjs); its export waits at most 1.5 s after the output.
+ * --grant-gate (Claude PreToolUse) allows a call that a signed phone approval names, once, and otherwise prints {}.
  * Every message handed to the agent gets a read receipt, published in the background like activity.
  */
 import path from "node:path";
-import { loadConfig, ownEnv, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, ownEnv, sessionLabel, stateDir } from "../lib/config.mjs";
+import { grantGate } from "../lib/grants.mjs";
 import { claimInbox, publishStatus } from "../lib/messaging.ts";
 import { childHint, exportParent, greetParent, parentLine } from "../lib/family.mjs";
 import { formatInbox, hookOutput, identityLine, stopOutput } from "../lib/format.mjs";
@@ -205,6 +207,11 @@ async function main() {
   const storeRead = storeReadDenial(host, key, msg);
   if (storeRead && readsThroughRunCode(env)) return emit(storeRead);
   if (argv.includes("--read-gate")) return emit({});
+  // A signed phone approval allows the one call it names, once (lib/grants.mjs); a subagent shares its parent's session.
+  if (argv.includes("--grant-gate")) {
+    if (host !== "claude" || key !== "pretooluse" || typeof msg.tool_name !== "string" || !session) return emit({});
+    return emit(grantGate(stateDir(env), { session, tool: msg.tool_name, input: msg.tool_input }));
+  }
   // Every Cursor run, joined project or not, records its turn for the OTLP trace (lib/cursor-trace.mjs); never awaited before output.
   traced = host === "cursor" ? hookTrace(msg, { env }).catch(() => null) : null;
   const cfg = loadConfig(env, { cwd, host, session });

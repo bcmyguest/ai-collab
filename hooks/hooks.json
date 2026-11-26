@@ -6,7 +6,8 @@
     "PreToolUse": [
       { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --activity --host claude", "async": true }] },
       { "matcher": "AskUserQuestion", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --host claude", "timeout": 600 }] },
-      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --read-gate --host claude", "timeout": 10 }] }
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --read-gate --host claude", "timeout": 10 }] },
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --grant-gate --host claude", "timeout": 10 }] }
     ],
     "PostToolUse": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --host claude", "timeout": 10 }] }],
     "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/ai-collab-hook.mjs\" --activity --host claude", "async": true }] }],

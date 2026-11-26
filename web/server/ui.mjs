@@ -31,6 +31,7 @@ import { readContext } from "../../lib/usage.mjs";
 import { parseCommand } from "../lib/slash-commands.js";
 import { startModes } from "../lib/start-mode.js";
 import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } from "../../lib/approvals.mjs";
+import { INPUT_HASH, loadSigner, signGrant } from "../../lib/grants.mjs";
 import { START_HARNESSES, availableHarnesses, availablePlaces, claudePermissionFor, defaultStartPlace, openshellHarnesses, openshellRunner, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
 import { codeModeDefault } from "../../lib/code-mode.mjs";
 import { cleanName } from "../../lib/sessions/registry.ts";
@@ -222,6 +223,8 @@ function approvalEntry({ id, time }, e) {
     id: e.id, harness: cleanText(e.harness, 10) || "other", tool: cleanText(e.tool, ACTIVITY_NAME_MAX) || "tool",
     summary: cleanText(e.summary, 300) || "", expiresAt: Number.isSafeInteger(e.expiresAt) ? e.expiresAt : 0,
     ...(questions ? { questions } : {}), ...(e.kind === "approval-view" ? { terminal: true } : {}), ...(e.owned === true ? { owned: true } : {}),
+    // A signed-approval card (lib/grants.mjs): Allow signs a one-time grant for this exact input.
+    ...(!questions && e.session && INPUT_HASH.test(e.grant?.inputHash) ? { grant: { inputHash: e.grant.inputHash }, session: e.session } : {}),
   };
   return { id, time, kind: "Approval", sender, from: sender, body: approval.summary, approval };
 }
@@ -1009,8 +1012,20 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       answer = decision;
     }
     if (approval.tool === LIMIT_TOOL) return answerLimit(project, approval, answer);
+    if (approval.grant) return answerGrant(project, approval, decision, by);
     await publishDecision(project, id, `reply ${id} ${answer}`, by, value => replyDecision(approval, value));
     return { sent: true, status: approval.questions ? "Answer sent" : decision === "allow" ? "Allow sent" : "Deny sent" };
+  }
+
+  // A signed-approval card: Allow publishes a grant signed for the signed-in operator; without sign-in only Deny works.
+  async function answerGrant(project, approval, decision, by) {
+    let answer = "deny";
+    if (decision === "allow") {
+      if (!auth || !isGithubLogin(by)) reject(403, "Signed approvals need GitHub sign-in on this UI");
+      answer = `allow ${signGrant(loadSigner(stateDir(env)), { id: approval.id, session: approval.session, tool: approval.tool, inputHash: approval.grant.inputHash, by })}`;
+    }
+    await publishDecision(project, approval.id, `reply ${approval.id} ${answer}`, by, value => /^(allow\s+\S+|deny)$/i.test(value.trim()));
+    return { sent: true, status: decision === "allow" ? "Signed allow sent" : "Deny sent" };
   }
 
   // A limit card's pick: "Wait for reset" acknowledges; a replacement starts a session (lib/limit-alert.mjs chooseLimit). No ntfy reply: no hook waits.

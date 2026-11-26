@@ -6,6 +6,7 @@ import { readInbox } from "../messaging.ts";
 import { askQuestion, requestWait, waitForAnswer } from "../questions.mjs";
 import { HISTORY_DEFAULT, HISTORY_MAX, PRIORITIES, RESPOND_STATES, channelHistory, replyToOperator, sendMessage } from "../messaging.ts";
 import { storedMode } from "../mode.mjs";
+import { requestGrant } from "../approvals.mjs";
 import { teamStart, teamStatus } from "../teams.mjs";
 import { listPatterns } from "../patterns.mjs";
 import { advanceRun, runStatus } from "../pattern-runs.mjs";
@@ -90,6 +91,22 @@ export const OPS: Op[] = [
       seconds: args.wait_seconds, signal, important: args.important === true,
       choices: args.options, multiSelect: args.multi_select === true, harness: host,
     })),
+  },
+  {
+    name: "request_approval",
+    description: "When auto mode blocks a tool call that the operator may approve, ask their phone to allow that exact call. Pass the blocked tool's name and its exact input object. On approved, retry the identical call at once: a hook allows it once within 15 minutes. The operator must be signed in to the UI with GitHub.",
+    inputSchema: {
+      type: "object", required: ["tool", "input", "reason"], additionalProperties: false,
+      properties: {
+        tool: { type: "string", minLength: 1, maxLength: 128, description: "The blocked tool's name, such as Edit or Bash." },
+        input: { type: "object", description: "The blocked call's exact input." },
+        reason: { type: "string", maxLength: 200, description: "One line for the operator: why the call is needed." },
+        wait_seconds: { type: "integer", minimum: 1, maximum: 600, default: 300 }, session: IDENTITY,
+      },
+    },
+    surfaces: ["mcp"],
+    needsSession: true,
+    handler: (args, { cfg, signal }) => requestGrant(cfg, passJs({ tool: args.tool, input: args.input, reason: args.reason, seconds: args.wait_seconds, signal })),
   },
   {
     name: "wait_for_operator",

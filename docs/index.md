@@ -26,6 +26,7 @@ The peer hooks and MCP server need only Node 22.18+ (builtin `fetch`). The opera
 | [Code mode](code-mode.md) | Native code mode for started sessions, and `run_code`: one program in an OpenShell sandbox over the ai-collab tools |
 | [Activity](activity.md) | What hooks publish, per harness |
 | [GitHub sign-in](github-sign-in.md) | Optional OAuth sign-in for the UI |
+| [Signed approvals](signed-approvals.md) | Allow one exact call that auto mode blocked, from the phone |
 | [Security model](security.md) | What is sent and what is trusted |
 | [Troubleshooting](troubleshooting.md) | Known limits and fixes |
 | [Development](development.md) | Tests, CI, releases, the demo |
