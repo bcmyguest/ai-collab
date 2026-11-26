@@ -1,7 +1,23 @@
 // Task fields as agents see them through the MCP and code surfaces.
 import { PROGRESS_MAX, clipProgress, openTasks, priorityOf } from "../tasks.mjs";
+import type { SurfaceConfig, TaskView } from "./types.ts";
 
-export function taskView(task: any) {
+export interface TaskUpdateArgs {
+  id: string;
+  status?: string;
+  title?: string;
+  detail?: string;
+  run?: string;
+  owner?: string;
+  priority?: string;
+  block_on?: string;
+  ask?: string;
+  options?: string[];
+  clear_question?: boolean;
+  progress?: string;
+}
+
+export function taskView(task: TaskView) {
   return {
     id: task.id, title: task.title, priority: priorityOf(task), status: task.status, ...(task.detail ? { detail: task.detail } : {}),
     ...(task.owner ? { owner: task.owner } : {}), ...(task.run ? { run: task.run } : {}), blockers: task.blockers,
@@ -12,10 +28,10 @@ export function taskView(task: any) {
 }
 
 // One task update: patch fields, block_on, and an optional progress note; the note's clipping comes back as a note.
-export async function updateTask(cfg: any, args: any, env: NodeJS.ProcessEnv) {
+export async function updateTask(cfg: SurfaceConfig, args: TaskUpdateArgs, env: NodeJS.ProcessEnv) {
   const backend = openTasks(cfg.project, env);
   const patch: Record<string, unknown> = {};
-  for (const key of ["status", "title", "detail", "run", "owner", "priority"]) if (args[key] !== undefined) patch[key] = args[key];
+  for (const key of ["status", "title", "detail", "run", "owner", "priority"] as const) if (args[key] !== undefined) patch[key] = args[key];
   if (args.block_on !== undefined) patch.block = args.block_on;
   if (args.ask !== undefined && args.clear_question) throw new Error("ask and clear_question cannot be combined");
   if (args.options !== undefined && args.ask === undefined) throw new Error("options need ask");

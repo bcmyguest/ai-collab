@@ -2,15 +2,23 @@
 import { sendMessage } from "../inbox.mjs";
 import { storedMode } from "../mode.mjs";
 import { PROGRESS_MAX, clipProgress, ownedBuilding, recordOwnerProgress } from "../tasks.mjs";
+import type { SurfaceConfig } from "./types.ts";
 
-export async function postToChannel(cfg: any, { body, reply_to: replyTo, progress, attachment }: Record<string, any>, env: NodeJS.ProcessEnv) {
+export interface ChannelPost {
+  body: string;
+  reply_to?: string;
+  progress?: boolean;
+  attachment?: string;
+}
+
+export async function postToChannel(cfg: SurfaceConfig, { body, reply_to: replyTo, progress, attachment }: ChannelPost, env: NodeJS.ProcessEnv) {
   const { mode } = storedMode(cfg);
   if (progress === true && mode === "quiet") return { sent: false, reason: "AFK mode is QUIET: progress posts are dropped." };
   await sendMessage(cfg, "all", body, { replyTo, attachment });
   if (progress !== true) return { sent: true, mode };
   // The post already went out, so a task store fault becomes a note and never a failed (retried) send.
   const notes: string[] = [];
-  let owned: any[] = [];
+  let owned: unknown[] = [];
   try {
     owned = ownedBuilding(cfg, env);
     recordOwnerProgress(cfg, body, env).catch((error: Error) => process.stderr.write(`ai-collab: task progress not recorded: ${error.message}\n`));
