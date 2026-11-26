@@ -240,4 +240,3 @@ export async function interruptSession(peer: Session | null | undefined, { env =
     return { status: "failed", detail: "The Codex app-server daemon did not interrupt the turn." };
   }
 }
-
