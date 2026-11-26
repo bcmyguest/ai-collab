@@ -6,6 +6,7 @@ import { aiCollabCatalog } from "@/lib/a2ui-catalog";
 import { cn } from "@/lib/utils";
 import { OptionPicker } from "./option-picker";
 import { ButtonImpl, ChipImpl, TextFieldImpl } from "./controls";
+import { ScriptImpl } from "./script";
 
 // The card shell shared with the legacy cards in web/app/cards.jsx.
 export const CARD = "w-full max-w-full rounded-2xl border bg-card px-3.5 py-3 text-sm text-card-foreground shadow-xs [overflow-wrap:anywhere]";
@@ -22,7 +23,7 @@ const THEME = {
   "--a2ui-font-size": "0.875rem", "--a2ui-line-height-body": "1.45",
   "--a2ui-button-font-weight": "500", "--a2ui-button-border-radius": "9999px",
 };
-const catalog = aiCollabCatalog([OptionPicker, ButtonImpl, TextFieldImpl, ChipImpl]);
+const catalog = aiCollabCatalog([OptionPicker, ButtonImpl, TextFieldImpl, ChipImpl, ScriptImpl]);
 // Surfaces by id from the AG-UI stream, and the submit that posts a surface action (null when signed out).
 export const SurfaceContext = createContext({ surfaces: {}, submit: null, disabled: false });
 

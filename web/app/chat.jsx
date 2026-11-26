@@ -40,6 +40,7 @@ import { isLive, sessionState } from "@/lib/session-state";
 import { subscribeUiEvents } from "@/lib/ui-events";
 import { ActivityRow, Working } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
+import { RunRequests } from "./run-requests";
 import { SurfaceContext } from "@/components/a2ui/surface";
 import { NotifyToggle } from "./notify";
 import { DecisionQueue } from "./decisions";
@@ -1156,6 +1157,7 @@ function Console({ account }) {
           <span className="flex-1">{loadError}</span>
           <Button size="sm" variant="outline" onClick={retry}><RotateCw/>Retry</Button>
         </div>}
+        {!composing && <RunRequests requests={data.runRequests} now={now}/>}
       </div>
       {patterns && <div className="min-h-0 flex-1 overflow-y-auto">
         {ready ? <PatternsPage data={data} project={project} selected={selected} navigate={navigate} call={patternCall} disabled={working} models={models}/>
