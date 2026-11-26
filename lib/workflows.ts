@@ -142,6 +142,7 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { 
   const dbosFns = new Map<string, (input: Json) => Promise<WfValue>>();
   const schedules = new Map<string, Schedule>();
   const closing = new AbortController();
+  const ctrls = new Map<string, AbortController>(); // one per live run, so cancel() can abort that workflow's signal
   let launched: Promise<void> | null = null;
 
   // Registration must finish before launch; the runner registers at boot, so launch on first async use.
@@ -158,19 +159,52 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { 
     return launched;
   }
 
+  // Prior recorded step names, read straight from DBOS's operation table: a DBOS.listWorkflowSteps
+  // call inside a workflow would itself be recorded and replay stale on recovery.
+  async function priorStepNames(id: string): Promise<string[]> {
+    const { rows } = await pool.query("SELECT function_name FROM dbos.operation_outputs WHERE workflow_uuid = $1", [id]);
+    return rows.map((r: { function_name: string }) => r.function_name);
+  }
+
   function registerDbos(name: string): (input: Json) => Promise<WfValue> {
     const wf = registry.get(name);
     if (!wf) throw new Error(`no workflow named ${name}`);
-    const fn = DBOS.registerWorkflow(async (input: Json) => await wf(makeContext(String(asJson(input).__id ?? ""), input), input), { name });
+    const fn = DBOS.registerWorkflow(async (input: Json) => {
+      const id = String(asJson(input).__id ?? "");
+      const ctrl = new AbortController();
+      ctrls.set(id, ctrl);
+      try {
+        // Steps recorded by an earlier life of this run: they mark cuts (started, never finished)
+        // and tell the workflow it is replaying.
+        return await wf(makeContext(id, input, ctrl, await priorStepNames(id)), input);
+      } finally {
+        ctrls.delete(id);
+      }
+    }, { name });
     dbosFns.set(name, fn);
     return fn;
   }
 
-  function makeContext(id: string, input: Json) {
+  function makeContext(id: string, input: Json, ctrl: AbortController, prior: string[]) {
+    const signal = AbortSignal.any([closing.signal, ctrl.signal]);
+    const recorded = new Set(prior);
+    const priorOps = prior.length;
+    let consumed = 0; // ctx ops issued this run: a step costs 2 (marker + result), recv and sleep 1
     return {
-      id, input, signal: closing.signal,
-      get replaying() { return false; },
-      step: async (name: string, fn: () => Promise<WfValue>) => await DBOS.runStep(fn, { name }),
+      id, input, signal,
+      get replaying() { return consumed < priorOps; },
+      step: async (name: string, fn: () => Promise<WfValue>, { onCut }: { onCut?: () => WfValue | Promise<WfValue> } = {}) => {
+        // A marker step records that fn started; a marker without a result at context build time is a cut
+        // (killed mid-step): onCut answers it once, mirroring the sqlite engine, and fn never re-runs.
+        const marker = `${name}!started`;
+        consumed += 1;
+        await DBOS.runStep(async () => true, { name: marker });
+        consumed += 1;
+        if (onCut && recorded.has(marker) && !recorded.has(name)) {
+          return await DBOS.runStep(async () => await onCut(), { name });
+        }
+        return await DBOS.runStep(fn, { name });
+      },
       recv: async (topic: string, { all = false } = {}) => {
         if (!all) {
           const first = await DBOS.recv(topic, { timeoutSeconds: 0 });
@@ -190,10 +224,10 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { 
       },
       pending: async (topic: string) => await pendingCount(id, topic),
       pause: (ms: number) => new Promise<void>((resolve, reject) => {
-        if (closing.signal.aborted) return reject(closing.signal.reason);
-        const t = setTimeout(() => { closing.signal.removeEventListener("abort", onAbort); resolve(); }, Math.max(0, ms));
-        function onAbort() { clearTimeout(t); reject(closing.signal.reason); }
-        closing.signal.addEventListener("abort", onAbort, { once: true });
+        if (signal.aborted) return reject(signal.reason);
+        const t = setTimeout(() => { signal.removeEventListener("abort", onAbort); resolve(); }, Math.max(0, ms));
+        function onAbort() { clearTimeout(t); reject(signal.reason); }
+        signal.addEventListener("abort", onAbort, { once: true });
       }),
       sleep: async (ms: number) => { await DBOS.sleep(ms); },
     };
@@ -373,7 +407,12 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { 
       const h = await DBOS.retrieveWorkflow<WfValue>(id);
       return await h.getResult();
     },
-    async cancel(id) { await ready(); await DBOS.cancelWorkflow(id); },
+    async cancel(id) {
+      await ready();
+      // Mark CANCELLED first (deterministic status), then wake the run so it unwinds on its signal.
+      await DBOS.cancelWorkflow(id);
+      ctrls.get(id)?.abort("cancel");
+    },
     async steps(id) {
       await ready();
       const rows = (await DBOS.listWorkflowSteps(id)) ?? [];

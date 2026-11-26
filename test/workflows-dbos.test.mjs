@@ -18,6 +18,10 @@ const t = test("dbos engine", { skip: pgUp ? false : "no Postgres on 127.0.0.1:5
   wf.register("t.wait", async (ctx) => await ctx.recv("inbox"));
   wf.register("t.long", async (ctx) => { await ctx.pause(60_000); return "never"; });
   wf.register("t.hold", async (ctx) => { await ctx.pause(60_000); return "never"; });
+  let sigAborted = false;
+  wf.register("t.sig", async (ctx) => await new Promise((resolve) => {
+    ctx.signal.addEventListener("abort", () => { sigAborted = true; resolve("aborted"); }, { once: true });
+  }));
   wf.scheduled("t.every", { everyMs: 60_000 }, async () => { ticks += 1; });
   try {
     // start + step + result
@@ -55,6 +59,13 @@ const t = test("dbos engine", { skip: pgUp ? false : "no Postgres on 127.0.0.1:5
     await new Promise((r) => setTimeout(r, 200));
     await wf.cancel(`long-${stamp}`);
     assert.equal((await wf.status(`long-${stamp}`)).status, "CANCELLED");
+
+    // cancel must also abort the context signal so the workflow itself unwinds
+    const sig = wf.startWorkflow("t.sig", `sig-${stamp}`, {});
+    await new Promise((r) => setTimeout(r, 200));
+    await wf.cancel(`sig-${stamp}`);
+    assert.equal(sigAborted, true, "cancel must abort the workflow context signal");
+    await assert.rejects(sig); // the cancelled outcome wins; the workflow woke on its signal
 
     // kv round-trip
     await wf.setKv(`k-${stamp}`, { a: 1 });
