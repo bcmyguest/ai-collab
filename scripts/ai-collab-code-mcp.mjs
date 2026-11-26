@@ -45,7 +45,7 @@ async function runCode(args, signal, readOnly) {
   }
 }
 
-await serveMcp({
+serveMcp({
   name: "ai-collab-code",
   version: VERSION,
   instructions: builder ? "Batch related worktree operations with run_code." : INSTRUCTIONS,
