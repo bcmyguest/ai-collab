@@ -439,10 +439,12 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
       await ready();
       // DBOS dedupes a repeat send by idempotencyKey itself, so a failed send never spends the key and a crash
       // after the send cannot lose the message. The boolean is a presence probe on the notification the key
-      // names; if the internal schema ever moves, the probe degrades to "fresh" and delivery stays exactly-once.
+      // names; DBOS scopes its own key per destination, so the probe matches the sqlite engine's global
+      // dedupe by looking for the key toward ANY destination. If the internal schema ever moves, the probe
+      // degrades to "fresh" and delivery stays exactly-once.
       if (dedupe) {
         try {
-          const { rows } = await pool.query("SELECT 1 FROM dbos.notifications WHERE message_uuid = $1", [`${dedupe}::${workflowId}`]);
+          const { rows } = await pool.query("SELECT 1 FROM dbos.notifications WHERE LEFT(message_uuid, char_length($1) + 2) = $1 || '::'", [dedupe]);
           if (rows.length) return false;
         } catch { /* unknown schema: let idempotencyKey enforce dedupe and report fresh */ }
       }
