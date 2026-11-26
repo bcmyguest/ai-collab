@@ -6,6 +6,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { removeCodeSandbox } from "../lib/code-run.mjs";
 import cursorAdapter from "../runner/adapters/cursor.mjs";
 import * as sandbox from "../runner/sandbox.mjs";
 import { ensureSandbox, sandboxCapRefusal, teamSandboxName } from "../runner/sandbox.mjs";
@@ -111,4 +112,11 @@ test("a team release deletes an unlabelled sandbox under its name and logs the l
   assert.deepEqual(names(l), [], "the unlabelled team sandbox is deleted by name");
   assert.match(logs.join("\n"), /legacy/);
   await adapter.shutdown();
+});
+
+test("removing one run_code read sandbox leaves the shared code sandbox and the other read sandboxes", async () => {
+  const all = ["ai-collab-code", "aic-ro-aaaaaaaaaaaa", "aic-ro-bbbbbbbbbbbb"];
+  const l = lab(all.map((name) => record(name, sandbox.sandboxLabels({ project: "run_code", kind: "code", owner: name }))));
+  await removeCodeSandbox({ openshell: OPENSHELL, name: "aic-ro-aaaaaaaaaaaa" }, l.env);
+  assert.deepEqual(stored(l).map((s) => s.name), ["ai-collab-code", "aic-ro-bbbbbbbbbbbb"]);
 });
