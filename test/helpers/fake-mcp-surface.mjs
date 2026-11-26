@@ -6,7 +6,8 @@ const TOOLS = [
   { name: "slow", description: "Waits until cancelled", inputSchema: { type: "object", properties: {} } },
 ];
 
-serveMcp({
+// The test runner also loads helpers as test files; serve only when the characterisation spawns this with --serve.
+if (process.argv.includes("--serve")) serveMcp({
   name: "fake",
   version: "9.9.9",
   instructions: "Fake instructions.",

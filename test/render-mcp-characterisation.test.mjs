@@ -10,7 +10,7 @@ const SERVER = path.join(path.dirname(fileURLToPath(import.meta.url)), "helpers"
 const CLIENT = { capabilities: {}, clientInfo: { name: "test", version: "1" } };
 
 function start(t) {
-  const child = spawn(process.execPath, [SERVER], { stdio: ["pipe", "pipe", "pipe"] });
+  const child = spawn(process.execPath, [SERVER, "--serve"], { stdio: ["pipe", "pipe", "pipe"] });
   t.after(() => child.kill());
   const waiting = new Map();
   let stderr = "";
