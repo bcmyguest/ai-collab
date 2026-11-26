@@ -48,8 +48,17 @@ async function prompt(id, sessionId, text) {
 }
 
 let buffer = "";
+// Exits 1 after this long with no stdin, so a session a failed test left open cannot keep the test file running.
+const IDLE_EXIT_MS = Number(process.env.FAKE_CURSOR_IDLE_MS) || 60_000;
+const idleExit = () => {
+  process.stderr.write(`fake cursor agent: idle for ${IDLE_EXIT_MS} ms with no input; a session was left open\n`);
+  process.exit(1);
+};
+let idle = setTimeout(idleExit, IDLE_EXIT_MS);
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
+  clearTimeout(idle);
+  idle = setTimeout(idleExit, IDLE_EXIT_MS);
   buffer += chunk;
   for (let i = buffer.indexOf("\n"); i >= 0; i = buffer.indexOf("\n")) {
     const line = buffer.slice(0, i);

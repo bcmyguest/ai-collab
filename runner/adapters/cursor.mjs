@@ -12,8 +12,8 @@ import { argv, LAUNCH_BINARY } from "../../lib/harness.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, permissionSettings } from "../contract.mjs";
 import { builderPolicy } from "../../lib/builder.mjs";
 import {
-  destroySandbox, downloadTree, ensureSandbox as ensureSandboxIn, execArgv as sandboxExecArgv, runTool,
-  sandboxName as sandboxNameFor, teamSandboxName, uploadFile, uploadLogins, uploadSecret, uploadTree,
+  destroyOwnedSandboxes, downloadTree, ensureSandbox as ensureSandboxIn, execArgv as sandboxExecArgv, runTool,
+  sandboxLabels, sandboxName as sandboxNameFor, teamSandboxName, uploadFile, uploadLogins, uploadSecret, uploadTree,
 } from "../sandbox.mjs";
 
 // ACP protocolVersion 1 and the method names come from the ACP spec; `agent acp` answered `initialize`
@@ -394,13 +394,13 @@ export default function cursorAdapter(config = {}) {
     // A restored session already holds its claim on the sandbox: resuming takes it over instead of counting a second one.
     const held = spec.address ? restored.get(spec.address) : undefined;
     if (held) restored.delete(spec.address);
-    const session = { sessionId: null, run: null, approvals: new Map(), tools: new Map(), closed: false, ctx, sandbox: null, env, cwd: spec.cwd, model: spec.model };
+    const session = { sessionId: null, run: null, approvals: new Map(), tools: new Map(), closed: false, ctx, sandbox: null, env, cwd: spec.cwd, model: spec.model, project: spec.project, owned: ownerOf(spec) };
     try {
       if (spec.place === "openshell") {
         // One sandbox per project, reused: created by the first session and deleted when the last one closes.
         const name = sandboxOf(spec);
         policyPath ||= writePolicy(cursorTree);
-        sandbox = await ensureSandboxIn({ openshell: openshellBin, env, name, policy: policyPath });
+        sandbox = await ensureSandboxIn({ openshell: openshellBin, env, name, policy: policyPath, labels: sandboxLabels({ project: spec.project, ...ownerOf(spec) }) });
         if (!held) claim(sandbox, spec.cwd);
         session.sandbox = sandbox;
         const prepared = await prepareSandbox({
@@ -552,6 +552,9 @@ export default function cursorAdapter(config = {}) {
   // The sandbox a session lives in: its team run's, else its project's. Deterministic, so a restart can name it again.
   const sandboxOf = ({ project, patternRun }) => (patternRun ? teamSandboxName(project, patternRun) : sandboxName(project));
 
+  // The label kind and owner of a session's sandbox: its team run's, else its project's shared one.
+  const ownerOf = ({ patternRun, project }) => (patternRun ? { kind: "team", owner: patternRun } : { kind: "session", owner: project });
+
   // Counts a session's claim on its project's sandbox; the sandbox is deleted when the last claim goes.
   function claim(name, cwd) {
     const known = sandboxes.get(name) ?? { cwd, refs: 0 };
@@ -578,7 +581,7 @@ export default function cursorAdapter(config = {}) {
       if (known.refs > 0) return true;
       sandboxes.delete(name);
     }
-    const out = await destroySandbox({ openshell: openshellBin, env: session.env, name });
+    const out = await destroyOwnedSandboxes({ openshell: openshellBin, env: session.env, project: session.project, ...session.owned, legacyNames: [name], log });
     stagedTrees.delete(name);
     if (!out.ok) log(`cursor: could not delete sandbox ${name}: ${out.detail}`);
     return out.ok;
@@ -687,7 +690,7 @@ export default function cursorAdapter(config = {}) {
       if (record?.place !== "openshell" || record.status === "ended" || !record.address || restored.has(record.address)) return;
       const name = sandboxOf(record);
       claim(name, record.cwd);
-      restored.set(record.address, { sessionId: record.nativeId, sandbox: name, cwd: record.cwd, env: { ...env, ...OWNED }, ctx, approvals: new Map(), closed: false });
+      restored.set(record.address, { sessionId: record.nativeId, sandbox: name, cwd: record.cwd, env: { ...env, ...OWNED }, ctx, approvals: new Map(), closed: false, project: record.project, owned: ownerOf(record) });
     },
 
     /** Ends a restored session that never resumed: copies its edits back and deletes the sandbox when no other session holds it. */
