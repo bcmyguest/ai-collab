@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
-import { parseDot } from "../lib/dot.mjs";
+import { parseDot } from "../lib/catalog/dot.ts";
 import { createPattern, listPatterns, saveTeamText } from "../lib/patterns.mjs";
 
 const MODELS = { claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] };

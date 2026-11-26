@@ -151,5 +151,5 @@ The durable core is the interesting amber-blue boundary: a home-grown, DBOS-shap
 | Durable core (`lib/durable.mjs`) | Home-grown | DBOS-shaped: workflows, checkpointed steps, exactly-once messages |
 | Runner (`runner/`) | Home-grown | Owns sessions, sandboxes, control socket, schedules, pattern runs |
 | Session hooks and MCP servers | Home-grown | The seam between harnesses and the bus; injects inbound text as untrusted data |
-| Pattern compiler (`lib/dot.mjs`, `lib/pattern-compiler.mjs`) | Home-grown | DOT graph in, validated transitions out; verifiable with traces, no model calls |
+| Pattern compiler (`lib/catalog/dot.ts`, `lib/pattern-compiler.mjs`) | Home-grown | DOT graph in, validated transitions out; verifiable with traces, no model calls |
 | Task board, team files, run records | Home-grown | Plain JSON under the state dir, lock-then-rename writes |

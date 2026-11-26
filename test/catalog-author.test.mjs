@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { authorCommand } from "../lib/team-author.mjs";
+import { authorCommand } from "../lib/catalog/author.ts";
 
 test("the writing agent's argv is one non-interactive turn per harness, with the model flag only when named", () => {
   assert.deepEqual(authorCommand("claude", "hi", ""), ["claude", ["-p", "hi"]]);

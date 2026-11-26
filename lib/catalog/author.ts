@@ -1,33 +1,29 @@
-/**
- * Team author: the operator describes a team in plain language; a writing agent answers with one team.dot;
- * this module turns the chat into that agent's brief, pulls the DOT out of its answer, and saves it only
- * after the existing parser and validator accept it.
- *
- * It never parses DOT itself: every check goes through lib/patterns.mjs `checkTeamText`, and every write goes
- * through lib/patterns.mjs `saveTeamText` (project) or lib/team-files.mjs (global), so a name cannot leave
- * the project or global teams directories.
- */
+/** Team author: chat becomes a writing agent's brief; its answer's DOT is checked by the save path before anything is written. */
 import { execFile } from "node:child_process";
-import { isValidName } from "./config.mjs";
-import { parseDot } from "./dot.mjs";
-import { checkTeamText, listPatterns, saveTeamText, validatePatternModels } from "./patterns.mjs";
-import { childEnv, cursorBinary, findExecutable, modelShape, PROMPT_MAX_CHARS } from "./start.mjs";
-import { listTeams } from "./teams.mjs";
-import { globalTeamsDir, isRegularFile, saveTeamFile, teamFilePath } from "./team-files.mjs";
-import { argv, FALLBACK_MODEL, formatHarnessModel, HARNESSES, isHarness, parseHarnessModel } from "./harness.ts";
+import { isValidName } from "../config.mjs";
+import { childEnv, cursorBinary, findExecutable, PROMPT_MAX_CHARS } from "../start.mjs";
+import { argv, FALLBACK_MODEL, formatHarnessModel, HARNESSES, isHarness, parseHarnessModel, type Command, type Harness } from "../harness.ts";
+import { parseDot } from "./dot.ts";
+import { checkTeamText, listPatterns, saveTeamText, validatePatternModels } from "./patterns.ts";
+import { listTeams, type Models } from "./teams.ts";
+import { globalTeamsDir, isRegularFile, saveTeamFile, teamFilePath } from "./team-files.ts";
+import type { CatalogConfig, Pattern } from "./records.ts";
 
-export { HARNESSES };
-export const AUTHOR_SCOPES = ["project", "global"];
 /** One message or role prompt the brief carries; longer text is cut so the brief stays one start prompt. */
-export const AUTHOR_TEXT_MAX = 1200;
-/** The brief is one start prompt (lib/start.mjs checkPrompt), so it has the same 4000-character cap. */
+const AUTHOR_TEXT_MAX = 1200;
+/** The brief is one start prompt (checkPrompt in lib/start.mjs), so it has the same cap. Test-only export. */
 export const AUTHOR_PROMPT_MAX = PROMPT_MAX_CHARS;
 /** Chat turns carried into the brief, oldest first. */
-export const AUTHOR_TURNS_MAX = 12;
+const AUTHOR_TURNS_MAX = 12;
 /** The order a fallback writer is taken in; the house default comes first. */
-export const AUTHOR_PREFERENCE = ["cursor", "claude", "codex", "opencode"];
-
-const oneLine = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
+const AUTHOR_PREFERENCE: Harness[] = ["cursor", "claude", "codex", "opencode"];
+const AUTHOR_SCOPES = ["project", "global"];
+const FENCE = /```[ \t]*(?:dot|graphviz)?[ \t]*\r?\n([\s\S]*?)```/g;
+const WRITER_TIMEOUT_MS = 180_000;
+const FAILURE_DETAIL_MAX = 300;
+const TEAM_NAME_HINT = "team-name";
+/** The models a vague request falls back to; the first is the house default. */
+const HOUSE_MODELS = `cursor:${FALLBACK_MODEL}, claude:claude-haiku-5-5, then plain codex or opencode`;
 
 // The team.dot rules a writing agent needs, in the order it fills the file in.
 const CONTRACT = `- Name the digraph for the team: digraph "NAME" { ... }. It must match the team name exactly.
@@ -45,15 +41,22 @@ const CONTRACT = `- Name the digraph for the team: digraph "NAME" { ... }. It mu
 - No node/edge defaults, no subgraphs, no variables. Quote ids that contain "-".
 - Prefer few roles: one per distinct responsibility, and one handoff event per real transition.`;
 
-/** The models a vague request falls back to; the first is the house default. */
-const HOUSE_MODELS = `cursor:${FALLBACK_MODEL}, claude:claude-haiku-5-5, then plain codex or opencode`;
+type ChatTurn = { from?: string; text?: string };
+type AuthorRequest = { request?: string; name?: string; scope?: string; current?: string; turns?: ChatTurn[]; peers?: string[] };
+type AuthorModel = { harness: Harness; model: string };
+type ExecResult = { code: number | null; stdout: string; stderr: string };
+type ExecFn = (file: string, argv: string[], options: { env: NodeJS.ProcessEnv; cwd: string }) => Promise<ExecResult>;
+type AuthorAnswer = { status: "answered"; reply: string; harness: Harness; file: string } | { status: "failed"; detail: string; reply?: string };
+type Draft = Awaited<ReturnType<typeof draftTeam>>;
 
-const scopeLine = (scope) => (scope === "global"
+const oneLine = (value: unknown): string => String(value ?? "").replace(/\s+/g, " ").trim();
+
+const scopeLine = (scope: string): string => (scope === "global"
   ? "Scope: global — the file is saved in the config directory and every project can use it."
   : "Scope: project — the file is saved in this project's .ai-collab/teams folder.");
 
-function turnLines(turns) {
-  const lines = [];
+function turnLines(turns: ChatTurn[]): string[] {
+  const lines: string[] = [];
   for (const turn of turns) {
     const text = oneLine(turn?.text).slice(0, AUTHOR_TEXT_MAX);
     if (text) lines.push(`${turn?.from === "agent" ? "Your last answer" : "Operator"}: ${text}`);
@@ -61,15 +64,12 @@ function turnLines(turns) {
   return lines;
 }
 
-/**
- * The brief for the writing agent: its one job, the team.dot contract, the name and scope, the team being
- * edited (if any), the chat so far, and the operator's request. Always fits one start prompt.
- */
-export function buildAuthorPrompt({ request, name = "", scope = "project", current = "", turns = [], peers = [] } = {}) {
+/** Test-only: the brief for the writing agent: its one job, the team.dot contract, the name and scope, the team being edited (if any), the chat so far, and the operator's request. Always fits one start prompt. */
+export function buildAuthorPrompt({ request, name = "", scope = "project", current = "", turns = [], peers = [] }: AuthorRequest = {}): string {
   const named = isValidName(name);
-  const teamName = named ? name : "team-name";
+  const teamName = named ? name : TEAM_NAME_HINT;
   const useScope = AUTHOR_SCOPES.includes(scope) ? scope : "project";
-  const harnesses = (Array.isArray(peers) ? peers : []).filter((peer) => HARNESSES.includes(peer));
+  const harnesses = (Array.isArray(peers) ? peers : []).filter((peer) => (HARNESSES as readonly string[]).includes(peer));
   let useRequest = oneLine(request).slice(0, AUTHOR_TEXT_MAX);
   let useCurrent = String(current ?? "").trim();
   let useTurns = (Array.isArray(turns) ? turns : []).filter((turn) => oneLine(turn?.text)).slice(-AUTHOR_TURNS_MAX);
@@ -111,12 +111,10 @@ export function buildAuthorPrompt({ request, name = "", scope = "project", curre
   }
 }
 
-const FENCE = /```[ \t]*(?:dot|graphviz)?[ \t]*\r?\n([\s\S]*?)```/g;
-
 /** Every block that could hold DOT, in the order the writing agent wrote them: fenced blocks, then a bare digraph. */
-function dotBlocks(text) {
+function dotBlocks(text: string): string[] {
   const source = String(text ?? "");
-  const blocks = [];
+  const blocks: string[] = [];
   for (const match of source.matchAll(FENCE)) {
     const body = match[1].trim();
     if (body) blocks.push(body);
@@ -127,8 +125,8 @@ function dotBlocks(text) {
   return blocks;
 }
 
-/** The first block that parses as team.dot, else the first block as written ("" when the answer has none). */
-export function extractDot(reply) {
+/** Test-only: the first block that parses as team.dot, else the first block as written ("" when the answer has none). */
+export function extractDot(reply: string): string {
   const blocks = dotBlocks(String(reply ?? ""));
   for (const block of blocks) {
     try { parseDot(block); return block; } catch { /* next block */ }
@@ -137,14 +135,13 @@ export function extractDot(reply) {
 }
 
 /**
- * The DOT from a writing agent's answer, checked by the same parse and validate a save uses.
- * Returns { ok:true, dot, pattern, warnings, exists } or { ok:false, error, line, dot }.
+ * Test-only export. The DOT from a writing agent's answer, checked by the same parse and validate a save uses.
  * `exists` is the source of the entry already using the name ("" when the name is free).
  * `suggested` is the digraph name the agent wrote, so the UI can propose it when the operator left the name blank.
  */
-export function draftTeam(cfg, { name = "", reply = "", env = process.env } = {}) {
+export function draftTeam(cfg: CatalogConfig, { name = "", reply = "", env = process.env }: { name?: string; reply?: string; env?: NodeJS.ProcessEnv } = {}) {
   const dot = extractDot(reply);
-  if (!dot) return { ok: false, error: "The answer has no DOT block; ask the agent for one ```dot block.", line: null, dot: "", suggested: "", name: "" };
+  if (!dot) return { ok: false as const, error: "The answer has no DOT block; ask the agent for one ```dot block.", line: null, dot: "", suggested: "", name: "" };
   const suggested = (() => { try { return parseDot(dot).name; } catch { return ""; } })();
   // With no name yet, the digraph name the agent wrote is the proposal the operator confirms.
   const useName = isValidName(name) ? name : suggested;
@@ -162,7 +159,7 @@ export function draftTeam(cfg, { name = "", reply = "", env = process.env } = {}
  * when `replace` names it (the operator's confirm), a built-in is never shadowed, and a legacy roster name is
  * refused. Project saves go through saveTeamText, so they take the same locks and drop a shadowed JSON pattern.
  */
-export async function saveAuthoredTeam(cfg, { name, dot, scope = "project", replace = "", env = process.env, models } = {}) {
+export async function saveAuthoredTeam(cfg: CatalogConfig, { name, dot, scope = "project", replace = "", env = process.env, models }: { name?: string; dot?: string; scope?: string; replace?: string; env?: NodeJS.ProcessEnv; models?: Models } = {}): Promise<Pattern> {
   const teamName = String(name ?? "");
   if (!isValidName(teamName)) throw new Error("Team name must be 1-24 chars of a-z, 0-9 and single hyphens");
   if (!AUTHOR_SCOPES.includes(scope)) throw new Error('Scope must be "project" or "global"');
@@ -193,12 +190,12 @@ export async function saveAuthoredTeam(cfg, { name, dot, scope = "project", repl
   const file = teamFilePath(globalTeamsDir(env), teamName);
   if (isRegularFile(file) && !confirmed) throw new Error(`"${teamName}" already exists; confirm the replacement to save over it`);
   await validatePatternModels(check.pattern, cfg, env, models);
-  await saveTeamFile(file, text);
+  saveTeamFile(file, text);
   return { ...check.pattern, source: "global", file };
 }
 
 /** Harness and model for the writing agent: AI_COLLAB_TEAM_AUTHOR_MODEL, else the house default. */
-export function authorModel(env = process.env) {
+export function authorModel(env: NodeJS.ProcessEnv = process.env): AuthorModel {
   const raw = String(env.AI_COLLAB_TEAM_AUTHOR_MODEL || formatHarnessModel({ harness: "cursor", model: FALLBACK_MODEL })).trim();
   const [harness] = raw.split(":");
   if (!isHarness(harness)) return { harness: "cursor", model: FALLBACK_MODEL };
@@ -206,20 +203,29 @@ export function authorModel(env = process.env) {
 }
 
 /**
- * The writer to use: authorModel, unless the project cannot run that harness and another is installed, in which case
+ * Test-only export. The writer to use: authorModel, unless the project cannot run that harness and another is installed, in which case
  * that harness writes with no model (a model name belongs to the harness it was chosen for).
  */
-export function authorHarness(env = process.env, startable = []) {
+export function authorHarness(env: NodeJS.ProcessEnv = process.env, startable: string[] = []): AuthorModel {
   const chosen = authorModel(env);
   if (!startable.length || startable.includes(chosen.harness)) return chosen;
   const fallback = AUTHOR_PREFERENCE.find((harness) => startable.includes(harness));
   return fallback ? { harness: fallback, model: "" } : chosen;
 }
 
-/** The argv for one non-interactive writing-agent turn; the brief is one element, so no shell quoting applies. */
-export function authorCommand(harness, prompt, model = "") {
+/** Test-only: the argv for one non-interactive writing-agent turn; the brief is one element, so no shell quoting applies. */
+export function authorCommand(harness: string, prompt: string, model = ""): Command | null {
+  if (!isHarness(harness)) return null;
   return argv(harness, "author", { prompt, model });
 }
+
+const defaultExec: ExecFn = (file, args, options) => new Promise((resolve) => {
+  execFile(file, args, { ...options, timeout: WRITER_TIMEOUT_MS, maxBuffer: 1 << 20, shell: false }, (error, stdout, stderr) => resolve({
+    code: error ? (typeof error.code === "number" ? error.code : 1) : 0,
+    stdout: String(stdout || ""),
+    stderr: String(stderr || ""),
+  }));
+});
 
 /**
  * One writing-agent turn: the brief goes to the harness as a single argument and its stdout comes back.
@@ -228,40 +234,34 @@ export function authorCommand(harness, prompt, model = "") {
  * must be on PATH or the turn fails as "not installed". A non-zero exit keeps the harness's own stderr (a usage
  * limit is printed there and stdout is empty), so the operator sees why it stopped.
  */
-export async function askAuthor(prompt, { harness, model, env = process.env, timeoutMs = 180_000, run } = {}) {
+async function askAuthor(prompt: string, { harness, model, env = process.env, run }: { harness: string; model?: string; env?: NodeJS.ProcessEnv; run?: ExecFn }): Promise<AuthorAnswer> {
   const command = authorCommand(harness, String(prompt ?? ""), model ?? "");
   if (!command) return { status: "failed", detail: `unknown harness "${harness}"` };
   const vars = childEnv(env);
   const [binary, args] = command;
   const name = harness === "cursor" && !run ? cursorBinary(vars.PATH) : binary;
-  const exec = run ?? ((file, argv, options) => new Promise((resolve) => {
-    execFile(file, argv, { ...options, timeout: timeoutMs, maxBuffer: 1 << 20, shell: false }, (error, stdout, stderr) => resolve({
-      code: error ? (typeof error.code === "number" ? error.code : 1) : 0,
-      stdout: String(stdout || ""),
-      stderr: String(stderr || ""),
-    }));
-  }));
+  const exec = run ?? defaultExec;
   const file = run ? name : findExecutable(name, vars.PATH);
   if (!file) return { status: "failed", detail: `${name} is not installed` };
   const result = await exec(file, args, { env: vars, cwd: env.HOME || process.cwd() });
   const reply = String(result?.stdout ?? "").trim();
   const errorText = String(result?.stderr ?? "").trim();
   if (result?.code !== 0) {
-    const why = (reply || errorText).replace(/\s+/g, " ").slice(0, 300);
+    const why = (reply || errorText).replace(/\s+/g, " ").slice(0, FAILURE_DETAIL_MAX);
     return { status: "failed", detail: `${name} exited ${result?.code}${why ? `: ${why}` : ""}`, reply };
   }
   if (!reply) return { status: "failed", detail: `${name} answered nothing` };
-  return { status: "answered", reply, harness, file };
+  return { status: "answered", reply, harness: harness as Harness, file };
 }
 
 /**
  * One authoring turn end to end: build the brief, ask a writing agent, and check the DOT it returned.
  * The operator sees the draft; nothing is saved until saveAuthoredTeam with the confirmed name.
  */
-export async function authorTeam(cfg, { request, name = "", scope = "project", current = "", turns = [], peers = [], startable = [], env = process.env, ...agent } = {}) {
+export async function authorTeam(cfg: CatalogConfig, { request, name = "", scope = "project", current = "", turns = [], peers = [], startable = [], env = process.env, harness, model, run }: AuthorRequest & { startable?: string[]; env?: NodeJS.ProcessEnv; harness?: string; model?: string; run?: ExecFn } = {}) {
   const prompt = buildAuthorPrompt({ request, name, scope, current, turns, peers });
   const chosen = authorHarness(env, startable);
-  const answer = await askAuthor(prompt, { harness: agent.harness ?? chosen.harness, model: agent.model ?? chosen.model, env, ...(agent.run ? { run: agent.run } : {}) });
+  const answer = await askAuthor(prompt, { harness: harness ?? chosen.harness, model: model ?? chosen.model, env, ...(run ? { run } : {}) });
   if (answer.status !== "answered") return { ...answer, prompt };
   return { ...answer, prompt, ...draftTeam(cfg, { name, reply: answer.reply, env }) };
 }

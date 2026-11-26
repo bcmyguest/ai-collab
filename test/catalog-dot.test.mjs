@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DotError, parseDot, serializeDot } from "../lib/dot.mjs";
+import { DotError, parseDot, serializeDot } from "../lib/catalog/dot.ts";
 
 const TEAM = `digraph "review-loop" {
   graph [description="Write, then review", max_visits=4];

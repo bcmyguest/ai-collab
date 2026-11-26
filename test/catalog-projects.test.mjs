@@ -35,7 +35,7 @@ const pair = () => ({
 });
 
 const runWriter = (env, prefix, count) => new Promise((resolve, reject) => {
-  execFile(process.execPath, [WRITER, JSON.stringify(env), prefix, String(count)], (error, stdout, stderr) => {
+  execFile(process.execPath, [WRITER, JSON.stringify(env), prefix, String(count)], { env: { ...process.env, CATALOG_TEAM_WRITER: "1" } }, (error, stdout, stderr) => {
     if (error) reject(new Error(`${error.message}\n${stderr}`));
     else resolve(stdout);
   });

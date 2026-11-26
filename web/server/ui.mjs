@@ -40,7 +40,7 @@ import { closedProjectNames, createTeam, deleteTeam, listTeams, readProjectsFile
 import { clearFields, modelFields, sessionHistory } from "../../lib/session-events.mjs";
 import { compactionFields } from "../../lib/compaction.mjs";
 import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern, savePattern, saveTeamText, teamTemplates, teamTextOf } from "../../lib/patterns.mjs";
-import { authorModel, authorTeam, saveAuthoredTeam } from "../../lib/team-author.mjs";
+import { authorModel, authorTeam, saveAuthoredTeam } from "../../lib/catalog/author.ts";
 import { listOwned, readOwned } from "../../lib/owned.mjs";
 import { builderAssignment, recoverBuilder, stoppedBuilder } from "../../lib/builder.mjs";
 import { REVIEW_ACTIONS, STATUSES, TaskNotFoundError, openTasks } from "../../lib/tasks.mjs";
