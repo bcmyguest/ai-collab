@@ -6,7 +6,8 @@ import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { sendMessage } from "../lib/inbox.mjs";
 import { parseWireEnvelope } from "../lib/agui.mjs";
-import { awaitReply, readInbox, waitForIdle, waitForMessages, waitForReply } from "../lib/agents.mjs";
+import { awaitReply, waitForIdle, waitForMessages, waitForReply } from "../lib/agents.mjs";
+import { readInbox } from "../lib/messaging.ts";
 import { runWaiter } from "../lib/waiter.mjs";
 import { runCli } from "../lib/cli.mjs";
 
@@ -118,7 +119,7 @@ test("readInbox peek leaves messages unread and publishes no receipts; a claim p
 });
 
 test("the CLI inbox --peek prints the message and leaves it unread for the next inbox", async (t) => {
-  const { env, bob } = await setup(t);
+  const { fake, env, bob } = await setup(t);
   await sendMessage(bob, "alice", "peek me");
   const run = async (argv) => {
     const out = [];
@@ -128,6 +129,7 @@ test("the CLI inbox --peek prints the message and leaves it unread for the next 
   const peeked = await run(["inbox", "--peek"]);
   assert.equal(peeked.code, 0);
   assert.match(peeked.out, /body="peek me"/);
+  assert.equal(receiptIds(fake).length, 1, "CLI peek publishes a receipt, as on main");
   const claimed = await run(["inbox"]);
   assert.match(claimed.out, /body="peek me"/);
   assert.equal((await run(["inbox"])).out, "no new messages\n");
