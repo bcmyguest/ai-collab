@@ -16,9 +16,9 @@ import { backoffMs, MAX_ATTEMPTS, nextAction, REDELIVER_MS, TTL_MS } from "../..
 import { PUSHED, busyWithPush, direct, pushSession, readySession, runCommand } from "../../lib/deliver-push.mjs";
 import { formatInbox } from "../../lib/format.mjs";
 import { sessionIdleState } from "../../lib/idle.mjs";
-import { claimInbox, ATTACHMENT_BUDGET_MS, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery, reservedMessage } from "../../lib/inbox.mjs";
+import { claimInbox, ATTACHMENT_BUDGET_MS, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery, reservedMessage } from "../../lib/messaging.ts";
 import { cacheAttachmentsWithin } from "../../lib/attachment-cache.mjs";
-import { pollCached } from "../../lib/transport.mjs";
+import { pollCached } from "../../lib/messaging.ts";
 import { opencodeRequest } from "../../lib/opencode-api.mjs";
 import { readReceipts } from "../../lib/receipts.mjs";
 import { listSessions } from "../../lib/sessions.mjs";

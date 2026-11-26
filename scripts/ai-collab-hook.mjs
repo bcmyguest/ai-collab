@@ -23,7 +23,7 @@
  */
 import path from "node:path";
 import { loadConfig, ownEnv, sessionLabel } from "../lib/config.mjs";
-import { claimInbox, publishStatus } from "../lib/inbox.mjs";
+import { claimInbox, publishStatus } from "../lib/messaging.ts";
 import { childHint, exportParent, greetParent, parentLine } from "../lib/family.mjs";
 import { formatInbox, hookOutput, identityLine, stopOutput } from "../lib/format.mjs";
 import { currentMode, operatorPrompt, takeModeNote } from "../lib/mode.mjs";

@@ -5,7 +5,7 @@ import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { sessionLabel } from "../config.mjs";
 import { REQUIRE_RUN_CODE_ENV } from "../code-mode.mjs";
 import { codexCompact, codexLiveCompact, CLIENT, connect } from "../codex-compact.mjs";
-import { sendMessage } from "../inbox.mjs";
+import { sendMessage } from "../messaging.ts";
 import { isRunning } from "../process.mjs";
 import { WAKE_ENV, WAKE_PROMPT } from "../mode.mjs";
 import { opencodeRequest } from "../opencode-api.mjs";

@@ -1,15 +1,10 @@
+import type { Cfg } from "../messaging.ts";
+
 // Shapes the operation table passes between tool arguments and the ai-collab modules.
 export type Args = Record<string, unknown>;
 
-// The fields of a loaded config (lib/config.mjs) that the surfaces read.
-export interface SurfaceConfig {
-  peer: string;
-  session?: string;
-  project: string;
-  peers: string[];
-  afkWaitS: number;
-  stateDir: string;
-}
+// The loaded config (lib/config.mjs) the surfaces pass to the messaging functions.
+export type SurfaceConfig = Cfg;
 
 export interface TaskView {
   id: string;

@@ -4,7 +4,7 @@ import { agentDirectory, sessionDirectory, setIdentity, listSessions } from "../
 import { messageView, respond, sendAndAwait, waitForIdle, waitForMessages } from "../agents.mjs";
 import { readInbox } from "../messaging.ts";
 import { askQuestion, requestWait, waitForAnswer } from "../questions.mjs";
-import { HISTORY_DEFAULT, HISTORY_MAX, PRIORITIES, RESPOND_STATES, channelHistory, replyToOperator, sendMessage } from "../inbox.mjs";
+import { HISTORY_DEFAULT, HISTORY_MAX, PRIORITIES, RESPOND_STATES, channelHistory, replyToOperator, sendMessage } from "../messaging.ts";
 import { storedMode } from "../mode.mjs";
 import { teamStart, teamStatus } from "../teams.mjs";
 import { listPatterns } from "../patterns.mjs";

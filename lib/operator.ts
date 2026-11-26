@@ -2,7 +2,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { encodeEnvelope, parseWireEnvelope } from "./agui.mjs";
 import { parseMode } from "./mode.mjs";
-import { pollCached, streamEvents } from "./transport.mjs";
+import { pollCached, streamEvents, type Cfg } from "./messaging.ts";
 
 export const WAIT_MAX_S = 45;
 const RETRY_MAX_MS = 30_000;
@@ -15,7 +15,7 @@ export type ChoiceQuestion = { question: string; multiSelect?: boolean; options:
 export type Labels = Record<string, string[]>;
 export type Reply = { id: string; answer: string; messageId: string; labels?: Labels };
 export type Match = { skipped: true; id: string } | ({ skipped: false } & Reply);
-export type OperatorConfig = { peer: string; wire: string; stopPollMs: number };
+export type OperatorConfig = Cfg;
 export type StreamFn = (cfg: OperatorConfig, topics: string[], opts: { since: string; signal?: AbortSignal; onOpen?: () => void }) => AsyncIterable<Envelope>;
 export type PollFn = (cfg: OperatorConfig, topic: string, since: string, signal?: AbortSignal) => Promise<Envelope[]>;
 export type WaitOutcome<T> = { status: "reply"; value: T; messageId: string } | { status: "skipped" } | { status: "afk-off" } | { status: "timeout" } | { status: "cancelled" };
@@ -162,7 +162,7 @@ async function pollWait<T>(o: WaitOptions<T>): Promise<WaitOutcome<T>> {
   let since = o.since ?? SINCE_DEFAULT;
   while (true) {
     o.signal?.throwIfAborted();
-    const events = (await poll(o.cfg, o.topic, since, o.signal)) as Envelope[];
+    const events = await poll(o.cfg, o.topic, since, o.signal);
     since = events.at(-1)?.id ?? since;
     for (const event of events) {
       const outcome = scanEvent(event, o);
