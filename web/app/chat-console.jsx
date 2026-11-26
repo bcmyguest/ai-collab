@@ -18,6 +18,7 @@ import { chatThread } from "@/lib/chat-turns";
 import { NewAgentComposer } from "./new-session";
 import { PatternsPage } from "./patterns-page";
 import { LandReviews } from "./land-reviews";
+import { Land } from "./land-panel";
 import { OutcomeRequest } from "./outcomes";
 import { TaskBoard } from "./tasks";
 import { ProjectNav } from "./project-nav";
@@ -474,6 +475,7 @@ export function Console({ account }) {
                 <span className="truncate">{item.id}</span><Badge variant="secondary">New work paused</Badge>
               </button>)}
             {home && !inbox && <LandReviews landing={data.landing} disabled={working} onLand={() => action("land-reviews", { project: undefined }, "Landing reviews")}/>}
+            {home && !inbox && <Land/>}
             {home && <DecisionQueue decisions={data.decisions} inbox={inbox} now={now} disabled={working} action={action}
               seen={seenDecisions} markSeen={markDecisionSeen} openInbox={() => navigate({ level: "inbox" })}/>}
             {home && !inbox && data.shipped?.length > 0 && <Shipped items={data.shipped}
