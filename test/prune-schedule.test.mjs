@@ -49,8 +49,8 @@ function fixture(t) {
 test("summaryLine reports bytes, counts and the top three skip reasons on one line", () => {
   const line = summaryLine({
     mode: "apply", reclaimedBytes: 21_520_000_000, categories: { clone: { count: 13, bytes: 19.96e9 }, staged: { count: 1, bytes: 1.57e9 } },
-    builders: new Array(13).fill({}), worktrees: [{ action: "remove" }], archives: new Array(13).fill({}),
-    skipped: new Array(9).fill({}), skipReasons: { "newer than cutoff": 5, "task open": 3, dirty: 1, locked: 0 },
+    builders: Array.from({ length: 13 }, () => ({})), worktrees: [{ action: "remove" }], archives: Array.from({ length: 13 }, () => ({})),
+    skipped: Array.from({ length: 9 }, () => ({})), skipReasons: { "newer than cutoff": 5, "task open": 3, dirty: 1, locked: 0 },
   });
   assert.equal(line, "prune applied: reclaimed 21.52 GB; builders 13 (clone 13, staged 1); worktrees 1; archives 13; skipped 9 (newer than cutoff 5, task open 3, dirty 1)");
   assert.ok(!line.includes("\n"));
