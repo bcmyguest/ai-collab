@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DotError, parseDot, serializeDot } from "../lib/dot.mjs";
+import { DotError, parseDot, serializeDot } from "../lib/catalog/dot.ts";
 import { toDot, toGraph } from "../web/lib/pattern-graph.js";
 
 const CHANGE = `// change: one worker step.

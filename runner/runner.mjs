@@ -6,7 +6,7 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { EventType } from "@ag-ui/core";
-import { DOT_EVENT_MAX } from "../lib/dot.mjs";
+import { DOT_EVENT_MAX } from "../lib/catalog/dot.ts";
 import { getPattern } from "../lib/patterns.mjs";
 import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, cutPatternEntry, cutPatternLeave, cutPatternRun, launchPatternRun, NOTE_MAX, preparePatternRun, RUN_ID, runStatus, sessionsOfRun } from "../lib/pattern-runs.mjs";
 import { patternWorkflowId, runIdOfPatternWorkflow, runPatternWorkflow, seedPatternRun } from "../lib/pattern-workflow.mjs";

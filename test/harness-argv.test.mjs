@@ -4,7 +4,7 @@ import { startCommand } from "../lib/start.mjs";
 import { harnessCommand as builderCommand } from "../lib/builder.mjs";
 import { harnessCommand as wakeCommand } from "../lib/sessions/control.ts";
 import { codexRequiredRunCodeArgs } from "../lib/code-mode.mjs";
-import { authorCommand } from "../lib/team-author.mjs";
+import { authorCommand } from "../lib/catalog/author.ts";
 import { pushSession } from "../lib/deliver-push.mjs";
 import { acpArgs } from "../runner/adapters/cursor.mjs";
 import { argv } from "../lib/harness.ts";
