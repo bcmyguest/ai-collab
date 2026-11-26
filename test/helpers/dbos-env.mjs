@@ -6,7 +6,7 @@ import { ensureDatabase, pgReachable } from "../../lib/postgres.mjs";
 /** Points the process (and spawned test children) at the test database; resolves true when Postgres is up. */
 export async function dbosTestDb() {
   // A shell that exports the production database must not send the tests there.
-  if ((process.env.AI_COLLAB_PG_DATABASE || "ai_collab") === "ai_collab" && process.env.AI_COLLAB_PG_DATABASE !== undefined) {
+  if (process.env.AI_COLLAB_PG_DATABASE === "ai_collab") {
     throw new Error("dbos tests refuse AI_COLLAB_PG_DATABASE=ai_collab: unset it or name a test database");
   }
   process.env.AI_COLLAB_PG_DATABASE ||= "ai_collab_test";
