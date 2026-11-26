@@ -15,7 +15,7 @@ import type { Session, SessionCfg } from "./registry.ts";
 type Outcome = { status: string; detail: string };
 type CodexRpcOptions = { cwd?: string; env?: NodeJS.ProcessEnv; command?: Command };
 type CodexLive = (threadId: string, options: CodexRpcOptions) => Promise<{ status: string }>;
-type CodexCall = (threadId: string, options: CodexRpcOptions) => Promise<unknown>;
+type CodexCall = (threadId: string, options: CodexRpcOptions) => Promise<void>;
 
 const NATIVE_UUID = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 // OpenCode session IDs are "ses_" and 26 base-62 characters (OpenCode 2.2.5 logs and API).
@@ -46,7 +46,7 @@ export function harnessEnv(): NodeJS.ProcessEnv {
 }
 
 /** Runner from AI_COLLAB_WAKE_RUNNER (host | openshell) and AI_COLLAB_OPENSHELL_SANDBOX. */
-export function runnerFromEnv(env: NodeJS.ProcessEnv = process.env): { kind: string; sandbox?: string } {
+export function runnerFromEnv(env: NodeJS.ProcessEnv = process.env) {
   const kind = env.AI_COLLAB_WAKE_RUNNER || "host";
   if (kind === "host") return { kind };
   if (kind === "openshell" && SANDBOX_NAME.test(env.AI_COLLAB_OPENSHELL_SANDBOX || "")) {
@@ -99,7 +99,7 @@ async function compactRunning(peer: Session, { cfg, codexLive, runner, env }: {
   if (!cfg?.enabled) return { status: "unsupported", detail: `${note}The session is running. Run /compact in it directly.` };
   const where = harness === "claude" ? " in its terminal or from Remote Control" : harness === "codex" ? " in it, or press Compact again once its turn ends" : " in it";
   try {
-    await sendMessage({ ...cfg, peer: "operator", session: "" } as never, peer.id as string, COMPACT_REQUEST, { operatorThread: true, system: true, urgent: true } as never);
+    await sendMessage({ ...cfg, peer: "operator", session: "" } as never, peer.id, COMPACT_REQUEST, { operatorThread: true, system: true, urgent: true });
   } catch {
     return { status: "failed", detail: `${note}The compaction request could not be sent. Run /compact${where}.` };
   }
@@ -141,7 +141,7 @@ async function run(action: string, peer: Session, { execute = invoke, compact = 
   if (!adapter) return noAdapter;
   if (sdk) {
     try {
-      const { boundary, result } = await compact(sessionId as string, cwd);
+      const { boundary, result } = await compact(sessionId, cwd);
       if (!boundary) return { status: "failed", detail: `Claude finished (${result ?? "no result"}) without compacting.` };
       return { status: "succeeded", detail: `Compacted ${boundary.pre_tokens} → ${boundary.post_tokens} tokens.` };
     } catch {
@@ -150,7 +150,7 @@ async function run(action: string, peer: Session, { execute = invoke, compact = 
   }
   if (appServer) {
     try {
-      await codex(sessionId as string, { cwd, env, command: placeCommand(["codex", ["app-server"]], cwd, runner) });
+      await codex(sessionId, { cwd, env, command: placeCommand(["codex", ["app-server"]], cwd, runner) });
       return { status: "succeeded", detail: "Codex compacted the thread." };
     } catch {
       return { status: "failed", detail: "Codex app-server compaction failed." };
@@ -224,7 +224,7 @@ export async function interruptSession(peer: Session | null | undefined, { env =
     return { status: "unsupported", detail: "Missing a verified native session ID." };
   }
   if (harness === "opencode") {
-    const r = await opencode("POST", `/api/session/${encodeURIComponent(sessionId as string)}/interrupt`);
+    const r = await opencode("POST", `/api/session/${encodeURIComponent(sessionId)}/interrupt`);
     if (!r.ok) return r.status === 404 ? { status: "not-running", detail: "OpenCode has no such running session." } : { status: "failed", detail: r.error as string };
     const interrupted = r.body?.interrupted ?? r.body?.data?.interrupted;
     return interrupted ? { status: "succeeded", detail: "OpenCode interrupted the turn." } : { status: "not-running", detail: "No turn was running." };
@@ -232,7 +232,7 @@ export async function interruptSession(peer: Session | null | undefined, { env =
   if (typeof cwd !== "string" || !isAbsolute(cwd)) return { status: "unsupported", detail: "Missing a workspace." };
   if (runner.kind === "invalid") return { status: "failed", detail: "AI_COLLAB_WAKE_RUNNER is misconfigured." };
   try {
-    const r = await codexInterrupt(sessionId as string, { cwd, env, command: placeCommand(argv("codex", "interrupt", {}) as Command, cwd, runner) });
+    const r = await codexInterrupt(sessionId, { cwd, env, command: placeCommand(argv("codex", "interrupt", {}) as Command, cwd, runner) });
     if (r.status === "interrupted") return { status: "succeeded", detail: "Codex interrupted the turn." };
     if (r.status === "not-running") return { status: "not-running", detail: "No turn was running." };
     return { status: "unsupported", detail: "This Codex session is not attached to the app-server daemon." };

@@ -43,7 +43,7 @@ export function startRefusal(harness: string, mode = "agent", model?: unknown): 
 export function startCommand(harness: string, root: string, prompt: string, { worktree = "", model, mode, permission, codeMode, requireRunCode = false }: {
   worktree?: string; model?: string; mode?: string; permission?: string; codeMode?: boolean; requireRunCode?: boolean;
 } = {}): Command | null {
-  return argv(harness as Harness, "start", { root, prompt, worktree, model, mode, permission, codeMode, requireRunCode } as never);
+  return argv(harness as Harness, "start", { root, prompt, worktree, model, mode, permission, codeMode, requireRunCode });
 }
 
 /**
@@ -90,7 +90,7 @@ export function childEnv(env: NodeJS.ProcessEnv = process.env, execPath = proces
 export function availableHarnesses(cfg: SessionCfg, env: NodeJS.ProcessEnv = process.env): Harness[] {
   const { PATH } = childEnv(env);
   return START_HARNESSES.filter((h) => (!cfg.peers.length || cfg.peers.includes(h))
-    && (h === "cursor" ? CURSOR_BINARIES.some((name) => findExecutable(name, PATH as string)) : findExecutable(LAUNCH_BINARY[h], PATH as string)));
+    && (h === "cursor" ? CURSOR_BINARIES.some((name) => findExecutable(name, PATH)) : findExecutable(LAUNCH_BINARY[h], PATH)));
 }
 
 /** The sandbox from AI_COLLAB_OPENSHELL_SANDBOX, the runner wake uses, or null. */
@@ -101,7 +101,7 @@ export function openshellRunner(env: NodeJS.ProcessEnv = process.env): { kind: s
 
 /** Whether the runner can take an OpenShell start: openshell installed and the runner's control socket present. */
 function runnerSandbox(env: NodeJS.ProcessEnv = process.env): boolean {
-  return Boolean(findExecutable("openshell", childEnv(env).PATH as string) && existsSync(runnerSocket(env)));
+  return Boolean(findExecutable("openshell", childEnv(env).PATH) && existsSync(runnerSocket(env)));
 }
 
 /** Harnesses an openshell start may name: any, in the AI_COLLAB_OPENSHELL_SANDBOX sandbox; else the runner's sandbox harnesses. */
@@ -125,8 +125,8 @@ export function availablePlaces(cfg: SessionCfg, env: NodeJS.ProcessEnv = proces
   const places = ["folder"];
   let root = "";
   try { root = projectRoot(cfg.project, env); } catch { return places; }
-  if (existsSync(join(root, ".git")) && findExecutable("git", PATH as string)) places.push("worktree");
-  if ((openshellRunner(env) && findExecutable("openshell", PATH as string)) || (existsSync(join(root, ".git")) && runnerSandbox(env))) places.push("openshell");
+  if (existsSync(join(root, ".git")) && findExecutable("git", PATH)) places.push("worktree");
+  if ((openshellRunner(env) && findExecutable("openshell", PATH)) || (existsSync(join(root, ".git")) && runnerSandbox(env))) places.push("openshell");
   return places;
 }
 
@@ -139,7 +139,7 @@ export function defaultStartPlace(places: string[], harness: string, env: NodeJS
 }
 
 // Worktree name and branch for one start: ai-collab-<harness>-<UTC stamp> on branch ai-collab/<harness>-<stamp>.
-export function worktreeNames(harness: string, at: number): { name: string; branch: string } {
+export function worktreeNames(harness: string, at: number) {
   const stamp = utcStamp(at);
   return { name: `ai-collab-${harness}-${stamp}`, branch: `ai-collab/${harness}-${stamp}` };
 }
@@ -147,7 +147,7 @@ export function worktreeNames(harness: string, at: number): { name: string; bran
 // Runs git with a fixed argv and no shell; resolves its exit code.
 function runGit(file: string, args: string[], options: SpawnOptions): Promise<number> {
   return new Promise((resolve) => {
-    execFile(file, args, { ...options, shell: false, timeout: GIT_TIMEOUT_MS }, (error) => resolve(error ? ((error as NodeJS.ErrnoException).code as unknown as number) ?? 1 : 0));
+    execFile(file, args, { ...options, shell: false, timeout: GIT_TIMEOUT_MS }, (error) => resolve(error ? ((error as NodeJS.ErrnoException).code as number | undefined) ?? 1 : 0));
   });
 }
 
@@ -214,7 +214,7 @@ function readHead(file: string): string {
 export async function startSession(cfg: SessionCfg, { harness = "", prompt = "", model, mode = "agent", place = "folder", origin = "", codeMode, requireRunCode = false, system = false, claudePermission, env = process.env, run: spawnChild = spawn, git = runGit, now = Date.now, waitMs = ID_WAIT_MS, onEnd }: {
   harness?: string; prompt?: string; model?: string; mode?: string; place?: string; origin?: string; codeMode?: unknown; requireRunCode?: boolean; system?: boolean; claudePermission?: string;
   env?: NodeJS.ProcessEnv; run?: typeof spawn; git?: typeof runGit; now?: () => number; waitMs?: number;
-  onEnd?: (end: { code: number | null; signal: string | null; log: string }) => unknown;
+  onEnd?: (end: { code: number | null; signal: string | null; log: string }) => void;
 } = {}): Promise<{ status: string; detail: string; log?: string; session?: string }> {
   if (isProjectPaused(cfg)) return { status: "failed", detail: PROJECT_PAUSED };
   const root = projectRoot(cfg.project, env);
@@ -232,21 +232,21 @@ export async function startSession(cfg: SessionCfg, { harness = "", prompt = "",
   let cwd = folder.cwd as string;
   // Claude makes its own worktree (--worktree); other harnesses start in one git creates under .claude/worktrees/.
   if (tree && harness !== "claude" && START_HARNESSES.includes(harness as Harness)) {
-    const gitFile = findExecutable("git", childVars.PATH as string);
+    const gitFile = findExecutable("git", childVars.PATH);
     if (!gitFile) return { status: "failed", detail: "git is not installed" };
     cwd = join(root, ".claude", "worktrees", tree.name);
     const code = await git(gitFile, ["-C", root, "worktree", "add", "-b", tree.branch, cwd], { cwd: root, env: childVars });
     if (code !== 0) return { status: "failed", detail: `git worktree add exited ${code}` };
   }
-  const base = startCommand(harness, cwd, prompt, { worktree: tree && harness === "claude" ? tree.name : "", model, mode, permission: permission.flag, requireRunCode, codeMode: resolveCodeMode(codeMode as never, env) });
+  const base = startCommand(harness, cwd, prompt, { worktree: tree && harness === "claude" ? tree.name : "", model, mode, permission: permission.flag, requireRunCode, codeMode: resolveCodeMode(codeMode, env) });
   if (!base) return { status: "failed", detail: startRefusal(harness, mode, model) || "Unknown harness" };
   const sandbox = place === "openshell" ? openshellRunner(env) : null;
   if (place === "openshell" && !sandbox) return { status: "failed", detail: "AI_COLLAB_OPENSHELL_SANDBOX is not set" };
   const cmd = resolveStartBinary(harness, base, childVars.PATH);
-  const refusal = hostAgentRefusal(cmd as Command, { sandboxed: Boolean(sandbox), env });
+  const refusal = hostAgentRefusal(cmd, { sandboxed: Boolean(sandbox), env });
   if (refusal) return { status: "failed", detail: refusal };
   const command = sandbox ? placeCommand(cmd as Command, cwd, sandbox) : cmd as Command;
-  const file = findExecutable(command[0], childVars.PATH as string);
+  const file = findExecutable(command[0], childVars.PATH);
   if (!file) return { status: "failed", detail: `${command[0]} is not installed` };
   const dir = join(cfg.stateDir, cfg.project, "starts");
   mkdirSync(dir, { recursive: true, mode: 0o700 });
