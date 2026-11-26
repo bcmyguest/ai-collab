@@ -9,21 +9,38 @@ export interface ChannelPost {
   reply_to?: string;
   progress?: boolean;
   attachment?: string;
+  urgent?: boolean;
+  priority?: string;
+  expectReply?: boolean;
 }
 
-export async function postToChannel(cfg: SurfaceConfig, { body, reply_to: replyTo, progress, attachment }: ChannelPost, env: NodeJS.ProcessEnv) {
+export interface NoteStream {
+  write: (text: string) => void;
+}
+
+export async function postToChannel(
+  cfg: SurfaceConfig,
+  { body, reply_to: replyTo, progress, attachment, urgent, priority, expectReply }: ChannelPost,
+  env: NodeJS.ProcessEnv,
+  stderr: NoteStream = process.stderr,
+) {
   const { mode } = storedMode(cfg);
   if (progress === true && mode === "quiet") return { sent: false, reason: "AFK mode is QUIET: progress posts are dropped." };
-  await sendMessage(cfg, "all", body, { replyTo, attachment });
+  // Validation (priority, expect-reply) runs in sendMessage, so a bad flag fails before anything is posted.
+  await sendMessage(cfg, "all", body, { replyTo, attachment, urgent, priority, expectReply });
   if (progress !== true) return { sent: true, mode };
   // The post already went out, so a task store fault becomes a note and never a failed (retried) send.
   const notes: string[] = [];
   let owned: unknown[] = [];
   try {
     owned = ownedBuilding(cfg, env);
-    recordOwnerProgress(cfg, body, env).catch((error: Error) => process.stderr.write(`ai-collab: task progress not recorded: ${error.message}\n`));
+    try {
+      await recordOwnerProgress(cfg, body, env);
+    } catch (error) {
+      stderr.write(`ai-collab: task progress not recorded: ${(error as Error).message}\n`);
+    }
   } catch (error) {
-    process.stderr.write(`ai-collab: task store unavailable: ${(error as Error).message}\n`);
+    stderr.write(`ai-collab: task store unavailable: ${(error as Error).message}\n`);
     notes.push(`task store unavailable: ${(error as Error).message}`);
   }
   if (clipProgress(body).truncated) notes.push(`progress clipped to ${PROGRESS_MAX} characters on its task entries`);
