@@ -269,6 +269,10 @@ Home's **Operator decisions** list and the decision inbox (`#inbox`, **Waiting o
 
 A closed card shows **Skipped**. A second Skip, or an answer after a Skip, returns 409. A runner-owned approval offers no Skip and the route answers 409, because the runner session has no terminal prompt to take over.
 
+## Run in terminal
+
+With `runInTerminal` on in `defaults.json`, a host agent's `run_in_terminal` request appears as a card at the top of the project's screens (a session chat shows only that session's requests) and sends a push like an approval. The card shows the reason, the session, the cwd, the numbered script, and its sha256 with the browser's own hash check. **Run** runs the shown bytes with bash on the host as the UI service's user; **Reject** closes the request. Each request runs at most once and expires after 15 minutes. Approval comes only from this card over `POST /api/a2ui`; a bus reply cannot run a script. See [Run in terminal](run-in-terminal.md).
+
 ## Usage-limit cards
 
 When a session hits a subscription or usage limit, the runner and the Claude hook start the fallback without asking. The order is the role or `defaults.json` `limitFallback` (`harness:model`), then Cursor `deepseek-v41-flash-1017-high`, then `opencode/deepseek-v4.1-flash-free`. A builder is retried by its supervisor on that same chain and does not also raise a card. A session that is not a builder gets a new session in the folder it was using, and the channel gets a notice (`Usage limit: continued as cursor:…`) instead of a choice. A choice card is still what `alertLimit` publishes when a caller does not set `auto`, and what the phone shows for a limit that was recorded before this switch. The card names the agent and its `harness:model`, the limit with its window when known, and the reset time when known: `Limit reached · claude:claude-opus-5-5 · 5-hour · resets 18:00`. A plain HTTP 429 with no window, reset or limit wording reads `Rate limited`.
