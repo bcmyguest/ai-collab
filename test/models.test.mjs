@@ -77,5 +77,5 @@ test("UI models action and a start with a listed model; an unlisted one is rejec
   const ok = await post("start", { project: "demo", harness: "claude", prompt: "hi", model: "sonnet" });
   assert.equal(ok.status, 201, JSON.stringify(await ok.clone().json()));
   for (let i = 0; i < 200 && !existsSync(path.join(record, "claude.json")); i++) await delay(20);
-  assert.deepEqual(JSON.parse(readFileSync(path.join(record, "claude.json"), "utf8")), ["--bg", "--model", "sonnet", "hi"]);
+  assert.deepEqual(JSON.parse(readFileSync(path.join(record, "claude.json"), "utf8")), ["--bg", "--permission-mode", "default", "--model", "sonnet", "hi"]);
 });

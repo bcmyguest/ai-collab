@@ -87,7 +87,7 @@ test("worktree start: Claude gets --worktree; Codex starts in a git worktree on 
   const [run] = await recorded(record, "claude");
   assert.deepEqual(run.argv.slice(0, 2), ["--bg", "--worktree"]);
   assert.match(run.argv[2], /^ai-collab-claude-\d{8}T\d{6}Z$/);
-  assert.equal(run.argv[3], "fix it");
+  assert.equal(run.argv[5], "fix it");
   assert.equal(run.cwd, root);
   assert.equal(existsSync(path.join(record, "git.jsonl")), false, "Claude makes its own worktree");
 
@@ -116,7 +116,7 @@ test("openshell start wraps the fixed argv in sandbox exec with the configured s
   const result = await (await post({ project: "demo", harness: "claude", prompt: "$(touch x)", place: "openshell" })).json();
   assert.equal(result.status, "started");
   const [run] = await recorded(record, "openshell");
-  assert.deepEqual(run.argv, ["sandbox", "exec", "--name", "dev-box", "--workdir", root, "--no-tty", "--no-login-shell", "--", "claude", "--bg", "$(touch x)"]);
+  assert.deepEqual(run.argv, ["sandbox", "exec", "--name", "dev-box", "--workdir", root, "--no-tty", "--no-login-shell", "--", "claude", "--bg", "--permission-mode", "default", "$(touch x)"]);
   assert.equal(existsSync(path.join(record, "claude.jsonl")), false, "the harness runs inside the sandbox, not on the host");
 });
 

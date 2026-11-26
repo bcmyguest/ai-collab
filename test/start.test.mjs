@@ -95,7 +95,7 @@ test("each harness starts in the registered folder with the exact argv and a lit
   assert.equal(result.session, "claude#" + sessionLabel(IDS.claude));
   assert.doesNotMatch(JSON.stringify(result), new RegExp(IDS.claude));
   const claude = await recorded(record, "claude");
-  assert.deepEqual(claude.argv, ["--bg", prompt]);
+  assert.deepEqual(claude.argv, ["--bg", "--permission-mode", "default", prompt]);
   assert.equal(claude.cwd, root);
   assert.deepEqual(claude.vars, ["AI_COLLAB_WAKE=1"], "no AI_COLLAB_* settings leak to the child");
   assert.ok(!existsSync(path.join(root, "PWNED")) && !existsSync(path.join(root, "PWNED2")) && !existsSync(path.join(root, "out")));

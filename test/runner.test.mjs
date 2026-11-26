@@ -247,7 +247,7 @@ test("an approval becomes an owned card; a phone reply allows it and closes the 
     assert.deepEqual([end.id, end.reason], [card.id, "allowed"]);
     await until(() => rows(fake).some((r) => r.type === "tool_result" && r.output === "ran rm -rf build"), "tool result");
     assert.equal(adapter.calls.find((c) => c.op === "respond").decision.behavior, "allow");
-    assert.equal(readOwned(ctx.cfg, sessionLabel(nativeId)).permissionMode, "auto");
+    assert.equal(readOwned(ctx.cfg, sessionLabel(nativeId)).permissionMode, "supervised");
   } finally {
     await runner.stop();
     await fake.close();

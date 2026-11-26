@@ -83,7 +83,7 @@ test("a claude start with no place falls back to the folder; an explicit openshe
   assert.match((await refused.json()).error, /claude cannot start in OpenShell yet/);
   const started = await (await post({ project: "demo", harness: "claude", prompt: "fix it" })).json();
   assert.equal(started.status, "started");
-  assert.deepEqual((await recorded(record, "claude"))[0].argv, ["--bg", "fix it"]);
+  assert.deepEqual((await recorded(record, "claude"))[0].argv, ["--bg", "--permission-mode", "default", "fix it"]);
   assert.deepEqual(starts, []);
 });
 

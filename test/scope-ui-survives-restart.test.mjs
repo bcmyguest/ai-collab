@@ -107,7 +107,7 @@ test("a UI start puts the harness in its own scope, with the same argv, folder a
   assert.deepEqual(start.argv.slice(0, 4), ["--user", "--scope", "--quiet", "--collect"]);
   const at = start.argv.indexOf("--");
   assert.ok(start.argv[at + 1].endsWith("claude"), "the harness itself is the scoped command");
-  assert.deepEqual(start.argv.slice(at + 2), ["--bg", "run the tests"], "the harness argv is unchanged inside the scope");
+  assert.deepEqual(start.argv.slice(at + 2), ["--bg", "--permission-mode", "default", "run the tests"], "the harness argv is unchanged inside the scope");
   await eventually(() => seen(record).length > 0);
   assert.match(seen(record)[0].cwd, /project$/, "the harness still runs in the project root");
   // AI_COLLAB_SCOPE is this process's own switch, never the harness's business.
@@ -119,7 +119,7 @@ test("without systemd-run a UI start spawns exactly as before", async (t) => {
   const result = await (await post({ project: "demo", harness: "claude", prompt: "hello" })).json();
   assert.equal(result.status, "started");
   assert.deepEqual(runs(record), [], "nothing wraps the harness");
-  assert.deepEqual(seen(record).map((run) => run.argv), [["--bg", "hello"]], "the harness ran directly");
+  assert.deepEqual(seen(record).map((run) => run.argv), [["--bg", "--permission-mode", "default", "hello"]], "the harness ran directly");
 });
 
 test("AI_COLLAB_SCOPE=off turns the scope off and the start still works", async (t) => {
@@ -129,7 +129,7 @@ test("AI_COLLAB_SCOPE=off turns the scope off and the start still works", async 
   const result = await (await post({ project: "demo", harness: "claude", prompt: "still starts" })).json();
   assert.equal(result.status, "started");
   assert.deepEqual(runs(record), [], "systemd-run is not called");
-  assert.deepEqual(seen(record).map((run) => run.argv), [["--bg", "still starts"]]);
+  assert.deepEqual(seen(record).map((run) => run.argv), [["--bg", "--permission-mode", "default", "still starts"]]);
 });
 
 // The property a fake cannot show. A transient unit stands in for the UI's own unit: it starts a session with
