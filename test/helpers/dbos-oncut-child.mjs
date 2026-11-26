@@ -6,7 +6,7 @@ if (!["start", "relaunch"].includes(phase)) process.exit(0);
 const SRC = process.env.SRC;
 const { openWorkflows } = await import(`${SRC}/lib/workflows.ts`);
 const { pgUrl } = await import(`${SRC}/lib/postgres.mjs`);
-const wf = await openWorkflows({ engine: "dbos", pgUrl: pgUrl() });
+const wf = await openWorkflows({ engine: "dbos", pgUrl: pgUrl(), applicationVersion: process.env.AIC_DBOS_APP_VERSION });
 const swallow = (p) => p.catch(() => {}); // keeps a top-level promise chain off the lint rule
 wf.register("oc.flow", async (ctx) => {
   fs.appendFileSync(String(ctx.input.markFile), `replaying:${ctx.replaying}\n`);

@@ -16,7 +16,7 @@ const pgUp = await pgReachable();
 test("a step cut by a kill runs its onCut at recovery and never re-executes", { skip: pgUp ? false : "no Postgres on 127.0.0.1:5432", timeout: 120_000 }, () => {
   const id = `oncut-${Date.now()}`;
   const markFile = path.join(mkdtempSync(path.join(tmpdir(), "aic-oc-")), "marks.txt");
-  const env = { ...process.env, SRC: path.join(HERE, "..") };
+  const env = { ...process.env, SRC: path.join(HERE, ".."), AIC_DBOS_APP_VERSION: `aic-oncut-${Date.now()}` };
   const first = spawnSync(process.execPath, [CHILD, "start", id, markFile], { encoding: "utf8", timeout: 30_000, env });
   assert.equal(first.signal, "SIGKILL", "the start child must die by SIGKILL mid-step");
   assert.deepEqual(readFileSync(markFile, "utf8").trim().split("\n"), ["replaying:false", "ran"], "the fresh run enters its step with replaying false");

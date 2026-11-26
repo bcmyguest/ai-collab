@@ -16,7 +16,7 @@ const pgUp = await pgReachable();
 test("a pending workflow survives a relaunch that registers one more workflow", { skip: pgUp ? false : "no Postgres on 127.0.0.1:5432", timeout: 120_000 }, () => {
   const id = `appver-${Date.now()}`;
   const markFile = path.join(mkdtempSync(path.join(tmpdir(), "aic-av-")), "marks.txt");
-  const env = { ...process.env, SRC: path.join(HERE, "..") };
+  const env = { ...process.env, SRC: path.join(HERE, ".."), AIC_DBOS_APP_VERSION: `aic-appver-${Date.now()}` };
   const first = spawnSync(process.execPath, [CHILD, "start", id, markFile], { encoding: "utf8", timeout: 30_000, env });
   assert.equal(first.signal, "SIGKILL", "the start child must die by SIGKILL mid-step");
   assert.deepEqual(readFileSync(markFile, "utf8").trim().split("\n"), ["entered"], "the workflow entered its long step before the kill");

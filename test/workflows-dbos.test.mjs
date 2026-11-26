@@ -5,7 +5,8 @@ import { openWorkflows } from "../lib/workflows.ts";
 import { pgReachable, pgUrl } from "../lib/postgres.mjs";
 
 const pgUp = await pgReachable();
-const opts = { engine: "dbos", pgUrl: pgUp ? pgUrl() : "" };
+// A per-run application version: parallel dbos test files must not recover each other's stragglers.
+const opts = { engine: "dbos", pgUrl: pgUp ? pgUrl() : "", applicationVersion: `aic-parity-${Date.now()}` };
 const t = test("dbos engine", { skip: pgUp ? false : "no Postgres on 127.0.0.1:5432" }, async () => {
   const wf = await openWorkflows(opts);
   const stamp = Date.now();

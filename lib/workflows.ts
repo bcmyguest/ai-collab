@@ -135,7 +135,8 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
   const pool = new pg.Pool({ connectionString: pgUrl, max: 5 });
   await pool.query(`CREATE SCHEMA IF NOT EXISTS ai_collab;
     CREATE TABLE IF NOT EXISTS ai_collab.kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS ai_collab.skipped (id TEXT PRIMARY KEY, name TEXT NOT NULL, input TEXT NOT NULL, reason TEXT NOT NULL, created_at BIGINT NOT NULL);
+    CREATE TABLE IF NOT EXISTS ai_collab.skipped (id TEXT PRIMARY KEY, name TEXT NOT NULL, input TEXT NOT NULL, reason TEXT NOT NULL, created_at BIGINT NOT NULL, app_version TEXT);
+    ALTER TABLE ai_collab.skipped ADD COLUMN IF NOT EXISTS app_version TEXT;
     DROP TABLE IF EXISTS ai_collab.started;
     DROP TABLE IF EXISTS ai_collab.dedupe;`);
 
@@ -290,14 +291,16 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
 
   async function pendingIds(): Promise<string[]> {
     await ready();
-    const rows = await DBOS.listWorkflows({ status: "PENDING" });
+    const rows = await DBOS.listWorkflows({ status: "PENDING", applicationVersion });
     return rows.filter((r) => registry.has(r.workflowName)).map((r) => r.workflowID);
   }
 
   // Why a scheduled tick at scheduledTime is skipped for an edited interval, or null.
   async function intervalReason(s: Schedule, scheduledTime: number): Promise<string | null> {
     // No limit before the find: a manual run is the newest row and must not hide the last real tick.
-    const rows = await DBOS.listWorkflows({ workflowName: tickName(s.name), limit: 50, sortDesc: true, loadInput: true });
+    // Scoped to this application version: PENDING ticks left by an older deploy are orphans for
+    // recovery to settle, not runs still going — unscoped they would skip every future tick.
+    const rows = await DBOS.listWorkflows({ workflowName: tickName(s.name), applicationVersion, limit: 50, sortDesc: true, loadInput: true });
     const last = rows.find((r) => r.status !== "SKIPPED" && !r.workflowID.includes("@manual@"));
     if (!last) return null;
     const previous = Number(wfInput(last).scheduledTime);
@@ -313,10 +316,10 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
     const input = { scheduledTime, actualTime, ...(manual ? { manual: true } : {}) };
     // Mirror the sqlite engine: a tick that finds the previous run still going is skipped, and every
     // skip is recorded. DBOS has no public SKIPPED status, so the mirror table carries the visibility.
-    const inflight = await DBOS.listWorkflows({ workflowName: name, status: ["PENDING", "ENQUEUED"] });
+    const inflight = await DBOS.listWorkflows({ workflowName: name, status: ["PENDING", "ENQUEUED"], applicationVersion });
     const reason = (!manual && (await intervalReason(s, scheduledTime))) || (inflight.length > 0 && "previous run still going") || null;
     if (reason) {
-      await pool.query("INSERT INTO ai_collab.skipped(id, name, input, reason, created_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING", [id, name, JSON.stringify(input), reason, now()]);
+      await pool.query("INSERT INTO ai_collab.skipped(id, name, input, reason, created_at, app_version) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING", [id, name, JSON.stringify(input), reason, now(), applicationVersion]);
       return { id, status: "skipped" };
     }
     const started = await startOnce(name, id, input);
@@ -368,7 +371,7 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
       const at = now();
       const out: Json[] = [];
       for (const s of schedules.values()) {
-        const rows = await DBOS.listWorkflows({ workflowName: tickName(s.name), limit: 50, sortDesc: true, loadInput: true, loadOutput: true });
+        const rows = await DBOS.listWorkflows({ workflowName: tickName(s.name), applicationVersion, limit: 50, sortDesc: true, loadInput: true, loadOutput: true });
         const last = rows.find((r) => r.status !== "SKIPPED");
         out.push({
           name: s.name, everyMs: s.everyMs, nextRun: new Date(dueAt(s.everyMs, at) + s.everyMs).toISOString(),
@@ -379,14 +382,14 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
     },
     async scheduleRuns(name, limit = 20) {
       if (!schedules.has(name)) throw Object.assign(new Error(`no schedule named ${name}`), { status: 404 });
-      const rows = await DBOS.listWorkflows({ workflowName: tickName(name), limit, sortDesc: true, loadInput: true, loadOutput: true });
+      const rows = await DBOS.listWorkflows({ workflowName: tickName(name), applicationVersion, limit, sortDesc: true, loadInput: true, loadOutput: true });
       const real = rows.map((r) => ({
         id: r.workflowID, status: r.status, scheduledTime: new Date(Number(wfInput(r).scheduledTime)).toISOString(),
         startedAt: r.createdAt, finishedAt: r.status === "PENDING" ? null : (r.updatedAt ?? null),
         updatedAt: r.updatedAt ?? r.createdAt, output: r.output, error: r.error ?? null,
       }));
       // DBOS has no public SKIPPED status: skipped ticks live in the mirror table and merge into the list.
-      const { rows: skips } = await pool.query("SELECT id, input, reason, created_at FROM ai_collab.skipped WHERE name = $1 ORDER BY created_at DESC LIMIT $2", [tickName(name), limit]);
+      const { rows: skips } = await pool.query("SELECT id, input, reason, created_at FROM ai_collab.skipped WHERE name = $1 AND app_version = $2 ORDER BY created_at DESC LIMIT $3", [tickName(name), applicationVersion, limit]);
       const skipped = skips.map((k: { id: string; input: string; reason: string; created_at: string | number }) => ({
         id: k.id, status: "SKIPPED",
         scheduledTime: new Date(Number(JSON.parse(k.input).scheduledTime)).toISOString(),
@@ -458,6 +461,7 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, appl
       await pool.query("INSERT INTO ai_collab.kv(key, value) VALUES ($1, $2) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, JSON.stringify(value ?? null)]);
     },
     async prune(names, before) {
+      await ready();
       const rows = await DBOS.listWorkflows({ workflowName: names, status: ["SUCCESS", "ERROR", "CANCELLED"], completedBefore: new Date(before).toISOString() });
       if (rows.length) await DBOS.deleteWorkflows(rows.map((r) => r.workflowID));
       // Skipped-tick mirror rows outlive their visibility window; drop the old ones so the table stays small.
