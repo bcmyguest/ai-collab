@@ -45,7 +45,7 @@ export async function phoneFixture({ homeSessions = false, inactive = false, kan
   fake.inject(broadcastTopic(names[1]), JSON.stringify({ v: 1, kind: "approval", from: "claude", harness: "claude",
     id: ids[1], tool: "Review", summary: "Publish the draft for #decision-second", expiresAt: Date.now() + 120_000 }));
   const { writeState } = await import("../lib/state.mjs");
-  const { claimInbox, parseEnvelope, replyToOperator } = await import("../lib/messaging.ts");
+  const { claimInbox, parseEnvelope, replyToOperator } = await import("../lib/inbox.mjs");
   const cfg = projects.find(item => item.project === names[0]);
   const sessionId = "composer-fixture";
   const label = sessionLabel(sessionId);
