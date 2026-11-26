@@ -602,9 +602,9 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
         });
         if (!sent.runId) break;
         await wf.step("wake.wait", () => waitRun(s, sent.runId), { onCut: () => cutRun(s, sent.runId, "runner restarted") });
-        const more = await wf.step("wake.more", async () => (await durable.pendingCount(wf.id, WAKE_TOPIC)) > 0);
-        if (!more) break;
-        batch = await wf.recv(WAKE_TOPIC, { all: true });
+        // Non-blocking recv-all: the backlog (empty included) decides whether another turn runs.
+        batch = await wf.recv(WAKE_TOPIC, { all: true, timeoutSeconds: 0 });
+        if (!batch.length) break;
       }
       const result = await wf.step("wake.close", () => endSession(s, "closed again after a message"));
       finished = true;
@@ -614,7 +614,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       if (wakeTail.get(address) === gate) wakeTail.delete(address);
       // A finished wake hands any message that arrived after its last check to a new wake.
       if (finished) {
-        const late = await durable.drain(wf.id, WAKE_TOPIC);
+        const late = await wf.recv(WAKE_TOPIC, { all: true, timeoutSeconds: 0 });
         if (late.length) await startWake(input.project, address, late, { adopt: input.adopt ?? null });
       }
     }

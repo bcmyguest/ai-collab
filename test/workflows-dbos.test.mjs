@@ -16,6 +16,8 @@ const t = test("dbos engine", { skip: pgUp ? false : "no Postgres on 127.0.0.1:5
     return doubled + 1;
   });
   wf.register("t.wait", async (ctx) => await ctx.recv("inbox"));
+  wf.register("t.all", async (ctx) => await ctx.recv("inbox", { all: true }));
+  wf.register("t.none", async (ctx) => await ctx.recv("inbox", { all: true, timeoutSeconds: 0 }));
   wf.register("t.long", async (ctx) => { await ctx.pause(60_000); return "never"; });
   wf.register("t.hold", async (ctx) => { await ctx.pause(60_000); return "never"; });
   let sigAborted = false;
@@ -48,6 +50,17 @@ const t = test("dbos engine", { skip: pgUp ? false : "no Postgres on 127.0.0.1:5
     assert.equal(await wf.startWorkflowOnce("t.wait", ghost, {}), true);
     assert.equal(await wf.send(ghost, "inbox", "late", { dedupe: `late-${stamp}` }), true);
     assert.equal(await wf.result(ghost), "late");
+
+    // recv-all blocks for the first message then takes the backlog; timeoutSeconds 0 never waits
+    const backlog = `backlog-${stamp}`;
+    let backlogDone = false;
+    const backlogP = wf.startWorkflow("t.all", backlog, {}).then((v) => { backlogDone = true; return v; });
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(backlogDone, false, "recv-all waits for the first message");
+    await wf.send(backlog, "inbox", "b1");
+    await wf.send(backlog, "inbox", "b2");
+    assert.deepEqual(await backlogP, ["b1", "b2"]);
+    assert.deepEqual(await wf.startWorkflow("t.none", `none-${stamp}`, {}), []);
 
     // listNamed returns newest first with parsed fields
     const rows = await wf.listNamed("t.add", 10);

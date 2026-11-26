@@ -205,7 +205,7 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { 
         }
         return await DBOS.runStep(fn, { name });
       },
-      recv: async (topic: string, { all = false } = {}) => {
+      recv: async (topic: string, { all = false, timeoutSeconds = null } = {}) => {
         if (!all) {
           const first = await DBOS.recv(topic, { timeoutSeconds: 0 });
           if (first !== null) return first;
@@ -214,7 +214,15 @@ async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {} }: { 
             if (next !== null) return next;
           }
         }
+        // Like the sqlite engine: recv-all waits for the first message, then takes the whole backlog.
+        // timeoutSeconds 0 never waits: it returns the backlog, empty included (the wake loop polls).
         const values: unknown[] = [];
+        if (timeoutSeconds !== 0) {
+          for (;;) {
+            const first = await DBOS.recv(topic, { timeoutSeconds: 60 });
+            if (first !== null) { values.push(first); break; }
+          }
+        }
         for (;;) {
           const next = await DBOS.recv(topic, { timeoutSeconds: 0 });
           if (next === null) break;
