@@ -16,7 +16,7 @@ import { createClaudeAdapter } from "../runner/adapters/claude.mjs";
 import codexAdapter, { APP_SERVER_ARGS } from "../runner/adapters/codex.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
 import { permissionSettings } from "../runner/contract.mjs";
-import { readOwned } from "../lib/owned.mjs";
+import { readOwned } from "../lib/sessions/registry.ts";
 import { codeModeField } from "../web/lib/new-session.js";
 import { fakeClaudeQuery } from "./helpers/fake-claude-query.mjs";
 import { wrapOpen } from "./helpers/fake-adapter-hooks.mjs";

@@ -5,7 +5,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileS
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { resetScopeProbe, scopeAvailable, systemdRunOnPath } from "../lib/scope.mjs";
+import { resetScopeProbe, scopeAvailable, systemdRunOnPath } from "../lib/sessions/scope.ts";
 import { runCommand } from "../runner/schedules.mjs";
 
 const tmp = () => mkdtempSync(path.join(os.tmpdir(), "ai-collab-sched-scope-"));
