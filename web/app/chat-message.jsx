@@ -67,7 +67,7 @@ export function ChatMessage({ message, operator, me, now, replyFrom, open, act, 
   const cardHead = <><Avatar address={sender} by={other} className="size-6 text-xs"/><span className="truncate" title={sender}>{name || short(sender)}</span></>;
   // Cards take the whole row on a phone, so long option descriptions wrap less.
   const card = message.kind === "Approval" || (message.kind === "Question" && Boolean(message.question));
-  return <MessagePrimitive.Root data-message-id={message.id} className={cn("flex max-w-full gap-3", outgoing && "flex-row-reverse")}
+  return <MessagePrimitive.Root data-message-id={message.id} data-reply-id={message.replyId} className={cn("flex max-w-full gap-3", outgoing && "flex-row-reverse")}
     onClick={event => { const tag = event.target.closest?.("[data-mention]"); if (tag) open(tag.textContent.replace(/^@/, "").split(/[:/]/)[0]); }}>
     {openable ? <button type="button" aria-label={"Open avatar " + sender} tabIndex={-1} className="shrink-0 self-start rounded-md" onClick={go}><Avatar address={sender}/></button> : <Avatar address={shown} by={other}/>}
     <div className={cn("flex min-w-0 flex-col gap-1", card ? "flex-1 sm:max-w-[82%]" : "max-w-[82%]", outgoing ? "items-end" : "items-start")}>
@@ -80,7 +80,7 @@ export function ChatMessage({ message, operator, me, now, replyFrom, open, act, 
         {message.terminal && <Badge variant="outline" data-terminal title="Typed in the agent's terminal" className="h-4 px-1.5 text-xs">terminal</Badge>}
         {message.replyTo && <Badge variant="outline" data-answer title={"Answers question " + message.replyTo} className="h-4 px-1.5 text-xs">answer</Badge>}
         {at > 0 && <time dateTime={new Date(at).toISOString()} title={clock.format(at)}>{ago(at, now)}</time>}
-        {replyFrom && message.kind !== "Approval" && message.kind !== "Question" && <button type="button" data-tap aria-label={"Reply to " + sender} title="Reply" onClick={() => replyFrom({ id: message.id, sender, prefill, body: message.body })}
+        {replyFrom && message.kind !== "Approval" && message.kind !== "Question" && <button type="button" data-tap aria-label={"Reply to " + sender} title="Reply" onClick={() => replyFrom({ id: message.replyId || message.id, sender, prefill, body: message.body })}
           className="rounded-md p-0.5 hover:bg-muted hover:text-foreground"><Reply className="size-3.5"/></button>}
         {message.scope === "all" && <Badge variant="secondary" className="h-4 px-1.5 text-xs">to all</Badge>}
         {message.urgent && !message.cancelled && <span role="img" aria-label="Sent now" title="Sent now: delivered at the agent's next tool call" data-urgent className="text-primary"><Zap className="size-3.5"/></span>}

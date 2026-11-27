@@ -1,5 +1,7 @@
 // A reply whose message id the server cannot accept goes out as plain text quoting the original's ends.
 export const REPLY_QUOTE_WORDS = 6;
+// quotedReply's output: "Replying to <sender>: “<quote>”", or "Replying to <sender>:", then a blank line and the reply.
+const QUOTED_REPLY = /^Replying to ([^\n]+?):(?: “([^\n]*)”)?\n\n([\s\S]*)$/;
 
 /** The quoted original on one line: its first and last REPLY_QUOTE_WORDS words, joined by … when words were left out. */
 export function quoteEnds(body, words = REPLY_QUOTE_WORDS) {
@@ -22,4 +24,10 @@ export function quotedReply(body, { sender = "", body: original = "" } = {}) {
   const quote = quoteEnds(original);
   if (!quote) return sender ? "Replying to " + sender + ":\n\n" + text : text;
   return "Replying to " + (sender || "the original") + ": “" + quote + "”\n\n" + text;
+}
+
+/** A body quotedReply wrote, split back into the quoted original {sender, body} and the reply text; null for any other body. */
+export function splitQuotedReply(text) {
+  const found = QUOTED_REPLY.exec(String(text || ""));
+  return found ? { quote: { sender: found[1], body: found[2] || "" }, body: found[3] } : null;
 }

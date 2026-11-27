@@ -68,7 +68,7 @@ import { createDispatcher } from "./dispatch.ts";
 import { runnerClient, runnerUp } from "../../runner/client.ts";
 import { runnerSocket } from "../../runner/control.ts";
 import { readScheduleRuns, readSchedules } from "./schedules.ts";
-import { quotedReply, usableReplyId } from "../lib/reply-quote.js";
+import { quotedReply, splitQuotedReply, usableReplyId } from "../lib/reply-quote.js";
 import { answerMessage, answerText, terminalMessages } from "../lib/operator-messages.js";
 import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a2ui.js";
 import { runTerminalUi } from "./run-terminal.ts";
@@ -985,9 +985,17 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const { ends, replies, senders } = outcomes(sharedEvents);
     // A reply carries its replied message's sender and opening text, even when that message is off the page.
     const byId = new Map(list.map(item => [item.id, item]));
+    // A reply to a session's final text names that text's activity row; the rows are read only when a reply needs one.
+    let texts: Map<string, Json> | undefined;
+    const said = (id: string) => (texts ??= new Map(activity(session).filter((row: Json) => row.type === "text").map((row: Json) => [row.id, row]))).get(id);
     const quoted = (item: Json) => {
-      const original = item.replyOf && byId.get(item.replyOf);
-      return original ? { ...item, quote: { id: original.id, sender: original.sender || original.from, body: String(original.body || "").slice(0, QUOTE_MAX) } } : item;
+      const message = item.replyOf && byId.get(item.replyOf);
+      const row = !message && item.replyOf && said(item.replyOf);
+      const original = message || (row && { id: row.id, sender: row.agent, body: row.output });
+      if (original) return { ...item, quote: { id: original.id, sender: original.sender || original.from, body: String(original.body || "").slice(0, QUOTE_MAX) } };
+      // An operator reply sent as quoted text (an unlinkable id) shows the same card, with nothing to link to.
+      const split = item.kind === "Message" && item.from === "operator" && !item.quote ? splitQuotedReply(item.body) : null;
+      return split ? { ...item, body: split.body, quote: { id: "", sender: split.quote.sender, body: split.quote.body.slice(0, QUOTE_MAX) } } : item;
     };
     const sorted = list.sort((a, b) => a.time - b.time || a.id.localeCompare(b.id));
     const recent = new Set(sorted.slice(-MAX_MESSAGES));

@@ -45,7 +45,7 @@ export async function phoneFixture({ homeSessions = false, inactive = false, kan
   fake.inject(broadcastTopic(names[1]), JSON.stringify({ v: 1, kind: "approval", from: "claude", harness: "claude",
     id: ids[1], tool: "Review", summary: "Publish the draft for #decision-second", expiresAt: Date.now() + 120_000 }));
   const { writeState } = await import("../lib/state.ts");
-  const { claimInbox, parseEnvelope, replyToOperator } = await import("../lib/messaging.ts");
+  const { claimInbox, parseEnvelope, replyToOperator, sendMessage } = await import("../lib/messaging.ts");
   const cfg = projects.find(item => item.project === names[0]);
   const sessionId = "composer-fixture";
   const label = sessionLabel(sessionId);
@@ -97,6 +97,13 @@ export async function phoneFixture({ homeSessions = false, inactive = false, kan
       const message = parseEnvelope(post.message);
       return message?.kind === "msg" && message.body === body && Boolean(message.urgent) === urgent ? [[post.topic, message.toSession]] : [];
     }),
+    // The session claims its queued messages, as its hook would.
+    async claim() { return claimInbox({ ...cfg, peer: "claude", session: label }, { strict: true }); },
+    // An operator message the session already claimed, as an older UI sent it.
+    async claimed(body) {
+      await sendMessage(cfg, address, body, { operatorThread: true });
+      return claimInbox({ ...cfg, peer: "claude", session: label }, { strict: true });
+    },
     async replyWithImage(bytes) {
       const agent = { ...cfg, peer: "claude", session: label };
       const [message] = await claimInbox(agent, { strict: true });
