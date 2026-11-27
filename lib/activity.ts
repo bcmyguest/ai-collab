@@ -111,7 +111,7 @@ function hookEvents(host: string, key: string, msg: Record<string, unknown>): Ac
       return host === "codex" && msg.last_assistant_message ? [{ type: "text", output: msg.last_assistant_message as string }, stop] : [stop];
     }
     case "stopfailure":
-      // A limit already has its own timeline row (lib/limit-alert.mjs); the error row would repeat it.
+      // A limit already has its own timeline row (lib/limit-alert.ts); the error row would repeat it.
       if (classifyLimit("claude", { kind: "stop_failure", ...msg })) return [];
       return [{ type: "error", output: [msg.error as string, msg.error_details as string].filter(Boolean).join(": ") || "API error" }];
     case "subagentstart":

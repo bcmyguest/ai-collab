@@ -32,7 +32,7 @@ import { openTasks } from "../lib/tasks.mjs";
 import { listOwned, nextPermission, ownedFile, readOwned, writeOwned } from "../lib/sessions/registry.ts";
 import { modelFields } from "../lib/session-events.mjs";
 import { isBlockingLimit, limitFromRunError } from "../lib/limits.ts";
-import { alertLimit } from "../lib/limit-alert.mjs";
+import { alertLimit } from "../lib/limit-alert.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, LIMIT, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, OPENSHELL_PERMISSION, permissionSettings, runnerModeOfClaude } from "./contract.mjs";
 import { sessionOfCommand } from "../lib/schedule-session.mjs";
 import { ALLOW_HOST_AGENT_ENV } from "../lib/agent-guard.mjs";
