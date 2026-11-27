@@ -202,6 +202,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   function onEvent(s, e) {
     // A session released after its start was cancelled stays ended; its harness's late run events must not reopen it.
     if (s.released) return;
+    // Once the record is ended the session is closed for good; late harness events must not reopen it on disk.
+    if (s.record.status === "ended") return log(`${s.record.harness}: dropped event (session ended)`);
     const problem = eventProblem(e);
     if (problem) return log(`${s.record.harness}: dropped event (${problem})`);
     const r = s.record;
