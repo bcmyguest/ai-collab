@@ -72,8 +72,8 @@ export function Surface({ id, fallback, head, kind, open = false }) {
     <section data-surface={id} inert={disabled || undefined} aria-disabled={disabled || undefined}
       className={cn(CARD, "flex flex-col gap-2.5", open && "border-primary/50", disabled && "opacity-60")} style={THEME}>
       {(head || kind) && <header className="flex min-w-0 items-center justify-between gap-2 text-xs text-muted-foreground">
-        <div className="flex min-w-0 items-center gap-2 font-medium text-foreground">{head}</div>
-        {kind && <span className="shrink-0">{kind}</span>}
+        {head && <div className="flex min-w-0 items-center gap-2 font-medium text-foreground">{head}</div>}
+        {kind && <span className="shrink-0 font-medium">{kind}</span>}
       </header>}
       <Rendered id={id} operations={operations} submit={submit}/>
     </section>

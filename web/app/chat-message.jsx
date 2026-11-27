@@ -65,10 +65,12 @@ export function ChatMessage({ message, operator, me, now, replyFrom, open, act, 
   const prefill = openable ? "@" + sender + " " : "";
   // The asking agent's avatar and name, the header row of an approval card; a question card leaves them to the message header.
   const cardHead = <><Avatar address={sender} by={other} className="size-6 text-xs"/><span className="truncate" title={sender}>{name || short(sender)}</span></>;
+  // Cards take the whole row on a phone, so long option descriptions wrap less.
+  const card = message.kind === "Approval" || (message.kind === "Question" && Boolean(message.question));
   return <MessagePrimitive.Root data-message-id={message.id} className={cn("flex max-w-full gap-3", outgoing && "flex-row-reverse")}
     onClick={event => { const tag = event.target.closest?.("[data-mention]"); if (tag) open(tag.textContent.replace(/^@/, "").split(/[:/]/)[0]); }}>
     {openable ? <button type="button" aria-label={"Open avatar " + sender} tabIndex={-1} className="shrink-0 self-start rounded-md" onClick={go}><Avatar address={sender}/></button> : <Avatar address={shown} by={other}/>}
-    <div className={cn("flex min-w-0 max-w-[82%] flex-col gap-1", outgoing ? "items-end" : "items-start")}>
+    <div className={cn("flex min-w-0 flex-col gap-1", card ? "flex-1 sm:max-w-[82%]" : "max-w-[82%]", outgoing ? "items-end" : "items-start")}>
       <div className="flex max-w-full flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
         {openable ? <button type="button" aria-label={"Open " + sender} title={sender} onClick={go}
           className="font-medium text-foreground underline-offset-2 hover:underline">{label}</button>

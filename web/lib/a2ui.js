@@ -93,12 +93,13 @@ function permissionOps(approval, open, outcome, terminal) {
   return surfaceOps(approvalSurfaceId(approval.id), components, {});
 }
 
-// AskUserQuestion: per question a header chip, step, question, OptionPicker with the Other field as its last row; read-only once closed.
+// AskUserQuestion: per question a header chip and step, then the OptionPicker that shows the question, with the Other field as its
+// last row; read-only once closed. The card header names the kind, so the body opens on the question itself.
 function choiceOps(approval, open, outcome, terminal) {
   const interactive = open && !terminal;
   const count = approval.questions.length;
   const components = [column("root", [])];
-  const rootChildren = titleRow(components, count > 1 ? count + " questions" : "Question", badgeOf(approval, open));
+  const rootChildren = [];
   approval.questions.forEach((q, i) => {
     const group = "q" + i;
     const children = [];
@@ -107,21 +108,19 @@ function choiceOps(approval, open, outcome, terminal) {
     if (q.header) { components.push({ id: group + "-chip", component: "Chip", text: q.header }); top.push(group + "-chip"); }
     if (count > 1) { components.push({ id: group + "-step", component: "Text", variant: "caption", text: `${i + 1} of ${count}` }); top.push(group + "-step"); }
     if (top.length) { components.push({ id: group + "-top", component: "Row", children: top, justify: "spaceBetween", align: "center" }); children.push(group + "-top"); }
-    components.push(text(group + "-text", q.question));
-    children.push(group + "-text");
     const options = q.options.map(o => ({
       label: o.label, value: o.label,
       ...(o.description ? { description: o.description } : {}), ...(o.preview ? { preview: o.preview } : {}),
     }));
     const multiSelect = q.multiSelect === true;
     if (interactive) {
-      components.push({ id: group + "-pick", component: "OptionPicker", options, multiSelect, value: { path: `/picks/${i}` }, other: { path: `/other/${i}` }, otherChild: group + "-other" });
-      components.push({ id: group + "-other", component: "TextField", label: "Other…", value: { path: `/other/${i}` } });
+      components.push({ id: group + "-pick", component: "OptionPicker", label: q.question, options, multiSelect, value: { path: `/picks/${i}` }, other: { path: `/other/${i}` }, otherChild: group + "-other" });
+      components.push({ id: group + "-other", component: "TextField", label: "Other answer", value: { path: `/other/${i}` } });
       children.push(group + "-pick");
     } else {
       const answer = String(approval.answers?.[q.question] ?? "");
       const chosen = answer ? answer.split(", ") : [];
-      components.push({ id: group + "-pick", component: "OptionPicker", options, multiSelect, readOnly: true, value: chosen });
+      components.push({ id: group + "-pick", component: "OptionPicker", label: q.question, options, multiSelect, readOnly: true, value: chosen });
       children.push(group + "-pick");
       if (chosen.some(label => !q.options.some(o => o.label === label))) {
         components.push(text(group + "-answer", "Answer: " + answer));
@@ -139,7 +138,8 @@ function choiceOps(approval, open, outcome, terminal) {
     components.push({ id: "footer", component: "Row", children: ["submit"], justify: "end" });
     rootChildren.push("footer");
   } else {
-    components.push(text("status", open ? IN_TERMINAL : withBy(outcome, approval.by)));
+    // Closed, the outcome is a caption under the answer; open in the terminal, it stays body text with the hint below.
+    components.push({ id: "status", component: "Text", ...(open ? {} : { variant: "caption" }), text: open ? IN_TERMINAL : withBy(outcome, approval.by) });
     rootChildren.push("status");
     if (open) { components.push({ id: "hint", component: "Text", variant: "caption", text: terminalHint(approval.mode) }); rootChildren.push("hint"); }
   }
@@ -156,13 +156,20 @@ export function approvalOperations(approval, now) {
   return approval.questions ? choiceOps(approval, open, outcome, terminal) : permissionOps(approval, open, outcome, terminal);
 }
 
-/** A question's text without the wire prefix that marks it blocking; the open card's accent border already says so. */
+/** A question's text without the wire prefix that marks it blocking; the card shows BLOCKING_LABEL instead. */
 export const questionText = body => String(body ?? "").replace(BLOCKING_PREFIX, "");
+/** Whether the agent waits for this question's answer (ask_question important=true). */
+export const isBlocking = body => BLOCKING_PREFIX.test(String(body ?? ""));
+export const BLOCKING_LABEL = "Agent waits for this answer";
 
-/** Operations for an ask_question post: its body, then an answer field, or the answer once given, or Skipped. */
+/** Operations for an ask_question post: a blocking tag while open, its body, then an answer field, or the answer once given, or Skipped. */
 export function questionOperations(question, body, answer, by, skipped = false) {
   const components = [column("root", []), text("body", questionText(body))];
   const children = ["body"];
+  if (!answer && !skipped && isBlocking(body)) {
+    components.push({ id: "blocking", component: "Chip", text: BLOCKING_LABEL, tone: "accent" });
+    children.unshift("blocking");
+  }
   if (skipped && !answer) {
     components.push(text("status", SKIPPED));
     children.push("status");
@@ -172,7 +179,8 @@ export function questionOperations(question, body, answer, by, skipped = false) 
   } else {
     components.push({ id: "answer", component: "TextField", label: "Your answer…", value: { path: "/answer" } });
     components.push(...button("submit", "Submit", "primary", "reply", { question, answer: { path: "/answer" } }));
-    children.push("answer", "submit");
+    components.push({ id: "footer", component: "Row", children: ["submit"], justify: "end" });
+    children.push("answer", "footer");
   }
   components[0].children = children;
   return surfaceOps(questionSurfaceId(question), components, { answer: "" });
