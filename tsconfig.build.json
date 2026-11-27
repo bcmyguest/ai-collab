@@ -7,5 +7,5 @@
     "rootDir": ".",
     "outDir": "dist"
   },
-  "include": ["lib/**/*", "runner/**/*", "scripts/*.mjs", "web/server/**/*.mjs"]
+  "include": ["lib/**/*", "runner/**/*", "scripts/*.mjs", "web/server/**/*.mjs", "tools/smoke-ui.mjs", "tools/screen-state.mjs"]
 }
