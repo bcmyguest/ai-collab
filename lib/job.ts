@@ -3,9 +3,9 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, rmSync } from "node:fs";
 import { constants } from "node:os";
 import { join } from "node:path";
-import { assertHostAgent, managedShellStartRefusal } from "./agent-guard.mjs";
-import { isRunning, processStart } from "./process.mjs";
-import { writeState } from "./state.mjs";
+import { assertHostAgent, managedShellStartRefusal } from "./agent-guard.ts";
+import { isRunning, processStart } from "./process.ts";
+import { writeState } from "./state.ts";
 import type { Cfg } from "./messaging.ts";
 
 type Writer = { write: (chunk: string) => void };

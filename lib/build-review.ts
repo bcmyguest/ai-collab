@@ -14,13 +14,26 @@ export const REVIEW_FILES_MAX = 12;
 export const REVIEW_PATH_MAX = 200;
 // The board asks about every review card on each push; tips are read at most once per this window per checkout.
 const TIP_TTL_MS = 2000;
-const tipCache = new Map();
+const tipCache = new Map<string, { at: number; value: Record<string, string> }>();
+
+/** The part of a review packet this module reads: the branch and the commit it named. */
+export interface ReviewRef {
+  branch?: unknown;
+  commit?: unknown;
+}
+
+export interface ChangeSummary {
+  files: Array<{ path: string; insertions: number; deletions: number }>;
+  insertions: number;
+  deletions: number;
+  more: number;
+}
 
 /** Every local branch of `root` with its tip commit; {} when the checkout or git is unavailable. */
-function branchTips(root, ttlMs) {
+function branchTips(root: string, ttlMs: number): Record<string, string> {
   const hit = tipCache.get(root);
   if (hit && Date.now() - hit.at < ttlMs) return hit.value;
-  let value = {};
+  let value: Record<string, string> = {};
   try {
     const out = execFileSync("git", ["for-each-ref", "--format=%(refname:short) %(objectname)", "refs/heads"], {
       cwd: root, encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "ignore"],
@@ -36,7 +49,7 @@ function branchTips(root, ttlMs) {
 }
 
 /** Forgets a checkout's cached tips, so a decision straight after a commit is judged against the live branch. */
-export function forgetBranchTips(root) {
+export function forgetBranchTips(root: string): void {
   tipCache.delete(root);
 }
 
@@ -45,7 +58,7 @@ export function forgetBranchTips(root) {
  * read as stale too: the reviewer would otherwise judge a commit the build no longer is. `ttlMs` lets the board reuse
  * a recent read; a decision passes 0 so it never acts on a cached tip.
  */
-export function reviewIsCurrent(root, review, { ttlMs = 0 } = {}) {
+export function reviewIsCurrent(root: string | undefined, review: ReviewRef | null | undefined, { ttlMs = 0 }: { ttlMs?: number } = {}): boolean {
   if (!root || typeof review?.branch !== "string" || !BRANCH_NAME.test(review.branch) || typeof review.commit !== "string") return false;
   return branchTips(root, ttlMs)[review.branch] === review.commit;
 }
@@ -54,8 +67,8 @@ export function reviewIsCurrent(root, review, { ttlMs = 0 } = {}) {
  * The phone-sized change summary of `git diff --numstat` output: totals plus up to REVIEW_FILES_MAX per-file counts.
  * A binary file prints "-" for both counts, so it counts as a changed file with no lines.
  */
-export function changeSummary(numstat) {
-  const files = [];
+export function changeSummary(numstat: unknown): ChangeSummary {
+  const files: ChangeSummary["files"] = [];
   let insertions = 0;
   let deletions = 0;
   let more = 0;
@@ -75,8 +88,8 @@ export function changeSummary(numstat) {
 }
 
 /** A packet's age in the largest whole unit, for the card line: "12s", "3m", "2h", "1d". */
-export function reviewAge(at, now = Date.now()) {
-  const seconds = Math.max(0, Math.floor((now - (Number.isFinite(at) ? at : now)) / 1000));
+export function reviewAge(at: unknown, now: number = Date.now()): string {
+  const seconds = Math.max(0, Math.floor((now - (Number.isFinite(at) ? at as number : now)) / 1000));
   if (seconds < 60) return `${seconds}s`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
   if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h`;

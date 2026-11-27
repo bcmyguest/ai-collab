@@ -7,7 +7,7 @@ import { checkoutBranch, deployLink, dbosVersion, dirty, inFlight, installUnits,
 import { AUTO_DEPLOY_TIMEOUT_MS, HOST_CHECKOUT, SERVICES, deployHost, execRun, finishBranch, mergeNode, npmCommand, readLastDeploy, requestLand, restartServices, writeLastDeploy } from "./land.mjs";
 import { operatorConfigs } from "./mode.mjs";
 import { publish } from "./messaging.ts";
-import { withLock } from "./state.mjs";
+import { withLock } from "./state.ts";
 import { openTasks } from "./tasks.mjs";
 import { passJs } from "./surfaces/types.ts";
 import type { Cfg } from "./messaging.ts";

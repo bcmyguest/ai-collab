@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { toolClient } from "../lib/tool-api.mjs";
 import { READ_TOOLS, readsThroughRunCode } from "../lib/code-run.mjs";
-import { runCodeReadRecipe } from "../lib/store-read.mjs";
+import { runCodeReadRecipe } from "../lib/store-read.ts";
 import { serveMcp } from "../lib/surfaces/render-mcp.ts";
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;

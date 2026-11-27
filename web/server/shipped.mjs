@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { COMMIT_ID } from "../../lib/build-review.mjs";
+import { COMMIT_ID } from "../../lib/build-review.ts";
 
 const checkouts = new Map();
 const options = { encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "ignore"] };

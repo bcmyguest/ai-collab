@@ -9,7 +9,7 @@ import { randomBytes } from "node:crypto";
 import { appendFileSync, mkdirSync, readFileSync, renameSync, rmSync, existsSync } from "node:fs";
 import path from "node:path";
 import type { Readable } from "node:stream";
-import { encodeTraceRequest } from "./analyze-otlp.mjs";
+import { encodeTraceRequest } from "./analyze-otlp.ts";
 import { autoDefaults, sessionLabel, stateDir } from "./config.mjs";
 
 export const DEFAULT_OTLP_ENDPOINT = "http://localhost:6006/v1/traces";

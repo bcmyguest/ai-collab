@@ -23,7 +23,7 @@ import { handOff } from "../../lib/stop.mjs";
 import { opencodeRequest } from "../../lib/opencode-api.mjs";
 import { readReceipts } from "../../lib/receipts.mjs";
 import { listSessions } from "../../lib/sessions.mjs";
-import { writeState } from "../../lib/state.mjs";
+import { writeState } from "../../lib/state.ts";
 
 export { MAX_ATTEMPTS, REDELIVER_MS, TTL_MS };
 const TICK_MS = 5000;

@@ -7,7 +7,7 @@
 import { activityTopic } from "./config.mjs";
 import { publish, querySafe, type Cfg } from "./messaging.ts";
 import { stripControl } from "./format.mjs";
-import { textAttachment } from "./attachment.mjs";
+import { textAttachment } from "./attachment.ts";
 import { MESSAGE_MAX_BYTES } from "./messaging.ts";
 import { machinePrompt } from "./mode.mjs";
 import { envelopeToEvent } from "./agui.mjs";

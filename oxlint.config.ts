@@ -105,7 +105,7 @@ export default defineConfig({
     'unicorn/numeric-separators-style': 'off',
     // Scripts build a directory path from import.meta.url.
     'unicorn/prefer-import-meta-properties': 'off',
-    // lib/mission-cli.mjs uses the global NaN.
+    // lib/mission-cli.ts uses the global NaN.
     'unicorn/prefer-number-properties': 'off',
     // Membership tests use array includes rather than a Set.
     'unicorn/prefer-set-has': 'off',

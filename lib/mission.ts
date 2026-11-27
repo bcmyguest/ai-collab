@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname, join } from "node:path";
 import { harnessOfCommand } from "./schedule-session.mjs";
 import { projectRoot } from "./start.mjs";
-import { withLock } from "./state.mjs";
+import { withLock } from "./state.ts";
 
 export const MISSION_FILE = "MISSION.md";
 export const MISSION_VERSION = 1;

@@ -1,9 +1,22 @@
 import { readFileSync, readlinkSync } from "node:fs";
 import { basename } from "node:path";
 
+export interface HarnessProcess {
+  pid: number;
+  start: string;
+  headless: boolean;
+}
+
+interface ProcessView {
+  argv: string[];
+  names: string[];
+  script: string;
+}
+
 const MAX_DEPTH = 8;
 // names: basenames of argv[0] and of the executable, which `exec -a` cannot change; script: argv[1] for a `node cli.js` start.
-const MATCHERS = {
+// oxlint-disable-next-line quality/no-known-value-widening -- looked up by a runtime harness name
+const MATCHERS: Record<string, (view: ProcessView) => boolean> = {
   claude: ({ names, script }) => names.some(n => n === "claude" || n === "claude.exe") || script.includes("/@anthropic-ai/claude-code/"),
   codex: ({ names, script }) => names.includes("codex") || script.includes("/@openai/codex/"),
   cursor: ({ argv }) => argv.some(arg => arg.includes("/cursor-agent/")),
@@ -11,7 +24,7 @@ const MATCHERS = {
   opencode: ({ names }) => names.includes("opencode"),
 };
 
-function stat(pid) {
+function stat(pid: number): { ppid: number; start: string } | null {
   try {
     const text = readFileSync(`/proc/${pid}/stat`, "utf8");
     const fields = text.slice(text.lastIndexOf(")") + 2).split(" ");
@@ -21,17 +34,17 @@ function stat(pid) {
   }
 }
 
-function argv(pid) {
+function argv(pid: number): string[] {
   try { return readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0"); } catch { return []; }
 }
 
-function exe(pid) {
+function exe(pid: number): string {
   try { return readlinkSync(`/proc/${pid}/exe`); } catch { return ""; }
 }
 
 /** Nearest ancestor that is the harness process, as {pid, start}; start is /proc stat field 22 so PID reuse is detectable. */
-export function harnessProcess(harness, from = process.ppid) {
-  const matches = MATCHERS[harness];
+export function harnessProcess(harness: string, from: number = process.ppid): HarnessProcess | null {
+  const matches: ((view: ProcessView) => boolean) | undefined = MATCHERS[harness];
   if (!matches) return null;
   for (let pid = from, depth = 0; pid > 1 && depth < MAX_DEPTH; depth++) {
     const info = stat(pid);
@@ -48,10 +61,10 @@ export function harnessProcess(harness, from = process.ppid) {
 }
 
 /** The /proc start tick of a process, or null when it is not running. */
-export function processStart(pid) {
+export function processStart(pid: number): string | null {
   return stat(pid)?.start ?? null;
 }
 
-export function isRunning(proc) {
-  return Boolean(proc && Number.isInteger(proc.pid) && stat(proc.pid)?.start === proc.start);
+export function isRunning(proc: { pid?: unknown; start?: unknown } | null | undefined): boolean {
+  return Boolean(proc && Number.isInteger(proc.pid) && stat(proc.pid as number)?.start === proc.start);
 }

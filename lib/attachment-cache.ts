@@ -10,8 +10,8 @@
  */
 import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ATTACHMENT_MAX_BYTES } from "./attachment.mjs";
-import { withLock } from "./state.mjs";
+import { ATTACHMENT_MAX_BYTES } from "./attachment.ts";
+import { withLock } from "./state.ts";
 
 export const IMAGE_FILE = /^[A-Za-z0-9]{1,32}\.(?:png|jpe?g|gif|webp)$/i;
 export const TEXT_FILE = /^[A-Za-z0-9]{1,32}\.txt$/;

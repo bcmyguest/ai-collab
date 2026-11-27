@@ -7,8 +7,8 @@ import { codexRequiredRunCodeArgs, REQUIRE_RUN_CODE_ENV } from "../code-mode.mjs
 import { CODEX_HOOK_TRUST } from "../harness.ts";
 import { runningJobs } from "../job.ts";
 import { stripControl } from "../format.mjs";
-import { isRunning } from "../process.mjs";
-import { withLock, writeState } from "../state.mjs";
+import { isRunning } from "../process.ts";
+import { withLock, writeState } from "../state.ts";
 
 type Proc = { pid: number; start: string };
 export type Identity = { name?: string; activity?: string; tags?: string[] };

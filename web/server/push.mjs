@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { generateRequestDetails, generateVAPIDKeys } from "web-push";
-import { writeState } from "../../lib/state.mjs";
+import { writeState } from "../../lib/state.ts";
 
 const SENT_TTL_MS = 24 * 60 * 60_000;
 const SENT_MAX = 2000;

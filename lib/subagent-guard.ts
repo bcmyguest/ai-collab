@@ -5,12 +5,12 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { MANAGED_ENV, SHELL_START_DENIED } from "./agent-guard.mjs";
+import { MANAGED_ENV, SHELL_START_DENIED } from "./agent-guard.ts";
 import { loadConfig, stateDir } from "./config.mjs";
-import { isRunning } from "./process.mjs";
+import { isRunning } from "./process.ts";
 import { harnessOfBinary, type Harness } from "./harness.ts";
 import { readOwned } from "./sessions/registry.ts";
-import { hookReadCall } from "./store-read.mjs";
+import { hookReadCall } from "./store-read.ts";
 
 export { MANAGED_ENV, SHELL_START_DENIED };
 // Claude Code built-in subagent tool; "Task" is its legacy alias (SDK 0.3.330 BUILTIN_TOOL_NAMES).
@@ -185,7 +185,7 @@ export function shellHarnessStart(host: string, key: string, msg: HookMsg): bool
   return shellSegments(command).some((segment) => segmentHarness(segment) !== "");
 }
 
-/** The deny output for that host, in the shape storeReadDenial uses (lib/store-read.mjs). */
+/** The deny output for that host, in the shape storeReadDenial uses (lib/store-read.ts). */
 export function subagentDenial(host: string, reason: string = SUBAGENT_DENIED) {
   if (host === "cursor") return { permission: "deny", user_message: reason, agent_message: reason };
   return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } };

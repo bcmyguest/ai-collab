@@ -8,10 +8,10 @@
 import { readFileSync, rmSync } from "node:fs";
 import { claimInbox } from "./messaging.ts";
 import { formatInbox } from "./format.mjs";
-import { isRunning, processStart } from "./process.mjs";
+import { isRunning, processStart } from "./process.ts";
 import { readInbox, streamWaiter, waitUntil } from "./messaging.ts";
 import type { Cfg, InboxMessage, Outcome, Step } from "./messaging.ts";
-import { statePath, withLock, writeState } from "./state.mjs";
+import { statePath, withLock, writeState } from "./state.ts";
 import { handOff, stopHookRunning, takeHandoff } from "./stop.mjs";
 import { setTimeout as delay } from "node:timers/promises";
 
