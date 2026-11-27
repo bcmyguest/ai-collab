@@ -2,7 +2,8 @@
  * Claude asyncRewake waiter: streams this session's inbox and broadcast topics (stop.mjs streamWaiter) while the
  * session is idle. When a non-fyi message arrives it claims the inbox and returns it; the hook script then exits 2,
  * which wakes the idle session. While the session's Stop hook runs (an AFK or question hold), the waiter claims nothing:
- * Claude queues a rewake until that hook ends, so the hold delivers the message instead. One waiter per session: a pid file in the session state dir; a new waiter kills the old one.
+ * Claude queues a rewake until that hook ends, so the hold delivers the message instead. A waiter that claimed messages
+ * as a Stop hook started hands them over (lib/stop.mjs handOff) instead of waking the session. One waiter per session: a pid file in the session state dir; a new waiter kills the old one.
  */
 import { readFileSync, rmSync } from "node:fs";
 import { claimInbox } from "./messaging.ts";
@@ -11,7 +12,7 @@ import { isRunning, processStart } from "./process.mjs";
 import { readInbox, streamWaiter, waitUntil } from "./messaging.ts";
 import type { Cfg, InboxMessage, Outcome, Step } from "./messaging.ts";
 import { statePath, withLock, writeState } from "./state.mjs";
-import { stopHookRunning } from "./stop.mjs";
+import { handOff, stopHookRunning, takeHandoff } from "./stop.mjs";
 import { setTimeout as delay } from "node:timers/promises";
 
 // Below the 3600 s hook timeout in hooks/hooks.json; the next hook event re-arms a waiter that ran out.
@@ -20,6 +21,8 @@ const SLICE_MS = 30_000;
 const HELD_POLL_MS = 500;
 // Time a Stop-started waiter gives the Stop hook to mark itself (lib/stop.mjs stopHookRunning).
 export const STOP_GRACE_MS = 1500;
+// Time a waiter holds claimed messages before it wakes the session, so a Stop hook starting meanwhile can mark itself.
+export const CLAIM_SETTLE_MS = 1500;
 
 type Slot = { pid: number; start: string };
 
@@ -76,10 +79,10 @@ function wakeText(cfg: Cfg, messages: InboxMessage[]): string {
  */
 export async function runWaiter(cfg: Cfg, {
   maxMs = WAITER_MAX_S * 1000, wait, claim = claimInbox, alive = () => true, now = Date.now, signal,
-  held = () => stopHookRunning(cfg), graceMs = 0,
+  held = () => stopHookRunning(cfg), graceMs = 0, settleMs = 0,
 }: {
   maxMs?: number; wait?: Step; claim?: typeof claimInbox; alive?: () => boolean; now?: () => number; signal?: AbortSignal;
-  held?: () => boolean; graceMs?: number;
+  held?: () => boolean; graceMs?: number; settleMs?: number;
 } = {}): Promise<{ code: 0 } | { code: 2; text: string }> {
   const waitFor = wait ?? streamWaiter(cfg, now());
   const deadline = now() + maxMs;
@@ -94,10 +97,18 @@ export async function runWaiter(cfg: Cfg, {
     stream: (ms, sig) => (held() ? released(held, Math.min(ms, SLICE_MS), sig) : waitFor(Math.min(ms, SLICE_MS), sig)),
     until: async () => {
       if (held()) return undefined;
+      // Messages handed to a hold that ended without them.
+      const handed: InboxMessage[] = await takeHandoff(cfg).catch(() => []);
+      if (handed.length) return handed;
       const waiting = await readInbox(cfg, { peek: true, strict: false, accept: (m) => m.priority !== "fyi", claim }).catch(() => []);
       if (!waiting.length) return undefined;
       const messages = await readInbox(cfg, { limit: 4, strict: false, claim }).catch(() => []);
-      return messages.length ? messages : undefined;
+      if (!messages.length) return undefined;
+      // A Stop hook that started as this waiter claimed holds the session now, and Claude queues a rewake until it ends.
+      if (settleMs > 0) await delay(settleMs, undefined, { signal }).catch(() => {});
+      if (!held() && !signal?.aborted) return messages;
+      const kept = await handOff(cfg, messages).then(() => true, () => false);
+      return kept ? undefined : messages;
     },
   });
   return r.status === "hit" ? { code: 2, text: wakeText(cfg, r.value) } : { code: 0 };

@@ -8,12 +8,13 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, readStatuses, sendMessage } from "../lib/messaging.ts";
-import { decideStop, noteHeld } from "../lib/stop.mjs";
+import { decideStop, noteHeld, stopHookRunning } from "../lib/stop.mjs";
 import { requestWait } from "../lib/questions.mjs";
 import { runWaiter } from "../lib/waiter.ts";
 import { processStart } from "../lib/process.mjs";
 import { statePath, writeState } from "../lib/state.mjs";
-import { rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 const SESSION_ID = "99999999-2222-3333-4444-555555555555";
@@ -43,6 +44,27 @@ function runHook(env, args, input) {
 
 async function lastStatus(cfg) {
   return (await readStatuses(cfg)).get(`claude#${LABEL}`)?.event;
+}
+
+// Starts the rewake hook; exited is null until it ends, then {code, err}.
+function startRewake(t, env, input) {
+  const child = spawn(process.execPath, [HOOK, "--rewake", "--host", "claude"], { env, stdio: ["pipe", "pipe", "pipe"] });
+  let err = "";
+  const w = { exited: null };
+  child.stderr.on("data", (d) => { err += d; });
+  w.done = new Promise((resolve) => child.on("close", (code) => { w.exited = { code, err }; resolve(w.exited); }));
+  w.kill = () => { child.kill(); return w.done; };
+  t.after(() => child.kill());
+  child.stdin.end(JSON.stringify(input));
+  return w;
+}
+
+function readJsonFile(file) {
+  try { return JSON.parse(readFileSync(file, "utf8")); } catch { return null; }
+}
+
+function handoffFile(cfg) {
+  return statePath(cfg).replace(/\.json$/, ".handoff.json");
 }
 
 // The marker a running Stop hook writes for its own pid (lib/stop.mjs).
@@ -155,4 +177,79 @@ test("a marker whose pid now belongs to another process (wrong start tick) does 
   const r = await runWaiter(cfg, { maxMs: 3000 });
   assert.equal(r.code, 2);
   assert.match(r.text, /reused pid/);
+});
+
+test("a message that lands as the Stop hook starts reaches the hold, not the waiter armed at the prompt", { timeout: 40000 }, async (t) => {
+  const { env, cfg, operator } = await setup(t);
+  await requestWait(cfg);
+  const waiter = startRewake(t, { ...env, AI_COLLAB_WAITER_MAX_S: "30" }, { hook_event_name: "UserPromptSubmit", session_id: SESSION_ID, cwd: "/tmp" });
+  // The waiter streams the inbox by now.
+  await delay(1500);
+  const hook = runHook(env, ["--host", "claude"], { hook_event_name: "Stop", session_id: SESSION_ID, cwd: "/tmp", stop_hook_active: false });
+  await sendMessage(operator, `claude#${LABEL}`, "landed at stop", { operatorThread: true });
+  const r = await hook;
+  assert.match(r.out, /landed at stop/, "the hold delivers the message");
+  assert.equal(waiter.exited, null, "the waiter did not wake the session with it");
+  const end = await waiter.kill();
+  assert.doesNotMatch(end.err, /landed at stop/);
+});
+
+test("the Stop hook is marked as running before it records the session", { timeout: 30000 }, async (t) => {
+  const { env, cfg } = await setup(t);
+  await requestWait(cfg);
+  const record = join(cfg.stateDir, cfg.project, "registry", `claude#${LABEL}.json`);
+  const hook = runHook(env, ["--host", "claude"], { hook_event_name: "Stop", session_id: SESSION_ID, cwd: "/tmp", stop_hook_active: false });
+  let markedAtRecord = null;
+  for (let i = 0; i < 5000 && markedAtRecord === null; i++) {
+    const marked = stopHookRunning(cfg);
+    if (existsSync(record)) markedAtRecord = marked;
+    else await delay(1);
+  }
+  assert.equal(markedAtRecord, true, "the waiter already yields when the session record appears");
+  await hook;
+  assert.equal(stopHookRunning(cfg), false, "the marker is gone once the hook ends");
+});
+
+test("a waiter started at Stop leaves a waiting message alone until the Stop hook has marked itself", { timeout: 30000 }, async (t) => {
+  const { env, cfg, operator } = await setup(t);
+  await sendMessage(operator, `claude#${LABEL}`, "waiting at stop", { operatorThread: true });
+  const waiter = startRewake(t, { ...env, AI_COLLAB_WAITER_MAX_S: "20" }, { hook_event_name: "Stop", session_id: SESSION_ID, cwd: "/tmp" });
+  // The Stop hook marks itself inside the waiter's grace window.
+  await delay(1000);
+  const own = writeMarker(cfg, process.pid);
+  await delay(2500);
+  assert.equal(waiter.exited, null, "the waiter has not woken the session");
+  assert.equal(readJsonFile(handoffFile(cfg)), null, "the waiter claimed nothing: the message is still in the inbox for the hold");
+  rmSync(own, { force: true });
+  const r = await waiter.done;
+  assert.equal(r.code, 2);
+  assert.match(r.err, /waiting at stop/);
+});
+
+test("a waiter that claims just as a Stop hook marks itself hands the messages to the hold", { timeout: 20000 }, async (t) => {
+  const { cfg, operator } = await setup(t);
+  await requestWait(cfg);
+  await sendMessage(operator, `claude#${LABEL}`, "handed over", { operatorThread: true });
+  let holding = false;
+  const waiting = runWaiter(cfg, { maxMs: 4000, settleMs: 600, held: () => holding });
+  await delay(300);
+  holding = true;
+  const stop = await decideStop(cfg, { host: "claude", input: { stop_hook_active: false }, sliceMaxS: 6, queued: null });
+  assert.equal(stop.why, "messages");
+  assert.match(stop.text, /handed over/);
+  assert.equal((await waiting).code, 0);
+  assert.equal(readJsonFile(handoffFile(cfg)), null, "the hold took the handed-over messages");
+});
+
+test("messages handed to a hold that ended without them wake the session through the next waiter", { timeout: 15000 }, async (t) => {
+  const { cfg, operator } = await setup(t);
+  await sendMessage(operator, `claude#${LABEL}`, "left over", { operatorThread: true });
+  let holding = false;
+  const first = runWaiter(cfg, { maxMs: 1500, settleMs: 300, held: () => holding });
+  await delay(100);
+  holding = true;
+  assert.equal((await first).code, 0);
+  const r = await runWaiter(cfg, { maxMs: 3000 });
+  assert.equal(r.code, 2);
+  assert.match(r.text, /left over/);
 });

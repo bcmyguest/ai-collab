@@ -29,13 +29,13 @@ import { childHint, exportParent, greetParent, parentLine } from "../lib/family.
 import { formatInbox, hookOutput, identityLine, stopOutput } from "../lib/format.mjs";
 import { currentMode, operatorPrompt, takeModeNote } from "../lib/mode.mjs";
 import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.mjs";
-import { decideStop, noteHeld, takeHeld } from "../lib/stop.mjs";
+import { decideStop, markStopRunning, noteHeld, takeHeld } from "../lib/stop.mjs";
 import { REQUIRE_RUN_CODE_ENV } from "../lib/code-mode.mjs";
 import { readsThroughRunCode } from "../lib/code-run.mjs";
 import { storeReadDenial } from "../lib/store-read.mjs";
 import { recordSession, sessionName, standsDown } from "../lib/sessions/registry.ts";
 import { harnessProcess, isRunning } from "../lib/process.mjs";
-import { STOP_GRACE_MS, WAITER_MAX_S, runWaiter, takeWaiterSlot } from "../lib/waiter.ts";
+import { CLAIM_SETTLE_MS, STOP_GRACE_MS, WAITER_MAX_S, runWaiter, takeWaiterSlot } from "../lib/waiter.ts";
 import { ON_DEMAND_LOADS, contextUsage, dropOnDemandFiles, readContext, recordInstructions, reportContext } from "../lib/usage.mjs";
 import { activityEvents, publishActivity } from "../lib/activity.mjs";
 import { compactionFields } from "../lib/compaction.mjs";
@@ -178,6 +178,7 @@ async function rewake(cfg, host, msg) {
     result = await runWaiter(cfg, {
       maxMs: (Number(process.env.AI_COLLAB_WAITER_MAX_S) || WAITER_MAX_S) * 1000, signal: ctrl.signal,
       graceMs: String(msg.hook_event_name || "").toLowerCase() === "stop" ? STOP_GRACE_MS : 0,
+      settleMs: CLAIM_SETTLE_MS,
       alive: () => !harness || isRunning(harness),
     });
   } finally {
@@ -227,6 +228,8 @@ async function main() {
   // The runner drives an owned session and publishes everything itself (docs/owned-sessions-contract.md).
   if (standsDown(cfg, { label: session })) return emit(neutral(host, key));
   if (argv.includes("--rewake")) return rewake(cfg, host, msg);
+  // Marked before the session record and context report, so the rewake waiter yields from this hook's first moment.
+  if (key === "stop" && !activityOnly && !(typeof msg.agent_id === "string" && msg.agent_id)) process.once("exit", markStopRunning(cfg));
 
   // Started first and awaited last, so delivery never waits on it.
   const events = key === "precompact" || key === "sessionend" ? stampContext(cfg, activityEvents(host, key, msg)) : activityEvents(host, key, msg);
