@@ -21,7 +21,7 @@ import { attachmentOf, cacheAttachmentsWithin, localizedAttachment } from "../li
 import { streamEvents } from "../lib/messaging.ts";
 import { listSessions, recordSession } from "../lib/sessions.mjs";
 import { claudeConfirmedSince, claudeSnapshot, claudeWindowMs } from "../lib/claude-socket.mjs";
-import { ackTracker, busyWithPush, direct, PUSHED, pushSession, readDispatchLedger, readySession, writeDispatchLedger } from "../lib/deliver-push.mjs";
+import { ackTracker, busyWithPush, direct, holdRunning, PUSHED, pushSession, readDispatchLedger, readySession, writeDispatchLedger } from "../lib/deliver-push.mjs";
 import { MAX_ATTEMPTS } from "../lib/delivery.ts";
 import { sessionIdleState } from "../lib/idle.mjs";
 import { opencodeRequest } from "../lib/opencode-api.mjs";
@@ -672,6 +672,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     },
     probe: (session) => (session.harness === "opencode" ? openCodeActive() : null),
     ready: async (session, active, project) => readySession(session, active, { env, idle: sessionIdleState, cfg: configs.get(project) ?? null }),
+    held: (session, scfg) => holdRunning(session, scfg),
     busy: async (session, active) => busyWithPush(session, active),
     reserve: (scfg, ids, { owner, allowSeen = false }) => reserveOwned(scfg, ids, { owner, allowSeen, ttlMs: reserveTtlMs }),
     release: (scfg, ids, owner) => releaseOwned(scfg, ids, owner),

@@ -8,7 +8,8 @@ export const READY_POLL_MS = 5000;
 /**
  * Builds the workflow function over deps (injectable; the live set is in runner/runner.mjs):
  *   now(); scfgOf(project, session); sessionOf(project, address) -> live session or null; probe?(session) -> live-set probe, once per poll;
- *   ready(session, probe, project) -> bool; busy?(session, probe) -> bool (still working on an earlier push);
+ *   ready(session, probe, project) -> bool; held?(session, scfg) -> bool (a Stop hook holds the session, so the push waits);
+ *   busy?(session, probe) -> bool (still working on an earlier push);
  *   reserve(scfg, ids, {owner, allowSeen}) -> {owned, busy}; release(scfg, ids, owner); markDelivered(scfg, ids);
  *   snapshot(session) -> JSON; push(session, {text, urgent, ids}) -> {status}; awaitConfirm(id, session, snapshot) -> bool;
  *   waitConfirmed(session, ids, snapshot) -> bool after the full confirm window; confirmedSince(session, ids, snapshot) -> bool;
@@ -73,14 +74,17 @@ export function deliveryWorkflow(deps) {
       const current = deps.reservedMessage ? deps.reservedMessage(scfg, message) : message;
       if (!current) return "skipped";
       const text = await Promise.resolve().then(() => deps.textFor(scfg, current, attemptNo));
-      const pushed = await wf.step("push", () => deps.push(session, { text, urgent: current.urgent === true, ids: [id] }), {
+      // A Stop hook that started since the ready check delivers the message itself; the check runs inside the step so replays match.
+      const pushed = await wf.step("push", async () => (await deps.held?.(session, scfg)
+        ? { status: "held" }
+        : deps.push(session, { text, urgent: current.urgent === true, ids: [id] })), {
         onCut: async () => ({ status: await deps.waitConfirmed(session, [id], snap) ? "delivered" : "cut" }),
       });
       if (pushed.status === "delivered") {
         await wf.step("mark", () => deps.markDelivered(scfg, [id]));
         return "delivered";
       }
-      if (pushed.status === "cut" || pushed.status === "unsent") {
+      if (pushed.status === "cut" || pushed.status === "unsent" || pushed.status === "held") {
         await wf.step("release", () => deps.release(scfg, [id], owner));
         return pushed.status === "cut" ? "cut" : "failed";
       }

@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { broadcastTopic, inboxTopic, receiptsTopic } from "../../lib/config.mjs";
 import { backoffMs, MAX_ATTEMPTS, nextAction, REDELIVER_MS, TTL_MS } from "../../lib/delivery.ts";
-import { PUSHED, busyWithPush, direct, pushSession, readySession, runCommand } from "../../lib/deliver-push.mjs";
+import { PUSHED, busyWithPush, direct, holdRunning, pushSession, readySession, runCommand } from "../../lib/deliver-push.mjs";
 import { formatInbox } from "../../lib/format.mjs";
 import { sessionIdleState } from "../../lib/idle.mjs";
 import { claimInbox, ATTACHMENT_BUDGET_MS, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery, reservedMessage } from "../../lib/messaging.ts";
@@ -112,8 +112,13 @@ export function createDispatcher({
     watchers.add(job);
   }
 
-  // Pushes reserved messages and settles the reservation. Resolves "delivered", "failed" or "pending" (watched).
+  // Pushes reserved messages and settles the reservation. Resolves "delivered", "failed", "held" or "pending" (watched).
   async function dispatchIds(session, scfg, text, { urgent, ids }) {
+    // A Stop hook that started since the ready check delivers the messages itself; the next tick retries.
+    if (holdRunning(session, scfg)) {
+      await releaseDelivery(scfg, ids).catch(() => {});
+      return "held";
+    }
     const result = await push(session, text, { urgent, ids });
     if (result.status === "delivered") {
       await markDelivered(scfg, ids).catch(() => {});
