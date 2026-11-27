@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import { loadConfig } from "../lib/config.mjs";
-import { alertLimit, fallbackChain, CURSOR_FALLBACK, OPENCODE_FALLBACK } from "../lib/limit-alert.mjs";
+import { alertLimit, fallbackChain, CURSOR_FALLBACK, OPENCODE_FALLBACK } from "../lib/limit-alert.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 

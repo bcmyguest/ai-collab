@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { agentHarness } from "../lib/agent-guard.mjs";
 import { limitFallback } from "../lib/builder.ts";
 import { loadConfig, START_DEFAULT, startDefaultSetting } from "../lib/config.mjs";
-import { CURSOR_FALLBACK } from "../lib/limit-alert.mjs";
+import { CURSOR_FALLBACK } from "../lib/limit-alert.ts";
 import { FALLBACK_MODEL, formatHarnessModel, harnessOfBinary, parseHarnessModel } from "../lib/harness.ts";
 import { getPattern, listPatterns } from "../lib/patterns.mjs";
 import { harnessOfCommand } from "../lib/schedule-session.mjs";

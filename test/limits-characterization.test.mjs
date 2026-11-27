@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fallbackAttempts, limitFallback } from "../lib/builder.ts";
-import { fallbackChain, replacementOptions } from "../lib/limit-alert.mjs";
+import { fallbackChain, replacementOptions } from "../lib/limit-alert.ts";
 import { classifyLimit, limitFromRunError } from "../lib/limits.ts";
 
 const summary = (found) => found && { window: found.window, windowName: found.windowName, wording: found.wording, verified: found.verified };

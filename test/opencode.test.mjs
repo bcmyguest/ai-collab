@@ -9,7 +9,7 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig } from "../lib/config.mjs";
 import { sendMessage } from "../lib/inbox.mjs";
-import { activityEvents, buildActivity } from "../lib/activity.mjs";
+import { activityEvents, buildActivity } from "../lib/activity.ts";
 import { approvalOutput, approvalRequest } from "../lib/approvals.mjs";
 import { contextTokens } from "../lib/usage.mjs";
 import { sessionName } from "../lib/sessions/registry.ts";

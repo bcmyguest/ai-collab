@@ -68,14 +68,14 @@ test("Claude's compact_boundary becomes one finished step with the SDK token cou
 });
 
 test("SessionEnd with reason clear is a clear row on the old session; other reasons stay stop rows", async () => {
-  const { activityEvents } = await import("../lib/activity.mjs");
+  const { activityEvents } = await import("../lib/activity.ts");
   assert.deepEqual(activityEvents("claude", "sessionend", { reason: "clear" }), [{ type: "clear", input: "cleared", clear: { tokensAfter: 0 } }]);
   assert.deepEqual(activityEvents("claude", "sessionend", { reason: "other" }), [{ type: "stop", input: "session ended · other" }]);
   assert.deepEqual(activityEvents("claude", "sessionstart", { source: "clear" }), [{ type: "start", input: "session started · clear" }]);
 });
 
 test("PostCompact is a finished compact row with the trigger", async () => {
-  const { activityEvents } = await import("../lib/activity.mjs");
+  const { activityEvents } = await import("../lib/activity.ts");
   assert.deepEqual(activityEvents("claude", "postcompact", { trigger: "auto", compact_summary: "s" }),
     [{ type: "compact", input: "compacted · auto", compaction: { trigger: "auto", phase: "finished" } }]);
 });
@@ -86,7 +86,7 @@ test("compactionFields keeps filesDropped as a count", () => {
 });
 
 test("a compact row's compaction fields reach the published envelope", async () => {
-  const { buildActivity } = await import("../lib/activity.mjs");
+  const { buildActivity } = await import("../lib/activity.ts");
   const cfg = { peer: "claude", session: "abc123", wire: "legacy" };
   const { message } = buildActivity(cfg, "claude", { type: "compact", input: "compacted · auto", compaction: { trigger: "auto", phase: "finished", tokensBefore: 182000, tokensAfter: 31000, junk: 1 } }, "2026-11-22T10:00:00.000Z");
   assert.deepEqual(parseWireEnvelope(message).compaction, { trigger: "auto", phase: "finished", tokensBefore: 182000, tokensAfter: 31000 });

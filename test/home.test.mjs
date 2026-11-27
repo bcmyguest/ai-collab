@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { broadcastTopic, loadConfig, sessionLabel } from "../lib/config.mjs";
-import { publishActivity } from "../lib/activity.mjs";
+import { publishActivity } from "../lib/activity.ts";
 import { publishStatus } from "../lib/inbox.mjs";
 import { cleanName, sessionName } from "../lib/sessions/registry.ts";
 import { listSessions, recordSession } from "../lib/sessions.mjs";

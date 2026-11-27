@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { RULES_MAX } from "../lib/mission.mjs";
+import { RULES_MAX } from "../lib/mission.ts";
 import { REVIEW_HEADING, REVIEW_MAX_LINES, reviewBlock, withReview } from "../lib/pm-review.ts";
 import { tickFn } from "../runner/schedules.mjs";
 

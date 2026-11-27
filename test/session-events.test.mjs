@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventType } from "@ag-ui/core";
-import { activityEvents, buildActivity } from "../lib/activity.mjs";
+import { activityEvents, buildActivity } from "../lib/activity.ts";
 import { clearFields, modelFields, sessionHistory } from "../lib/session-events.mjs";
 import { activityFor } from "../runner/publish.mjs";
 import { envelopeToEvent, eventToEnvelope, parseWireEnvelope } from "../lib/agui.mjs";

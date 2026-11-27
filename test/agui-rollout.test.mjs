@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { EventSchema } from "@ag-ui/core/schemas";
-import { buildActivity, publishActivity } from "../lib/activity.mjs";
+import { buildActivity, publishActivity } from "../lib/activity.ts";
 import { parseEvent, parseWireEnvelope } from "../lib/agui.mjs";
 import { approvalMessage } from "../lib/approvals.mjs";
 import { loadConfig } from "../lib/config.mjs";

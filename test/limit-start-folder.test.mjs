@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
-import { alertLimit, chooseLimit } from "../lib/limit-alert.mjs";
+import { alertLimit, chooseLimit } from "../lib/limit-alert.ts";
 import { recordSession } from "../lib/sessions.mjs";
 import { startFolder, startSession } from "../lib/start.mjs";
 import { peerEnv } from "./helpers/env.mjs";

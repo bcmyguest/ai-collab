@@ -1,7 +1,7 @@
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ACTIVITY_MAX_BYTES, activityEvents, buildActivity } from "../lib/activity.mjs";
+import { ACTIVITY_MAX_BYTES, activityEvents, buildActivity } from "../lib/activity.ts";
 import { activityRows, summarize } from "../web/lib/activity-rows.js";
 
 test("a Claude PostToolUse result carries its call's input", () => {

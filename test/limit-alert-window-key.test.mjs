@@ -6,7 +6,7 @@ import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
-import { alertLimit, readCard } from "../lib/limit-alert.mjs";
+import { alertLimit, readCard } from "../lib/limit-alert.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 

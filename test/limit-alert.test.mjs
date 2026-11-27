@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MESSAGE_MAX_BYTES, loadConfig } from "../lib/config.mjs";
-import { LIMIT_TOOL, WAIT_LABEL, alertLimit, handoffPrompt, limitLine, replacementOptions, resetClock, roleFallback } from "../lib/limit-alert.mjs";
+import { LIMIT_TOOL, WAIT_LABEL, alertLimit, handoffPrompt, limitLine, replacementOptions, resetClock, roleFallback } from "../lib/limit-alert.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 

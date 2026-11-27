@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
-import { CURSOR_FALLBACK } from "../lib/limit-alert.mjs";
+import { CURSOR_FALLBACK } from "../lib/limit-alert.ts";
 import { checkTeamText } from "../lib/patterns.mjs";
 import { teamStart } from "../lib/teams.mjs";
 import { peerEnv } from "./helpers/env.mjs";
