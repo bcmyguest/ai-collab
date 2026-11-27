@@ -14,7 +14,7 @@ import { requestWait } from "../lib/questions.ts";
 import { processStart } from "../lib/process.ts";
 import { statePath, writeState } from "../lib/state.ts";
 import { runWaiter } from "../lib/waiter.ts";
-import { openDurable } from "../runner/durable.mjs";
+import { openDurable } from "../lib/durable.ts";
 import { deliveryWorkflow } from "../runner/delivery.ts";
 import { createDispatcher } from "../web/server/dispatch.ts";
 import { tempDir } from "./helpers/tmp.mjs";

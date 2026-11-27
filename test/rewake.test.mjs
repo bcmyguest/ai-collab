@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.ts";
-import { sendMessage } from "../lib/inbox.mjs";
+import { sendMessage } from "../lib/messaging.ts";
 import { runWaiter, takeWaiterSlot } from "../lib/waiter.ts";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
@@ -56,7 +56,7 @@ test("runWaiter does not wake for an fyi message and leaves it unclaimed", async
   const { cfg, bob } = await setup(t);
   await sendMessage(bob, `alice#${LABEL}`, "no rush", { priority: "fyi" });
   assert.deepEqual(await runWaiter(cfg, { maxMs: 400 }), { code: 0 });
-  const left = await (await import("../lib/inbox.mjs")).claimInbox(cfg);
+  const left = await (await import("../lib/messaging.ts")).claimInbox(cfg);
   assert.equal(left.length, 1);
   assert.equal(left[0].priority, "fyi");
 });

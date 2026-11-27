@@ -5,12 +5,12 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.ts";
-import { recordSession } from "../lib/sessions.mjs";
+import { recordSession } from "../lib/sessions/registry.ts";
 import { writeOwned } from "../lib/sessions/registry.ts";
 import { MANAGED_ENV } from "../lib/subagent-guard.ts";
-import { openDurable } from "../runner/durable.mjs";
-import { createRunner, WAKE } from "../runner/runner.mjs";
-import { createFakeAdapter } from "../runner/adapters/fake.mjs";
+import { openDurable } from "../lib/durable.ts";
+import { createRunner, WAKE } from "../runner/runner.ts";
+import { createFakeAdapter } from "../runner/adapters/fake.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 function setup(t, fake) {

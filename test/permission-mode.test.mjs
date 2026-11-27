@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test, after } from "node:test";
 import { claudePermissionSetting } from "../lib/config.ts";
-import { claudePermissionFor, startSession } from "../lib/start.mjs";
+import { claudePermissionFor, startSession } from "../lib/sessions/launch.ts";
 import { runnerModeOfClaude } from "../runner/contract.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 

@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import path, { delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
-import { childEnv } from "../lib/start.mjs";
+import { childEnv } from "../lib/sessions/launch.ts";
 import { summaryLine } from "../lib/prune.ts";
 import { loadSchedules, runCommand } from "../runner/schedules.ts";
 import { tempDir } from "./helpers/tmp.mjs";

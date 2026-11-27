@@ -6,9 +6,9 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { procStart, makeRunner, setup, until } from "./helpers/runner-ctx.mjs";
 import { sessionLabel } from "../lib/config.ts";
 import { ownedFile } from "../lib/sessions/registry.ts";
-import { recordSession } from "../lib/sessions.mjs";
-import { WAKE } from "../runner/runner.mjs";
-import { createFakeAdapter } from "../runner/adapters/fake.mjs";
+import { recordSession } from "../lib/sessions/registry.ts";
+import { WAKE } from "../runner/runner.ts";
+import { createFakeAdapter } from "../runner/adapters/fake.ts";
 
 const direct = (label, body) => JSON.stringify({ v: 1, kind: "msg", from: "operator", to: "codex", toSession: label, operatorThread: true, ts: new Date().toISOString(), body });
 

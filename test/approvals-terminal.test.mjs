@@ -7,7 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { MESSAGE_MAX_BYTES, loadConfig, sessionLabel } from "../lib/config.ts";
 import { closeTerminalCards, decideApproval } from "../lib/approvals.ts";
 import { currentModeKnown } from "../lib/mode.ts";
-import { createUi } from "../web/server/ui.mjs";
+import { createUi } from "../web/server/ui.ts";
 import { IN_TERMINAL_STALE } from "../web/lib/a2ui.js";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

@@ -7,8 +7,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { removeCodeSandbox } from "../lib/code-run.ts";
 import cursorAdapter from "../runner/adapters/cursor.mjs";
-import * as sandbox from "../runner/sandbox.mjs";
-import { ensureSandbox, sandboxCapRefusal, teamSandboxName } from "../runner/sandbox.mjs";
+import * as sandbox from "../lib/sandbox.ts";
+import { ensureSandbox, sandboxCapRefusal, teamSandboxName } from "../lib/sandbox.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));

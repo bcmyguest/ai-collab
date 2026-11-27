@@ -4,7 +4,7 @@ import path from "node:path";
 import { test, after } from "node:test";
 import { loadConfig } from "../lib/config.ts";
 import { advanceRun, runStatus, startRun } from "../lib/pattern-runs.ts";
-import { listPatterns } from "../lib/patterns.mjs";
+import { listPatterns } from "../lib/catalog/patterns.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { tempDir } from "./helpers/tmp.mjs";

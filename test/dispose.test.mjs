@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import os from "node:os";
 import path from "node:path";
 import { sessionLabel } from "../lib/config.ts";
-import { disposeSession, sessionPlace } from "../lib/sessions.mjs";
+import { disposeSession, sessionPlace } from "../lib/sessions/registry.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const self = () => {

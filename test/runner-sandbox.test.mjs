@@ -1,4 +1,4 @@
-// runner/sandbox.mjs against the fake openshell: naming, argv shapes, phase handling, and the sync fallbacks.
+// lib/sandbox.ts against the fake openshell: naming, argv shapes, phase handling, and the sync fallbacks.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   destroySandbox, downloadArgv, downloadTree, ensureSandbox, execArgv, ownedSandboxNames, parseSandboxList,
   sandboxName, sandboxPhase, stateCommand, uploadArgv, uploadFile, uploadTree,
-} from "../runner/sandbox.mjs";
+} from "../lib/sandbox.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));

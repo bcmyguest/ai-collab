@@ -4,7 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.ts";
-import { sendMessage } from "../lib/inbox.mjs";
+import { sendMessage } from "../lib/messaging.ts";
 import { parseWireEnvelope } from "../lib/agui.ts";
 import { awaitReply, waitForIdle, waitForMessages, waitForReply } from "../lib/agents.ts";
 import { readInbox } from "../lib/messaging.ts";
@@ -12,7 +12,7 @@ import { runWaiter } from "../lib/waiter.ts";
 import { runCli } from "../lib/cli.ts";
 import { decideStop } from "../lib/stop.ts";
 import { requestWait } from "../lib/questions.ts";
-import { claimInbox } from "../lib/inbox.mjs";
+import { claimInbox } from "../lib/messaging.ts";
 import { settleReceipts } from "../lib/receipts.ts";
 
 const SESSION_ID = "11111111-2222-3333-4444-555555555555";

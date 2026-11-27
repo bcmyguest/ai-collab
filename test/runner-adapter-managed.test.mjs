@@ -5,9 +5,9 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createClaudeAdapter } from "../runner/adapters/claude.mjs";
-import codexAdapter, { APP_SERVER_ARGS } from "../runner/adapters/codex.mjs";
-import { createOpenCodeAdapter } from "../runner/adapters/opencode.mjs";
+import { createClaudeAdapter } from "../runner/adapters/claude.ts";
+import codexAdapter, { APP_SERVER_ARGS } from "../runner/adapters/codex.ts";
+import { createOpenCodeAdapter } from "../runner/adapters/opencode.ts";
 import { permissionSettings } from "../runner/contract.ts";
 import { CODEX_NO_SUBAGENT_ARGS, OPENCODE_NO_SUBAGENTS } from "../lib/subagent-guard.ts";
 import { fakeClaudeQuery } from "./helpers/fake-claude-query.mjs";

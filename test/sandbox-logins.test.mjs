@@ -6,7 +6,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import cursorAdapter, { sandboxName } from "../runner/adapters/cursor.mjs";
-import { harnessLogins } from "../runner/sandbox.mjs";
+import { harnessLogins } from "../lib/sandbox.ts";
 import { sandboxRun } from "../runner/sandbox-run.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

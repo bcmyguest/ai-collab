@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.ts";
-import { claimInbox, parseEnvelope, sendMessage } from "../lib/inbox.mjs";
+import { claimInbox, parseEnvelope, sendMessage } from "../lib/messaging.ts";
 import { respond, sendAndAwait, waitForMessages } from "../lib/agents.ts";
-import { agentDirectory, recordSession, setIdentity } from "../lib/sessions.mjs";
+import { agentDirectory, recordSession, setIdentity } from "../lib/sessions/registry.ts";
 import { formatInbox } from "../lib/format.ts";
 import { runCli } from "../lib/cli.ts";
 

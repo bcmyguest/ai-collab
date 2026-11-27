@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.ts";
-import { sendMessage } from "../lib/inbox.mjs";
+import { sendMessage } from "../lib/messaging.ts";
 import { formatInbox, identityLine, stopOutput } from "../lib/format.ts";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
@@ -126,7 +126,7 @@ test("MCP: version comes from package.json; send_to_all replies to broadcasts an
   assert.deepEqual([reply.from, reply.session, reply.to, reply.replyTo, reply.body], ["alice", session, "all", "m00000001", "Done with step 1"]);
 
   fake.inject("ai-collab-demo--to--all", JSON.stringify({ v: 1, kind: "mode", from: "operator", mode: "quiet", ts: Date.now() }));
-  const { claimInbox } = await import("../lib/inbox.mjs");
+  const { claimInbox } = await import("../lib/messaging.ts");
   await claimInbox(loadConfig({ ...env, AI_COLLAB_SESSION: session }));
   const before = fake.state.publishes.length;
   assert.deepEqual(await call("send_to_all", { body: "50% done", session, progress: true }), {

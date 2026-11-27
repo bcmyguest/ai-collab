@@ -3,8 +3,9 @@ import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { test, after } from "node:test";
 import { loadConfig } from "../lib/config.ts";
-import { writeGlobalTeams } from "../lib/teams.mjs";
-import { BUILT_IN_PATTERNS, createPattern, deletePattern, legacyPattern, listPatterns, validatePattern } from "../lib/patterns.mjs";
+import { writeGlobalTeams } from "../lib/catalog/teams.ts";
+import { BUILT_IN_PATTERNS, createPattern, deletePattern, listPatterns } from "../lib/catalog/patterns.ts";
+import { legacyPattern, validatePattern } from "../lib/catalog/pattern-model.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 function setup(extraProjects = {}) {

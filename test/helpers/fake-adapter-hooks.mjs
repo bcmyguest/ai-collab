@@ -1,4 +1,4 @@
-// Wrappers over runner/adapters/fake.mjs that script one open or one send. Test-only.
+// Wrappers over runner/adapters/fake.ts that script one open or one send. Test-only.
 
 /** The adapter with open() replaced by fn(options, ctx, baseOpen). */
 export function wrapOpen(adapter, fn) {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { test, after } from "node:test";
-import { closedProjectNames, readProjectsFile, removeProject, setProjectClosed, writeProjectsFile } from "../lib/teams.mjs";
+import { closedProjectNames, readProjectsFile, removeProject, setProjectClosed, writeProjectsFile } from "../lib/catalog/projects.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 function setup(entries) {

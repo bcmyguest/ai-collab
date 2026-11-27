@@ -10,9 +10,9 @@ import { loadConfig } from "../lib/config.ts";
 import { builderPaths } from "../lib/builder.ts";
 import { listOwned, ownedFile } from "../lib/sessions/registry.ts";
 import { openTasks } from "../lib/tasks.ts";
-import { openDurable } from "../runner/durable.mjs";
-import { createRunner } from "../runner/runner.mjs";
-import { createFakeAdapter } from "../runner/adapters/fake.mjs";
+import { openDurable } from "../lib/durable.ts";
+import { createRunner } from "../runner/runner.ts";
+import { createFakeAdapter } from "../runner/adapters/fake.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 function setup(t, fake) {

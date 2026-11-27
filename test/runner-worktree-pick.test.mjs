@@ -5,9 +5,9 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../lib/config.ts";
-import { openDurable } from "../runner/durable.mjs";
-import { createRunner } from "../runner/runner.mjs";
-import { createFakeAdapter } from "../runner/adapters/fake.mjs";
+import { openDurable } from "../lib/durable.ts";
+import { createRunner } from "../runner/runner.ts";
+import { createFakeAdapter } from "../runner/adapters/fake.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 

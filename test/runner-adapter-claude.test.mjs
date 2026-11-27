@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { chmodSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, eventProblem } from "../runner/contract.ts";
-import { createClaudeAdapter } from "../runner/adapters/claude.mjs";
+import { createClaudeAdapter } from "../runner/adapters/claude.ts";
 import { sessionLabel } from "../lib/config.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 

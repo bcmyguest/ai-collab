@@ -2,7 +2,7 @@
 // so a recovered workflow that claims early must have its claim kept for the next take, not dropped.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createClaims } from "../runner/runner.mjs";
+import { createClaims } from "../runner/runner.ts";
 
 test("a claim arriving before its waiter is delivered to the next take", async () => {
   const claims = createClaims();

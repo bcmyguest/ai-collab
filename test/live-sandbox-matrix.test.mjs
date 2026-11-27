@@ -11,10 +11,11 @@ import { test, after } from "node:test";
 import { parseWireEnvelope } from "../lib/agui.ts";
 import { builderPaths } from "../lib/builder.ts";
 import { activityTopic } from "../lib/config.ts";
-import { cursorBinary, findExecutable } from "../lib/start.mjs";
+import { cursorBinary } from "../lib/harness.ts";
+import { findExecutable } from "../lib/sessions/scope.ts";
 import { openTasks } from "../lib/tasks.ts";
 import { runnerClient, runnerRequest } from "../runner/client.ts";
-import { destroySandbox, parseSandboxList, runTool, sandboxName } from "../runner/sandbox.mjs";
+import { destroySandbox, parseSandboxList, runTool, sandboxName } from "../lib/sandbox.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

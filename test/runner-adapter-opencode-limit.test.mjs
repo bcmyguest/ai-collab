@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EventType } from "@ag-ui/core";
-import { createOpenCodeAdapter } from "../runner/adapters/opencode.mjs";
+import { createOpenCodeAdapter } from "../runner/adapters/opencode.ts";
 import { limitFromRunError } from "../lib/limits.ts";
 import { eventProblem } from "../runner/contract.ts";
 import { fakeOpencodeService } from "./helpers/fake-opencode-service.mjs";

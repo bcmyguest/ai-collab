@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { startCommand } from "../lib/start.mjs";
+import { startCommand } from "../lib/sessions/launch.ts";
 import { harnessCommand as builderCommand } from "../lib/builder.ts";
 import { harnessCommand as wakeCommand } from "../lib/sessions/control.ts";
 import { codexRequiredRunCodeArgs } from "../lib/code-mode.ts";

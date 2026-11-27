@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { runCli } from "../lib/cli.ts";
 import { builderSandbox } from "../lib/builder.ts";
 import { prepareSandbox, sandboxName } from "../runner/adapters/cursor.mjs";
-import { ensureSandbox } from "../runner/sandbox.mjs";
+import { ensureSandbox } from "../lib/sandbox.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { recordSession } from "../lib/sessions.mjs";
+import { recordSession } from "../lib/sessions/registry.ts";
 import { loadConfig, sessionLabel } from "../lib/config.ts";
-import { claimInbox, publishStatus, releaseDelivery, reserveDelivery, reservedMessage, sendMessage, urgentSince } from "../lib/inbox.mjs";
-import { createUi } from "../web/server/ui.mjs";
+import { claimInbox, publishStatus, releaseDelivery, reserveDelivery, reservedMessage, sendMessage, urgentSince } from "../lib/messaging.ts";
+import { createUi } from "../web/server/ui.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EventType } from "@ag-ui/core";
-import codexAdapter, { APP_SERVER_ARGS } from "../runner/adapters/codex.mjs";
+import codexAdapter, { APP_SERVER_ARGS } from "../runner/adapters/codex.ts";
 import { eventProblem, permissionSettings } from "../runner/contract.ts";
 import { limitFromRunError } from "../lib/limits.ts";
 import { tempDir } from "./helpers/tmp.mjs";

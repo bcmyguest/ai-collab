@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { broadcastTopic, inboxTopic, loadConfig, receiptsTopic } from "../lib/config.ts";
-import { claimInbox, sendMessage } from "../lib/inbox.mjs";
+import { claimInbox, sendMessage } from "../lib/messaging.ts";
 import { respond } from "../lib/agents.ts";
 import { ackTracker } from "../lib/deliver-push.ts";
 

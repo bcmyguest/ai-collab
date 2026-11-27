@@ -4,8 +4,8 @@ import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { broadcastTopic, inboxTopic, sessionLabel } from "../lib/config.ts";
-import { claimInbox, reserveOwned } from "../lib/inbox.mjs";
-import { recordSession } from "../lib/sessions.mjs";
+import { claimInbox, reserveOwned } from "../lib/messaging.ts";
+import { recordSession } from "../lib/sessions/registry.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { makeRunner, procStart, setup } from "./helpers/runner-ctx.mjs";
 

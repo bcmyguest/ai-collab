@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test, after } from "node:test";
 import { loadConfig } from "../lib/config.ts";
-import { checkTeamText, listPatterns } from "../lib/patterns.mjs";
+import { checkTeamText, listPatterns } from "../lib/catalog/patterns.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 function setup() {

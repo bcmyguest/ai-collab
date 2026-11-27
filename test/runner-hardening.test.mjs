@@ -5,8 +5,8 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { openDurable } from "../runner/durable.mjs";
-import { createRunner } from "../runner/runner.mjs";
+import { openDurable } from "../lib/durable.ts";
+import { createRunner } from "../runner/runner.ts";
 import { listenControl, route } from "../runner/control.ts";
 import { loadSchedules, registerSchedules, runCommand } from "../runner/schedules.ts";
 import { acquireLock } from "../runner/lock.ts";

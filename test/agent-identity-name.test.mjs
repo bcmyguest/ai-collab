@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import os from "node:os";
 import { loadConfig, sessionLabel } from "../lib/config.ts";
-import { agentDirectory, recordSession, setIdentity } from "../lib/sessions.mjs";
+import { agentDirectory, recordSession, setIdentity } from "../lib/sessions/registry.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 

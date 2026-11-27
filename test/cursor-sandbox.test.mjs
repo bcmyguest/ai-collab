@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { EventType } from "@ag-ui/core";
 import cursorAdapter, { prepareSandbox, sandboxName } from "../runner/adapters/cursor.mjs";
-import { ensureSandbox } from "../runner/sandbox.mjs";
+import { ensureSandbox } from "../lib/sandbox.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));

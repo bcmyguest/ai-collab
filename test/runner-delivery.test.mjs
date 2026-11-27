@@ -1,7 +1,7 @@
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { openDurable } from "../runner/durable.mjs";
+import { openDurable } from "../lib/durable.ts";
 import { deliveryWorkflow } from "../runner/delivery.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 

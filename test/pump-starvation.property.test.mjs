@@ -5,8 +5,8 @@ import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import fc from "fast-check";
 import { sessionLabel } from "../lib/config.ts";
-import { sendMessage } from "../lib/inbox.mjs";
-import { recordSession } from "../lib/sessions.mjs";
+import { sendMessage } from "../lib/messaging.ts";
+import { recordSession } from "../lib/sessions/registry.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { makeRunner, procStart, setup } from "./helpers/runner-ctx.mjs";
 

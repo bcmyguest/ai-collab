@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { loadConfig } from "../lib/config.ts";
 import { formatInbox } from "../lib/format.ts";
-import { claimInbox, sendMessage } from "../lib/inbox.mjs";
-import { mentionedNames } from "../web/server/ui.mjs";
+import { claimInbox, sendMessage } from "../lib/messaging.ts";
+import { mentionedNames } from "../web/server/ui.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 

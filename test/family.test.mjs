@@ -7,7 +7,7 @@ import { createInterface } from "node:readline";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig, ownEnv, sessionLabel } from "../lib/config.ts";
-import { claimInbox } from "../lib/inbox.mjs";
+import { claimInbox } from "../lib/messaging.ts";
 import { runCli } from "../lib/cli.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

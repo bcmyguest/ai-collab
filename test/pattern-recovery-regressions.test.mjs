@@ -5,9 +5,9 @@ import { test } from "node:test";
 import { compileTrace } from "../lib/pattern-compiler.ts";
 import { applyPatternAdvance, cutPatternEnter, cutPatternLeave, launchPatternRun, runStatus } from "../lib/pattern-runs.ts";
 import { seedPatternRun } from "../lib/pattern-workflow.ts";
-import { saveTeamText } from "../lib/patterns.mjs";
-import { createFakeAdapter } from "../runner/adapters/fake.mjs";
-import { openDurable } from "../runner/durable.mjs";
+import { saveTeamText } from "../lib/catalog/patterns.ts";
+import { createFakeAdapter } from "../runner/adapters/fake.ts";
+import { openDurable } from "../lib/durable.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { makeRunner, setup, until } from "./helpers/runner-ctx.mjs";
 

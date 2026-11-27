@@ -6,7 +6,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import cursorAdapter, { prepareSandbox, sandboxName } from "../runner/adapters/cursor.mjs";
-import { ensureSandbox } from "../runner/sandbox.mjs";
+import { ensureSandbox } from "../lib/sandbox.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 import { subagentDenial } from "../lib/subagent-guard.ts";
 

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventType } from "@ag-ui/core";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED } from "../runner/contract.ts";
-import { createOpenCodeAdapter } from "../runner/adapters/opencode.mjs";
+import { createOpenCodeAdapter } from "../runner/adapters/opencode.ts";
 import { fakeOpencodeService } from "./helpers/fake-opencode-service.mjs";
 
 const SID = "ses_test";

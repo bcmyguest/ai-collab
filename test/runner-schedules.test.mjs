@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { PROJECT_PAUSED, setProjectPaused } from "../lib/project-pause.ts";
-import { openDurable } from "../runner/durable.mjs";
+import { openDurable } from "../lib/durable.ts";
 import { listenControl, route } from "../runner/control.ts";
 import { runnerRequest, runnerClient } from "../runner/client.ts";
 import { loadSchedules, registerSchedules, runCommand, schedulesPath, tickFn } from "../runner/schedules.ts";

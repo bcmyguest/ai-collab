@@ -5,7 +5,7 @@ import path from "node:path";
 import { COMPACT_REQUEST, controlSession } from "../lib/sessions/control.ts";
 import { codexLiveCompact } from "../lib/codex-compact.ts";
 import { loadConfig, sessionLabel } from "../lib/config.ts";
-import { claimInbox, parseEnvelope } from "../lib/inbox.mjs";
+import { claimInbox, parseEnvelope } from "../lib/messaging.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { tempDir } from "./helpers/tmp.mjs";

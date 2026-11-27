@@ -8,11 +8,11 @@ import { mock, test, after } from "node:test";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.ts";
-import { reserveDelivery, sendMessage } from "../lib/inbox.mjs";
+import { reserveDelivery, sendMessage } from "../lib/messaging.ts";
 import { busyWithPush, readDispatchLedger, readySession } from "../lib/deliver-push.ts";
 import { processStart } from "../lib/process.ts";
 import { writeState } from "../lib/state.ts";
-import { openDurable } from "../runner/durable.mjs";
+import { openDurable } from "../lib/durable.ts";
 import { DELIVERY, deliveryWorkflow } from "../runner/delivery.ts";
 import { MAX_ATTEMPTS, REDELIVER_MS, TTL_MS, createDispatcher } from "../web/server/dispatch.ts";
 import { tempDir } from "./helpers/tmp.mjs";
@@ -41,7 +41,7 @@ const flushed = async () => {
   for (let i = 0; i < 4; i += 1) await new Promise((resolve) => setImmediate(resolve));
 };
 
-// Runner engine: the durable workflow on mock timers, the same deps as runner/runner.mjs wires for an opencode session.
+// Runner engine: the durable workflow on mock timers, the same deps as runner/runner.ts wires for an opencode session.
 async function runnerEngine(s, state, pushes) {
   const dir = tempDir({ after }, "delivery-char-");
   const file = path.join(dir, "runner.db");

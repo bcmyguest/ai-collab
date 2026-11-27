@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { setup } from "./helpers/runner-ctx.mjs";
-import { releaseOwned, reserveOwned } from "../lib/inbox.mjs";
+import { releaseOwned, reserveOwned } from "../lib/messaging.ts";
 
 test("a workflow owner re-acquires its own reservation after a restart; another owner gets nothing until release", async () => {
   const fake = await startFakeNtfy();

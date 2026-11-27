@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig } from "../lib/config.ts";
-import { sendMessage } from "../lib/inbox.mjs";
+import { sendMessage } from "../lib/messaging.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));

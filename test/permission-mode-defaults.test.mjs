@@ -10,9 +10,9 @@ import { runCli } from "../lib/cli.ts";
 import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { launchPatternRun, preparePatternRun } from "../lib/pattern-runs.ts";
 import { slashCommand } from "../lib/slash.ts";
-import { createFakeAdapter } from "../runner/adapters/fake.mjs";
-import { openDurable } from "../runner/durable.mjs";
-import { createRunner } from "../runner/runner.mjs";
+import { createFakeAdapter } from "../runner/adapters/fake.ts";
+import { openDurable } from "../lib/durable.ts";
+import { createRunner } from "../runner/runner.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { fileEnd, tempDir } from "./helpers/tmp.mjs";
 

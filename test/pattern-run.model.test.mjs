@@ -7,7 +7,7 @@ import { test, after } from "node:test";
 import fc from "fast-check";
 import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, cutPatternEntry, cutPatternLeave, launchPatternRun, runStatus } from "../lib/pattern-runs.ts";
 import { patternWorkflowId, runPatternWorkflow, seedPatternRun } from "../lib/pattern-workflow.ts";
-import { openDurable } from "../runner/durable.mjs";
+import { openDurable } from "../lib/durable.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const DONE = "done";
@@ -182,7 +182,7 @@ async function crashPoint(r, wf, point) {
   await waitForAbort(wf);
 }
 
-/** The deps runner/runner.mjs passes to runPatternWorkflow, with a fake start and notify and crash points. */
+/** The deps runner/runner.ts passes to runPatternWorkflow, with a fake start and notify and crash points. */
 function deps(r) {
   const { cfg } = r;
   const env = {};

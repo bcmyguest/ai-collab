@@ -3,9 +3,9 @@ import { test } from "node:test";
 import { publishActivity } from "../lib/activity.ts";
 import { askQuestion } from "../lib/questions.ts";
 import { broadcastTopic, loadConfig } from "../lib/config.ts";
-import { publish } from "../lib/transport.mjs";
-import { sendMessage } from "../lib/inbox.mjs";
-import { createUi } from "../web/server/ui.mjs";
+import { publish } from "../lib/messaging.ts";
+import { sendMessage } from "../lib/messaging.ts";
+import { createUi } from "../web/server/ui.ts";
 import { answerMessage, answerText, terminalMessages } from "../web/lib/operator-messages.js";
 import { peerEnv } from "./helpers/env.mjs";
 

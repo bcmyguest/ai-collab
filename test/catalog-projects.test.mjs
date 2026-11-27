@@ -5,8 +5,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, after } from "node:test";
 import { loadConfig } from "../lib/config.ts";
-import { createPattern, deletePattern, saveTeamText } from "../lib/patterns.mjs";
-import { createTeam, deleteTeam, setProjectClosed } from "../lib/teams.mjs";
+import { createPattern, deletePattern, saveTeamText } from "../lib/catalog/patterns.ts";
+import { createTeam } from "../lib/catalog/roster.ts";
+import { deleteTeam } from "../lib/catalog/teams.ts";
+import { setProjectClosed } from "../lib/catalog/projects.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const WRITER = fileURLToPath(new URL("./helpers/team-writer.mjs", import.meta.url));

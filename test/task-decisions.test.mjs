@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { runCli } from "../lib/cli.ts";
 import { loadProjects } from "../lib/config.ts";
 import { addTask, answerTask, askTask, needsDecision, readStore, taskStoreFile, validateTasks, writeStore } from "../lib/tasks.ts";
-import { createUi } from "../web/server/ui.mjs";
+import { createUi } from "../web/server/ui.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

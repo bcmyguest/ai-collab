@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test, after } from "node:test";
 import path from "node:path";
-import { openDurable } from "../runner/durable.mjs";
-import { createRunner } from "../runner/runner.mjs";
+import { openDurable } from "../lib/durable.ts";
+import { createRunner } from "../runner/runner.ts";
 import { sessionLabel } from "../lib/config.ts";
 import { parseSelection } from "../web/lib/selection.js";
 import { runLink } from "../web/lib/scheduled.js";

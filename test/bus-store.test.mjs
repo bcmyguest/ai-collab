@@ -7,7 +7,7 @@ import { test, after } from "node:test";
 import { createBusServer } from "../lib/bus.ts";
 import { openPostgresBusStore } from "../lib/bus-postgres.ts";
 import { pgUrl } from "../lib/postgres.ts";
-import { pollCached, publish, streamEvents } from "../lib/transport.mjs";
+import { pollCached, publish, streamEvents } from "../lib/messaging.ts";
 import { dbosTestDb } from "./helpers/dbos-env.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

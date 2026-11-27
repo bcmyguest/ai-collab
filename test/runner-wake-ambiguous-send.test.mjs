@@ -2,11 +2,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { sessionLabel } from "../lib/config.ts";
-import { reserveOwned } from "../lib/inbox.mjs";
-import { WAKE } from "../runner/runner.mjs";
+import { reserveOwned } from "../lib/messaging.ts";
+import { WAKE } from "../runner/runner.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { makeRunner, setup, until } from "./helpers/runner-ctx.mjs";
-import { createFakeAdapter } from "../runner/adapters/fake.mjs";
+import { createFakeAdapter } from "../runner/adapters/fake.ts";
 import { wrapSendError } from "./helpers/fake-adapter-hooks.mjs";
 
 const direct = (label, body) => JSON.stringify({ v: 1, kind: "msg", from: "operator", to: "codex", toSession: label, operatorThread: true, ts: new Date().toISOString(), body });

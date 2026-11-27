@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { EventType } from "@ag-ui/core";
 import { envelopeToEvent, parseEvent } from "../lib/agui.ts";
 import { activityTopic } from "../lib/config.ts";
-import { parseEnvelope } from "../lib/inbox.mjs";
+import { parseEnvelope } from "../lib/messaging.ts";
 import { parseMode } from "../lib/mode.ts";
 import { readReceipts } from "../lib/receipts.ts";
 import { publishEvent } from "../runner/publish.ts";

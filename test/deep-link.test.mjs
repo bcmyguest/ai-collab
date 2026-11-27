@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { test } from "node:test";
 import { deepLink, uiBase } from "../lib/deep-link.ts";
-import { publish } from "../lib/transport.mjs";
+import { publish } from "../lib/messaging.ts";
 import { parseSelection } from "../web/lib/selection.js";
 
 const BASE = "https://ui.example.test";

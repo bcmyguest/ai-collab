@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { activityEvents } from "../lib/activity.ts";
 import { activityTopic, loadConfig, sessionLabel } from "../lib/config.ts";
-import { createUi } from "../web/server/ui.mjs";
+import { createUi } from "../web/server/ui.ts";
 import { activityRows, groupSubagents, interleave, runState, runningSubagents, subagentLabel } from "../web/lib/activity-rows.js";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

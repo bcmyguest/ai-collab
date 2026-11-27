@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { sessionLabel } from "../lib/config.ts";
-import { listSessions, recordSession } from "../lib/sessions.mjs";
+import { listSessions, recordSession } from "../lib/sessions/registry.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 test("a session keeps the model its hooks report until a later hook reports another", async (t) => {

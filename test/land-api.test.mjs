@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { loadConfig } from "../lib/config.ts";
 import { LandRefused } from "../lib/land.ts";
-import { createUi } from "../web/server/ui.mjs";
+import { createUi } from "../web/server/ui.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 

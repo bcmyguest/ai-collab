@@ -11,9 +11,9 @@ import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { handedOff, markStopRunning } from "../lib/stop.ts";
 import { processStart } from "../lib/process.ts";
 import { writeState } from "../lib/state.ts";
-import { openDurable } from "../runner/durable.mjs";
+import { openDurable } from "../lib/durable.ts";
 import { deliveryWorkflow } from "../runner/delivery.ts";
-import { createRunner } from "../runner/runner.mjs";
+import { createRunner } from "../runner/runner.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const CLAUDE_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c";

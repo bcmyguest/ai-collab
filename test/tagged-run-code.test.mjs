@@ -7,8 +7,8 @@ import { fileURLToPath } from "node:url";
 import { codexRequiredRunCodeArgs, REQUIRE_RUN_CODE_ENV } from "../lib/code-mode.ts";
 import { loadProjects, sessionLabel } from "../lib/config.ts";
 import { controlSession } from "../lib/sessions/control.ts";
-import { listSessions, recordSession, sessionDirectory } from "../lib/sessions.mjs";
-import { createUi } from "../web/server/ui.mjs";
+import { listSessions, recordSession, sessionDirectory } from "../lib/sessions/registry.ts";
+import { createUi } from "../web/server/ui.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

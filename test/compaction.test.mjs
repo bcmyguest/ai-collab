@@ -2,7 +2,7 @@
 import { EventType } from "@ag-ui/core";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createClaudeAdapter } from "../runner/adapters/claude.mjs";
+import { createClaudeAdapter } from "../runner/adapters/claude.ts";
 import { activityFor } from "../runner/publish.ts";
 import { compactionFields } from "../lib/compaction.ts";
 import { envelopeToEvent, eventToEnvelope, parseWireEnvelope } from "../lib/agui.ts";

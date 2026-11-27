@@ -4,7 +4,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { askQuestion } from "../lib/questions.ts";
 import { loadConfig } from "../lib/config.ts";
-import { createUi } from "../web/server/ui.mjs";
+import { createUi } from "../web/server/ui.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { tempDir } from "./helpers/tmp.mjs";

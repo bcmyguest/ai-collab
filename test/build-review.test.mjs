@@ -6,7 +6,7 @@ import path from "node:path";
 import { test, after } from "node:test";
 import { readStore, reviewPacket, taskStoreFile, writeStore } from "../lib/tasks.ts";
 import { loadProjects } from "../lib/config.ts";
-import { createUi } from "../web/server/ui.mjs";
+import { createUi } from "../web/server/ui.ts";
 import { forgetBranchTips } from "../lib/build-review.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { tempDir } from "./helpers/tmp.mjs";

@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { waitForIdle } from "../lib/agents.ts";
 import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { sessionIdleState } from "../lib/idle.ts";
-import { listSessions, recordSession } from "../lib/sessions.mjs";
+import { listSessions, recordSession } from "../lib/sessions/registry.ts";
 import { sessionState } from "../web/lib/session-state.js";
 import { taskBoard } from "../web/server/task-board.ts";
 import { tempDir } from "./helpers/tmp.mjs";

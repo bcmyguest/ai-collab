@@ -3,8 +3,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test, after } from "node:test";
 import { loadConfig } from "../lib/config.ts";
-import { copyPattern, createPattern, getPattern, removableNames, removePattern, savePattern } from "../lib/patterns.mjs";
-import { createTeam, writeGlobalTeams } from "../lib/teams.mjs";
+import { copyPattern, createPattern, getPattern, removableNames, removePattern, savePattern } from "../lib/catalog/patterns.ts";
+import { createTeam } from "../lib/catalog/roster.ts";
+import { writeGlobalTeams } from "../lib/catalog/teams.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const MODELS = { claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] };

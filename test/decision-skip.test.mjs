@@ -7,7 +7,7 @@ import { parseWireEnvelope } from "../lib/agui.ts";
 import { broadcastTopic, loadProjects } from "../lib/config.ts";
 import { alertLimit, cardFile, chooseLimit, readCard } from "../lib/limit-alert.ts";
 import { addTask, askTask, openTasks, readStore, taskStoreFile, writeStore } from "../lib/tasks.ts";
-import { createUi } from "../web/server/ui.mjs";
+import { createUi } from "../web/server/ui.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
 import { tempDir } from "./helpers/tmp.mjs";

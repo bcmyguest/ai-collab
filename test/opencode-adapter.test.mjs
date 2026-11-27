@@ -9,8 +9,8 @@ import { installOpenCode, mcpEntry, mergeMcp, opencodeConfigDir, pluginShim } fr
 import { opencodeModels, parseOpenCodeModels } from "../lib/models.ts";
 import { packageRoot } from "../lib/install-cursor.ts";
 import { WAKE_PROMPT } from "../lib/mode.ts";
-import { sessionDirectory } from "../lib/sessions.mjs";
-import { START_HARNESSES, outputId, startCommand } from "../lib/start.mjs";
+import { sessionDirectory } from "../lib/sessions/registry.ts";
+import { START_HARNESSES, outputId, startCommand } from "../lib/sessions/launch.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const SRC = packageRoot(import.meta.url);

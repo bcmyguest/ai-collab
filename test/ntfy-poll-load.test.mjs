@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import os from "node:os";
 import { broadcastTopic, inboxTopic, loadConfig } from "../lib/config.ts";
-import { claimInbox, reserveOwned } from "../lib/inbox.mjs";
-import { pollCached } from "../lib/transport.mjs";
+import { claimInbox, reserveOwned } from "../lib/messaging.ts";
+import { pollCached } from "../lib/messaging.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 

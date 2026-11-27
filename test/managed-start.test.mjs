@@ -3,10 +3,10 @@ import { EventEmitter } from "node:events";
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test, after } from "node:test";
-import { startCommand, startSession } from "../lib/start.mjs";
+import { startCommand, startSession } from "../lib/sessions/launch.ts";
 import { loadConfig } from "../lib/config.ts";
 import { runCli } from "../lib/cli.ts";
-import { teamStart } from "../lib/teams.mjs";
+import { teamStart } from "../lib/catalog/roster.ts";
 import { CLAUDE_NO_SUBAGENT_SETTINGS, MANAGED_ENV } from "../lib/subagent-guard.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 

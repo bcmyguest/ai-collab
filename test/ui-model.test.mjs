@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { writeOwned } from "../lib/sessions/registry.ts";
 import { writeState } from "../lib/state.ts";
-import { createUi } from "../web/server/ui.mjs";
+import { createUi } from "../web/server/ui.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { firstUpdate } from "./helpers/ui-stream.mjs";

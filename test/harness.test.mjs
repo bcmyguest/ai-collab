@@ -7,9 +7,9 @@ import { limitFallback } from "../lib/builder.ts";
 import { loadConfig, START_DEFAULT, startDefaultSetting } from "../lib/config.ts";
 import { CURSOR_FALLBACK } from "../lib/limit-alert.ts";
 import { FALLBACK_MODEL, formatHarnessModel, harnessOfBinary, parseHarnessModel } from "../lib/harness.ts";
-import { getPattern, listPatterns } from "../lib/patterns.mjs";
+import { getPattern, listPatterns } from "../lib/catalog/patterns.ts";
 import { harnessOfCommand } from "../lib/schedule-session.ts";
-import { parseMember } from "../lib/teams.mjs";
+import { parseMember } from "../lib/catalog/teams.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 function withDefaults(value) {

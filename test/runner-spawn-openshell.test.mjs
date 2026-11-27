@@ -8,9 +8,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "../lib/config.ts";
 import { listOwned } from "../lib/sessions/registry.ts";
-import { openDurable } from "../runner/durable.mjs";
-import { createRunner } from "../runner/runner.mjs";
-import { createFakeAdapter } from "../runner/adapters/fake.mjs";
+import { openDurable } from "../lib/durable.ts";
+import { createRunner } from "../runner/runner.ts";
+import { createFakeAdapter } from "../runner/adapters/fake.ts";
 import { fileEnd, tempDir } from "./helpers/tmp.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 

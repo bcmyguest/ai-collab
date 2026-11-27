@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
-import { claimInbox } from "../lib/inbox.mjs";
+import { claimInbox } from "../lib/messaging.ts";
 import { loadConfig, sessionLabel } from "../lib/config.ts";
-import { recordSession } from "../lib/sessions.mjs";
-import { openDurable } from "../runner/durable.mjs";
-import { createRunner, WAKE } from "../runner/runner.mjs";
-import { createFakeAdapter } from "../runner/adapters/fake.mjs";
+import { recordSession } from "../lib/sessions/registry.ts";
+import { openDurable } from "../lib/durable.ts";
+import { createRunner, WAKE } from "../runner/runner.ts";
+import { createFakeAdapter } from "../runner/adapters/fake.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 // A throwaway HOME with a project, a state dir and a durable log on the fake ntfy.

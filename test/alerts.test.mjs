@@ -30,7 +30,7 @@ test("a silenced message keeps the silent priority, a buzzing one keeps its own"
 
 test("a silenced publish goes out with ntfy priority 1 and a buzzing one keeps its own", async (t) => {
   const { createServer } = await import("node:http");
-  const { publish } = await import("../lib/transport.mjs");
+  const { publish } = await import("../lib/messaging.ts");
   const bodies = [];
   const server = createServer((req, res) => {
     let data = "";

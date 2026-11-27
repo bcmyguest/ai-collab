@@ -6,7 +6,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EventType } from "@ag-ui/core";
 import { sessionLabel } from "../lib/config.ts";
-import codexAdapter, { APP_SERVER_ARGS } from "../runner/adapters/codex.mjs";
+import codexAdapter, { APP_SERVER_ARGS } from "../runner/adapters/codex.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, NOTICE, eventProblem, permissionSettings } from "../runner/contract.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 

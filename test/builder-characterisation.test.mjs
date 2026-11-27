@@ -11,7 +11,7 @@ import {
 } from "../lib/builder.ts";
 import { FINAL_PHASES, builderExited, readState, updateState, writeState } from "../lib/builder/state.ts";
 import { BUILDER_DIR_CAP, builderLiveRefusal, buildersToRemove, cleanBuilders, worktreeIsProtected } from "../lib/builder-clean.ts";
-import { PROMPT_MAX_CHARS } from "../lib/start.mjs";
+import { PROMPT_MAX_CHARS } from "../lib/sessions/launch.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const DEAD_PID = 0x7fffffef; // no process here can hold this pid; process.kill(pid, 0) says ESRCH

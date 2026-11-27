@@ -1,7 +1,7 @@
 // Claude adapter: a CLI that never answers the handshake fails open and resume within the bound, and closes its query.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createClaudeAdapter } from "../runner/adapters/claude.mjs";
+import { createClaudeAdapter } from "../runner/adapters/claude.ts";
 import { fakeClaudeQuery } from "./helpers/fake-claude-query.mjs";
 
 function fakeCtx() {

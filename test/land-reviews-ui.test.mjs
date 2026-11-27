@@ -9,7 +9,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { loadProjects } from "../lib/config.ts";
 import { createFileBackend, reviewPacket, taskStoreFile } from "../lib/tasks.ts";
-import { createUi } from "../web/server/ui.mjs";
+import { createUi } from "../web/server/ui.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 import { sse } from "./helpers/ui-stream.mjs";

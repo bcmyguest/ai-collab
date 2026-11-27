@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig, sessionLabel } from "../lib/config.ts";
-import { claimInbox, sendMessage } from "../lib/inbox.mjs";
+import { claimInbox, sendMessage } from "../lib/messaging.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

@@ -7,7 +7,7 @@ import { setImmediate as tick } from "node:timers/promises";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig } from "../lib/config.ts";
-import { sendMessage } from "../lib/inbox.mjs";
+import { sendMessage } from "../lib/messaging.ts";
 import { activityEvents, buildActivity } from "../lib/activity.ts";
 import { approvalOutput, approvalRequest } from "../lib/approvals.ts";
 import { contextTokens } from "../lib/usage.ts";

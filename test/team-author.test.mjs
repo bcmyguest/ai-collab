@@ -4,7 +4,7 @@ import path from "node:path";
 import { test, after } from "node:test";
 import { loadConfig } from "../lib/config.ts";
 import { parseDot } from "../lib/catalog/dot.ts";
-import { checkTeamText, listPatterns } from "../lib/patterns.mjs";
+import { checkTeamText, listPatterns } from "../lib/catalog/patterns.ts";
 import { AUTHOR_PROMPT_MAX, authorCommand, authorHarness, authorModel, authorTeam, buildAuthorPrompt, draftTeam, extractDot, saveAuthoredTeam } from "../lib/catalog/author.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 

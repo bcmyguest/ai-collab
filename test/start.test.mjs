@@ -4,8 +4,8 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { loadProjects, sessionLabel } from "../lib/config.ts";
-import { checkPrompt, outputId, startCommand } from "../lib/start.mjs";
-import { createUi } from "../web/server/ui.mjs";
+import { checkPrompt, outputId, startCommand } from "../lib/sessions/launch.ts";
+import { createUi } from "../web/server/ui.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

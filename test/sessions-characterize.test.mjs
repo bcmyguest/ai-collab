@@ -3,11 +3,11 @@ import { test, after } from "node:test";
 import { chmodSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { sessionLabel } from "../lib/config.ts";
-import { claimParentNotice, listSessions, recordSession, sessionPlace, setIdentity, worktreeGone } from "../lib/sessions.mjs";
+import { claimParentNotice, listSessions, recordSession, sessionPlace, setIdentity, worktreeGone } from "../lib/sessions/registry.ts";
 import { harnessCommand } from "../lib/sessions/control.ts";
 import { interruptSession } from "../lib/sessions/control.ts";
 import { scopeLaunch, scopeSupport } from "../lib/sessions/scope.ts";
-import { defaultStartPlace, startRefusal } from "../lib/start.mjs";
+import { defaultStartPlace, startRefusal } from "../lib/sessions/launch.ts";
 import { startSession } from "../lib/sessions/launch.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 

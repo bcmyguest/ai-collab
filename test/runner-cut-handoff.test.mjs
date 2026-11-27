@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { openDurable } from "../runner/durable.mjs";
+import { openDurable } from "../lib/durable.ts";
 import { deliveryWorkflow } from "../runner/delivery.ts";
 import { handedOff, handOff } from "../lib/stop.ts";
 import { tempDir } from "./helpers/tmp.mjs";
@@ -17,7 +17,7 @@ const INPUT = { project: "demo", address: SESSION.id, message: MESSAGE };
 // A first runner that is killed right after its hand-off, before the push step records a result.
 const CHILD = `
 const at = (p) => new URL(p, process.env.ROOT_URL).href;
-const { openDurable } = await import(at("runner/durable.mjs"));
+const { openDurable } = await import(at("lib/durable.ts"));
 const { deliveryWorkflow } = await import(at("runner/delivery.ts"));
 const { handOff } = await import(at("lib/stop.ts"));
 const scfg = JSON.parse(process.env.SCFG);

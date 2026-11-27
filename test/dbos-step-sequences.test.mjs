@@ -13,10 +13,10 @@ const src = (file) => readFileSync(fileURLToPath(new URL(`../${file}`, import.me
 
 // Each workflow the runner registers on the engine, and the functions whose bodies issue its recorded ops.
 const WORKFLOWS = {
-  session: [["runner/runner.mjs", "sessionWorkflow"]],
-  wake: [["runner/runner.mjs", "wakeWorkflow"]],
+  session: [["runner/runner.ts", "sessionWorkflow"]],
+  wake: [["runner/runner.ts", "wakeWorkflow"]],
   delivery: [["runner/delivery.ts", "deliveryWorkflow"]],
-  pattern: [["runner/runner.mjs", "patternWorkflow"], ["runner/runner.mjs", "runPattern"], ["lib/pattern-workflow.ts", "runPatternWorkflow"]],
+  pattern: [["runner/runner.ts", "patternWorkflow"], ["runner/runner.ts", "runPattern"], ["lib/pattern-workflow.ts", "runPatternWorkflow"]],
   "scheduled:*": [["runner/schedules.ts", "tickFn"]],
 };
 const OP = /\b(?:wf|ctx)\.(step|recv|sleep)\(/g;

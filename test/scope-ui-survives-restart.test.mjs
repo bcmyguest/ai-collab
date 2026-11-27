@@ -6,7 +6,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { loadProjects, sessionLabel } from "../lib/config.ts";
 import { resetScopeProbe, scopeAvailable, systemdRunOnPath } from "../lib/sessions/scope.ts";
-import { createUi } from "../web/server/ui.mjs";
+import { createUi } from "../web/server/ui.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 
@@ -165,7 +165,7 @@ test("a session a UI-shaped unit starts is in another cgroup and outlives that u
   writeFileSync(driver, `
 import { writeFileSync } from "node:fs";
 import { loadProjects } from ${JSON.stringify(new URL("../lib/config.ts", import.meta.url).href)};
-import { startSession } from ${JSON.stringify(new URL("../lib/start.mjs", import.meta.url).href)};
+import { startSession } from ${JSON.stringify(new URL("../lib/sessions/launch.ts", import.meta.url).href)};
 const env = process.env;
 const [cfg] = loadProjects(env, { host: "operator" });
 const out = await startSession(cfg, { harness: "claude", prompt: "survive", env });

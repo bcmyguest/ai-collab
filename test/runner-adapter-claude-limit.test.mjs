@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EventType } from "@ag-ui/core";
-import { createClaudeAdapter } from "../runner/adapters/claude.mjs";
+import { createClaudeAdapter } from "../runner/adapters/claude.ts";
 import { LIMIT, eventProblem } from "../runner/contract.ts";
 
 // Minimal scripted query: each user message gets the messages the test emits for it, then a result.

@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { EventType } from "@ag-ui/core";
 import { permissionSettings } from "../runner/contract.ts";
-import codexAdapter from "../runner/adapters/codex.mjs";
+import codexAdapter from "../runner/adapters/codex.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const HELPER = fileURLToPath(new URL("./helpers/fake-codex-silent-app-server.mjs", import.meta.url));

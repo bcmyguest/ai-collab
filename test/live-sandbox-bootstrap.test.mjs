@@ -4,7 +4,7 @@ import { rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { test, after } from "node:test";
 import { sandboxRun } from "../runner/sandbox-run.mjs";
-import { parseSandboxList, runTool } from "../runner/sandbox.mjs";
+import { parseSandboxList, runTool } from "../lib/sandbox.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const matrix = ["claude", "codex", "cursor-agent", "opencode"];

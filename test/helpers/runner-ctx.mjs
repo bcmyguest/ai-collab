@@ -3,8 +3,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { loadConfig } from "../../lib/config.ts";
-import { openDurable } from "../../runner/durable.mjs";
-import { createRunner } from "../../runner/runner.mjs";
+import { openDurable } from "../../lib/durable.ts";
+import { createRunner } from "../../runner/runner.ts";
 import { fileEnd, tempDir } from "./tmp.mjs";
 
 export function setup(fake) {

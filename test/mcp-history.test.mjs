@@ -4,7 +4,7 @@ import { createInterface } from "node:readline";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "../lib/config.ts";
-import { claimInbox, sendMessage } from "../lib/inbox.mjs";
+import { claimInbox, sendMessage } from "../lib/messaging.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 

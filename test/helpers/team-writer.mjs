@@ -1,6 +1,6 @@
 // Child process for the projects.json concurrency test: creates teams one by one, retrying when the lock is busy.
 import { loadConfig } from "../../lib/config.ts";
-import { createTeam } from "../../lib/teams.mjs";
+import { createTeam } from "../../lib/catalog/roster.ts";
 
 async function main() {
   const [env, prefix, count] = [JSON.parse(process.argv[2]), process.argv[3], Number(process.argv[4])];

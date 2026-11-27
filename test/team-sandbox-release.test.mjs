@@ -6,10 +6,10 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync }
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import cursorAdapter, { sandboxName } from "../runner/adapters/cursor.mjs";
-import { teamSandboxName } from "../runner/sandbox.mjs";
+import { teamSandboxName } from "../lib/sandbox.ts";
 import { loadConfig } from "../lib/config.ts";
 import { runStatus } from "../lib/pattern-runs.ts";
-import { saveTeamText } from "../lib/patterns.mjs";
+import { saveTeamText } from "../lib/catalog/patterns.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { makeRunner, setup, until } from "./helpers/runner-ctx.mjs";
 import { tempDir } from "./helpers/tmp.mjs";

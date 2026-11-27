@@ -3,7 +3,7 @@ import { test, after } from "node:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { gitRoot, listProjects, loadConfig, loadProjects, projectName, sessionLabel } from "../lib/config.ts";
-import { recordSession } from "../lib/sessions.mjs";
+import { recordSession } from "../lib/sessions/registry.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const SESSION_ID = "0123456789abcdef-session";

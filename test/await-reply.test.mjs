@@ -5,7 +5,7 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig } from "../lib/config.ts";
 import { awaitReply } from "../lib/agents.ts";
-import { sendMessage } from "../lib/inbox.mjs";
+import { sendMessage } from "../lib/messaging.ts";
 
 // Stands in for the ntfy stream waiter: returns after a short pause, so the loop polls again.
 const idleWait = async () => { await delay(20); return "timeout"; };

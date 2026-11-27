@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig } from "../lib/config.ts";
-import { claimInbox, sendMessage } from "../lib/inbox.mjs";
+import { claimInbox, sendMessage } from "../lib/messaging.ts";
 import { currentMode, currentModeKnown, latestMode, operatorConfigs, parseMode, projectMode, publishMode, storedMode, takeModeNote } from "../lib/mode.ts";
 import { runCli } from "../lib/cli.ts";
 import { tempDir } from "./helpers/tmp.mjs";

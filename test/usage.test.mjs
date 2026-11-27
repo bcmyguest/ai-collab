@@ -6,7 +6,7 @@ import { test, after } from "node:test";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig } from "../lib/config.ts";
-import { claimInbox } from "../lib/inbox.mjs";
+import { claimInbox } from "../lib/messaging.ts";
 import { contextTokens, reportContext } from "../lib/usage.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 

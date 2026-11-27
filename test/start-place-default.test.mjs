@@ -4,9 +4,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { START_PLACE, loadConfig, startPlaceSetting } from "../lib/config.ts";
-import { openDurable } from "../runner/durable.mjs";
-import { createRunner } from "../runner/runner.mjs";
-import { createFakeAdapter } from "../runner/adapters/fake.mjs";
+import { openDurable } from "../lib/durable.ts";
+import { createRunner } from "../runner/runner.ts";
+import { createFakeAdapter } from "../runner/adapters/fake.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { fileEnd, tempDir } from "./helpers/tmp.mjs";
 

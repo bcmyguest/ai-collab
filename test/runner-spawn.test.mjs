@@ -8,11 +8,11 @@ import { readOwned, writeOwned } from "../lib/sessions/registry.ts";
 import { MANAGED_ENV } from "../lib/subagent-guard.ts";
 import { PROMPT_MAX_CHARS } from "../lib/sessions/launch.ts";
 import { spawnBriefNote, spawnSelfNote } from "../lib/spawn.ts";
-import { listSessions } from "../lib/sessions.mjs";
-import { openDurable } from "../runner/durable.mjs";
-import { createRunner } from "../runner/runner.mjs";
+import { listSessions } from "../lib/sessions/registry.ts";
+import { openDurable } from "../lib/durable.ts";
+import { createRunner } from "../runner/runner.ts";
 import { route } from "../runner/control.ts";
-import { createFakeAdapter } from "../runner/adapters/fake.mjs";
+import { createFakeAdapter } from "../runner/adapters/fake.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { fileEnd, tempDir } from "./helpers/tmp.mjs";
 

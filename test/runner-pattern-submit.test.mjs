@@ -4,11 +4,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { saveTeamText } from "../lib/patterns.mjs";
+import { saveTeamText } from "../lib/catalog/patterns.ts";
 import { adaptSqlite } from "../lib/workflows.ts";
-import { createFakeAdapter } from "../runner/adapters/fake.mjs";
-import { openDurable } from "../runner/durable.mjs";
-import { createRunner } from "../runner/runner.mjs";
+import { createFakeAdapter } from "../runner/adapters/fake.ts";
+import { openDurable } from "../lib/durable.ts";
+import { createRunner } from "../runner/runner.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { setup } from "./helpers/runner-ctx.mjs";
 

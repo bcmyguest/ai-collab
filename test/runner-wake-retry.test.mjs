@@ -6,13 +6,13 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { sessionLabel } from "../lib/config.ts";
-import { reserveOwned } from "../lib/inbox.mjs";
+import { reserveOwned } from "../lib/messaging.ts";
 import { permissionSettings } from "../runner/contract.ts";
-import codexAdapter from "../runner/adapters/codex.mjs";
-import { WAKE, WAKE_SEND_ATTEMPTS } from "../runner/runner.mjs";
+import codexAdapter from "../runner/adapters/codex.ts";
+import { WAKE, WAKE_SEND_ATTEMPTS } from "../runner/runner.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { makeRunner, setup, until } from "./helpers/runner-ctx.mjs";
-import { createFakeAdapter } from "../runner/adapters/fake.mjs";
+import { createFakeAdapter } from "../runner/adapters/fake.ts";
 
 const HELPER = fileURLToPath(new URL("./helpers/fake-codex-app-server.mjs", import.meta.url));
 const CODEX = { file: process.execPath, args: [HELPER, "app-server"], version: ["--version"] };

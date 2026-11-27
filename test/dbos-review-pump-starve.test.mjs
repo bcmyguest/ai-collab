@@ -4,8 +4,8 @@ import { test } from "node:test";
 import { randomUUID } from "node:crypto";
 const SRC = process.env.SRC || new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 const { sessionLabel } = await import(`${SRC}/lib/config.ts`);
-const { recordSession } = await import(`${SRC}/lib/sessions.mjs`);
-const { openDurable } = await import(`${SRC}/runner/durable.mjs`);
+const { recordSession } = await import(`${SRC}/lib/sessions/registry.ts`);
+const { openDurable } = await import(`${SRC}/lib/durable.ts`);
 const { startFakeNtfy } = await import(`${SRC}/test/helpers/fake-ntfy.mjs`);
 const { makeRunner, procStart, setup } = await import(`${SRC}/test/helpers/runner-ctx.mjs`);
 

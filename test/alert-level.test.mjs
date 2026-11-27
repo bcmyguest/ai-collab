@@ -4,7 +4,7 @@ import { test, after } from "node:test";
 import { loadConfig } from "../lib/config.ts";
 import { readAlertLevel } from "../lib/alerts.ts";
 import { isAlertLevel, readRememberedAlertLevel, rememberAlertLevel, shownAlertLevel, subscriptionUsesKey } from "../web/lib/alert-level.js";
-import { createUi } from "../web/server/ui.mjs";
+import { createUi } from "../web/server/ui.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";

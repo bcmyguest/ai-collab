@@ -80,7 +80,7 @@ test("dropping the wake.more step breaks the recorded log (the regression this g
 });
 
 test("the runner wake loop keeps the recorded wake.more step before its recv", () => {
-  const src = readFileSync(path.join(HERE, "..", "runner", "runner.mjs"), "utf8");
+  const src = readFileSync(path.join(HERE, "..", "runner", "runner.ts"), "utf8");
   const more = src.indexOf('wf.step("wake.more"');
   const recv = src.indexOf("wf.recv(WAKE_TOPIC");
   assert.ok(more !== -1, 'the wake loop must keep the recorded step("wake.more") for pre-upgrade logs');

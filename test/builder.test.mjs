@@ -12,19 +12,19 @@ import { runCli } from "../lib/cli.ts";
 import {
   briefNotes, builderPaths, builderAssignment, builderSandbox, builderPolicy, captureHooks, cursorLimitPath, harnessCommand, hostCaptureEvents, parseRecordedCall, replayable, sharedLibs, toolSources,
 } from "../lib/builder.ts";
-import { createUi } from "../web/server/ui.mjs";
+import { createUi } from "../web/server/ui.ts";
 import { listOwned } from "../lib/sessions/registry.ts";
 import { taskStoreFile } from "../lib/tasks.ts";
-import { saveTeamText } from "../lib/patterns.mjs";
+import { saveTeamText } from "../lib/catalog/patterns.ts";
 import { loadConfig } from "../lib/config.ts";
 import { toolClient } from "../lib/tool-api.ts";
 import { hostCaller } from "../lib/code-run.ts";
 import { setProjectPaused } from "../lib/project-pause.ts";
 import { parseWireEnvelope } from "../lib/agui.ts";
-import { openDurable } from "../runner/durable.mjs";
-import { createRunner } from "../runner/runner.mjs";
+import { openDurable } from "../lib/durable.ts";
+import { createRunner } from "../runner/runner.ts";
 import { listenControl } from "../runner/control.ts";
-import codexAdapter from "../runner/adapters/codex.mjs";
+import codexAdapter from "../runner/adapters/codex.ts";
 import { startTaskWakes } from "../runner/task-wake.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { firstUpdate } from "./helpers/ui-stream.mjs";

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test, after } from "node:test";
 import { DotError, parseDot, serializeDot } from "../lib/catalog/dot.ts";
-import { claudePermissionFor } from "../lib/start.mjs";
+import { claudePermissionFor } from "../lib/sessions/launch.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const TEAM = `digraph "duo" {

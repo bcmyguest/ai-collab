@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { mock, test, after } from "node:test";
 import fc from "fast-check";
 import { MAX_ATTEMPTS, nextAction, REDELIVER_MS, TTL_MS } from "../lib/delivery.ts";
-import { openDurable } from "../runner/durable.mjs";
+import { openDurable } from "../lib/durable.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 // DELIVERY_IMPL points the model at another delivery.mjs, e.g. a scratch copy with a planted bug.

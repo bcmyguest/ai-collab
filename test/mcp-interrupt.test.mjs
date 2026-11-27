@@ -4,7 +4,7 @@ import { createInterface } from "node:readline";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { loadConfig, sessionLabel } from "../lib/config.ts";
-import { listSessions, recordSession } from "../lib/sessions.mjs";
+import { listSessions, recordSession } from "../lib/sessions/registry.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 

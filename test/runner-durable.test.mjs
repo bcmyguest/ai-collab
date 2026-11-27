@@ -1,7 +1,7 @@
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { openDurable, NonDeterminismError } from "../runner/durable.mjs";
+import { openDurable, NonDeterminismError } from "../lib/durable.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const dbFile = () => path.join(tempDir({ after }, "ai-collab-durable-"), "runner.db");

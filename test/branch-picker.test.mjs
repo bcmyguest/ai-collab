@@ -6,7 +6,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { loadProjects } from "../lib/config.ts";
 import { checkBranchName, checkWorktreePath, filterRefs, gitRunner, listBranches, listWorktrees, parseRefs, refInputError, resolveBase, worktreeTarget } from "../lib/sessions/git-refs.ts";
-import { createUi } from "../web/server/ui.mjs";
+import { createUi } from "../web/server/ui.ts";
 import { EMPTY_PICK, createOption, envChoice, envOptions, envPayload, looksLikeBranch, markSegments, prNumber, shortSha, triggerLabel, worktreeMarks } from "../web/lib/branch-picker.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { tempDir } from "./helpers/tmp.mjs";

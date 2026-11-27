@@ -4,10 +4,10 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import { createBusServer, openMemoryStore } from "../lib/bus.ts";
 import { loadConfig } from "../lib/config.ts";
-import { claimInbox, parseEnvelope, sendMessage } from "../lib/inbox.mjs";
+import { claimInbox, parseEnvelope, sendMessage } from "../lib/messaging.ts";
 import { settleReceipts } from "../lib/receipts.ts";
 import { readInbox, waitUntil } from "../lib/messaging.ts";
-import { pollCached, publish, querySafe, streamEvents } from "../lib/transport.mjs";
+import { pollCached, publish, querySafe, streamEvents } from "../lib/messaging.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const PROJECT = "demo";

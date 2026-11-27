@@ -57,7 +57,7 @@ async function openBusTmp(kind) {
   };
 }
 
-// Raw poll lines, not pollCached: messageEvent drops fields it does not model, reset included (lib/transport.mjs:161,168).
+// Raw poll lines, not pollCached: messageEvent drops fields it does not model, reset included (lib/messaging.ts).
 async function pollLines(bus, topic, since) {
   const res = await fetch(`${bus.url}/${encodeURIComponent(topic)}/json?poll=1&since=${encodeURIComponent(since)}`, {
     headers: { authorization: `Bearer ${TOKEN}` },

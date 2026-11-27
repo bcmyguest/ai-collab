@@ -6,7 +6,7 @@ import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig } from "../lib/config.ts";
 import { waitForReply } from "../lib/agents.ts";
 import { runCli } from "../lib/cli.ts";
-import { claimInbox, sendMessage } from "../lib/inbox.mjs";
+import { claimInbox, sendMessage } from "../lib/messaging.ts";
 
 // Stands in for the ntfy stream waiter: returns after a short pause, so the loop polls again.
 const idleWait = async () => { await delay(20); return "event"; };

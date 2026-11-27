@@ -5,8 +5,8 @@ import { sessionLabel } from "../lib/config.ts";
 import { readOwned } from "../lib/sessions/registry.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { makeRunner, setup } from "./helpers/runner-ctx.mjs";
-import { createFakeAdapter } from "../runner/adapters/fake.mjs";
-import { createClaudeAdapter } from "../runner/adapters/claude.mjs";
+import { createFakeAdapter } from "../runner/adapters/fake.ts";
+import { createClaudeAdapter } from "../runner/adapters/claude.ts";
 import { fakeClaudeQuery } from "./helpers/fake-claude-query.mjs";
 import { wrapOpen } from "./helpers/fake-adapter-hooks.mjs";
 

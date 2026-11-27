@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.ts";
-import { claimInbox, sendMessage } from "../lib/inbox.mjs";
+import { claimInbox, sendMessage } from "../lib/messaging.ts";
 import { readySession } from "../lib/deliver-push.ts";
 import { markStopRunning, takeHandoff } from "../lib/stop.ts";
 import { processStart } from "../lib/process.ts";

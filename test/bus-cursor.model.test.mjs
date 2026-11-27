@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { test, after } from "node:test";
 import diagnostics from "node:diagnostics_channel";
 import fc from "fast-check";
-import { pollCached, streamEvents } from "../lib/transport.mjs";
+import { pollCached, streamEvents } from "../lib/messaging.ts";
 import { openPostgresBusStore } from "../lib/bus-postgres.ts";
 import { pgUrl } from "../lib/postgres.ts";
 import { dbosTestDb } from "./helpers/dbos-env.mjs";
