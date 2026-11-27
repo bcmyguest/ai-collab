@@ -372,6 +372,9 @@ export default function cursorAdapter(config = {}) {
   // The CLI tree uploaded into a sandbox: the version directory that holds the host binary's real path.
   const cursorTree = envOf.AI_COLLAB_CURSOR_TREE || treeOf(cursorBin, lookupPath);
   let policyPath = envOf.AI_COLLAB_OPENSHELL_POLICY || "";
+  // writePolicy's temp dir ("" when the env names the policy), removed when its last session releases or at shutdown.
+  let policyDir = "";
+  let policyUsers = 0;
   const connections = new Set();
   // One sandbox per project, reused: created by the first session and deleted when the last one closes.
   const sandboxes = new Map();
@@ -396,7 +399,14 @@ export default function cursorAdapter(config = {}) {
       if (spec.place === "openshell") {
         // One sandbox per project, reused: created by the first session and deleted when the last one closes.
         const name = sandboxOf(spec);
-        policyPath ||= writePolicy(cursorTree);
+        if (!policyPath) {
+          policyPath = writePolicy(cursorTree);
+          policyDir = policyPath && dirname(policyPath);
+        }
+        if (policyDir) {
+          policyUsers++;
+          session.policyDir = policyDir;
+        }
         sandbox = await ensureSandboxIn({ openshell: openshellBin, env, name, policy: policyPath, labels: sandboxLabels({ project: spec.project, ...ownerOf(spec) }) });
         if (!held) claim(sandbox, spec.cwd);
         session.sandbox = sandbox;
@@ -566,7 +576,20 @@ export default function cursorAdapter(config = {}) {
     return session.release;
   }
 
+  // Removes the written policy dir; the next sandbox session writes a fresh one.
+  function dropPolicy() {
+    if (!policyDir) return;
+    rmSync(policyDir, { recursive: true, force: true });
+    policyDir = "";
+    policyPath = "";
+    policyUsers = 0;
+  }
+
   async function releaseSandbox(session) {
+    if (session.policyDir) {
+      if (session.policyDir === policyDir && --policyUsers === 0) dropPolicy();
+      session.policyDir = "";
+    }
     const name = session.sandbox;
     session.sandbox = null;
     const log = session.ctx.log;
@@ -702,6 +725,7 @@ export default function cursorAdapter(config = {}) {
     async shutdown() {
       for (const conn of connections) conn.kill();
       connections.clear();
+      dropPolicy();
     },
   };
 }
