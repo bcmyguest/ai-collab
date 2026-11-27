@@ -59,7 +59,7 @@ test("opening the store twice keeps one schema: tables, the events column, and r
   const made = await store.threads.create({ project: "demo", title: "first", worktree: TREE });
   const again = await open();
   const tables = await query("SELECT table_name FROM information_schema.tables WHERE table_schema = $1 ORDER BY table_name", [schema]);
-  assert.deepEqual(tables.map((row) => row.table_name), ["events", "files", "thread_prs", "thread_sessions", "threads"]);
+  assert.deepEqual(tables.map((row) => row.table_name), ["events", "files", "thread_listeners", "thread_prs", "thread_sessions", "threads"]);
   const column = await query("SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'events' AND column_name = 'thread_id'", [schema]);
   assert.equal(column.length, 1);
   assert.equal((await again.threads.get(made.id)).title, "first");

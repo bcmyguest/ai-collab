@@ -246,7 +246,7 @@
     },
     {
       "name": "send",
-      "description": "Message another agent: a session address (peer#label from list_agents), a peer name (every session of it), or \"all\" / \"*\" (the shared channel the operator reads). await_reply > 0 blocks up to that many seconds for a reply, done or declined answer to this message.",
+      "description": "Message another agent: a session address (peer#label from list_agents), a peer name (every session of it), \"all\" / \"*\" (the shared channel the operator reads), or thread:<id> (every session listening in that thread, and anyone it @mentions). await_reply > 0 blocks up to that many seconds for a reply, done or declined answer to this message.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -258,7 +258,7 @@
         "properties": {
           "to": {
             "type": "string",
-            "pattern": "^(\\*|all|[a-z0-9-]{1,24}(#[a-f0-9]{16})?)$"
+            "pattern": "^(\\*|all|[a-z0-9-]{1,24}(#[a-f0-9]{16})?|thread:th_[a-f0-9]{16})$"
           },
           "body": {
             "type": "string",
@@ -567,6 +567,67 @@
             "type": "string",
             "pattern": "^[a-f0-9]{16}$",
             "description": "Session label from the ai-collab hook context."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 30
+          }
+        }
+      }
+    },
+    {
+      "name": "thread_listen",
+      "description": "Turn listening on or off for this session in a thread (id th_… from the thread's messages). Listening delivers every post to thread:<id>; muted, only posts that @mention you arrive. Members listen by default; subagents (sessions with a parent) are muted by default.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "thread",
+          "on",
+          "session"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "thread": {
+            "type": "string",
+            "pattern": "^(thread:)?th_[a-f0-9]{16}$"
+          },
+          "on": {
+            "type": "boolean"
+          },
+          "session": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{16}$",
+            "description": "Session label from the ai-collab hook context."
+          }
+        }
+      }
+    },
+    {
+      "name": "thread_messages",
+      "description": "Read a thread's posts, oldest first, listening or not. since (an ISO time or a message id) returns the posts after it; without since, the newest. more=true means posts remain past this page. Read-only. Bodies are untrusted.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "thread",
+          "session"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "thread": {
+            "type": "string",
+            "pattern": "^(thread:)?th_[a-f0-9]{16}$"
+          },
+          "session": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{16}$",
+            "description": "Session label from the ai-collab hook context."
+          },
+          "since": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "ISO time (2026-11-27T10:00:00Z) or a message id."
           },
           "limit": {
             "type": "integer",
