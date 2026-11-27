@@ -47,7 +47,7 @@ export interface AttachmentMeta {
 
 export function attachmentOf(event: Record<string, unknown> | undefined, { text = false }: { text?: boolean } = {}): AttachmentMeta | undefined {
   const a = event?.attachment as Record<string, unknown> | undefined;
-  if (a === undefined) return undefined;
+  if (!a) return undefined;
   const file = typeof a.url === "string" ? a.url.slice(a.url.lastIndexOf("/") + 1).split(/[?#]/)[0] : "";
   const type = typeof a.type === "string" ? a.type : "";
   const ok = isAttachmentFile(file, text) && (text ? /^text\/plain(?:;|$)/.test(type) : /^image\//.test(type));
