@@ -9,8 +9,8 @@ import { HARNESSES } from "./contract.mjs";
 import { openWorkflows } from "../lib/workflows.ts";
 import { pgUrl } from "../lib/postgres.ts";
 import { createRunner } from "./runner.mjs";
-import { listenControl, runnerSocket } from "./control.mjs";
-import { loadSchedules, registerSchedules } from "./schedules.mjs";
+import { listenControl, runnerSocket } from "./control.ts";
+import { loadSchedules, registerSchedules } from "./schedules.ts";
 import { startTaskWakes } from "./task-wake.mjs";
 import { acquireLock } from "./lock.ts";
 

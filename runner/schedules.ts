@@ -1,7 +1,8 @@
 // Scheduled commands: schedules.json entries become durable scheduled workflows that run one command per tick.
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessByStdio } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { configDir, listProjects, stateDir } from "../lib/config.mjs";
 import { MISSION_FILE, withMission } from "../lib/mission.ts";
@@ -21,6 +22,23 @@ export const KILL_GRACE_MS = 5000;
 export const TICK_STEP = "command";
 const MAX_EVERY_MINUTES = 525_600;
 const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
+
+// oxlint-disable-next-line typescript/no-explicit-any -- schedules.json entries are user JSON checked field by field
+type Json = any;
+export type ScheduleEntry = { name: string; everyMs: number; cwd: string; command: string[]; timeoutMs: number; wakeOnTasks?: string; sandbox?: true; workspace?: string };
+export type CommandResult = { ok: boolean; exitCode: number | null; signal: NodeJS.Signals | null; timedOut: boolean; durationMs: number; tail: string; cut?: string };
+export type RunOptions = { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; signal?: AbortSignal; graceMs?: number; scope?: { env?: NodeJS.ProcessEnv; label?: string; description?: string } | null };
+/** The durable workflow context a tick runs in (lib/durable). */
+type TickWf = {
+  signal?: AbortSignal;
+  step(name: string, fn: () => CommandResult | Promise<CommandResult>, opts: { onCut: () => CommandResult }): Promise<CommandResult>;
+};
+type Log = (line: string) => void;
+export type TickOptions = { env?: NodeJS.ProcessEnv; log?: Log; graceMs?: number; projects?: Json[]; refresh?: typeof refreshPmWorkspace };
+/** The durable log's scheduled-workflow registration (lib/durable). */
+type ScheduleHost = { scheduled(name: string, opts: { everyMs: number; firstStep: string }, fn: (scheduledTime: Date, actualTime: Date, wf: TickWf) => Promise<TickResult>): void };
+export type TickResult = CommandResult & { scheduledTime: string; actualTime: string };
+export type LoadedSchedules = { entries: ScheduleEntry[]; errors: string[] };
 const KEYS = ["name", "everyMinutes", "cwd", "command", "timeoutSec", "wakeOnTasks", "sandbox", "workspace"];
 // Runs a "sandbox": true entry's agent command inside a fresh OpenShell sandbox (runner/sandbox-run.mjs).
 export const SANDBOX_RUN = fileURLToPath(new URL("./sandbox-run.mjs", import.meta.url));
@@ -33,14 +51,14 @@ const SANDBOX_RUN_KEYS = [
 ];
 
 /** The schedules file: AI_COLLAB_SCHEDULES, else <config dir>/schedules.json. */
-export const schedulesPath = (env = process.env) => env.AI_COLLAB_SCHEDULES || join(configDir(env), "schedules.json");
+export const schedulesPath = (env: NodeJS.ProcessEnv = process.env): string => env.AI_COLLAB_SCHEDULES || join(configDir(env), "schedules.json");
 
-function invalid(index, message) {
+function invalid(index: number, message: string): never {
   throw new Error(`schedules.json entry ${index}: ${message}`);
 }
 
 // Checks one entry and returns it with everyMs and timeoutMs; throws on the first problem.
-function checkEntry(entry, index) {
+function checkEntry(entry: Json, index: number): ScheduleEntry {
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) invalid(index, "not an object");
   if (entry.cron !== undefined) invalid(index, "cron schedules are not supported; use everyMinutes");
   const unknown = Object.keys(entry).filter((key) => !KEYS.includes(key));
@@ -51,7 +69,7 @@ function checkEntry(entry, index) {
   }
   if (typeof entry.cwd !== "string" || !isAbsolute(entry.cwd)) invalid(index, "cwd must be an absolute path");
   if (!statSync(entry.cwd, { throwIfNoEntry: false })?.isDirectory()) invalid(index, `cwd ${entry.cwd} is not a directory`);
-  if (!Array.isArray(entry.command) || !entry.command.length || !entry.command.every((arg) => typeof arg === "string") || !entry.command[0]) {
+  if (!Array.isArray(entry.command) || !entry.command.length || !entry.command.every((arg: unknown) => typeof arg === "string") || !entry.command[0]) {
     invalid(index, "command must be a non-empty array of strings");
   }
   const timeoutSec = entry.timeoutSec ?? DEFAULT_TIMEOUT_SEC;
@@ -70,25 +88,25 @@ function checkEntry(entry, index) {
  * Reads the schedules file. Returns {entries, errors}: each invalid entry is left out and reported, so one typo
  * does not stop the others. A missing file is no schedules.
  */
-export function loadSchedules(env = process.env) {
+export function loadSchedules(env: NodeJS.ProcessEnv = process.env): LoadedSchedules {
   const file = schedulesPath(env);
-  let text;
+  let text: string;
   try {
     text = readFileSync(file, "utf8");
   } catch (error) {
-    if (error.code === "ENOENT") return { entries: [], errors: [] };
-    return { entries: [], errors: [`${file}: ${error.message}`] };
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { entries: [], errors: [] };
+    return { entries: [], errors: [`${file}: ${(error as Error).message}`] };
   }
-  let list;
+  let list: unknown;
   try {
     list = JSON.parse(text);
   } catch (error) {
-    return { entries: [], errors: [`${file} is not valid JSON: ${error.message}`] };
+    return { entries: [], errors: [`${file} is not valid JSON: ${(error as Error).message}`] };
   }
   if (!Array.isArray(list)) return { entries: [], errors: [`${file} must hold a JSON array of schedules`] };
-  const entries = [];
-  const errors = [];
-  const names = new Set();
+  const entries: ScheduleEntry[] = [];
+  const errors: string[] = [];
+  const names = new Set<string>();
   list.forEach((raw, index) => {
     try {
       const entry = checkEntry(raw, index);
@@ -96,7 +114,7 @@ export function loadSchedules(env = process.env) {
       names.add(entry.name);
       entries.push(entry);
     } catch (error) {
-      errors.push(error.message);
+      errors.push((error as Error).message);
     }
   });
   return { entries, errors };
@@ -108,28 +126,28 @@ export function loadSchedules(env = process.env) {
  * With `scope`, the command runs in its own transient systemd scope, so a runner restart does not kill an agent it
  * started; the scope execs the command, so the process group and the timeout handling are the same either way.
  */
-export function runCommand(command, { cwd, env = process.env, timeoutMs, signal, graceMs = KILL_GRACE_MS, scope = null }) {
+export function runCommand(command: string[], { cwd, env = process.env, timeoutMs, signal, graceMs = KILL_GRACE_MS, scope = null }: RunOptions): Promise<CommandResult> {
   const [given, ...givenArgs] = command;
   // A scope outlives this process, so the timeout is also handed to systemd: it cuts the command if the caller dies.
   const launch = scope ? scopeLaunch(command, { ...scope, kind: "schedule", runtimeMaxSec: timeoutMs === undefined ? 0 : timeoutMs / 1000 }) : null;
   const [file, runArgs] = launch ? [launch.file, launch.args] : [given, givenArgs];
   const started = Date.now();
-  return new Promise((resolve, reject) => {
+  return new Promise<CommandResult>((resolve, reject) => {
     if (signal?.aborted) return reject(signal.reason);
-    const child = spawn(file, runArgs, { cwd, env, stdio: ["ignore", "pipe", "pipe"], detached: true, windowsHide: true });
+    const child: ChildProcessByStdio<null, Readable, Readable> = spawn(file, runArgs, { cwd, env, stdio: ["ignore", "pipe", "pipe"], detached: true, windowsHide: true });
     let tail = "";
     let timedOut = false;
     let aborted = false;
-    let exit = null;
-    let spawnError = null;
-    let deadline;
-    let escalate;
-    let giveUp;
-    let closeFallback;
+    let exit: { code: number | null; signal: NodeJS.Signals | null } | null = null;
+    let spawnError: Error | null = null;
+    let deadline: NodeJS.Timeout | undefined;
+    let escalate: NodeJS.Timeout | undefined;
+    let giveUp: NodeJS.Timeout | undefined;
+    let closeFallback: NodeJS.Timeout | undefined;
     let settled = false;
 
-    const keep = (chunk) => { tail = (tail + chunk).slice(-TAIL_CHARS); };
-    const killGroup = (sig) => {
+    const keep = (chunk: Buffer | string) => { tail = (tail + chunk).slice(-TAIL_CHARS); };
+    const killGroup = (sig: NodeJS.Signals) => {
       const { pid } = child;
       if (pid === undefined) return;
       try { process.kill(-pid, sig); } catch { /* the group is already gone */ }
@@ -138,10 +156,10 @@ export function runCommand(command, { cwd, env = process.env, timeoutMs, signal,
       if (settled) return;
       settled = true;
       // A process left running may still hold the pipes: drain them without keeping its output.
-      for (const stream of [child.stdout, child.stderr]) { stream.removeListener("data", keep); stream.resume(); stream.unref?.(); }
+      for (const stream of [child.stdout, child.stderr]) { stream.removeListener("data", keep); stream.resume(); (stream as Readable & { unref?: () => void }).unref?.(); }
       for (const timer of [deadline, escalate, giveUp, closeFallback]) clearTimeout(timer);
       signal?.removeEventListener("abort", onAbort);
-      if (aborted) return reject(signal.reason);
+      if (aborted) return reject((signal as AbortSignal).reason);
       const durationMs = Date.now() - started;
       if (spawnError) return resolve({ ok: false, exitCode: null, signal: null, timedOut: false, durationMs, tail: spawnError.message.slice(-TAIL_CHARS) });
       resolve({ ok: !timedOut && exit?.code === 0, exitCode: exit?.code ?? null, signal: exit?.signal ?? null, timedOut, durationMs, tail });
@@ -174,13 +192,13 @@ export function runCommand(command, { cwd, env = process.env, timeoutMs, signal,
 }
 
 /** The argv a sandboxed entry's tick runs: the sandbox runner, then the agent command after "--". */
-export function sandboxRunCommand(entry, command, project = "") {
+export function sandboxRunCommand(entry: { name: string; cwd: string }, command: string[], project: string = ""): string[] {
   return [process.execPath, SANDBOX_RUN, "--name", entry.name, "--cwd", entry.cwd, ...(project ? ["--project", project] : []), "--", ...command];
 }
 
 /** The workflow body for one entry: one checkpointed command step, not re-run after a cut. */
-export function tickFn(entry, { env = process.env, log = () => {}, graceMs, projects, refresh = refreshPmWorkspace } = {}) {
-  return async (scheduledTime, actualTime, wf) => {
+export function tickFn(entry: ScheduleEntry, { env = process.env, log = () => {}, graceMs, projects, refresh = refreshPmWorkspace }: TickOptions = {}) {
+  return async (scheduledTime: Date, actualTime: Date, wf: TickWf): Promise<TickResult> => {
     // The mission file is read here, every tick, so a PM edit reaches the next tick without touching schedules.json.
     // cwd stays the registered project. A pm workspace is a separate clone: the command and the mission come from it.
     const project = projectOfFolder(entry.cwd, projects ?? listProjects(env));
@@ -205,14 +223,14 @@ export function tickFn(entry, { env = process.env, log = () => {}, graceMs, proj
     const reviewedCommand = withReview(command, { project });
     // The command runs in its own scope, so a runner restart does not kill an agent a tick started; it also outlives
     // the tick's own timeout only if the scope cannot be made, where the group kill still applies.
-    const result = await wf.step(TICK_STEP, () => {
+    const result = await wf.step(TICK_STEP, (): CommandResult | Promise<CommandResult> => {
       if (project && harnessOfCommand(entry.command) && !sessionOfCommand(entry.command) && isProjectPaused({ project, stateDir: stateDir(env) })) {
         return { ok: false, exitCode: null, signal: null, timedOut: false, durationMs: 0, tail: PROJECT_PAUSED };
       }
       const refusal = hostAgentRefusal(reviewedCommand, { sandboxed: Boolean(entry.sandbox), env });
       if (refusal) return { ok: false, exitCode: null, signal: null, timedOut: false, durationMs: 0, tail: refusal };
       const run = entry.sandbox ? sandboxRunCommand({ ...entry, cwd: runCwd }, reviewedCommand, project) : reviewedCommand;
-      const pass = entry.sandbox ? Object.fromEntries(SANDBOX_RUN_KEYS.filter((key) => env[key]).map((key) => [key, env[key]])) : {};
+      const pass: NodeJS.ProcessEnv = entry.sandbox ? Object.fromEntries(SANDBOX_RUN_KEYS.filter((key) => env[key]).map((key) => [key, env[key]])) : {};
       return runCommand(run, { cwd: runCwd, env: { ...childEnv(env), ...pass, [SYSTEM_PROMPT_ENV]: "1", [ROLE_ENV]: `schedule:${entry.name}` }, timeoutMs: entry.timeoutMs, signal: wf.signal, graceMs, scope: { env, label: entry.name, description: `AI Collab schedule ${entry.name}` } });
     }, {
       onCut: () => ({ ok: false, exitCode: null, signal: null, timedOut: false, durationMs: 0, tail: "", cut: "runner restarted during the run; not re-run" }),
@@ -224,7 +242,7 @@ export function tickFn(entry, { env = process.env, log = () => {}, graceMs, proj
 }
 
 /** Registers each entry with the durable log as a scheduled workflow; returns the names. */
-export function registerSchedules(durable, entries, { env = process.env, log = () => {}, projects } = {}) {
+export function registerSchedules(durable: ScheduleHost, entries: ScheduleEntry[], { env = process.env, log = () => {}, projects }: { env?: NodeJS.ProcessEnv; log?: Log; projects?: Json[] } = {}): string[] {
   for (const entry of entries) {
     durable.scheduled(entry.name, { everyMs: entry.everyMs, firstStep: TICK_STEP }, tickFn(entry, { env, log, projects }));
   }

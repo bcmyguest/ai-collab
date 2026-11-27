@@ -1,6 +1,6 @@
 // Run in terminal on the UI server: watches request folders, lists cards in the snapshot, and runs a script on a Run click.
 import { mkdirSync, watch } from "node:fs";
-import { SHOWN, closeRun, decideRun, listRunRequests, markLost, runInTerminalEnabled, runRoot, runStatus } from "../../lib/run-terminal.mjs";
+import { SHOWN, closeRun, decideRun, listRunRequests, markLost, runInTerminalEnabled, runRoot, runStatus } from "../../lib/run-terminal.ts";
 import { runAnswer, runOperations, runSurfaceId } from "../lib/a2ui-run.js";
 
 const CHANGED = "the request changed after it was shown";

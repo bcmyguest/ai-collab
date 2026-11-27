@@ -57,7 +57,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Compact button really compacts the session (today it only asks the agent by message) | P2 | done |
 | PM run detail: each schedule run links to the PM session timeline (tool calls, messages, builders started) | P2 | done |
 | Limit card: typed rate_limit_event suppressed by earlier untyped StopFailure card (lib/limit-alert.mjs:207) | P2 | done merged on main (limit-alert republish); cherry-pick empty = already present |
-| Schedule run kills builders the PM started: runner SIGKILLs the whole process group on exit (runner/schedules.mjs:129) | P2 | done |
+| Schedule run kills builders the PM started: runner SIGKILLs the whole process group on exit (runner/schedules.ts:129) | P2 | done |
 | CLI send puts unknown flags (--reply-to, --progress) into the message body; add --reply-to and reject unknown flags | P2 | done |
 | Runner wake.send retries a codex thread that is closing (runner/runner.mjs:379-399) | P2 | done merged 0d2bd07 + 31cd4e3; retryable JSON-RPC refusals retried 3x, backoff capped 4s; mayHaveStarted never retried |
 | CI prek gate fails on main: end-of-file newlines in lib/compaction.ts, lib/teams.mjs, test/teams.test.mjs, test/teams-mentions.test.mjs | P2 | done |

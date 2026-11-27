@@ -272,7 +272,7 @@ Builders hold no harness transcript on the host. Claude, Codex and OpenCode writ
 
 ## Calling tools from sandbox programs
 
-Node.js programs can import `lib/tool-api.mjs` from the checkout inside
+Node.js programs can import `lib/tool-api.ts` from the checkout inside
 OpenShell. `listTools()` returns the same names and input schemas as MCP.
 `callTool()` resolves with the tool's data and rejects with an error on failure.
 Pass an `AbortSignal` as the third argument's `signal` to cancel a supported

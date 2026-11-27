@@ -129,7 +129,7 @@ The command runs with `spawn` (argv, no shell) in its own process group, stdin c
 
 **PM workspace.** A `pm` entry may set `workspace` to an absolute path. That path is a separate clone of the `cwd` repo's origin, not a linked worktree. At the start of the tick the runner clones it when the directory is missing, and when the clone is clean it runs `git fetch` and `git pull --ff-only` there. A dirty clone is left as it is and the reason is logged. The tick never resets or checks out `cwd`. An existing clone is not reset, even when it has local commits. The command runs in the workspace and the mission is read from there; `projectOfFolder` still uses `cwd`, so the run stays on the registered project. Builder start and `land finish` keep using that project. Omitting `workspace` leaves the tick in `cwd`.
 
-Config: `$XDG_CONFIG_HOME/ai-collab/schedules.json` (default `~/.config/ai-collab/schedules.json`), or the path in `AI_COLLAB_SCHEDULES`. A JSON array. An invalid entry, unreadable file or bad JSON is reported in `configError` and skipped; the runner keeps serving. A missing file means no schedules. Code: `runner/schedules.mjs`.
+Config: `$XDG_CONFIG_HOME/ai-collab/schedules.json` (default `~/.config/ai-collab/schedules.json`), or the path in `AI_COLLAB_SCHEDULES`. A JSON array. An invalid entry, unreadable file or bad JSON is reported in `configError` and skipped; the runner keeps serving. A missing file means no schedules. Code: `runner/schedules.ts`.
 
 The runner takes `runner.lock` beside `runner.db`; a second live runner on the same state directory refuses to start. The control socket binds before any tick starts, so a runner that cannot bind starts no command.
 
@@ -168,7 +168,7 @@ Control socket only (operator): `GET /v1/schedules` returns `{schedules: [{name,
 
 ## Delivery and wake workflows
 
-Delivery of direct messages runs in the runner. The UI dispatcher stands down while the runner answers its control socket (`runnerUp()` in `runner/client.ts`) and resumes when it does not. Both use the same inbox reservations, so a message goes out once. Code: `runner/delivery.ts` (`deliveryWorkflow`), `lib/deliver-push.mjs` (the live push paths shared with the dispatcher), `wakeWorkflow` and `pumpDeliveries` in `runner/runner.mjs`.
+Delivery of direct messages runs in the runner. The UI dispatcher stands down while the runner answers its control socket (`runnerUp()` in `runner/client.ts`) and resumes when it does not. Both use the same inbox reservations, so a message goes out once. Code: `runner/delivery.ts` (`deliveryWorkflow`), `lib/deliver-push.ts` (the live push paths shared with the dispatcher), `wakeWorkflow` and `pumpDeliveries` in `runner/runner.mjs`.
 
 ### Delivery to live sessions
 
@@ -342,7 +342,7 @@ Standard subagent attribution uses `subagentRunId`. The optional `metadata.aiCol
 
 Activity and control events publish through: `publishActivity` (`lib/activity.mjs`, one 1.5 s deadline per batch, clipping to 4,095 bytes), `publishStatus` (`lib/inbox.mjs`), `sendReceipts` (`lib/receipts.ts`) and `publish` (`lib/transport.mjs`) for approvals. The sender is `from: <harness>, session: <label>`, the same as a hook in that session, so `web/server/ui.mjs` (`activityItem`, `approvalEntry`, `outcomes`, `agents`) renders owned rows, cards and presence without change. Publishes for one session are serialized, so rows keep their order.
 
-- **Approval card:** `lib/approvals.mjs` `approvalMessage` publishes the usual card fields plus `owned: true` in the configured wire format. The runner, not the adapter, makes the 12-hex `id` and maps it to the adapter's `interruptId`. `expiresAt` is `ts` + `AI_COLLAB_APPROVAL_TIMEOUT_MIN` minutes (default 30, at most 720). The runner denies an unanswered card at that time and ends it with `denied`. The UI's existing Allow / Deny publishes `reply <id> allow|deny` (or the answers as JSON) on the broadcast topic; the runner streams that topic and calls `handle.respond`. Ends: `allowed`, `denied` (operator or timeout), `answered`, `cancelled` (run ended, session closed, or runner restarted).
+- **Approval card:** `lib/approvals.ts` `approvalMessage` publishes the usual card fields plus `owned: true` in the configured wire format. The runner, not the adapter, makes the 12-hex `id` and maps it to the adapter's `interruptId`. `expiresAt` is `ts` + `AI_COLLAB_APPROVAL_TIMEOUT_MIN` minutes (default 30, at most 720). The runner denies an unanswered card at that time and ends it with `denied`. The UI's existing Allow / Deny publishes `reply <id> allow|deny` (or the answers as JSON) on the broadcast topic; the runner streams that topic and calls `handle.respond`. Ends: `allowed`, `denied` (operator or timeout), `answered`, `cancelled` (run ended, session closed, or runner restarted).
 - **Read receipts:** published when `handle.send` or `handle.steer` resolves, for the bus ids the input carried.
 - **Status:** `start` at `RUN_STARTED`, `stop` at a run's end and at session end. Today's UI counts a session online for `ONLINE_MS` after `start`, as with hooks.
 
@@ -373,7 +373,7 @@ Known limits:
 
 ## Control API (runner ↔ UI)
 
-HTTP/1.1 JSON over a unix socket: `AI_COLLAB_RUNNER_SOCKET`, else `$XDG_RUNTIME_DIR/ai-collab/runner.sock`, else `$AI_COLLAB_STATE_DIR/runner.sock`. The socket is 0600 in a 0700 dir; the runner refuses to start when another runner answers on it. Bodies are limited to 64 KB. Errors are `{error}` with status 400, 404, 405, 409, 413, 429, 502 or 504. Server: `runner/control.mjs`; client: `runner/client.ts` `runnerClient({socket})`.
+HTTP/1.1 JSON over a unix socket: `AI_COLLAB_RUNNER_SOCKET`, else `$XDG_RUNTIME_DIR/ai-collab/runner.sock`, else `$AI_COLLAB_STATE_DIR/runner.sock`. The socket is 0600 in a 0700 dir; the runner refuses to start when another runner answers on it. Bodies are limited to 64 KB. Errors are `{error}` with status 400, 404, 405, 409, 413, 429, 502 or 504. Server: `runner/control.ts`; client: `runner/client.ts` `runnerClient({socket})`.
 
 | Method and path | Body | Answer |
 |---|---|---|
@@ -410,7 +410,7 @@ The runner streams, per project, `ai-collab-<project>--to--all` plus `ai-collab-
 - A `msg` envelope with `to: <harness>` and `toSession: <label>` of an owned session (a direct message or an @mention) becomes a durable `input` message for that session.
 - A `msg` envelope with `to: "all"` on the broadcast topic, and raw operator text there that is neither a phone reply nor a question, becomes an `input` message only for an owned session the body `@mentions` (`@harness#label` or `@harness`). Other project-chat posts stay on the channel and do not start a turn. A session's own broadcast is skipped. A delivered post to an idle owned session starts a turn. A direct message still always wakes that session.
 - Every input is deduplicated by `ntfy:<event id>:<label>`. The text is `lib/format.ts` `formatInbox([message])`, the same block hooks inject, so agents answer with `reply_to_operator` or `send_to_all` as they do today. `urgent: true` steers when the adapter can steer; otherwise it queues.
-- `reply <id> <answer>` on the broadcast topic answers the owned approval with that id (`lib/approvals.mjs` `replyDecision`). Anyone who can post to the project topic may answer.
+- `reply <id> <answer>` on the broadcast topic answers the owned approval with that id (`lib/approvals.ts` `replyDecision`). Anyone who can post to the project topic may answer.
 
 ## Permission modes
 
@@ -557,12 +557,12 @@ entry points, see [Live OpenShell bootstrap smoke](sandbox-smoke.md).
 | `runner/types.d.ts` | Adapter interface, events, records |
 | `runner/contract.mjs` | Harness, mode and event constants; `PERMISSION_TABLE`; `eventProblem` |
 | `runner/durable.mjs` | SQLite workflow/step/message log; `scheduled` ticks |
-| `runner/schedules.mjs` | `schedules.json` loader and the scheduled command step |
+| `runner/schedules.ts` | `schedules.json` loader and the scheduled command step |
 | `lib/schedule-session.ts` | The registered session a schedule's command resumes, and the project a schedule's folder names |
 | `runner/lock.ts` | Single-instance lock (`runner.lock` beside `runner.db`) |
 | `runner/runner.mjs` | Session workflow, control operations, bus input |
 | `runner/publish.mjs` | Event → envelope mapping |
-| `runner/control.mjs`, `runner/client.ts` | Control socket server and client |
+| `runner/control.ts`, `runner/client.ts` | Control socket server and client |
 | `runner/main.mjs` | Service entry (`npm run runner`) |
 | `runner/adapters/fake.mjs` | Scripted adapter for tests and a template for real adapters |
 | `runner/adapters/codex.mjs` | Codex adapter: one `codex app-server` child per runner (`-c thread_unload_delay_secs=0`, env `AI_COLLAB_OWNED=codex`); tests in `test/runner-adapter-codex.test.mjs` drive `test/helpers/fake-codex-app-server.mjs` |
@@ -573,7 +573,7 @@ entry points, see [Live OpenShell bootstrap smoke](sandbox-smoke.md).
 | `test/runner-adapter-cursor.test.mjs`, `test/helpers/fake-cursor-agent.mjs`, `test/helpers/fake-openshell.mjs` | Cursor adapter tests; fake ACP child and fake openshell |
 | `test/cursor-sandbox.test.mjs`, `test/runner-sandbox.test.mjs` | Sandbox staging (CLI tree, auth, worktree round trip, release on failure) and the sandbox module's argv and lifecycle |
 | `runner/delivery.ts` | Delivery workflow: reserve, push, confirm, mark or release, expect-reply redelivery |
-| `lib/deliver-push.mjs` | Live push paths (socket, `codex queue`, OpenCode HTTP) and the ack tracker, shared with the UI dispatcher |
+| `lib/deliver-push.ts` | Live push paths (socket, `codex queue`, OpenCode HTTP) and the ack tracker, shared with the UI dispatcher |
 | `lib/sessions/registry.ts` | Owned-record read/write and `standsDown` |
 | `deploy/ai-collab-runner.service` | User unit template; not installed |
 | `test/runner*.test.mjs` | Tests with the fake adapter and the in-process bus |

@@ -55,7 +55,7 @@ A request expires 15 minutes after it is created (`AI_COLLAB_RUN_TTL_S` on the a
 | Threat | Control |
 |---|---|
 | The script runs without the operator's click | Only `decideRun` runs a script, and the UI server calls it only from `POST /api/a2ui` (same-origin check, GitHub sign-in when configured, not in hosted mode). No auto-approve, no "always allow", no default decision on timeout. |
-| Approval through the bus, an agent message, or `ask_question` | Nothing in `lib/run-terminal.mjs` reads the bus. A `reply <id> run`, an approval envelope with the id, or `POST /api/approve` leaves the request pending (`test/run-terminal.test.mjs`). |
+| Approval through the bus, an agent message, or `ask_question` | Nothing in `lib/run-terminal.ts` reads the bus. A `reply <id> run`, an approval envelope with the id, or `POST /api/approve` leaves the request pending (`test/run-terminal.test.mjs`). |
 | The script changes between display and run | The UI server pins each request's shown fields (script, hash, cwd, reason, session, timeout, creation and expiry times) the first time it lists it. The card keeps showing the pinned fields, and a stored request that no longer matches them is closed as `refused`. On Run, the server re-reads `request.json`, compares it with the pin, recomputes sha256 over the bytes it is about to run, and requires it to equal the browser's digest. |
 | Bytes the operator cannot see | Requests with control, format, separator or default-ignorable characters other than tab, newline and space are refused: carriage returns, ANSI escapes, bidi marks, zero-width and tag characters, soft hyphens, variation selectors, line separators and look-alike spaces. So are invalid Unicode and runs of more than 64 blanks, which could push the rest of a wrapped line out of view. |
 | Replay or double click | `decision.json` is created with `O_EXCL`; a second decision of any kind gets 409. |
@@ -97,7 +97,7 @@ The card is an [A2UI](https://a2ui.org/specification/v0.9.1-a2ui/) v0.9.1 surfac
 
 | File | Role |
 |---|---|
-| `lib/run-terminal.mjs` | Flag, validation, request store, expiry, single claim, execution, audit log |
+| `lib/run-terminal.ts` | Flag, validation, request store, expiry, single claim, execution, audit log |
 | `lib/surfaces/run-terminal-ops.ts` | The two MCP tools |
 | `web/server/run-terminal.mjs` | UI server hooks: watch, snapshot, surfaces, Run and Reject |
 | `web/lib/a2ui-run.js` | A2UI operations for the card and action parsing |
@@ -113,8 +113,8 @@ Delete the files above, then remove these registration lines:
 
 | File | Lines |
 |---|---|
-| `lib/surfaces/ops.ts` | `import { RUN_TERMINAL_OPS } …` and `...RUN_TERMINAL_OPS,` at the end of `OPS`. Keep the `available` field on `Op` or drop it with its use in `lib/tool-api.mjs`. |
-| `lib/tool-api.mjs` | `&& (!op.available \|\| op.available(env))` in `listed` (only if `available` goes) |
+| `lib/surfaces/ops.ts` | `import { RUN_TERMINAL_OPS } …` and `...RUN_TERMINAL_OPS,` at the end of `OPS`. Keep the `available` field on `Op` or drop it with its use in `lib/tool-api.ts`. |
+| `lib/tool-api.ts` | `&& (!op.available \|\| op.available(env))` in `listed` (only if `available` goes) |
 | `web/server/ui.mjs` | the `runTerminalUi` import; `const runTerminal = runTerminalUi(…)` (2 lines); `runTerminal.watch(item);`; `...runTerminal.snapshot(project.cfg, session),`; `...runTerminal.surfaces(current, now)` in `pushSurfaces`; the two `runTerminal.answer` lines in the `a2ui` action; `runTerminal.close();` |
 | `web/components/a2ui/surface.jsx` | the `ScriptImpl` import and `ScriptImpl` in the catalog list |
 | `web/app/chat-console.jsx` | the `RunRequests` import and `<RunRequests …/>` |
