@@ -10,6 +10,7 @@ export const READY_POLL_MS = 5000;
  *   now(); scfgOf(project, session); sessionOf(project, address) -> live session or null; probe?(session) -> live-set probe, once per poll;
  *   ready(session, probe, project) -> bool; held?(session, scfg) -> bool (a Stop hook holds the session, so the push waits);
  *   handOff?(scfg, messages) (writes the messages to the session's hand-off file for that hold, lib/stop.mjs; a handed message counts as delivered);
+ *   handedOff?(scfg, id) -> bool (the hand-off file holds the id: a push cut by a restart after its hand-off);
  *   busy?(session, probe) -> bool (still working on an earlier push);
  *   reserve(scfg, ids, {owner, allowSeen}) -> {owned, busy}; release(scfg, ids, owner); markDelivered(scfg, ids);
  *   snapshot(session) -> JSON; push(session, {text, urgent, ids}) -> {status}; awaitConfirm(id, session, snapshot) -> bool;
@@ -82,7 +83,8 @@ export function deliveryWorkflow(deps) {
         if (!deps.handOff) return { status: "held" };
         return Promise.resolve().then(() => deps.handOff(scfg, [current])).then(() => ({ status: "handed" }), () => ({ status: "held" }));
       }, {
-        onCut: async () => ({ status: await deps.waitConfirmed(session, [id], snap) ? "delivered" : "cut" }),
+        // A restart after the hand-off but before the checkpoint finds the id in the hand-off file.
+        onCut: async () => ({ status: deps.handedOff?.(scfg, id) ? "handed" : await deps.waitConfirmed(session, [id], snap) ? "delivered" : "cut" }),
       });
       if (pushed.status === "delivered" || pushed.status === "handed") {
         await wf.step("mark", () => deps.markDelivered(scfg, [id]));

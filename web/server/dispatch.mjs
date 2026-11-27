@@ -118,7 +118,7 @@ export function createDispatcher({
     // A Stop hook that started since the ready check delivers the messages: hand them to it (read every second) and mark
     // them, so the inbox copy is hidden. A failed hand-off releases them for the next tick.
     if (holdRunning(session, scfg)) {
-      if (await handOff(scfg, messages, { via: "push" }).then(() => true, () => false)) {
+      if (await handOff(scfg, messages).then(() => true, () => false)) {
         await markDelivered(scfg, ids).catch(() => {});
         forget(session, ids);
         return "delivered";
