@@ -1,7 +1,6 @@
 import { SEND_CONFIRMATION } from "../lib/send-confirmation.js";
-import { HOST_CHECKOUT } from "../../lib/merge-cli.mjs";
 import { landReviews, mergeReview } from "./land-reviews.mjs";
-import { LandRefused, hostLand } from "../../lib/land.mjs";
+import { HOST_CHECKOUT, LandRefused, hostLand } from "../../lib/land.mjs";
 import { isProjectPaused, PROJECT_PAUSED, setProjectPaused } from "../../lib/project-pause.ts";
 import { terminalHasDraft } from "../../lib/terminal-draft.mjs";
 import { EventType } from "@ag-ui/core";

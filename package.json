@@ -40,6 +40,7 @@
     "typecheck": "tsc -p tsconfig.core.json",
     "build:package": "node tools/build-package.mjs",
     "test": "node --test --test-global-setup=test/helpers/global-setup.mjs",
+    "land": "node tools/land.mjs",
     "build": "node deploy/build-ui.mjs",
     "runner": "node runner/main.mjs",
     "ui": "next start web -H 127.0.0.1 -p ${AI_COLLAB_UI_PORT:-8795}",
