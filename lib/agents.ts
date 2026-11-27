@@ -23,6 +23,8 @@ type Claim = typeof claimInbox;
 type Sleep = (ms: number, signal?: AbortSignal) => Promise<void>;
 export type MessageView = InboxMessage & { answer_with: string };
 export type AwaitedReply = { status: "replied"; reply: MessageView | InboxMessage; messages: InboxMessage[] } | { status: "pending"; note: string };
+/** A sent message, plus the reply or a pending note when the send waited. */
+export type SendResult = { sent: boolean; to: string; id?: string } & ({ status?: undefined } | AwaitedReply);
 export type IdleOutcome = { status: "idle" | "ended" | "timeout"; address: string };
 
 /** A claimed message as tool output: the body cleaned and capped, plus how to answer it. */
@@ -57,7 +59,7 @@ export async function waitForMessages(cfg: Cfg, { seconds = 25, signal, claim = 
  */
 export async function sendAndAwait(cfg: Cfg, to: string, body: string, { awaitSeconds = 0, urgent, replyTo, attachment, priority, expectReply, signal, claim = claimInbox, wait }: {
   awaitSeconds?: number; urgent?: boolean; replyTo?: string; attachment?: AttachmentInput; priority?: string; expectReply?: boolean; signal?: AbortSignal; claim?: Claim; wait?: Step;
-} = {}) {
+} = {}): Promise<SendResult> {
   assertWaitSeconds(awaitSeconds);
   const target = to === "*" ? "all" : to;
   const sent = await sendMessage(cfg, target, body, { urgent, replyTo, attachment, priority, expectReply });
@@ -137,9 +139,9 @@ export async function waitForReply(cfg: Cfg, id: string, { awaitSeconds = 25, si
     errorPauseMs: REPLY_ERROR_PAUSE_MS,
     until: async () => (await find(cfg, id)) ?? undefined,
   });
-  if (r.status === "hit") return { status: "replied", reply: r.value };
+  if (r.status === "hit") return { status: "replied" as const, reply: r.value };
   if (r.status === "aborted") signal?.throwIfAborted();
-  return { status: "pending" };
+  return { status: "pending" as const };
 }
 
 /** The newest reply, done or declined to message id in this session's inbox events, as messageView; read-only. */

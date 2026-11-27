@@ -9,8 +9,8 @@ import { PROTECTED_CHECKOUTS } from "./builder-clean.ts";
 import { stateDir } from "./config.ts";
 import { sessionRecords } from "./sessions/registry.ts";
 import { commitIdentity } from "./sandbox.ts";
-import { projectRoot } from "./start.mjs";
-import { parseWorktreeList } from "./sessions/git-refs.ts";
+import { projectRoot } from "./sessions/launch.ts";
+import { parseWorktreeList, type WorktreeRecord } from "./sessions/git-refs.ts";
 import { openTasks, TaskNotFoundError } from "./tasks.ts";
 
 export { parseWorktreeList };
@@ -22,20 +22,58 @@ const SCAN_MAX_ENTRIES = 50_000;
 const SCAN_SKIP = new Set([".git", "node_modules"]);
 const ALLOWED_IGNORED = [/^node_modules(\/|$)/, /^web\/\.next/];
 const LOCK_REASON = "ai-collab prune";
-const AGE_UNITS = { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 };
+// oxlint-disable-next-line quality/no-known-value-widening -- looked up by a runtime age unit
+const AGE_UNITS: Record<string, number> = { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 };
 const GIT_ENV_KEYS = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX"];
 const GIT_TIMEOUT_MS = 120_000;
 const GIT_MAX_BUFFER = 64 * 1024 * 1024;
 const USAGE = "usage: ai-collab prune [--apply] [--older-than 7d] [--json]   (cutoff at least 24h)";
 
+// oxlint-disable-next-line typescript/no-explicit-any -- builder state.json is JSON read from disk
+type Json = any;
+type Env = NodeJS.ProcessEnv;
+type GitError = Error & { stderr?: string };
+export type PruneFlags = { apply: boolean; json: boolean; olderThan: string; olderThanMs: number };
+export type BulkTarget = { kind: string; path: string; bytes?: number };
+type BuilderArchive = { id: string; backRepo: string };
+type RefArchive = { ref: string; sha: string };
+/** keep, prune or remove, with the reason and any archive ref to write first. */
+export type Decision<A> = { action: "keep" | "prune" | "remove"; reason: string; archive: A | null };
+/** What gatherBuilder reads about one builder dir. */
+export type BuilderFacts = {
+  id: string; error: string; phase: string; commits: number; landed: boolean; root: string | null; mtimeMs: number; unitActive: string;
+  pidAlive: boolean; taskOpen: boolean; bulk: Array<BulkTarget & { bytes: number }>; bytes: number; worktree: string; backExists: boolean;
+  backRepo: string; backSha: string | null; archiveHead: string | null; archiveDiverged: boolean; backIgnoredBad?: string[];
+};
+/** What gatherWorktree reads about one git worktree. */
+export type WorktreeFacts = {
+  main: boolean; protected: boolean; locked: boolean; prunable: boolean; detached: boolean; head: string; path: string; error: string;
+  dirty: number; ignoredBad: string[]; reflogOnly: string[]; inUse: boolean; builderOpen: boolean; nested: string; lastActivityMs: number;
+  archiveRef: string; archiveSha: string | null;
+};
+type SessionSeen = { unreadable?: true; cwd?: string; live?: boolean; seenAt?: number };
+type Ctx = {
+  env: Env; root: string; liveCwds: () => string[]; sessions: () => SessionSeen[]; taskOpen: (state: Json) => boolean; builderWorktrees: Set<string>;
+};
+type Category = { count: number; bytes: number };
+/** The prune plan or result; the CLI prints it as JSON or text. */
+export type PruneSummary = {
+  mode: "apply" | "dry-run"; cutoff: string; reclaimedBytes: number; categories: Record<string, Category>;
+  builders: Array<{ id: string; phase: string; bytes: number; targets: string[] }>;
+  worktrees: Array<{ path: string; branch: string | null; detached: boolean; bytes: number; action: string }>;
+  archives: Array<{ ref: string; sha: string | null; source: string }>;
+  skipped: Array<{ kind: string; key: string; reason: string }>; skipReasons: Record<string, number>;
+};
+type Writer = { write: (text: string) => void };
+
 /** Milliseconds for "7d", "24h", "30m" or "45s"; null for anything else. */
-export function parseAge(text) {
+export function parseAge(text: string | undefined): number | null {
   const match = /^(\d+)([smhd])$/.exec(text ?? "");
   return match ? Number(match[1]) * AGE_UNITS[match[2]] : null;
 }
 
 /** Flags for prune, or null for an unknown flag, a bad age, or a cutoff under 24h. */
-export function parsePruneArgs(argv) {
+export function parsePruneArgs(argv: string[]): PruneFlags | null {
   let flags;
   try {
     ({ values: flags } = parseArgs({ args: argv, strict: true, options: {
@@ -48,7 +86,7 @@ export function parsePruneArgs(argv) {
 }
 
 /** Bytes of disk the tree at `target` uses; an inode counts once. */
-export function treeBytes(target, seen = new Set()) {
+export function treeBytes(target: string, seen: Set<string> = new Set()): number {
   let info;
   try { info = lstatSync(target); } catch { return 0; }
   const key = `${info.dev}:${info.ino}`;
@@ -62,10 +100,10 @@ export function treeBytes(target, seen = new Set()) {
 }
 
 /** Working directories of the processes in /proc; an unreadable cwd is not counted. */
-export function readLiveCwds(proc = "/proc") {
-  let pids;
+export function readLiveCwds(proc = "/proc"): string[] {
+  let pids: string[];
   try { pids = readdirSync(proc).filter((pid) => /^\d+$/.test(pid)); } catch { return []; }
-  const cwds = [];
+  const cwds: string[] = [];
   for (const pid of pids) {
     try { cwds.push(readlinkSync(path.join(proc, pid, "cwd"))); } catch { /* exited, kernel thread, or not readable */ }
   }
@@ -73,15 +111,15 @@ export function readLiveCwds(proc = "/proc") {
 }
 
 /** True when `wtPath` is the project checkout or a protected checkout, not a path inside one. */
-export function isProtectedCheckout(wtPath, root) {
-  const real = (p) => { try { return realpathSync(p); } catch { return path.resolve(p); } };
+export function isProtectedCheckout(wtPath: string, root: string): boolean {
+  const real = (p: string) => { try { return realpathSync(p); } catch { return path.resolve(p); } };
   const target = real(wtPath);
   return [root, ...PROTECTED_CHECKOUTS].some((base) => real(base) === target);
 }
 
 /** Bulky copies in one builder dir: clone, staged trees (with tools), sandbox downloads, and logs over the cap. */
-export function builderBulkTargets(dir) {
-  const targets = [];
+export function builderBulkTargets(dir: string): BulkTarget[] {
+  const targets: BulkTarget[] = [];
   for (const name of readdirSync(dir)) {
     const full = path.join(dir, name);
     if (name === "back") targets.push({ kind: "clone", path: full });
@@ -96,13 +134,13 @@ export function builderBulkTargets(dir) {
 }
 
 /** Newest file mtime under `root`, skipping node_modules and .next; Infinity when the scan hits its entry cap. */
-export function newestFileMs(root, maxEntries = SCAN_MAX_ENTRIES) {
+export function newestFileMs(root: string, maxEntries: number = SCAN_MAX_ENTRIES): number {
   let newest = 0;
   let seen = 0;
   const stack = [root];
   while (stack.length) {
-    const dir = stack.pop();
-    let names;
+    const dir = stack.pop() as string;
+    let names: string[];
     try { names = readdirSync(dir); } catch { continue; }
     for (const name of names) {
       if (SCAN_SKIP.has(name) || name.startsWith(".next")) continue;
@@ -119,13 +157,13 @@ export function newestFileMs(root, maxEntries = SCAN_MAX_ENTRIES) {
 }
 
 /** True when an ignored path is one a rebuild recreates (node_modules, web/.next*, dist). */
-export function isAllowedIgnored(file) {
+export function isAllowedIgnored(file: string): boolean {
   return ALLOWED_IGNORED.some((pattern) => pattern.test(file));
 }
 
 /** Decide one worktree from its facts. Pure: no I/O. */
-export function worktreeDecision(f, cutoffMs) {
-  const keep = (reason) => ({ action: "keep", reason, archive: null });
+export function worktreeDecision(f: WorktreeFacts, cutoffMs: number): Decision<RefArchive> {
+  const keep = (reason: string): Decision<RefArchive> => ({ action: "keep", reason, archive: null });
   if (f.main) return keep("main worktree");
   if (f.protected) return keep("protected checkout");
   if (f.locked) return keep("locked");
@@ -144,15 +182,15 @@ export function worktreeDecision(f, cutoffMs) {
 }
 
 /** Decide one builder dir from its facts. Pure: no I/O. */
-export function builderDecision(f, cutoffMs) {
-  const keep = (reason) => ({ action: "keep", reason, archive: null });
+export function builderDecision(f: BuilderFacts, cutoffMs: number): Decision<BuilderArchive> {
+  const keep = (reason: string): Decision<BuilderArchive> => ({ action: "keep", reason, archive: null });
   if (f.error) return keep(`unreadable: ${f.error}`);
   if (!FINAL_PHASES.includes(f.phase)) return keep(`unsettled: ${f.phase}`);
   if (LIVE_STATES.includes(f.unitActive) || f.unitActive === "unknown") return keep(`unit ${f.unitActive}`);
   if (f.pidAlive) return keep("process alive");
   if (f.taskOpen) return keep("task open");
   if (f.mtimeMs >= cutoffMs) return keep("newer than cutoff");
-  let archive = null;
+  let archive: BuilderArchive | null = null;
   if (f.backExists) {
     if (!f.root) return keep("unpreserved commits: no project root");
     if (f.archiveDiverged) return keep("archive ref differs from clone");
@@ -165,13 +203,13 @@ export function builderDecision(f, cutoffMs) {
   return { action: "remove", reason: f.phase, archive };
 }
 
-function gitEnv(env) {
+function gitEnv(env: Env): Env {
   const next = { ...env };
   for (const key of GIT_ENV_KEYS) delete next[key];
   return next;
 }
 
-function runGit(cwd, args, env) {
+function runGit(cwd: string, args: string[], env: Env): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile("git", ["-C", cwd, ...args], { env: gitEnv(env), timeout: GIT_TIMEOUT_MS, maxBuffer: GIT_MAX_BUFFER }, (error, stdout, stderr) => {
       if (error) {
@@ -183,7 +221,7 @@ function runGit(cwd, args, env) {
   });
 }
 
-async function revParse(cwd, ref, env) {
+async function revParse(cwd: string, ref: string, env: Env): Promise<string | null> {
   try {
     return (await runGit(cwd, ["rev-parse", "--verify", "--quiet", ref], env)).trim() || null;
   } catch {
@@ -191,7 +229,7 @@ async function revParse(cwd, ref, env) {
   }
 }
 
-async function isAncestor(cwd, older, newer, env) {
+async function isAncestor(cwd: string, older: string, newer: string, env: Env): Promise<boolean> {
   try {
     await runGit(cwd, ["merge-base", "--is-ancestor", older, newer], env);
     return true;
@@ -200,16 +238,16 @@ async function isAncestor(cwd, older, newer, env) {
   }
 }
 
-function isAlive(pid) {
-  try { process.kill(pid, 0); } catch (error) { return error.code !== "ESRCH"; }
+function isAlive(pid: number): boolean {
+  try { process.kill(pid, 0); } catch (error) { return (error as NodeJS.ErrnoException).code !== "ESRCH"; }
   return true;
 }
 
-function oneLine(text) {
+function oneLine(text: unknown): string {
   return String(text).replace(/\s+/g, " ").trim();
 }
 
-function builderIds(root) {
+function builderIds(root: string): string[] {
   if (!existsSync(root)) return [];
   return readdirSync(root).filter((id) => {
     if (id === "." || id === ".." || id !== path.basename(id) || id.includes("\0")) return false;
@@ -218,7 +256,7 @@ function builderIds(root) {
 }
 
 /** True while a builder's task is open: unknown tasks are closed, an unreadable store is open. */
-export function taskIsOpen(state, env) {
+export function taskIsOpen(state: Json, env: Env): boolean {
   if (typeof state.task !== "string" || typeof state.project !== "string") return false;
   try {
     const task = openTasks(state.project, env).get(state.task);
@@ -229,7 +267,7 @@ export function taskIsOpen(state, env) {
 }
 
 // Where node_modules sits at the worktree top: "link", "dir", "file" or "none".
-function nodeModulesKind(wtPath) {
+function nodeModulesKind(wtPath: string): "link" | "dir" | "file" | "none" {
   try {
     const info = lstatSync(path.join(wtPath, "node_modules"));
     if (info.isSymbolicLink()) return "link";
@@ -240,12 +278,12 @@ function nodeModulesKind(wtPath) {
 }
 
 /** Reads a builder's state and facts. Pure apart from the reads. */
-async function gatherBuilder(id, ctx) {
+async function gatherBuilder(id: string, ctx: Ctx): Promise<BuilderFacts> {
   const { env } = ctx;
   const paths = builderPaths(id, env);
-  const f = { id, error: "", phase: "", commits: 0, landed: false, root: null, mtimeMs: 0, unitActive: "", pidAlive: false,
+  const f: BuilderFacts = { id, error: "", phase: "", commits: 0, landed: false, root: null, mtimeMs: 0, unitActive: "", pidAlive: false,
     taskOpen: false, bulk: [], bytes: 0, worktree: "", backExists: false, backRepo: "", backSha: null, archiveHead: null, archiveDiverged: false };
-  let state;
+  let state: Json;
   try {
     state = JSON.parse(readFileSync(paths.state, "utf8"));
     f.mtimeMs = statSync(paths.state).mtimeMs;
@@ -274,7 +312,7 @@ async function gatherBuilder(id, ctx) {
       f.backIgnoredBad = lines.filter((line) => line.startsWith("!! ")).map((line) => line.slice(3))
         .filter((file) => !/^node_modules(\/|$)/.test(file));
     } catch (error) {
-      f.error = oneLine(error.stderr || error.message);
+      f.error = oneLine((error as GitError).stderr || (error as Error).message);
     }
   }
   if (f.backExists && f.root) {
@@ -288,11 +326,11 @@ async function gatherBuilder(id, ctx) {
 }
 
 /** Commits in the worktree's HEAD reflog (other than HEAD) that no ref reaches. */
-async function reflogOnlyCommits(root, admin, head, env) {
+async function reflogOnlyCommits(root: string, admin: string | null, head: string, env: Env): Promise<string[]> {
   if (!admin) return [];
   const log = path.join(admin, "logs", "HEAD");
   if (!existsSync(log)) return [];
-  const shas = new Set();
+  const shas = new Set<string>();
   for (const line of readFileSync(log, "utf8").split("\n")) {
     const match = /^([0-9a-f]{40}) ([0-9a-f]{40}) /.exec(line);
     if (match) shas.add(match[2]);
@@ -303,7 +341,7 @@ async function reflogOnlyCommits(root, admin, head, env) {
   return (await runGit(root, ["rev-list", ...shas, "--not", "--all"], env)).split("\n").filter(Boolean);
 }
 
-async function adminDirOf(wt, root, env) {
+async function adminDirOf(wt: WorktreeRecord, root: string, env: Env): Promise<string | null> {
   if (wt.prunable) {
     const common = (await runGit(root, ["rev-parse", "--git-common-dir"], env)).trim();
     return path.join(path.resolve(root, common), "worktrees", path.basename(wt.path));
@@ -316,7 +354,7 @@ async function adminDirOf(wt, root, env) {
 }
 
 // Newest of: HEAD commit, directory and file mtimes, index, HEAD reflog, and any session seen inside.
-async function activityMs(wt, admin, ctx) {
+async function activityMs(wt: WorktreeRecord, admin: string | null, ctx: Ctx): Promise<number> {
   const times = [0];
   if (wt.head) {
     try { times.push(Number((await runGit(ctx.root, ["log", "-1", "--format=%ct", wt.head], ctx.env)).trim() || 0) * 1000); } catch { times.push(Infinity); }
@@ -335,9 +373,9 @@ async function activityMs(wt, admin, ctx) {
 }
 
 /** Reads one worktree's facts. Pure apart from the reads. */
-async function gatherWorktree(wt, index, worktrees, ctx) {
+async function gatherWorktree(wt: WorktreeRecord, index: number, worktrees: WorktreeRecord[], ctx: Ctx): Promise<WorktreeFacts> {
   const { env, root } = ctx;
-  const f = { main: index === 0, protected: isProtectedCheckout(wt.path, root), locked: wt.locked, prunable: wt.prunable,
+  const f: WorktreeFacts = { main: index === 0, protected: isProtectedCheckout(wt.path, root), locked: wt.locked, prunable: wt.prunable,
     detached: wt.detached, head: wt.head, path: wt.path, error: "", dirty: 0, ignoredBad: [], reflogOnly: [], inUse: false,
     builderOpen: ctx.builderWorktrees.has(wt.path), nested: "", lastActivityMs: Infinity,
     archiveRef: `${ARCHIVE_NS}/wt-${path.basename(wt.path)}`, archiveSha: null };
@@ -360,14 +398,14 @@ async function gatherWorktree(wt, index, worktrees, ctx) {
     f.reflogOnly = await reflogOnlyCommits(root, admin, wt.head, env);
     f.lastActivityMs = await activityMs(wt, admin, ctx);
   } catch (error) {
-    f.error = oneLine(error.stderr || error.message);
+    f.error = oneLine((error as GitError).stderr || (error as Error).message);
   }
   if (wt.detached) f.archiveSha = await revParse(root, f.archiveRef, env);
   return f;
 }
 
 // Archives a builder's clone: commits uncommitted work, then copies every branch and HEAD into the project repo.
-async function archiveBuilder(archive, ctx) {
+async function archiveBuilder(archive: BuilderArchive, ctx: Ctx): Promise<RefArchive> {
   const ref = `${ARCHIVE_NS}/${archive.id}`;
   if ((await runGit(archive.backRepo, ["status", "--porcelain"], ctx.env)).trim()) {
     await runGit(archive.backRepo, ["add", "-A", "--", ".", ":!node_modules"], ctx.env);
@@ -382,12 +420,12 @@ async function archiveBuilder(archive, ctx) {
   return { ref: `${ref}/HEAD`, sha };
 }
 
-async function setRef(root, ref, sha, env) {
+async function setRef(root: string, ref: string, sha: string, env: Env): Promise<void> {
   await runGit(root, ["update-ref", ref, sha], env);
   if (await revParse(root, ref, env) !== sha) throw new Error(`could not verify ${ref}`);
 }
 
-function removeTargets(dir, targets) {
+function removeTargets(dir: string, targets: BulkTarget[]): void {
   for (const target of targets) {
     if (path.dirname(target.path) !== dir) throw new Error(`refusing to remove ${target.path}`);
     rmSync(target.path, { recursive: true, force: true });
@@ -395,7 +433,7 @@ function removeTargets(dir, targets) {
 }
 
 // Removes the worktree. A refused removal unlinks only its node_modules symlink, then retries; a failed retry restores the link.
-async function removeWorktree(root, wtPath, env) {
+async function removeWorktree(root: string, wtPath: string, env: Env): Promise<void> {
   try {
     await runGit(root, ["worktree", "remove", wtPath], env);
   } catch (error) {
@@ -412,24 +450,27 @@ async function removeWorktree(root, wtPath, env) {
   }
 }
 
-function addCategory(categories, kind, bytes) {
+function addCategory(categories: Record<string, Category>, kind: string, bytes: number): void {
   const entry = categories[kind] ?? { count: 0, bytes: 0 };
   categories[kind] = { count: entry.count + 1, bytes: entry.bytes + bytes };
 }
 
 /** Plan (and with `apply`, carry out) the prune for one repo and its builder state. */
 export async function pruneRepo({ env, root, olderThanMs, apply, now = Date.now(), cwds = readLiveCwds, sessions = () => [],
-  taskOpen = (state) => taskIsOpen(state, env) }) {
+  taskOpen = (state) => taskIsOpen(state, env) }: {
+  env: Env; root: string; olderThanMs: number; apply: boolean; now?: number; cwds?: (() => string[]) | string[];
+  sessions?: () => SessionSeen[]; taskOpen?: (state: Json) => boolean;
+}): Promise<PruneSummary> {
   if (olderThanMs < MIN_CUTOFF_MS) throw new Error("cutoff must be at least 24h");
   const cutoffMs = now - olderThanMs;
   const liveCwds = () => (typeof cwds === "function" ? cwds() : cwds);
-  const ctx = { env, root, liveCwds, sessions, taskOpen, builderWorktrees: new Set() };
-  const summary = { mode: apply ? "apply" : "dry-run", cutoff: new Date(cutoffMs).toISOString(), reclaimedBytes: 0,
+  const ctx: Ctx = { env, root, liveCwds, sessions, taskOpen, builderWorktrees: new Set() };
+  const summary: PruneSummary = { mode: apply ? "apply" : "dry-run", cutoff: new Date(cutoffMs).toISOString(), reclaimedBytes: 0,
     categories: {}, builders: [], worktrees: [], archives: [], skipped: [], skipReasons: {} };
-  const skip = (kind, key, reason) => summary.skipped.push({ kind, key, reason });
+  const skip = (kind: string, key: string, reason: string) => summary.skipped.push({ kind, key, reason });
 
   const buildersRoot = path.join(stateDir(env), "builders");
-  const builders = [];
+  const builders: BuilderFacts[] = [];
   for (const id of builderIds(buildersRoot)) builders.push(await gatherBuilder(id, ctx));
   ctx.builderWorktrees = new Set(builders.filter((f) => f.taskOpen && f.worktree).map((f) => f.worktree));
   for (const f of builders) {
@@ -439,7 +480,7 @@ export async function pruneRepo({ env, root, olderThanMs, apply, now = Date.now(
       continue;
     }
     let current = f;
-    let archived = null;
+    let archived: { ref: string; sha: string | null } | null = null;
     try {
       if (apply) {
         current = await gatherBuilder(f.id, ctx);
@@ -454,7 +495,7 @@ export async function pruneRepo({ env, root, olderThanMs, apply, now = Date.now(
         archived = { ref: `${ARCHIVE_NS}/${f.id}/HEAD`, sha: f.backSha };
       }
     } catch (error) {
-      skip("builder", f.id, `remove failed: ${oneLine(error.message)}`);
+      skip("builder", f.id, `remove failed: ${oneLine((error as Error).message)}`);
       continue;
     }
     if (archived) summary.archives.push({ ref: archived.ref, sha: archived.sha, source: f.id });
@@ -464,7 +505,7 @@ export async function pruneRepo({ env, root, olderThanMs, apply, now = Date.now(
   }
 
   const worktrees = parseWorktreeList(await runGit(root, ["worktree", "list", "--porcelain"], env));
-  const keptPrunable = [];
+  const keptPrunable: string[] = [];
   for (const [index, wt] of worktrees.entries()) {
     const f = await gatherWorktree(wt, index, worktrees, ctx);
     const decision = worktreeDecision(f, cutoffMs);
@@ -486,7 +527,7 @@ export async function pruneRepo({ env, root, olderThanMs, apply, now = Date.now(
         await setRef(root, decision.archive.ref, decision.archive.sha, env);
       }
     } catch (error) {
-      skip("worktree", wt.path, `remove failed: ${oneLine(error.stderr || error.message)}`);
+      skip("worktree", wt.path, `remove failed: ${oneLine((error as GitError).stderr || (error as Error).message)}`);
       continue;
     }
     if (decision.archive) summary.archives.push({ ref: decision.archive.ref, sha: decision.archive.sha, source: wt.path });
@@ -503,10 +544,10 @@ export async function pruneRepo({ env, root, olderThanMs, apply, now = Date.now(
 }
 
 // Re-reads every rule under a lock; the lock is released on every path, including a failed archive.
-async function lockedRecheck(wt, index, worktrees, ctx, cutoffMs) {
+async function lockedRecheck(wt: WorktreeRecord, index: number, worktrees: WorktreeRecord[], ctx: Ctx, cutoffMs: number): Promise<Decision<RefArchive>> {
   const { env, root } = ctx;
   await runGit(root, ["worktree", "lock", "--reason", LOCK_REASON, wt.path], env);
-  let verdict;
+  let verdict: Decision<RefArchive>;
   try {
     verdict = worktreeDecision(await gatherWorktree(wt, index, worktrees, ctx), cutoffMs);
     if (verdict.action === "remove" && verdict.archive) await setRef(root, verdict.archive.ref, verdict.archive.sha, env);
@@ -517,20 +558,20 @@ async function lockedRecheck(wt, index, worktrees, ctx, cutoffMs) {
 }
 
 // Removes the admin entries of missing worktrees that were chosen; locks the kept ones so git leaves them.
-async function pruneEntries(root, keptPrunable, env) {
+async function pruneEntries(root: string, keptPrunable: string[], env: Env): Promise<void> {
   for (const kept of keptPrunable) await runGit(root, ["worktree", "lock", "--reason", LOCK_REASON, kept], env);
   await runGit(root, ["worktree", "prune"], env);
   for (const kept of keptPrunable) await runGit(root, ["worktree", "unlock", kept], env);
 }
 
-function formatBytes(bytes) {
+function formatBytes(bytes: number): string {
   if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GB`;
   if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(2)} MB`;
   return `${bytes} B`;
 }
 
 /** One line for logs and schedule records: mode, bytes, counts, and the three most common skip reasons. */
-export function summaryLine(summary) {
+export function summaryLine(summary: PruneSummary): string {
   const mode = summary.mode === "apply" ? "applied" : "dry run";
   const verb = summary.mode === "apply" ? "reclaimed" : "reclaimable";
   const categories = Object.entries(summary.categories).map(([kind, entry]) => `${kind} ${entry.count}`).join(", ");
@@ -542,7 +583,7 @@ export function summaryLine(summary) {
 }
 
 /** Human-readable report for `prune`. */
-export function renderPrune(summary) {
+export function renderPrune(summary: PruneSummary): string {
   const lines = [
     summary.mode === "apply" ? "prune: applied" : "prune: dry run, nothing deleted (pass --apply to delete)",
     `cutoff ${summary.cutoff}`,
@@ -559,7 +600,7 @@ export function renderPrune(summary) {
 }
 
 /** `ai-collab prune [--apply] [--older-than 7d] [--json]`. */
-export async function prune(argv, { env, cfg, out, err }) {
+export async function prune(argv: string[], { env, cfg, out, err }: { env: Env; cfg: { project: string; stateDir: string }; out: Writer; err: Writer }): Promise<number> {
   const flags = parsePruneArgs(argv);
   if (!flags) {
     err.write(`ai-collab: ${USAGE}\n`);
@@ -572,7 +613,7 @@ export async function prune(argv, { env, cfg, out, err }) {
     err.write(`${summaryLine(summary)}\n`);
     return 0;
   } catch (error) {
-    err.write(`ai-collab: prune: ${error.message}\n`);
+    err.write(`ai-collab: prune: ${(error as Error).message}\n`);
     return 1;
   }
 }
