@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { READ_PATHS, classifyCall, isRefusal, isRunCodeFailure, journalSource, taskStoreSource } from "../lib/analyze-sources.ts";
+import { READ_PATHS, classifyCall, codexSource, isRefusal, isRunCodeFailure, journalSource, taskStoreSource } from "../lib/analyze-sources.ts";
 
 const home = () => mkdtempSync(join(tmpdir(), "as-"));
 const put = (path, text) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, text); };
@@ -102,4 +102,16 @@ test("journalSource reports a failed journalctl run as a note and no schedule ru
   const src = journalSource({ run: () => { throw new Error("journalctl: no such unit\nmore"); } });
   const out = await src.load({});
   assert.deepEqual(out, { scheduleRuns: [], notes: ["journalctl unavailable: journalctl: no such unit"] });
+});
+
+test("codexSource tolerates a null entry in a function_call_output array", async () => {
+  const h = home();
+  const line = (o) => JSON.stringify(o);
+  put(join(h, ".codex/sessions/2026/a.jsonl"), [
+    line({ type: "session_meta", payload: { id: "s1", cwd: "/w" } }),
+    line({ type: "response_item", payload: { type: "function_call", name: "exec_command", call_id: "c1", arguments: "{}" } }),
+    line({ type: "response_item", payload: { type: "function_call_output", call_id: "c1", output: [null, { text: "ok" }] } }),
+  ].join("\n") + "\n");
+  const { turns } = await codexSource({ home: h }).load();
+  assert.deepEqual(turns, []);
 });
