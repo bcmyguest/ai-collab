@@ -29,7 +29,7 @@ export function ChoiceCard({ questions, answers, onSubmit, disabled, title }) {
       const chosen = answers?.[q.question];
       return <fieldset key={i} className="flex min-w-0 flex-col gap-2">
         <legend className="flex max-w-full flex-wrap items-center gap-2 pb-1 wrap-anywhere">
-          {q.header && <Badge variant="secondary" className="min-h-5 max-w-full px-2 text-[11px] wrap-anywhere whitespace-normal">{q.header}</Badge>}
+          {q.header && <Badge variant="secondary" className="min-h-5 max-w-full px-2 text-xs wrap-anywhere whitespace-normal">{q.header}</Badge>}
           <span className="font-medium">{q.question}</span>
           {q.multiSelect && <span className="text-xs text-muted-foreground">pick any</span>}
         </legend>
@@ -53,14 +53,14 @@ export function ChoiceCard({ questions, answers, onSubmit, disabled, title }) {
         {readOnly && chosen && !q.options.some(o => String(chosen).split(", ").includes(o.label)) && <p className="text-xs">Answer: <span className="font-medium">{chosen}</span></p>}
       </fieldset>;
     })}
-    {!readOnly && <Button size="sm" className="self-start rounded-full" disabled={disabled || !complete}
+    {!readOnly && <Button size="sm" className="self-start rounded-md" disabled={disabled || !complete}
       onClick={() => onSubmit(Object.fromEntries(questions.map((q, i) => [q.question, value(i)])))}>Submit</Button>}
   </div>;
 }
 
 /** Dismisses an open decision without answering it; a waiting hook then leaves the harness's own prompt in charge. */
 export function SkipButton({ disabled, onSkip }) {
-  return <Button size="sm" variant="ghost" className="self-start rounded-full text-muted-foreground" disabled={disabled} onClick={onSkip}><SkipForward/>Skip</Button>;
+  return <Button size="sm" variant="ghost" className="self-start rounded-md text-muted-foreground" disabled={disabled} onClick={onSkip}><SkipForward/>Skip</Button>;
 }
 
 /** A permission request or choice an agent waits on: the A2UI surface when the stream sent one, else the card below; Skip while open. */
@@ -89,13 +89,13 @@ export function LegacyApprovalCard({ approval, now, disabled, act }) {
       {outcome && <p className="text-xs text-muted-foreground" data-outcome={approval.state}>{outcome}{approval.by && " · " + approval.by}</p>}
     </div>;
   }
-  return <div className={cn(CARD, "flex flex-col gap-2", open && "border-amber-500/50")} data-card="approval" data-terminal={terminal || undefined}>
+  return <div className={cn(CARD, "flex flex-col gap-2", open && "border-primary/50")} data-card="approval" data-terminal={terminal || undefined}>
     <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><ShieldQuestion className="size-3.5"/>{approval.harness} asks permission · {approval.tool}</p>
     {approval.summary && <pre className="max-h-40 overflow-auto rounded-lg border bg-muted/50 px-2 py-1.5 font-mono text-xs whitespace-pre-wrap">{approval.summary}</pre>}
-    {open && terminal ? <p className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400"><SquareTerminal className="size-3.5 shrink-0"/>{IN_TERMINAL}<span className="font-normal text-muted-foreground">· {terminalHint(approval.mode)}</span></p>
+    {open && terminal ? <p className="flex items-center gap-1.5 text-xs font-medium text-primary"><SquareTerminal className="size-3.5 shrink-0"/>{IN_TERMINAL}<span className="font-normal text-muted-foreground">· {terminalHint(approval.mode)}</span></p>
       : open ? <div className="flex gap-2">
-      <Button size="sm" className="rounded-full" disabled={disabled} onClick={() => act({ id: approval.id, decision: "allow" })}><Check/>Allow</Button>
-      <Button size="sm" variant="outline" className="rounded-full" disabled={disabled} onClick={() => act({ id: approval.id, decision: "deny" })}><X/>Deny</Button>
+      <Button size="sm" className="rounded-md" disabled={disabled} onClick={() => act({ id: approval.id, decision: "allow" })}><Check/>Allow</Button>
+      <Button size="sm" variant="outline" className="rounded-md" disabled={disabled} onClick={() => act({ id: approval.id, decision: "deny" })}><X/>Deny</Button>
     </div> : <p className="text-xs text-muted-foreground" data-outcome={approval.state}>{outcome}{approval.by && " · " + approval.by}</p>}
   </div>;
 }
@@ -112,14 +112,14 @@ export function QuestionCard({ skip, ...props }) {
 /** An ask_question post: the question, then its answer, Skipped, or an answer field. */
 export function LegacyQuestionCard({ body, answer, by, skipped, disabled, onAnswer, taskLinks }) {
   const [draft, setDraft] = useState("");
-  return <div className={cn(CARD, "flex flex-col gap-2", !answer && !skipped && "border-amber-500/50")} data-card="question">
+  return <div className={cn(CARD, "flex flex-col gap-2", !answer && !skipped && "border-primary/50")} data-card="question">
     <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><CircleHelp className="size-3.5"/>Question</p>
-    <MessageContent markdown taskLinks={taskLinks} className="bubble max-w-full bg-transparent p-0 text-[15px] leading-relaxed">{body}</MessageContent>
+    <MessageContent markdown taskLinks={taskLinks} className="bubble max-w-full bg-transparent p-0 text-base leading-relaxed">{body}</MessageContent>
     {answer ? <p className="text-xs text-muted-foreground">Answered: <span className="font-medium text-foreground">{answer}</span>{by && " · " + by}</p>
       : skipped ? <p className="text-xs text-muted-foreground" data-outcome="skipped">{SKIPPED}</p>
       : <div className="flex flex-col gap-2">
         <Textarea aria-label="Answer" placeholder="Your answer…" value={draft} disabled={disabled} onChange={event => setDraft(event.target.value)} className="min-h-9 text-sm"/>
-        <Button size="sm" className="self-start rounded-full" disabled={disabled || !draft.trim()} onClick={async () => { if (await onAnswer(draft.trim())) setDraft(""); }}>Submit</Button>
+        <Button size="sm" className="self-start rounded-md" disabled={disabled || !draft.trim()} onClick={async () => { if (await onAnswer(draft.trim())) setDraft(""); }}>Submit</Button>
       </div>}
   </div>;
 }

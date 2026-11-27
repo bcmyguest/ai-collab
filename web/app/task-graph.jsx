@@ -35,7 +35,7 @@ export function TaskGraph({ tasks, open = () => {} }) {
   return <div className="flex min-h-0 flex-1 flex-col gap-3">
     <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
       <span>{graph.nodes.length} tasks · {graph.edges.length} blockers{!showDone && graph.hidden ? ` · ${graph.hidden} done hidden` : ""}</span>
-      {hasDone && <Button type="button" size="sm" variant="outline" className="h-8 rounded-full" aria-pressed={!showDone} onClick={() => setShowDone(!showDone)}>
+      {hasDone && <Button type="button" size="sm" variant="outline" className="h-8 rounded-md" aria-pressed={!showDone} onClick={() => setShowDone(!showDone)}>
         {showDone ? "Collapse done" : "Show done"}
       </Button>}
     </div>

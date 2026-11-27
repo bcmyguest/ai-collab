@@ -11,7 +11,7 @@ import { TeamEditor } from "./team-editor";
 const clock = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 function Tag({ children, tone = "" }) {
-  return <span className={cn("shrink-0 rounded border px-1.5 text-[11px] font-medium", tone || "text-muted-foreground")}>{children}</span>;
+  return <span className={cn("shrink-0 rounded border px-1.5 text-xs font-medium", tone || "text-muted-foreground")}>{children}</span>;
 }
 
 function describe(pattern) {
@@ -62,7 +62,7 @@ function TeamRoster({ pattern, members, editing, go, act, busy, disabled, notice
       </div>
     </form> : <>
       <section className="flex flex-col gap-2">
-        <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Members</h3>
+        <h3 className="text-xs font-medium text-muted-foreground">Members</h3>
         <ul className="flex flex-col gap-1.5">
           {members.map((member, index) => <li key={index} className="rounded-lg border p-2 font-mono text-xs">{member}</li>)}
         </ul>
@@ -90,7 +90,7 @@ function PatternInspect({ pattern, own, go, act, busy, disabled, notice, raw }) 
     {canCopy(pattern.source) && <p className="text-xs text-muted-foreground">Read-only. Copy it to the project to change it.</p>}
 
     <section className="flex flex-col gap-2">
-      <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Roles</h3>
+      <h3 className="text-xs font-medium text-muted-foreground">Roles</h3>
       <ul className="flex flex-col gap-1.5">
         {pattern.roles.map(role => <li key={role.id} className="rounded-lg border p-2 text-xs">
           <div className="flex flex-wrap gap-2 font-mono"><span className="font-semibold">{role.id}</span><span className="text-muted-foreground">{[role.harness, role.model].filter(Boolean).join(" · ")}</span></div>
@@ -100,13 +100,13 @@ function PatternInspect({ pattern, own, go, act, busy, disabled, notice, raw }) 
     </section>
 
     <section className="flex flex-col gap-2">
-      <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Graph</h3>
+      <h3 className="text-xs font-medium text-muted-foreground">Graph</h3>
       <div className="rounded-xl border bg-card p-2"><RoleGraph graph={graph} label={`Graph of ${pattern.name}`}/></div>
       {pattern.handoffs.length ? <HandoffDiagram handoffs={pattern.handoffs}/> : <p className="text-xs text-muted-foreground">No handoffs. A team starts its members directly.</p>}
     </section>
 
     <section className="flex flex-col gap-2">
-      <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Definition</h3>
+      <h3 className="text-xs font-medium text-muted-foreground">Definition</h3>
       <div className="flex gap-2">
         <Button type="button" size="sm" variant={raw ? "outline" : "default"} onClick={() => go({ pattern: pattern.name })}>Graph</Button>
         <Button type="button" size="sm" variant={raw ? "default" : "outline"} onClick={() => go({ pattern: pattern.name, raw: "1" })}>Raw</Button>
@@ -117,7 +117,7 @@ function PatternInspect({ pattern, own, go, act, busy, disabled, notice, raw }) 
     </section>
 
     <section className="flex flex-col gap-2">
-      <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Runs</h3>
+      <h3 className="text-xs font-medium text-muted-foreground">Runs</h3>
       {own.length ? <ul className="flex flex-col gap-1.5">{own.map(run => <RunRow key={run.id} run={run} open={item => go({ run: item.id })}/>)}</ul>
         : <p className="text-xs text-muted-foreground">No runs of this pattern yet.</p>}
     </section>
@@ -208,12 +208,12 @@ export function PatternsPage({ data, project, selected, navigate, call, disabled
             {pattern.invalid && <Tag tone="border-destructive text-destructive">invalid</Tag>}
           </span>
           <span className={cn("truncate text-xs", pattern.description || pattern.legacy ? "text-muted-foreground" : "italic text-muted-foreground")}>{describe(pattern)}</span>
-          <span className="font-mono text-[11px] text-muted-foreground">{pattern.roles.map(role => role.id).join(" → ")}</span>
+          <span className="font-mono text-xs text-muted-foreground">{pattern.roles.map(role => role.id).join(" → ")}</span>
         </button>
       </li>)}
     </ul>
     {runs.length > 0 && <section className="flex flex-col gap-2">
-      <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Recent runs</h2>
+      <h2 className="text-xs font-medium text-muted-foreground">Recent runs</h2>
       <ul className="flex flex-col gap-1.5">{runs.map(run => <RunRow key={run.id} run={run} open={item => go({ run: item.id })}/>)}</ul>
     </section>}
   </div>;
@@ -240,7 +240,7 @@ function RunView({ run, data, go, act, busy, disabled, notice }) {
     <div className="rounded-xl border bg-card p-2"><RoleGraph graph={toGraph(definition)} active={run.status === "running" ? run.active : ""} used={run} label={`Run ${run.id} graph`}/></div>
 
     <section className="flex flex-col gap-2">
-      <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Roles</h3>
+      <h3 className="text-xs font-medium text-muted-foreground">Roles</h3>
       <ul className="flex flex-col gap-1.5 text-xs">
         {definition.roles.map(role => {
           const address = run.sessions?.[role.id] ?? "";
@@ -264,7 +264,7 @@ function RunView({ run, data, go, act, busy, disabled, notice }) {
     </section>
 
     <section className="flex flex-col gap-2">
-      <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Handoffs</h3>
+      <h3 className="text-xs font-medium text-muted-foreground">Handoffs</h3>
       {run.handoffs?.length ? <ol className="flex flex-col gap-2 border-l pl-3 text-xs">
         {run.handoffs.map(handoff => <li key={handoff.seq} className="flex flex-col gap-0.5">
           <span className="font-mono">{handoffLine(handoff)}</span>

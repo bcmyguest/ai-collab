@@ -13,7 +13,7 @@ const VARIANT = { primary: "default", default: "outline", borderless: "ghost" };
 export const ButtonImpl = createComponentImplementation(basicCatalog.components.get("Button"), ({ props, buildChild }) => {
   const disabled = props.isValid === false;
   return <Button type="button" size="sm" variant={VARIANT[props.variant ?? "default"]} disabled={disabled} onClick={() => props.action?.()}
-    className="h-8 rounded-full px-3.5 disabled:opacity-50">
+    className="h-8 rounded-md px-3.5 disabled:opacity-50">
     {props.child && buildChild(props.child)}
   </Button>;
 });
@@ -28,5 +28,5 @@ export const TextFieldImpl = createComponentImplementation(basicCatalog.componen
 
 /** A short tag: a question's header, or a status. */
 export const ChipImpl = createComponentImplementation(ChipApi, ({ props }) => {
-  return <Badge variant={props.tone === "muted" ? "outline" : "secondary"} className="h-5 max-w-full px-2 text-[11px] font-medium text-muted-foreground">{props.text}</Badge>;
+  return <Badge variant={props.tone === "muted" ? "outline" : "secondary"} className="h-5 max-w-full px-2 text-xs font-medium text-muted-foreground">{props.text}</Badge>;
 });

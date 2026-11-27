@@ -22,7 +22,7 @@ function Fallback({ request }: { request: RunRequest }) {
     <p>{request.reason}</p>
     <p className="text-xs text-muted-foreground">From {request.session} · cwd {request.cwd}</p>
     <pre className="max-h-72 overflow-auto rounded-md border bg-muted/50 px-2 py-1.5 font-mono text-xs whitespace-pre">{request.script}</pre>
-    <p className="font-mono text-[11px] break-all text-muted-foreground">sha256 {request.sha256}</p>
+    <p className="font-mono text-xs break-all text-muted-foreground">sha256 {request.sha256}</p>
     <p className="text-xs text-muted-foreground">{request.status === "pending" ? "The approval card did not render, so Run is unavailable here. Reload to try again." : runOutcome(request)}</p>
   </section>;
 }

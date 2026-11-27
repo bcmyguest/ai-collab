@@ -36,7 +36,7 @@ function CodeBlockCode({
     highlight(code, language).then((result) => { if (live) setHtml(result) })
     return () => { live = false }
   }, [code, language])
-  const classes = cn("w-full overflow-x-auto text-[13px] [&>pre]:px-4 [&>pre]:py-4", className)
+  const classes = cn("w-full overflow-x-auto text-sm [&>pre]:px-4 [&>pre]:py-4", className)
   return html
     ? <div className={classes} data-language={language} data-highlighted="" dangerouslySetInnerHTML={{ __html: html }} {...props}/>
     : <div className={classes} data-language={language} {...props}><pre><code>{code}</code></pre></div>

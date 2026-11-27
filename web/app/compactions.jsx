@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { axisPercent, clearText, compactionText, headroom, mapAxis, modelText, tokenCount } from "@/lib/compaction-view";
 import { Avatar, ago } from "./chat-shared";
 
-const MARK = { auto: "bg-amber-500", manual: "bg-primary", failed: "bg-destructive", clear: "bg-sky-500", model: "bg-emerald-500" };
+const MARK = { auto: "bg-primary", manual: "bg-primary", failed: "bg-destructive", clear: "bg-sky-500", model: "bg-emerald-500" };
 
 // The sentence for one history entry: a compaction, a clear or a model switch.
 const textOf = entry => entry.kind === "clear" ? clearText(entry) : entry.kind === "model" ? modelText(entry) : compactionText(entry);
@@ -31,20 +31,20 @@ export function CompactionMap({ agents, now }) {
     {rows.length === 0 && <p className="py-16 text-center text-sm text-muted-foreground">No agents in this project yet.</p>}
     {rows.map(({ agent, entries }) => <article key={agent.id} data-compaction-agent={agent.id} className="flex min-w-0 flex-col gap-2.5 rounded-2xl border bg-card p-3 text-sm">
       <header className="flex min-w-0 flex-wrap items-center gap-2">
-        <Avatar address={agent.id} className="size-6 text-[9px]"/>
+        <Avatar address={agent.id} className="size-6 text-xs"/>
         <span className="min-w-0 truncate font-mono text-xs">{short(agent.id)}</span>
         <Badge variant="outline">{agent.peer}</Badge>
         {agent.model && <span className="min-w-0 truncate text-xs text-muted-foreground">{agent.model}</span>}
       </header>
       <p className="text-xs text-muted-foreground">{contextLine(agent)}</p>
-      <div role="list" aria-label={`Compactions of ${short(agent.id)}`} className="relative h-6 rounded-full bg-muted">
+      <div role="list" aria-label={`Compactions of ${short(agent.id)}`} className="relative h-6 rounded-md bg-muted">
         {entries.map(entry => <span key={entry.id} role="listitem" className="contents">
           <span role="img" aria-label={`${ago(entry.at, now)}: ${textOf(entry)}`} title={textOf(entry)}
             style={{ left: `${axisPercent(entry.at, axis.start, axis.end)}%` }}
             className={`absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-card ${markOf(entry)}`}/>
         </span>)}
       </div>
-      <div className="flex justify-between text-[10px] text-muted-foreground"><span>{ago(axis.start, now)}</span><span>now</span></div>
+      <div className="flex justify-between text-xs text-muted-foreground"><span>{ago(axis.start, now)}</span><span>now</span></div>
       {entries.length === 0 && <p className="text-xs text-muted-foreground">No compactions, clears or model switches in the activity kept in memory.</p>}
       {entries.length > 0 && <ul className="flex flex-col gap-1 text-xs">
         {entries.slice(-RECENT).reverse().map(entry => <li key={entry.id} className="flex min-w-0 flex-wrap gap-x-2">

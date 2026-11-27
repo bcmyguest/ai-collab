@@ -31,7 +31,7 @@ function useCoarsePointer() {
 function Pill({ open, label, className, children, ...props }) {
   return <PopoverTrigger asChild>
     <button type="button" aria-label={label} title={label} {...props}
-      className={cn("flex h-7 min-w-0 shrink-0 items-center gap-1 rounded-full px-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground disabled:pointer-events-none disabled:opacity-50",
+      className={cn("flex h-7 min-w-0 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground disabled:pointer-events-none disabled:opacity-50",
         open && "bg-muted text-foreground", className)}>
       {children}
       <ChevronDown className="size-3 shrink-0 opacity-60"/>
@@ -41,7 +41,7 @@ function Pill({ open, label, className, children, ...props }) {
 
 /** A harness logo in a small disc, so a model row reads as its harness at a glance. */
 function Mark({ harness }) {
-  return <span aria-hidden className="grid size-4 shrink-0 place-items-center rounded-full bg-muted">
+  return <span aria-hidden className="grid size-4 shrink-0 place-items-center rounded-md bg-muted">
     <HarnessLogo peer={harness} className="size-2.5 text-foreground/70"/>
   </span>;
 }
@@ -138,7 +138,7 @@ function CodeModePill({ harness, mode, place, on, set }) {
   if (codeModeField(harness, on, mode, place).codeMode === undefined) return null;
   const label = "Code mode: " + (on ? "on" : "off");
   return <button type="button" aria-label={label} title={label} aria-pressed={on} onClick={() => set(!on)}
-    className={cn("flex h-7 shrink-0 items-center gap-1 rounded-full px-1.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+    className={cn("flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
       on && "text-foreground")}>
     {"{}"}<span className="truncate">{on ? "Code" : "Code off"}</span>
   </button>;
@@ -227,13 +227,13 @@ export function NewAgentComposer({ project, agents = [], startable = [], places:
         : <>
           <Textarea id="new-agent-prompt" aria-label="Prompt" value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={onKeyDown}
             placeholder={PROMPT_PLACEHOLDER} disabled={busy} rows={3} autoFocus
-            className="min-h-24 resize-none border-0 bg-transparent px-2 py-1 text-base shadow-none field-sizing-content focus-visible:ring-0 md:text-[15px] dark:bg-transparent"/>
+            className="min-h-24 resize-none border-0 bg-transparent px-2 py-1 text-base shadow-none field-sizing-content focus-visible:ring-0 md:text-base dark:bg-transparent"/>
           <div className="flex items-center gap-1 px-0.5 pt-1">
             <ModePill mode={mode} harness={choice.harness} set={setMode}/>
             <ModelPill choice={choice} startable={startable} models={models} set={item => { picked.current = true; setChoice(item); }}/>
             <CodeModePill place={place} mode={mode} harness={choice.harness} on={codeMode} set={setCodeMode}/>
             <Button type="button" size="icon" aria-label="Start session" disabled={!canSend} onClick={submit}
-              className="ml-auto size-8 shrink-0 rounded-full"><ArrowUp/></Button>
+              className="ml-auto size-8 shrink-0 rounded-md"><ArrowUp/></Button>
           </div>
         </>}
     </div>

@@ -170,7 +170,7 @@ function ToolGroupRun({ row, when, now, goRun }) {
 /** Small "Go to agent" button used wherever an agent or subagent is referenced. */
 export function GoToAgent({ label = "Go to agent", onClick, className }) {
   return <button type="button" aria-label={label} title={label} onClick={event => { event.stopPropagation(); onClick(); }}
-    className={cn("inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground", className)}>
+    className={cn("inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground", className)}>
     <SquareArrowOutUpRight className="size-3.5"/>
   </button>;
 }
@@ -180,12 +180,12 @@ export function ActivityRow({ row, when, now, goRun }) {
   if (row.type === "subagent") return <article data-type="subagent" className="flex min-w-0 flex-col gap-1">
     <SubagentRun row={row} when={when} now={now} goRun={goRun}/>
   </article>;
-  if (row.type === "group") return <article data-type="group" data-agent={row.agent} className="flex min-w-0 flex-col gap-1"><p className="font-mono text-[11px] text-muted-foreground">{row.agent}</p><ToolGroupRun row={row} when={when} now={now} goRun={goRun}/></article>;
+  if (row.type === "group") return <article data-type="group" data-agent={row.agent} className="flex min-w-0 flex-col gap-1"><p className="font-mono text-xs text-muted-foreground">{row.agent}</p><ToolGroupRun row={row} when={when} now={now} goRun={goRun}/></article>;
   return <article data-type={row.type} data-agent={row.agent} className={cn("flex min-w-0 flex-col gap-1", row.type === "prompt" && "items-end")}>
     <div className="flex max-w-full items-center gap-1.5 text-xs text-muted-foreground">
       {row.type === "prompt" && <span className="font-medium text-foreground">Prompt</span>}
       {row.type === "text" && <span className="font-medium text-foreground">{readableText(row.output).label || row.tool || "Agent"}</span>}
-      {row.type === "text" && row.agent && <span className="font-mono text-[11px]">{row.agent}</span>}
+      {row.type === "text" && row.agent && <span className="font-mono text-xs">{row.agent}</span>}
       {row.time > 0 && <time dateTime={new Date(row.time * 1000).toISOString()}>{when(row.time * 1000)}</time>}
     </div>
     <Body item={row}/>

@@ -26,6 +26,6 @@ function SignIn() {
   return <main className="flex h-dvh flex-col items-center justify-center gap-4 px-6 text-center">
     <h1 className="text-xl font-semibold">AI Collab</h1>
     <p className="text-sm text-muted-foreground">Sign in to message your agents.</p>
-    <Button asChild className="rounded-full"><a href="/api/auth/login">Sign in with GitHub</a></Button>
+    <Button asChild className="rounded-md"><a href="/api/auth/login">Sign in with GitHub</a></Button>
   </main>;
 }

@@ -54,7 +54,7 @@ export function TeamEditor({ pattern, initialName = "", templates, project, call
 
   return <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-3 py-4 text-sm lg:flex-row lg:items-start">
     <section className="flex min-w-0 flex-col gap-2 lg:flex-1">
-      <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Graph</h2>
+      <h2 className="text-xs font-medium text-muted-foreground">Graph</h2>
       <div className="rounded-xl border bg-card p-2">
         {good?.roles?.length ? <RoleGraph graph={toGraph(good)} label={`Graph of ${good.name}`}/>
           : <p className="py-8 text-center text-xs text-muted-foreground">No valid graph yet.</p>}
@@ -63,7 +63,7 @@ export function TeamEditor({ pattern, initialName = "", templates, project, call
     </section>
 
     <section className="flex min-w-0 flex-col gap-2 lg:flex-1">
-      <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Definition (team.dot)</h2>
+      <h2 className="text-xs font-medium text-muted-foreground">Definition (team.dot)</h2>
       {isNew ? <div className="flex flex-wrap gap-2">
         <input aria-label="Team name" className="min-w-0 flex-1 rounded border bg-background px-2 py-1 font-mono text-xs" placeholder="team-name" maxLength={24} value={name} onChange={e => rename(e.target.value)}/>
         {templates.length > 0 && <select aria-label="Template" className="rounded border bg-background px-2 py-1 text-xs" value={templateName} onChange={e => pickTemplate(e.target.value)}>

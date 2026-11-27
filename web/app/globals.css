@@ -6,8 +6,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-sans: var(--font-grotesk), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -35,74 +35,91 @@
   --color-cursor: var(--cursor);
   --color-opencode: var(--opencode);
   --color-agent: var(--agent);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: 3px;
+  --radius-md: 4px;
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
-  --radius-4xl: calc(var(--radius) + 16px);
+  /* The larger steps clamp to 6px, so no surface reads as a pill or a bubble. */
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+  --radius-3xl: var(--radius);
+  --radius-4xl: var(--radius);
+}
+
+/* Five type steps; components use only these. */
+@theme {
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.9375rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.0625rem;
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
 }
 
 :root {
-  --radius: 0.75rem;
-  --background: oklch(0.985 0.002 247);
-  --foreground: oklch(0.21 0.006 286);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.21 0.006 286);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.21 0.006 286);
-  --primary: oklch(0.51 0.2 272);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.955 0.004 286);
-  --secondary-foreground: oklch(0.21 0.006 286);
-  --muted: oklch(0.955 0.004 286);
-  --muted-foreground: oklch(0.5 0.016 286);
-  --accent: oklch(0.94 0.012 280);
-  --accent-foreground: oklch(0.21 0.006 286);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.91 0.004 286);
-  --input: oklch(0.91 0.004 286);
-  --ring: oklch(0.6 0.15 272);
-  --sidebar: oklch(0.97 0.003 286);
-  --sidebar-foreground: oklch(0.21 0.006 286);
-  --sidebar-accent: oklch(0.93 0.01 280);
-  --sidebar-border: oklch(0.91 0.004 286);
-  --claude: oklch(0.62 0.15 45);
-  --codex: oklch(0.58 0.13 160);
-  --cursor: oklch(0.56 0.16 250);
-  --opencode: oklch(0.5 0.02 260);
-  --agent: oklch(0.55 0.12 320);
+  --radius: 0.375rem;
+  --background: oklch(0.985 0.002 75);
+  --foreground: oklch(0.22 0.006 60);
+  --card: oklch(0.995 0.001 75);
+  --card-foreground: oklch(0.22 0.006 60);
+  --popover: oklch(0.995 0.001 75);
+  --popover-foreground: oklch(0.22 0.006 60);
+  /* The one accent: the primary action and anything that waits on the operator. */
+  --primary: oklch(0.53 0.15 45);
+  --primary-foreground: oklch(0.99 0.003 75);
+  --secondary: oklch(0.95 0.004 75);
+  --secondary-foreground: oklch(0.22 0.006 60);
+  --muted: oklch(0.95 0.004 75);
+  --muted-foreground: oklch(0.48 0.008 60);
+  --accent: oklch(0.93 0.005 75);
+  --accent-foreground: oklch(0.22 0.006 60);
+  --destructive: oklch(0.53 0.19 27);
+  --border: oklch(0.9 0.005 75);
+  --input: oklch(0.88 0.005 75);
+  --ring: oklch(0.55 0.01 60);
+  --sidebar: oklch(0.965 0.004 75);
+  --sidebar-foreground: oklch(0.22 0.006 60);
+  --sidebar-accent: oklch(0.92 0.006 75);
+  --sidebar-border: oklch(0.9 0.005 75);
+  /* Harness marks are monochrome; the glyph shape tells them apart. */
+  --claude: oklch(0.45 0.01 60);
+  --codex: oklch(0.45 0.01 60);
+  --cursor: oklch(0.45 0.01 60);
+  --opencode: oklch(0.45 0.01 60);
+  --agent: oklch(0.45 0.01 60);
 }
 
 .dark {
-  --background: oklch(0.16 0.006 286);
-  --foreground: oklch(0.96 0.003 286);
-  --card: oklch(0.2 0.007 286);
-  --card-foreground: oklch(0.96 0.003 286);
-  --popover: oklch(0.21 0.007 286);
-  --popover-foreground: oklch(0.96 0.003 286);
-  --primary: oklch(0.62 0.19 272);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.25 0.008 286);
-  --secondary-foreground: oklch(0.96 0.003 286);
-  --muted: oklch(0.25 0.008 286);
-  --muted-foreground: oklch(0.7 0.015 286);
-  --accent: oklch(0.28 0.02 280);
-  --accent-foreground: oklch(0.96 0.003 286);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 14%);
-  --ring: oklch(0.62 0.19 272);
-  --sidebar: oklch(0.185 0.006 286);
-  --sidebar-foreground: oklch(0.96 0.003 286);
-  --sidebar-accent: oklch(0.26 0.015 280);
-  --sidebar-border: oklch(1 0 0 / 8%);
-  --claude: oklch(0.72 0.14 50);
-  --codex: oklch(0.72 0.13 160);
-  --cursor: oklch(0.7 0.13 250);
-  --opencode: oklch(0.75 0.02 260);
-  --agent: oklch(0.7 0.12 320);
+  --background: oklch(0.175 0.004 60);
+  --foreground: oklch(0.93 0.004 75);
+  --card: oklch(0.205 0.005 60);
+  --card-foreground: oklch(0.93 0.004 75);
+  --popover: oklch(0.225 0.005 60);
+  --popover-foreground: oklch(0.93 0.004 75);
+  --primary: oklch(0.75 0.13 55);
+  --primary-foreground: oklch(0.2 0.02 50);
+  --secondary: oklch(0.25 0.005 60);
+  --secondary-foreground: oklch(0.93 0.004 75);
+  --muted: oklch(0.25 0.005 60);
+  --muted-foreground: oklch(0.7 0.008 70);
+  --accent: oklch(0.27 0.006 60);
+  --accent-foreground: oklch(0.93 0.004 75);
+  --destructive: oklch(0.7 0.17 25);
+  --border: oklch(0.29 0.005 60);
+  --input: oklch(0.33 0.005 60);
+  --ring: oklch(0.65 0.01 70);
+  --sidebar: oklch(0.155 0.004 60);
+  --sidebar-foreground: oklch(0.93 0.004 75);
+  --sidebar-accent: oklch(0.24 0.005 60);
+  --sidebar-border: oklch(0.26 0.005 60);
+  --claude: oklch(0.78 0.008 70);
+  --codex: oklch(0.78 0.008 70);
+  --cursor: oklch(0.78 0.008 70);
+  --opencode: oklch(0.78 0.008 70);
+  --agent: oklch(0.78 0.008 70);
 }
 
 @layer base {
@@ -113,7 +130,11 @@
     @apply h-full overscroll-none;
   }
   body {
-    @apply bg-background text-foreground font-sans antialiased;
+    @apply bg-background text-sm text-foreground font-sans antialiased;
+  }
+  /* iOS zooms into a field under 16px, so touch screens get 16px fields. */
+  @media (pointer: coarse) {
+    input, textarea, select { font-size: max(16px, 1em); }
   }
   /* Tailwind v4 dropped preflight's pointer cursor on buttons; restore it so controls look usable, and say so when they are not. */
   button:not(:disabled), summary, label[for], select:not(:disabled), [role="button"]:not(:disabled) {

@@ -47,7 +47,7 @@ export const ScriptImpl = createComponentImplementation(ScriptApi, ({ props }) =
           {lines.length > 1 && <span aria-hidden className="w-[3ch] shrink-0 text-right text-muted-foreground select-none">{i + 1}</span>}
           <span className="min-h-[1lh] min-w-0 break-all whitespace-pre-wrap">{line}</span>
         </span>)}</pre>
-    {expected && <span className={cn("font-mono text-[11px] break-all text-muted-foreground", check === "differs" && "font-semibold text-destructive")}>
+    {expected && <span className={cn("font-mono text-xs break-all text-muted-foreground", check === "differs" && "font-semibold text-destructive")}>
       sha256 {expected} · {CHECK_TEXT[check]}
     </span>}
   </div>;

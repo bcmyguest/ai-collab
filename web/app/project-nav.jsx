@@ -21,12 +21,12 @@ export function ProjectNav({ links, rail = false }) {
       aria-label={waiting > 0 ? `${label}, ${waiting} waiting on you` : count > 0 ? `${label}, ${count}` : label}
       className={cn("relative flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl font-medium transition-colors",
         "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
-        rail ? "min-h-14 px-1 py-2 text-[11px]" : "min-h-11 px-1 py-1 text-xs",
+        rail ? "min-h-14 px-1 py-2 text-xs" : "min-h-11 px-1 py-1 text-xs",
         current ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground")}>
       <span aria-hidden className="relative">
         <Icon className={rail ? "size-5" : "size-4"}/>
-        {badge > 0 && <span className={cn("absolute -right-2.5 -top-1.5 min-w-3.5 rounded-full px-1 text-center text-[9px] leading-3 font-semibold",
-          waiting > 0 ? "bg-amber-500 text-white" : "bg-muted text-muted-foreground ring-1 ring-border")}>{badge}</span>}
+        {badge > 0 && <span className={cn("absolute -right-2.5 -top-1.5 min-w-3.5 rounded-md px-1 text-center text-xs leading-3 font-semibold",
+          waiting > 0 ? "bg-primary text-white" : "bg-muted text-muted-foreground ring-1 ring-border")}>{badge}</span>}
       </span>
       <span className="max-w-full truncate">{label}</span>
     </a>;

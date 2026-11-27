@@ -16,11 +16,11 @@ import { ActivityRow, GoToAgent } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
 import { Avatar, ago } from "./chat-shared";
 
-const SUBAGENT_DOT = { running: "bg-emerald-500", finished: "bg-muted-foreground/40", stale: "bg-amber-500" };
+const SUBAGENT_DOT = { running: "bg-emerald-500", finished: "bg-muted-foreground/40", stale: "bg-primary" };
 const CHIP = {
-  waiting: "border-amber-500/60 bg-amber-500/15 text-amber-700 dark:text-amber-300",
-  afk: "border-sky-500/50 bg-sky-500/10 text-sky-700 dark:text-sky-300",
-  working: "border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  waiting: "border-primary/50 bg-primary/10 text-primary",
+  afk: "border-border bg-transparent text-foreground",
+  working: "border-border bg-transparent text-foreground",
   idle: "border-border bg-muted text-muted-foreground",
   offline: "border-dashed border-border bg-transparent text-muted-foreground",
 };
@@ -28,7 +28,7 @@ const GROUPS = [["waiting", "Waiting on you"], ["afk", "AFK hold"], ["working", 
 const short = address => address?.includes("#") ? address.slice(0, address.indexOf("#") + 9) : address;
 
 export function StateChip({ state }) {
-  return <span data-chip={state} className={cn("inline-flex h-5 shrink-0 items-center gap-1 rounded-full border px-2 text-[11px] font-medium", CHIP[state])}>
+  return <span data-chip={state} className={cn("inline-flex h-5 shrink-0 items-center gap-1 rounded-md border px-2 text-xs font-medium", CHIP[state])}>
     {state === "working" && <LoaderCircle className="size-3 animate-spin"/>}{STATE_LABELS[state]}
   </span>;
 }
@@ -36,7 +36,7 @@ export function StateChip({ state }) {
 function Action({ action }) {
   if (!action) return null;
   return <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-    {action.subagent && <Badge variant="secondary" className="h-4 shrink-0 px-1.5 text-[10px]">{action.subagent}</Badge>}
+    {action.subagent && <Badge variant="secondary" className="h-4 shrink-0 px-1.5 text-xs">{action.subagent}</Badge>}
     <span className="shrink-0 font-medium text-foreground">{action.tool}</span>
     <span className="min-w-0 flex-1 truncate font-mono">{action.summary}</span>
   </p>;
@@ -83,7 +83,7 @@ function SessionCard({ node, now, open, openAddress, act, answer, skip, dispose,
       </div> : <div className="flex min-w-0 items-start gap-1">
       <button type="button" onClick={() => open(node)} aria-label={"Open " + node.id + (node.name ? " · " + node.name : "")}
         className="flex min-w-0 flex-1 items-start gap-2.5 text-left">
-        <Avatar address={node.id} className="size-8 text-[11px]"/>
+        <Avatar address={node.id} className="size-8 text-xs"/>
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="flex min-w-0 items-start gap-2">
             <span className="line-clamp-2 min-w-0 flex-1 break-words font-medium" title={node.name || node.id}>{node.name || short(node.id)}</span>
@@ -98,8 +98,8 @@ function SessionCard({ node, now, open, openAddress, act, answer, skip, dispose,
             {showProject && <span>· {node.project}</span>}
             {activity && <span>· active {activity}</span>}
             {meter.text && <span data-context={meter.level} title="Context used"
-              className={cn(meter.level === "full" && "text-destructive", meter.level === "warn" && "text-amber-700 dark:text-amber-400")}>· context {meter.text}</span>}
-            {label && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]" title="Running subagents">{label}</Badge>}
+              className={cn(meter.level === "full" && "text-destructive", meter.level === "warn" && "text-primary")}>· context {meter.text}</span>}
+            {label && <Badge variant="secondary" className="h-4 px-1.5 text-xs" title="Running subagents">{label}</Badge>}
           </span>
         </span>
       </button>
@@ -109,7 +109,7 @@ function SessionCard({ node, now, open, openAddress, act, answer, skip, dispose,
       {compact && detailsOpen && <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
         <span className="break-all font-mono">{node.id}</span>
         {meter.text && <span data-context={meter.level} title="Context used"
-          className={cn(meter.level === "full" && "text-destructive", meter.level === "warn" && "text-amber-700 dark:text-amber-400")}>Context {meter.text}</span>}
+          className={cn(meter.level === "full" && "text-destructive", meter.level === "warn" && "text-primary")}>Context {meter.text}</span>}
         {node.owner && <span title="Agent owner">@{node.owner}</span>}
         {node.harness && <span title="Agent type">{HARNESS_LABELS[node.harness] || node.harness}</span>}
         {node.team && <span title="Team and role">{node.team} · {node.role}</span>}
@@ -133,7 +133,7 @@ function SessionCard({ node, now, open, openAddress, act, answer, skip, dispose,
         </li>)}
       </ul>}
       {compact && node.pending.length > 0 && <button type="button" data-pending-count={node.pending.length} onClick={() => open(node)}
-        className={cn("flex h-7 w-fit max-w-full items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium", CHIP.waiting)}>
+        className={cn("flex h-7 w-fit max-w-full items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium", CHIP.waiting)}>
         <CircleHelp className="size-3.5 shrink-0"/><span className="min-w-0 truncate">{pendingLabel(node.pending)}</span>
       </button>}
       {!compact && node.pending.map(item => <div key={item.id} className="min-w-0">
@@ -175,7 +175,7 @@ export function SessionList({ sessions, now, open, openAddress, act, answer, ski
       if (!list.length) return null;
       const body = <ul className="flex flex-col gap-2">{list.map(card)}</ul>;
       return <section key={group} data-group={group} aria-label={title}>
-        <h2 className="pb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">{title} · {list.length}</h2>{body}
+        <h2 className="pb-2 text-xs font-medium text-muted-foreground">{title} · {list.length}</h2>{body}
       </section>;
     })}
     {inactiveCount > 0 && <InactiveSessions count={inactiveCount} open={inactiveOpen} onToggle={onInactiveToggle}>
@@ -183,7 +183,7 @@ export function SessionList({ sessions, now, open, openAddress, act, answer, ski
       {offline.length > 0 && <ul className="flex flex-col gap-2">{offline.map(card)}</ul>}
       {dead.length > 0 && <section data-group="dead" aria-label="Dead sessions">
         <button type="button" aria-expanded={Boolean(deadOpen)} onClick={() => onDeadToggle?.(!deadOpen)}
-          className="flex w-full items-center gap-1.5 pb-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          className="flex w-full items-center gap-1.5 pb-2 text-left text-xs font-medium text-muted-foreground">
           <ChevronRight className={cn("size-3.5 transition-transform", deadOpen && "rotate-90")}/>Dead · {dead.length}
           <span className="normal-case tracking-normal">· offline for over a day</span>
         </button>
@@ -199,7 +199,7 @@ export function SubagentList({ rows, session, run, pick, when, now, back, childR
   const chosen = run && runs.find(row => row.run === run);
   if (chosen) return <div className="flex min-w-0 flex-col gap-3" data-run={chosen.run}>
     <div className="flex flex-wrap items-center gap-2">
-      <Button variant="outline" size="sm" className="h-8 rounded-full" onClick={back}><CornerLeftUp/>Back to parent</Button>
+      <Button variant="outline" size="sm" className="h-8 rounded-md" onClick={back}><CornerLeftUp/>Back to parent</Button>
       <button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => pick("")}>All subagents</button>
     </div>
     <p className="text-sm font-medium">{subagentLabel(chosen, now)}{chosen.description && " · " + chosen.description}</p>
