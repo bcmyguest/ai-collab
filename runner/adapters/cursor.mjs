@@ -11,6 +11,7 @@ import { cursorBinary, findExecutable } from "../../lib/start.mjs";
 import { argv, LAUNCH_BINARY } from "../../lib/harness.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, permissionSettings } from "../contract.mjs";
 import { builderPolicy } from "../../lib/builder.ts";
+import { MANAGED_ENV, subagentDenial } from "../../lib/subagent-guard.ts";
 import {
   commitUncommitted, destroyOwnedSandboxes, downloadTree, ensureSandbox as ensureSandboxIn, execArgv as sandboxExecArgv, runTool,
   sandboxLabels, sandboxName as sandboxNameFor, teamSandboxName, uploadFile, uploadLogins, uploadSecret, uploadTree,
@@ -38,6 +39,12 @@ const SANDBOX_CURSOR_ENV = { CURSOR_AGENT_ALLOW_PROCESS_INSPECTION: "1" };
 const GIT_TIMEOUT_MS = 120_000;
 // How long shutdown waits for killed CLIs to exit before it waits on their sandbox releases.
 const SHUTDOWN_EXIT_WAIT_MS = 5_000;
+// The sandbox has no ai-collab hook script, so a managed child's subagentStart hook is a shell line gated on its env.
+// Cursor has no switch that turns native subagents off (docs/spawn-agent-spec.md, A3); the sandbox is shared per project.
+const quoteSh = (s) => `'${s.replaceAll("'", `'\\''`)}'`;
+const SANDBOX_HOOKS = `${JSON.stringify({ version: 1, hooks: { subagentStart: [{
+  command: `cat >/dev/null; if [ "$${MANAGED_ENV}" = 1 ]; then printf '%s\\n' ${quoteSh(JSON.stringify(subagentDenial("cursor")))}; else printf '{}\\n'; fi`, timeout: 10,
+}] } }, null, 2)}\n`;
 
 /** The OpenShell sandbox name for a project: ai-collab-<project>, lowercase, at most 40 characters of project. */
 export const sandboxName = (project) => sandboxNameFor(project);
@@ -185,7 +192,7 @@ function connect(argv, { env, cwd, log, onRequest, onNotify }) {
  * so send_to_all, reply_to_operator and ask_question can publish. A team worktree reuses the clone and still
  * gets the token: the marker skips only the worktree upload.
  */
-export async function prepareSandbox({ openshell, env, sandbox, cwd, home = homedir(), project = "", cursorTree, launcher = SANDBOX_LAUNCHER, staged = new Set(), reuseWorktree = false, log = () => {} }) {
+export async function prepareSandbox({ openshell, env, sandbox, cwd, home = homedir(), project = "", cursorTree, launcher = SANDBOX_LAUNCHER, staged = new Set(), reuseWorktree = false, managed = false, log = () => {} }) {
   const remoteWork = `${SANDBOX_ROOT}/work`;
   const workdir = `${remoteWork}/${basename(cwd)}`;
   const marker = `${SANDBOX_ROOT}/.team-worktree-ready`;
@@ -227,7 +234,22 @@ export async function prepareSandbox({ openshell, env, sandbox, cwd, home = home
   // Claude and Codex logins too, as builders get them (operator decision 2026-11-23).
   await uploadLogins({ openshell, env, sandbox, home, remoteHome: SANDBOX_HOME, log });
   await stageNtfy({ openshell, env, sandbox, project, workdir, log });
+  if (managed) {
+    await stageHooks({ openshell, env, sandbox });
+    execEnv[MANAGED_ENV] = "1";
+  }
   return { workdir, env: execEnv };
+}
+
+// Writes the user-level hooks.json the sandbox CLI reads from $HOME/.cursor; a failure fails the start, so no child runs unblocked.
+async function stageHooks({ openshell, env, sandbox }) {
+  const dir = mkdtempSync(join(tmpdir(), "ai-collab-sandbox-hooks-"));
+  try {
+    writeFileSync(join(dir, "hooks.json"), SANDBOX_HOOKS);
+    await uploadFile({ openshell, env, sandbox, local: join(dir, "hooks.json"), remoteDir: `${SANDBOX_HOME}/.cursor` });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 // The host's ntfy token file from defaults.json, or "" when none is configured.
@@ -416,7 +438,7 @@ export default function cursorAdapter(config = {}) {
         session.sandbox = sandbox;
         const prepared = await prepareSandbox({
           openshell: openshellBin, env, sandbox, cwd: spec.cwd, home: spec.home ?? spec.env?.HOME, project: spec.project, cursorTree,
-          staged: stagedTrees, reuseWorktree: Boolean(spec.patternRun), log: (l) => ctx.log(l),
+          staged: stagedTrees, reuseWorktree: Boolean(spec.patternRun), managed: spec.managed === true, log: (l) => ctx.log(l),
         });
         argv = execArgv({ openshell: openshellBin, sandbox, args: cursorArgs, workdir: prepared.workdir, env: { ...prepared.env, ...SANDBOX_CURSOR_ENV } });
         // The CLI runs in the sandbox, so it must be told the sandbox path, not the host's.
@@ -686,7 +708,7 @@ export default function cursorAdapter(config = {}) {
       if (settings.error) throw new Error(settings.error);
       const attached = await attach({
         project: record.project, cwd: record.cwd, place: record.place, permission: settings.settings,
-        model: record.model, patternRun: record.patternRun, address: record.address, env, requireLoad: true,
+        model: record.model, patternRun: record.patternRun, address: record.address, env, requireLoad: true, managed: record.managed === true,
       }, ctx);
       try {
         attached.session.sessionId = record.nativeId;
