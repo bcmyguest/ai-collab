@@ -16,7 +16,7 @@ export function TasksStrip({ tasks, openTask, openBoard }: { tasks: Task[]; open
   return <section aria-label="Open tasks" className="mx-2 mb-2 flex flex-col gap-0.5 rounded-2xl bg-card p-1.5 shadow-surface">
     <button type="button" onClick={openBoard} className="flex min-h-8 items-center gap-2 rounded-lg px-2 text-left text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground max-md:min-h-11">
       <ListTodo aria-hidden className="size-3.5"/><span className="flex-1">Tasks</span>
-      <span className="tabular-nums" aria-label={open.length + " open tasks"}>{open.length} open</span>
+      <span className="tabular-nums" aria-label={open.length + (open.length === 1 ? " open task" : " open tasks")}>{open.length} open</span>
     </button>
     <ul className="flex flex-col">
       {open.slice(0, STRIP_TASKS).map(task => {

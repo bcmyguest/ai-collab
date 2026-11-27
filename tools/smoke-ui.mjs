@@ -10,7 +10,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright-core";
 
-export async function phoneFixture({ homeSessions = false, inactive = false, kanban = false, start, models, peers = "claude" } = {}) {
+export async function phoneFixture({ homeSessions = false, inactive = false, kanban = false, threads: withThreads = false, start, models, peers = "claude" } = {}) {
   const { createUi, installUi } = await import("../web/server/ui.ts");
   const { broadcastTopic, inboxTopic, loadProjects, sessionLabel } = await import("../lib/config.ts");
   const { addTask, taskStoreFile, writeStore } = await import("../lib/tasks.ts");
@@ -82,7 +82,9 @@ export async function phoneFixture({ homeSessions = false, inactive = false, kan
       seenAt: Date.now() - 25 * 60 * 60_000,
     });
   }
-  const ui = installUi(createUi({ projects, env, start, models, hasDraft: async () => false,
+  const threadList = withThreads ? await threadFixture({ cfg, root: projectsConfig[0].root, address, label: sessionLabel, inject: fake.inject }) : [];
+  const threadClient = withThreads ? item => memoryThreads(item.project === cfg.project ? threadList : []) : undefined;
+  const ui = installUi(createUi({ projects, env, start, models, hasDraft: async () => false, threadClient,
     control: async () => ({ status: "requested" }) }));
   const next = createRequire(import.meta.url)("next");
   const app = next({ dir: fileURLToPath(new URL("../web", import.meta.url)), dev: false, hostname: "127.0.0.1" });
@@ -91,7 +93,7 @@ export async function phoneFixture({ homeSessions = false, inactive = false, kan
   await once(server, "listening");
   return {
     url: `http://127.0.0.1:${server.address().port}`,
-    project: cfg.project, address, sessions,
+    project: cfg.project, address, sessions, threads: threadList,
     inject: (topic, message) => fake.inject(topic, message),
     messageDeliveries: (body, urgent = false) => fake.state.publishes.flatMap(post => {
       const message = parseEnvelope(post.message);
@@ -120,6 +122,54 @@ export async function phoneFixture({ homeSessions = false, inactive = false, kan
       rmSync(dir, { recursive: true, force: true });
     },
   };
+}
+
+/** A thread store held in memory: the fixture's threads, read-only apart from what the UI asks. */
+function memoryThreads(list) {
+  const find = id => list.find(thread => thread.id === id) || list[0];
+  return {
+    list: async () => list, sync: async () => ({}), get: async id => find(id), create: async () => list[0], update: async id => find(id),
+    moveSession: async id => find(id), attachPr: async id => find(id), detachPr: async id => find(id),
+  };
+}
+
+/**
+ * Threads with every kind of session row: a live lead with a live child, running and finished subagents, a gone session whose
+ * worktree was deleted, an address the registry no longer has, and a thread whose sessions are all gone.
+ */
+async function threadFixture({ cfg, root, address, label, inject }) {
+  const { writeState } = await import("../lib/state.ts");
+  const { processStart } = await import("../lib/process.ts");
+  const { activityTopic } = await import("../lib/config.ts");
+  const { buildActivity } = await import("../lib/activity.ts");
+  const registry = join(cfg.stateDir, cfg.project, "registry");
+  const tree = name => { const path = join(root, ".claude", "worktrees", name); mkdirSync(path, { recursive: true }); return path; };
+  const record = (peer, sessionId, fields) => {
+    const id = peer + "#" + label(sessionId);
+    writeState(join(registry, id + ".json"), { id, sessionId, harness: peer, seenAt: Date.now(), ...fields });
+    return id;
+  };
+  const live = { pid: process.pid, pidStart: processStart(process.pid) };
+  const lead = record("claude", "redesign-lead", { cwd: tree("switchover-plan"), model: "opus-5-5", identityName: "Redesign lead", ...live });
+  const child = record("codex", "redesign-child", { cwd: tree("switchover-plan"), model: "gpt-5.5-codex", name: "Check contrast", parent: lead, ...live });
+  const gone = record("cursor", "redesign-gone", { cwd: join(root, ".claude", "worktrees", "deleted-spike"), model: "composer-2", name: "Old layout spike", seenAt: Date.now() - 3 * 3600_000 });
+  const missing = "opencode#" + label("redesign-missing");
+  const agent = { ...cfg, peer: "claude", session: lead.split("#")[1] };
+  const now = Date.now();
+  const events = [];
+  for (const [index, task] of ["Survey sidebar tokens", "Check harness contrast", "Draft the bell popover"].entries()) {
+    events.push({ type: "tool_result", tool: "Grep", callId: "g" + index, input: { pattern: "radius" }, output: "hit", agent: { id: "done-" + index, type: index === 1 ? "Plan" : "Explore" } });
+    events.push({ type: "tool_result", tool: "Agent", callId: "a" + index, output: JSON.stringify({ status: "completed", agentId: "done-" + index, description: task }) });
+  }
+  events.push({ type: "tool_result", tool: "Agent", callId: "live", output: JSON.stringify({ status: "async_launched", agentId: "run-live", description: "Screenshot every view" }) });
+  events.push({ type: "tool_call", tool: "Bash", callId: "b1", input: { command: "node tools/shots.mjs" }, agent: { id: "run-live", type: "general-purpose" } });
+  events.forEach((event, index) => inject(activityTopic(cfg.project), buildActivity(agent, "claude", event, new Date(now - (events.length - index) * 1000).toISOString()).message));
+  const thread = (id, title, sessions, extra = {}) => ({ id, project: cfg.project, title, sessions, leadSession: sessions[0], status: "active", createdAt: now - 7200_000, updatedAt: now - 60_000, ...extra });
+  return [
+    thread("t-redesign", "UI redesign", [lead, child, gone, missing], { branch: "feat/ui-redesign-v2", updatedAt: now - 5000, prs: [{ number: 812, state: "open" }] }),
+    thread("t-composer", "Composer keeps focus", [address], { branch: "fix/composer-keep-focus" }),
+    thread("t-spike", "Old layout spike", [gone, missing], { updatedAt: now - 3 * 3600_000 }),
+  ];
 }
 
 async function checkDecisions(page, fixture) {

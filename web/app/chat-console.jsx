@@ -42,6 +42,7 @@ import { useStream } from "./chat-stream";
 import { AfkToggle } from "./chat-sidebar";
 import { ThreadSidebar } from "./thread-sidebar";
 import { SessionPanel } from "./session-panel";
+import { ThreadSwitcher } from "./thread-switcher";
 import { AgentName } from "./agent-mark";
 import { ScheduledJobs } from "./scheduled";
 import { shortName } from "@/lib/thread-groups";
@@ -451,6 +452,8 @@ export function Console({ account }) {
         {/* A phone hides the sidebar, so New thread repeats here as the header's second stop. */}
         {project && !home && !inbox && <Button variant="ghost" size="icon" className="md:hidden" aria-label={"New thread in " + project}
           title={paused ? "New work is paused" : "New thread"} disabled={working || paused} onClick={() => newSession(project)}><Plus/></Button>}
+        {level === "session" && <ThreadSwitcher threads={data.threads || []} agents={data.agents || []} current={currentThread?.id}
+          open={session => session && navigate({ project, level: "session", harness: session.split("#")[0], session })}/>}
         {level === "session" && agent?.session && <div className="flex shrink-0 items-center gap-1">
           {agent.modelControl && modelsOf(models, "claude").length > 0 && <select
             aria-label="Claude model" className="h-8 w-28 truncate rounded-md border bg-background px-2 text-sm max-md:hidden"

@@ -28,7 +28,7 @@ export function SessionTree({ sessions, all, label, title, selected, now, open }
   const listed = new Set(sessions.map(agent => agent.id));
   const roots = sessions.filter(agent => !agent.parent || !listed.has(String(agent.parent)));
   const childrenOf = (id: string) => all.filter(agent => agent.parent === id && agent.id !== id);
-  const node = (agent: Agent, depth: number): React.ReactNode => <SessionItem key={agent.id} agent={agent} name={shortName(agent, title)} selected={selected} now={now} open={open}>
+  const node = (agent: Agent, depth: number): React.ReactNode => <SessionItem key={agent.id} agent={agent} name={agent.missing ? agent.peer + " session " + agent.id.split("#")[1]?.slice(0, 6) : shortName(agent, title)} selected={selected} now={now} open={open}>
     {depth < 3 && childrenOf(agent.id).map(child => node(child, depth + 1))}
   </SessionItem>;
   return <ul aria-label={label} className="ml-3 flex flex-col gap-px pl-1">{roots.map(agent => node(agent, 0))}</ul>;
