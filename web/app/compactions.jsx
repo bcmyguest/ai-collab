@@ -26,7 +26,7 @@ export function CompactionMap({ agents, now }) {
     entries: agent.history || [],
   }));
   const axis = mapAxis(rows.map(row => row.entries), now);
-  return <section aria-label="Compaction map" className="flex w-full flex-col gap-3">
+  return <section aria-label="History" className="flex w-full flex-col gap-3">
     <p className="text-xs text-muted-foreground">Headroom counts to the harness window. No harness reports its auto-compact point, so none is shown. Markers: amber auto, blue manual, red failed, sky clear, green model switch.</p>
     {rows.length === 0 && <p className="py-16 text-center text-sm text-muted-foreground">No agents in this project yet.</p>}
     {rows.map(({ agent, entries }) => <article key={agent.id} data-compaction-agent={agent.id} className="flex min-w-0 flex-col gap-2.5 rounded-2xl bg-card shadow-surface p-3 text-sm">

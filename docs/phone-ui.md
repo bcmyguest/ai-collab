@@ -365,9 +365,9 @@ Where detection runs:
 
 A phone post as a plain reply does nothing. Answer the card in the web UI, where the pick starts the replacement.
 
-## Compaction map
+## History
 
-**Compaction map** in a session's menu opens `#project=<name>&level=compactions`. It lists every agent in the project: harness, model, the context against the window (`tokens of window · N to window`), and its compactions, clears and model switches on one time axis shared by all rows. The axis runs from the oldest entry (or an hour ago) to now. Markers: amber auto, blue manual, red failed, sky clear, green model switch. The three newest entries follow each card with their times.
+**History** in a session's menu and the app menu opens `#project=<name>&level=compactions`. It lists every agent in the project: harness, model, the context against the window (`tokens of window · N to window`), and its compactions, clears and model switches on one time axis shared by all rows. The axis runs from the oldest entry (or an hour ago) to now. Markers: amber auto, blue manual, red failed, sky clear, green model switch. The three newest entries follow each card with their times.
 
 Headroom is `window - tokens` and shows only when the harness reported both (Codex does; Claude, Cursor and OpenCode report no window). No harness reports its auto-compact point, so the map shows no auto-compact headroom. The history is the activity kept in memory (500 events per project).
 
@@ -505,7 +505,7 @@ The **Menu** button at the foot of the sidebar holds everything that is not a th
 | Group | Items |
 |---|---|
 | Always | **Decision inbox**, with the count of decisions waiting |
-| The picked project | **Project chat**, **Tasks** (the tasks waiting on your decision, or the whole task count), **Teams** (the pattern count), **All sessions**, **Compaction map**, **Pause new work** or **Resume new work**, **Project actions** |
+| The picked project | **Project chat**, **Tasks** (the tasks waiting on your decision, or the whole task count), **Teams** (the pattern count), **All sessions**, **History**, **Pause new work** or **Resume new work**, **Project actions** |
 | Always | **Scheduled jobs**, **Closed projects**, **Theme**, **Sign out** |
 
 A dot on the Menu button shows that decisions wait. Each view is its own hash (`level=project|tasks|patterns`), so Back,
