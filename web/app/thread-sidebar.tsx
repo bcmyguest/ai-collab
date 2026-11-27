@@ -247,13 +247,15 @@ export function ThreadSidebar(props: SidebarProps) {
         <div data-slot="deploy-banner" className="min-w-0 flex-1 truncate text-right text-xs text-muted-foreground empty:hidden"/>
       </div>
       <ProjectSwitcher data={data} current={current} navigate={navigate}/>
-      {current && <button type="button" aria-label={"New thread in " + current} onClick={() => newThread(current)} disabled={disabled || paused} title={paused ? "New work is paused" : undefined}
-        className="flex min-h-9 items-center gap-2 rounded-md px-2 text-left text-sm text-foreground hover:bg-sidebar-accent disabled:opacity-50 max-md:min-h-11">
-        <Plus aria-hidden className="size-4 text-muted-foreground"/>New thread
-      </button>}
     </header>
     {!home && current && <TasksStrip tasks={data.tasks?.tasks || []} openTask={id => navigate({ project: current, level: "tasks", task: id })}
       openBoard={props.openTasks || (() => navigate({ project: current, level: "tasks" }))}/>}
+    {current && <div className="px-2 pb-2">
+      <button type="button" aria-label={"New thread in " + current} onClick={() => newThread(current)} disabled={disabled || paused} title={paused ? "New work is paused" : undefined}
+        className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-foreground hover:bg-sidebar-accent disabled:opacity-50 max-md:min-h-11">
+        <Plus aria-hidden className="size-4 text-muted-foreground"/>New thread
+      </button>
+    </div>}
     <nav aria-label="Threads" className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-3">
       {home ? <ul className="flex flex-col">
         {data.projects.map(project => <li key={project.id}>
