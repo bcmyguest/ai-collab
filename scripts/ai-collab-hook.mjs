@@ -33,6 +33,7 @@ import { REQUIRE_RUN_CODE_ENV } from "../lib/code-mode.mjs";
 import { readsThroughRunCode } from "../lib/code-run.mjs";
 import { storeReadDenial } from "../lib/store-read.mjs";
 import { recordSession, sessionName, standsDown } from "../lib/sessions/registry.ts";
+import { managedDenial } from "../lib/subagent-guard.ts";
 import { harnessProcess, isRunning } from "../lib/process.mjs";
 import { WAITER_MAX_S, runWaiter, takeWaiterSlot } from "../lib/waiter.ts";
 import { ON_DEMAND_LOADS, contextUsage, dropOnDemandFiles, readContext, recordInstructions, reportContext } from "../lib/usage.mjs";
@@ -204,6 +205,11 @@ async function main() {
   // and so Cursor's shell and read hooks return {} instead of asking. Codex and Claude PreToolUse deny here too.
   const storeRead = storeReadDenial(host, key, msg);
   if (storeRead && readsThroughRunCode(env)) return emit(storeRead);
+  // A managed session's native subagent or shell harness start is refused (lib/subagent-guard.ts); before standsDown, so owned Cursor sessions refuse too.
+  if (argv.includes("--read-gate")) {
+    const denied = managedDenial(host, key, msg, env, { cwd, host, session });
+    if (denied) return emit(denied);
+  }
   if (argv.includes("--read-gate")) return emit({});
   // Every Cursor run, joined project or not, records its turn for the OTLP trace (lib/cursor-trace.mjs); never awaited before output.
   traced = host === "cursor" ? hookTrace(msg, { env }).catch(() => null) : null;
