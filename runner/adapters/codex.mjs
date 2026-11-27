@@ -8,6 +8,7 @@ import { EventType } from "@ag-ui/core";
 import { sessionLabel } from "../../lib/config.mjs";
 import { CLIENT } from "../../lib/codex-compact.mjs";
 import { codexThreadConfig } from "../../lib/code-mode.mjs";
+import { CODEX_NO_SUBAGENT_ARGS } from "../../lib/subagent-guard.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, NOTICE, PERMISSION_MODES, permissionSettings } from "../contract.mjs";
 
 export const APP_SERVER_ARGS = ["app-server", "-c", "thread_unload_delay_secs=0"];
@@ -447,6 +448,10 @@ async function openThread(pool, options, ctx) {
 /** Default export of runner/adapters/codex.mjs. `command` overrides the child argv; requestMs the RPC timeout (tests). */
 export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND, requestMs = REQUEST_MS } = {}) {
   const pool = { command, requestMs, server: null, starting: null, booting: null };
+  // Managed sessions share a second app-server with native subagents off and AI_COLLAB_MANAGED in its env (spec answer 5).
+  const managedPool = { command: { ...command, args: [...command.args, ...CODEX_NO_SUBAGENT_ARGS] }, requestMs, server: null, starting: null, booting: null };
+  // The argv tail a managed session's own launcher gets, so an OpenShell child runs without subagents too.
+  const launcherArgs = (args, managed) => (managed ? [...args, ...CODEX_NO_SUBAGENT_ARGS] : args);
   return {
     harness: "codex",
     capabilities: { steer: true, images: false, resume: "transcript", permissionModes: PERMISSION_MODES, places: ["folder", "worktree", "openshell"] },
@@ -463,7 +468,7 @@ export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND, requ
       if (options.place === "openshell" && (!file || args[0] !== "sandbox" || args[1] !== "exec" || !commandAt || !args[commandAt])) {
         throw new Error("Codex OpenShell sessions require a prepared OpenShell launcher");
       }
-      const sessionPool = file ? { command: { file, args }, requestMs } : pool;
+      const sessionPool = file ? { command: { file, args: launcherArgs(args, options.managed) }, requestMs } : options.managed ? managedPool : pool;
       const opened = options.place === "openshell" ? { ...options, permission: openshellPermission(options.permission) } : options;
       try {
         return await openThread(sessionPool, opened, ctx);
@@ -477,7 +482,7 @@ export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND, requ
       const { settings, error } = permissionSettings("codex", record.permissionMode, record.place);
       if (error) throw new Error(error);
       const [file, ...args] = staged?.argv ?? [];
-      const sessionPool = file ? { command: { file, args }, requestMs } : pool;
+      const sessionPool = file ? { command: { file, args: launcherArgs(args, record.managed) }, requestMs } : record.managed ? managedPool : pool;
       const session = newSession({
         pool: sessionPool, ctx, env: resumeEnv, cwd: staged?.workdir ?? record.cwd, place: record.place,
         mode: record.permissionMode, model: record.model, settings: staged ? openshellPermission(settings) : settings, codeMode: record.codeMode,
@@ -509,11 +514,13 @@ export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND, requ
       return (page.data || []).flatMap((entry) => entry.skills || []).map((skill) => ({ name: skill.name, description: skill.description }));
     },
     async shutdown() {
-      const server = pool.server;
-      pool.server = null;
-      server?.child.kill();
-      pool.booting?.child.kill();
-      pool.booting = null;
+      for (const each of [pool, managedPool]) {
+        const server = each.server;
+        each.server = null;
+        server?.child.kill();
+        each.booting?.child.kill();
+        each.booting = null;
+      }
     },
   };
 }
