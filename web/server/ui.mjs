@@ -68,11 +68,13 @@ import { quotedReply, usableReplyId } from "../lib/reply-quote.js";
 import { answerMessage, answerText, terminalMessages } from "../lib/operator-messages.js";
 import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a2ui.js";
 import { runTerminalUi } from "./run-terminal.mjs";
+import { projectThreads } from "./threads.mjs";
+import { THREAD_ID } from "../../lib/threads.mjs";
 
 export { mentionedNames, mentionedTeams, startOnlyMentions };
 
 const INSTANCE = Symbol.for("ai-collab.ui");
-const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "move-task", "continue-builder", "recover-builder", "project-pause", "land-reviews", "land", "review", "skip", "request-outcome", "approve-outcome", "accept-outcome"];
+const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "move-task", "continue-builder", "recover-builder", "project-pause", "land-reviews", "land", "review", "skip", "request-outcome", "approve-outcome", "accept-outcome", "thread"];
 const HOSTED_ACTIONS = new Set(["history", "messages", "send", "reply", "afk", "approve", "a2ui", "skip"]);
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
@@ -430,14 +432,17 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     }
     const registry = join(item.stateDir, item.project, "registry");
     mkdirSync(registry, { recursive: true, mode: 0o700 });
-    const watcher = watch(registry, broadcast);
+    // A registry change may be a new session: it gets a thread at the next sync (docs/threads.md).
+    const threads = hosted ? null : projectThreads(item, { env, broadcast });
+    const watcher = watch(registry, () => { threads?.sync(); broadcast(); });
     watcher.unref();
+    threads?.sync();
     // Task edits from the CLI or an agent reach open streams through the backend's watch.
     const tasks = hosted ? null : tasksOf(item.project, env);
     const unwatchTasks = tasks ? tasks.watch(broadcast) : () => {};
     runTerminal.watch(item);
     const project = {
-      cfg: item, hub: hubs.get(key), watcher, tasks, unwatchTasks,
+      cfg: item, hub: hubs.get(key), watcher, tasks, unwatchTasks, threads,
       operator: { ...item, peer: "operator", session: "" },
       topic: broadcastTopic(item.project), status: statusTopic(item.project), activity: activityTopic(item.project),
       receipts: receiptsTopic(item.project),
@@ -1200,6 +1205,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       ...((scope === "home" ? shown.some(canLand) : canLand(project)) ? { landing } : {}),
       ...(hosted ? { hosted: true } : {}),
       startable: startable(project),
+      threads: project.threads?.list() || [],
       // The new-session default (defaults.json startDefault, else cursor on deepseek); the form prefills it when available.
       startDefault: startDefaultSetting(env),
       // The describe-a-team writer (AI_COLLAB_TEAM_AUTHOR_MODEL, else cursor deepseek); the composer prefills it and can override it.
@@ -1560,6 +1566,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }
       const project = projectFor(name);
       const { cfg, operator, topic } = project;
+      if (action === "thread") {
+        if (!project.threads) reject(403, "Threads are unavailable here");
+        return json(200, await project.threads.handle(input));
+      }
       if (action === "project-pause") {
         if (!projects.has(name)) reject(400, "Select a project");
         if (typeof paused !== "boolean") reject(400, "paused must be true or false");
@@ -1716,7 +1726,11 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (worktree === true && openshell === true) reject(400, "Pick a worktree or openshell, not both");
         const named = place ?? (worktree === true ? "worktree" : openshell === true ? "openshell" : undefined);
         if (named !== undefined && !startPlaces(project).includes(named)) reject(400, "That start place is not available for this project");
-        const where = named ?? defaultStartPlace(startPlaces(project), harness, env);
+        // A start in a thread runs in the thread's worktree as a folder start (docs/threads.md).
+        const inThread = project.threads ? await project.threads.startIn(input.thread) : null;
+        if (inThread && named !== undefined && named !== "folder") reject(400, "A start in a thread runs in the thread's worktree; drop the place");
+        if (inThread && codeMode === true) reject(400, "A start in a thread cannot use code mode yet");
+        const where = inThread ? "folder" : named ?? defaultStartPlace(startPlaces(project), harness, env);
         if (where === "openshell" && !openshellHarnesses(env).includes(harness)) reject(400, `${harness} cannot start in OpenShell yet; pick Folder or Worktree`);
         const checked = checkPrompt(prompt);
         if (checked.error) reject(400, checked.error);
@@ -1748,6 +1762,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
             .start({ project: name, harness, prompt: checked.text, place: "openshell", system: false, ...(chosen !== undefined ? { model: chosen } : {}) })
             .catch(() => reject(503, "The session runner is unavailable"));
           if (result.status !== 201) reject(result.status, result.body.error || "The runner refused the start");
+          await project.threads?.claim(result.body.session, { prompt: checked.text });
           return json(201, result.body);
         }
         if (launch === startSession && harness === "claude" && codeMode === true) {
@@ -1755,9 +1770,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
             .start({ project: name, harness, prompt: checked.text, place: where, permissionMode: "supervised", codeMode: true, system: false, ...(chosen !== undefined ? { model: chosen } : {}) })
             .catch(() => reject(503, "The session runner is unavailable"));
           if (result.status !== 201) reject(result.status, result.body.error || "The runner refused the start");
+          await project.threads?.claim(result.body.session, { prompt: checked.text });
           return json(201, result.body);
         }
-        return json(201, await start(cfg, { harness, prompt: checked.text, env, place: where, mode: chosenMode, ...(permissionChosen !== undefined ? { claudePermission: permissionChosen } : {}), ...(chosen !== undefined ? { model: chosen } : {}), ...(typeof codeMode === "boolean" ? { codeMode } : {}) }));
+        const started = await start(cfg, { harness, prompt: checked.text, env, place: where, mode: chosenMode, ...(inThread ? { origin: inThread.worktree } : {}), ...(permissionChosen !== undefined ? { claudePermission: permissionChosen } : {}), ...(chosen !== undefined ? { model: chosen } : {}), ...(typeof codeMode === "boolean" ? { codeMode } : {}) });
+        await project.threads?.claim(started.session, { thread: inThread, prompt: checked.text });
+        return json(201, started);
       }
       // A queued message is already on ntfy: the urgent marker makes the recipient's next hook poll at once.
       if (action === "nudge") {
@@ -1881,11 +1899,14 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           }
         }
         const sender = action === "send" ? operator : cfg;
+        // An operator message sent in a thread carries its id (docs/threads.md).
+        const thread = action === "send" && input.thread ? input.thread : undefined;
+        if (thread !== undefined && (typeof thread !== "string" || !THREAD_ID.test(thread))) reject(400, "Invalid thread");
         for (const to of destinations) {
           const direct = action === "send" && to.includes("#");
           const envelopeReply = reply?.replyTo && (to === target || destinations.size === 1) ? { replyTo: reply.replyTo }
             : (!reply?.quoted && replyTo !== undefined && replyTo !== null && replyTo !== "" && to === target ? { replyTo } : {});
-          await sendMessage(sender, to, text, { onPublished: project.hub.record, operatorThread: direct, attachment, urgent: urgent === true, ...(startOnly && to === primary ? { startOnly: true } : {}), ...envelopeReply, ...(by && sender.peer === "operator" ? { by } : {}) });
+          await sendMessage(sender, to, text, { onPublished: project.hub.record, operatorThread: direct, attachment, urgent: urgent === true, ...(startOnly && to === primary ? { startOnly: true } : {}), ...(thread ? { threadId: thread } : {}), ...envelopeReply, ...(by && sender.peer === "operator" ? { by } : {}) });
           if (direct) {
             const result = wakeAgent(project, to, listSessions(cfg).find(item => item.id === to));
             if (destinations.size === 1) wake = result;
@@ -2015,6 +2036,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       for (const project of projects.values()) {
         project.watcher.close();
         project.unwatchTasks();
+        project.threads?.close();
       }
       for (const hub of hubs.values()) hub.close();
       runTerminal.close();
