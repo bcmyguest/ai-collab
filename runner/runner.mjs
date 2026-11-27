@@ -73,6 +73,8 @@ const MODEL = /^[a-zA-Z0-9][a-zA-Z0-9._:/[\]-]{0,119}$/;
 // Harnesses whose adapter runs a child per managed session, so the managed env marks only that session.
 // OpenCode and Cursor share one process; their hooks read the owned record instead.
 const MANAGED_ENV_HARNESSES = new Set(["claude", "codex"]);
+// Spawned children of these harnesses run in OpenShell with full access, never on the host (docs/spawn-agent-spec.md, answer 6).
+const SPAWN_IN_OPENSHELL = new Set(["cursor"]);
 
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
 // Approvals off outside OpenShell is an unguarded agent on the host (lib/agent-guard.mjs); only the operator's env lifts it.
@@ -895,7 +897,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     const depth = spawned ? spawnDepth(configs.get(project), parent) : 0;
     if (isProjectPaused(configs.get(project))) fail(409, PROJECT_PAUSED);
     const adapter = adapterOf(harness);
-    const place = named ?? defaultPlace(harness);
+    const place = spawned && SPAWN_IN_OPENSHELL.has(harness) ? "openshell" : named ?? defaultPlace(harness);
     if (!PLACES.includes(place)) fail(400, "Unknown start place");
     // OpenShell is the boundary: every harness there runs with approvals off, whatever mode the caller named.
     // An unnamed Claude start takes the configured claudePermissionMode when it names a runner mode.
