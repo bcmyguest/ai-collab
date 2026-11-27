@@ -36,22 +36,27 @@ export function deliveryWorkflow(deps) {
     let dueAt = null;
     const stateOf = (attemptNo) => ({ firstAt, pushes: attemptNo - 1, dueAt });
 
+    // nextAction on live facts for session; pollAcks false skips the ack poll.
+    async function actionFor(session, state, pollAcks) {
+      // One probe per poll, shared by ready and busy.
+      const active = session ? (await deps.probe?.(session)) ?? null : null;
+      const ready = Boolean(session) && await deps.ready(session, active, project);
+      const busy = ready && state.pushes > 0 && Boolean(await deps.busy?.(session, active));
+      // Acks matter only to a redelivery; the first push never polls them.
+      const acked = state.pushes > 0 && pollAcks && await deps.acked(project, address, message);
+      return nextAction(state, deps.now(), { acked, busy, ready });
+    }
+
     // Waits, without a checkpoint, until nextAction allows a push: resolves the live session, or the action that ends the message.
     async function target(state) {
       for (;;) {
-        // A replayed attempt has its outcome recorded, so it takes no live probe.
+        // A replayed attempt skips the probe; a push step that then runs live checks again (resumed in attempt).
         if (wf.replaying) {
           const replayed = deps.sessionOf(project, address);
           if (replayed) return replayed;
         }
         const session = deps.sessionOf(project, address);
-        // One probe per poll, shared by ready and busy.
-        const active = session ? (await deps.probe?.(session)) ?? null : null;
-        const ready = Boolean(session) && await deps.ready(session, active, project);
-        const busy = ready && state.pushes > 0 && Boolean(await deps.busy?.(session, active));
-        // Acks matter only to a redelivery; the first push never polls them.
-        const acked = state.pushes > 0 && !wf.replaying && await deps.acked(project, address, message);
-        const action = nextAction(state, deps.now(), { acked, busy, ready });
+        const action = await actionFor(session, state, !wf.replaying);
         if (action === "push") return session;
         if (action !== "wait") return action;
         await wf.pause(readyPollMs);
@@ -60,6 +65,8 @@ export function deliveryWorkflow(deps) {
 
     // One push attempt. Resolves "delivered", "failed" (retry after backoff), "cut" (never sent again), "skipped", "expired", "dropped" or "answered".
     async function attempt(attemptNo, { allowSeen }) {
+      // A restart inside this attempt: target() and the answer re-check below skip their live checks.
+      const resumed = wf.replaying;
       const session = await target(stateOf(attemptNo));
       if (typeof session === "string") return session;
       const scfg = deps.scfgOf(project, session);
@@ -78,6 +85,11 @@ export function deliveryWorkflow(deps) {
       const text = await Promise.resolve().then(() => deps.textFor(scfg, current, attemptNo));
       // A Stop hook that started since the ready check delivers the message itself; the check runs inside the step so replays match.
       const pushed = await wf.step("push", async () => {
+        // A resumed attempt whose push never ran checks now: an answer or busy target during the restart gets no copy.
+        if (resumed) {
+          const action = await actionFor(session, stateOf(attemptNo), true);
+          if (action !== "push") return { status: action === "wait" ? "unsent" : action };
+        }
         if (!(await deps.held?.(session, scfg))) return deps.push(session, { text, urgent: current.urgent === true, ids: [id] });
         // The hold reads the hand-off file every second and the mark step hides the inbox copy; a failed hand-off retries.
         if (!deps.handOff) return { status: "held" };
@@ -90,9 +102,9 @@ export function deliveryWorkflow(deps) {
         await wf.step("mark", () => deps.markDelivered(scfg, [id]));
         return "delivered";
       }
-      if (pushed.status === "cut" || pushed.status === "unsent" || pushed.status === "held") {
+      if (["cut", "unsent", "held", "answered", "expired", "dropped"].includes(pushed.status)) {
         await wf.step("release", () => deps.release(scfg, [id], owner));
-        return pushed.status === "cut" ? "cut" : "failed";
+        return pushed.status === "unsent" || pushed.status === "held" ? "failed" : pushed.status;
       }
       // Unconfirmed: renew the reservation for the watch, then wait for the write to show in the transcript.
       await wf.step("renew", () => deps.reserve(scfg, [id], { owner, allowSeen: true }));
