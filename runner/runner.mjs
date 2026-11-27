@@ -190,8 +190,10 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   };
   const find = (address) => sessions.get(address) || fail(404, "Unknown owned session");
 
+  // The record keeps the last resume data, so a write after stop() drops the handle (a late RUN_FINISHED) still carries it.
   function save(s) {
-    writeOwned(s.cfg, { ...s.record, ...(s.live?.resumeData ? { resume: s.live.resumeData() } : {}) });
+    if (s.live?.resumeData) s.record.resume = s.live.resumeData();
+    writeOwned(s.cfg, s.record);
   }
 
   // Serializes publishes per session so rows keep their order.
