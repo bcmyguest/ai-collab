@@ -7,6 +7,7 @@
  * project's activity topic unless AI_COLLAB_ACTIVITY=off; that publish runs alongside delivery under a 1.5 s cap.
  * --rewake marks the Claude asyncRewake registration (lib/waiter.ts): it prints no JSON; it exits 2 with the messages on stderr.
  * --activity marks a registration that only publishes activity and returns the neutral output.
+ * A Stop hold publishes status "hold"; the hold's message or answer, or the session's next prompt or tool call, publishes "start".
  * InstructionsLoaded (Claude) records the instruction file it loaded in the session's context state (lib/usage.mjs).
  * A prompt the operator typed records operatorPromptAt for this session; AFK mode changes only when the operator sets it.
  * --host opencode takes Claude-shaped input from the OpenCode plugin (lib/opencode-plugin.mjs) and answers in Claude's shapes.
@@ -28,13 +29,13 @@ import { childHint, exportParent, greetParent, parentLine } from "../lib/family.
 import { formatInbox, hookOutput, identityLine, stopOutput } from "../lib/format.mjs";
 import { currentMode, operatorPrompt, takeModeNote } from "../lib/mode.mjs";
 import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.mjs";
-import { decideStop } from "../lib/stop.mjs";
+import { decideStop, noteHeld, takeHeld } from "../lib/stop.mjs";
 import { REQUIRE_RUN_CODE_ENV } from "../lib/code-mode.mjs";
 import { readsThroughRunCode } from "../lib/code-run.mjs";
 import { storeReadDenial } from "../lib/store-read.mjs";
 import { recordSession, sessionName, standsDown } from "../lib/sessions/registry.ts";
 import { harnessProcess, isRunning } from "../lib/process.mjs";
-import { WAITER_MAX_S, runWaiter, takeWaiterSlot } from "../lib/waiter.ts";
+import { STOP_GRACE_MS, WAITER_MAX_S, runWaiter, takeWaiterSlot } from "../lib/waiter.ts";
 import { ON_DEMAND_LOADS, contextUsage, dropOnDemandFiles, readContext, recordInstructions, reportContext } from "../lib/usage.mjs";
 import { activityEvents, publishActivity } from "../lib/activity.mjs";
 import { compactionFields } from "../lib/compaction.mjs";
@@ -62,6 +63,10 @@ const EVENTS = new Map([
 ]);
 // Events that refresh the recorded session name; Codex names a thread after its first prompt.
 const NAMED_EVENTS = new Set(["SessionStart", "UserPromptSubmit", "Stop"]);
+// Events that show the session working: the first one after a published "hold" publishes "start".
+const WORK_EVENTS = new Set(["userpromptsubmit", "pretooluse", "posttooluse", "posttoolusefailure", "subagentstart", "precompact"]);
+// Stop continuations that put the session back to work after a hold.
+const WORK_AFTER_HOLD = new Set(["messages", "answer"]);
 // Cursor permission hooks fall through to Cursor's own prompt with "ask".
 const CURSOR_PERMISSION = new Set(["beforeshellexecution", "beforemcpexecution"]);
 
@@ -124,13 +129,22 @@ async function deliver(cfg, host, event, msg, key) {
   }
   if (event === "PreCompact") return {};
   if (event === "Stop") {
-    const decision = await decideStop(cfg, { host, input: msg, onHold: () => publishStatus(cfg, { event: "hold", harness: host }) });
+    const onHold = async () => {
+      await publishStatus(cfg, { event: "hold", harness: host });
+      noteHeld(cfg);
+    };
+    const decision = await decideStop(cfg, { host, input: msg, onHold });
+    // A message or an answer ends the hold: the session works again.
+    if (decision.action === "continue" && WORK_AFTER_HOLD.has(decision.why) && takeHeld(cfg)) {
+      await publishStatus(cfg, { event: "start", harness: host }).catch(() => {});
+    }
     if (decision.action === "continue") {
       const note = await takeModeNote(cfg);
       return stopOutput(host, [note, decision.text].filter(Boolean).join("\n"));
     }
   }
   if (event === "Stop" || event === "SessionEnd") {
+    takeHeld(cfg);
     await publishStatus(cfg, { event: "stop", harness: host }).catch(() => {});
     return {};
   }
@@ -163,6 +177,7 @@ async function rewake(cfg, host, msg) {
   try {
     result = await runWaiter(cfg, {
       maxMs: (Number(process.env.AI_COLLAB_WAITER_MAX_S) || WAITER_MAX_S) * 1000, signal: ctrl.signal,
+      graceMs: String(msg.hook_event_name || "").toLowerCase() === "stop" ? STOP_GRACE_MS : 0,
       alive: () => !harness || isRunning(harness),
     });
   } finally {
@@ -238,6 +253,8 @@ async function main() {
     for (const name of ["SIGTERM", "SIGINT", "SIGHUP"]) process.once(name, () => ctrl.abort());
     return emit(subagent ? {} : await decideQuestion(cfg, { host, input: msg, signal: ctrl.signal }));
   }
+  // A turn start or a tool call after a hold: the session works again, so the hold status ends.
+  const resumed = !subagent && WORK_EVENTS.has(key) && takeHeld(cfg) ? publishStatus(cfg, { event: "start", harness: host }).catch(() => {}) : Promise.resolve();
   // Claude's InstructionsLoaded: an instruction file entered the context; recorded for the session's context view.
   if (key === "instructionsloaded" && !subagent) await recordInstructions(cfg, msg).catch(() => {});
   if (event || events.length) {
@@ -254,7 +271,7 @@ async function main() {
     }
   }
   emit(output);
-  await Promise.all([activity, closing, dropped, limited, settleReceipts()]);
+  await Promise.all([activity, closing, dropped, limited, resumed, settleReceipts()]);
 }
 
 try {
