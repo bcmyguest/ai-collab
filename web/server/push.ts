@@ -19,20 +19,34 @@ const TITLE_MAX = 80;
 const BODY_MAX = 200;
 const GONE = [404, 410];
 
-const clip = (text, max) => {
+// oxlint-disable-next-line typescript/no-explicit-any -- state files and browser subscriptions are JSON
+type Json = any;
+/** A browser push subscription reduced to what sending needs. */
+export type Subscription = { endpoint: string; keys: { p256dh: string; auth: string } };
+type VapidKeys = { publicKey: string; privateKey: string };
+type NoticeInput = { project: string; kind: string; id: string; sender: string; harness?: string; tool?: string; text?: string; important?: boolean };
+/** The notification payload the service worker shows. */
+export type Notice = {
+  title: string; body: string; tag: string; important: boolean; kind: string; project: string; session: string; harness: string; url: string;
+};
+/** Delivery counts of one send. */
+export type SendCounts = { sent: number; gone: number; failed: number };
+type Delivery = "sent" | "gone" | "failed";
+
+const clip = (text: unknown, max: number): string => {
   const flat = String(text ?? "").replace(/\s+/g, " ").trim();
   return flat.length > max ? flat.slice(0, max - 1) + "…" : flat;
 };
 
-function readJson(file, fallback) {
+function readJson(file: string, fallback: Json): Json {
   try { return JSON.parse(readFileSync(file, "utf8")); } catch { return fallback; }
 }
 
 /** A browser PushSubscription reduced to {endpoint, keys}, or null when the shape is wrong. */
-export function cleanSubscription(raw, { allowHttp = false } = {}) {
+export function cleanSubscription(raw: Json, { allowHttp = false } = {}): Subscription | null {
   const endpoint = raw?.endpoint;
   if (typeof endpoint !== "string" || endpoint.length > ENDPOINT_MAX) return null;
-  let url;
+  let url: URL;
   try { url = new URL(endpoint); } catch { return null; }
   if (url.protocol !== "https:" && !(allowHttp && url.protocol === "http:")) return null;
   const { p256dh, auth } = raw.keys || {};
@@ -41,15 +55,16 @@ export function cleanSubscription(raw, { allowHttp = false } = {}) {
 }
 
 /** Hash route that opens the item's session thread, else the project's session list, in the UI. */
-export function itemUrl(project, sender) {
+export function itemUrl(project: string, sender: string = ""): string {
   const [peer, session] = String(sender || "").split("#");
-  const route = session ? { project, level: "session", harness: peer, session: sender } : peer ? { project, level: "session" } : { project };
+  const route: Record<string, string> = session ? { project, level: "session", harness: peer, session: sender } : peer ? { project, level: "session" } : { project };
   return "/#" + new URLSearchParams(route).toString();
 }
 
 /** The notification payload: who asks and a clipped one-line summary, never file contents. */
-export function notice({ project, kind, id, sender, harness, tool, text, important = false }) {
-  const titles = {
+export function notice({ project, kind, id, sender, harness, tool, text, important = false }: NoticeInput): Notice {
+  // oxlint-disable-next-line quality/no-known-value-widening -- looked up by a runtime notice kind
+  const titles: Record<string, string> = {
     approval: `Approve ${tool || "tool"} · ${sender}`, choice: `Choose · ${sender}`,
     question: `${important ? "Important question" : "Question"} · ${sender}`, message: `Message · ${sender}`,
   };
@@ -59,11 +74,13 @@ export function notice({ project, kind, id, sender, harness, tool, text, importa
   };
 }
 
-export function createPush({ dir, subject, fetch: send = globalThis.fetch, now = Date.now, log = console.warn, allowHttp = false }) {
+export function createPush({ dir, subject, fetch: send = globalThis.fetch, now = Date.now, log = console.warn, allowHttp = false }: {
+  dir: string; subject: string; fetch?: typeof fetch; now?: () => number; log?: (line: string) => void; allowHttp?: boolean;
+}) {
   const files = { vapid: join(dir, "vapid.json"), subscriptions: join(dir, "subscriptions.json"), sent: join(dir, "sent.json") };
-  let vapid = null;
+  let vapid: VapidKeys | null = null;
 
-  function keys() {
+  function keys(): VapidKeys {
     if (vapid) return vapid;
     const stored = readJson(files.vapid, null);
     if (KEY.test(stored?.publicKey || "") && KEY.test(stored?.privateKey || "")) vapid = stored;
@@ -71,16 +88,16 @@ export function createPush({ dir, subject, fetch: send = globalThis.fetch, now =
       vapid = generateVAPIDKeys();
       writeState(files.vapid, vapid);
     }
-    return vapid;
+    return vapid as VapidKeys;
   }
 
-  const list = () => {
+  const list = (): Subscription[] => {
     const value = readJson(files.subscriptions, []);
-    return Array.isArray(value) ? value.map(item => cleanSubscription(item, { allowHttp })).filter(Boolean) : [];
+    return Array.isArray(value) ? value.map((item: Json) => cleanSubscription(item, { allowHttp })).filter((item: Subscription | null): item is Subscription => Boolean(item)) : [];
   };
-  const save = items => writeState(files.subscriptions, items);
+  const save = (items: Subscription[]): void => writeState(files.subscriptions, items);
 
-  function subscribe(raw) {
+  function subscribe(raw: Json): Subscription {
     const sub = cleanSubscription(raw, { allowHttp });
     if (!sub) throw Object.assign(new Error("Invalid push subscription"), { status: 400 });
     keys();
@@ -88,7 +105,7 @@ export function createPush({ dir, subject, fetch: send = globalThis.fetch, now =
     return sub;
   }
 
-  function unsubscribe(endpoint) {
+  function unsubscribe(endpoint: string): number {
     const items = list();
     const kept = items.filter(item => item.endpoint !== endpoint);
     if (kept.length !== items.length) save(kept);
@@ -96,7 +113,7 @@ export function createPush({ dir, subject, fetch: send = globalThis.fetch, now =
   }
 
   // One encrypted POST to the browser's push service; 404 or 410 means the subscription is gone.
-  async function deliver(sub, message) {
+  async function deliver(sub: Subscription, message: Notice): Promise<Delivery> {
     const { publicKey, privateKey } = keys();
     const details = generateRequestDetails(sub, JSON.stringify(message), {
       vapidDetails: { subject, publicKey, privateKey }, TTL: TTL_S,
@@ -111,13 +128,13 @@ export function createPush({ dir, subject, fetch: send = globalThis.fetch, now =
       if (GONE.includes(res.status)) return "gone";
       log(`ai-collab push: ${new URL(sub.endpoint).host} answered ${res.status}`);
     } catch (err) {
-      log(`ai-collab push: ${new URL(sub.endpoint).host} unreachable (${err.name})`);
+      log(`ai-collab push: ${new URL(sub.endpoint).host} unreachable (${(err as Error).name})`);
     }
     return "failed";
   }
 
   /** Sends to every subscription (or the one endpoint given) and drops those the push service reports gone. */
-  async function sendAll(message, { endpoint } = {}) {
+  async function sendAll(message: Notice, { endpoint }: { endpoint?: string } = {}): Promise<SendCounts> {
     const targets = list().filter(item => !endpoint || item.endpoint === endpoint);
     const results = await Promise.all(targets.map(sub => deliver(sub, message)));
     const gone = new Set(targets.filter((_, i) => results[i] === "gone").map(item => item.endpoint));
@@ -126,9 +143,9 @@ export function createPush({ dir, subject, fetch: send = globalThis.fetch, now =
   }
 
   /** Sends once per key: ids stay remembered for a day, across restarts. */
-  async function notify(key, message) {
+  async function notify(key: string, message: Notice): Promise<SendCounts | { sent: 0; duplicate?: true }> {
     const at = now();
-    const sent = Object.entries(readJson(files.sent, {})).filter(([, t]) => Number.isFinite(t) && at - t < SENT_TTL_MS);
+    const sent = Object.entries<number>(readJson(files.sent, {})).filter(([, t]) => Number.isFinite(t) && at - t < SENT_TTL_MS);
     if (sent.some(([id]) => id === key)) return { sent: 0, duplicate: true };
     writeState(files.sent, Object.fromEntries([...sent, [key, at]].slice(-SENT_MAX)));
     if (!list().length) return { sent: 0 };

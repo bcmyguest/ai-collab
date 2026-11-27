@@ -3,7 +3,18 @@ import { closeSync, mkdirSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-export function openHistory(cfg) {
+// oxlint-disable-next-line typescript/no-explicit-any -- events are stored and returned as JSON
+type Json = any;
+/** The UI's local event history and read positions for one bus. */
+export type History = {
+  add: (topic: string, events: Json[]) => Json[];
+  events: (topic: string, limit?: number) => Json[];
+  position: (conversation: string, reader: string) => number;
+  mark: (conversation: string, reader: string, sequence: number) => void;
+  close: () => void;
+};
+
+export function openHistory(cfg: { stateDir: string; url: string; token?: string }): History {
   const dir = join(cfg.stateDir, "ui-history");
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const key = createHash("sha256").update(JSON.stringify([cfg.url, cfg.token])).digest("hex");
@@ -46,9 +57,9 @@ export function openHistory(cfg) {
     },
     events(topic, limit) {
       const rows = limit === undefined ? select.all(topic) : recent.all(topic, limit).reverse();
-      return rows.map(row => ({ ...JSON.parse(row.payload), sequence: row.sequence }));
+      return rows.map(row => ({ ...JSON.parse(row.payload as string), sequence: row.sequence }));
     },
-    position: (conversation, reader) => position.get(conversation, reader)?.sequence ?? 0,
+    position: (conversation, reader) => (position.get(conversation, reader)?.sequence as number | undefined) ?? 0,
     mark: (conversation, reader, sequence) => mark.run(conversation, reader, sequence),
     close: () => db.close(),
   };

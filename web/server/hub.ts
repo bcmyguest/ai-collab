@@ -1,5 +1,5 @@
-import { openHistory } from "./history.mjs";
-import { pollCached, streamEvents } from "../../lib/messaging.ts";
+import { openHistory } from "./history.ts";
+import { pollCached, streamEvents, type Cfg, type TransportEvent } from "../../lib/messaging.ts";
 
 export const HISTORY_LIMIT = 500;
 const MAX_TOPICS = 40;
@@ -8,23 +8,26 @@ const RETRY_MIN_MS = 1000;
 const RETRY_MAX_MS = 60_000;
 const RATE_LIMIT_MS = 30_000;
 
+type Entry = { events: TransportEvent[]; ids: Set<string>; loaded: boolean; used: number; ready?: Promise<void> };
+type Listener = (topic: string, events: TransportEvent[]) => void;
+
 // One bus streaming subscription shared by every browser: history is fetched once per topic, then kept live.
-export function createHub(cfg, { keep = () => false } = {}) {
+export function createHub(cfg: Cfg, { keep = () => false }: { keep?: (topic: string) => boolean } = {}) {
   const history = openHistory(cfg);
-  const topics = new Map();
-  const listeners = new Set();
+  const topics = new Map<string, Entry>();
+  const listeners = new Set<Listener>();
   let latestTime = Math.floor(Date.now() / 1000);
-  let stream = null;
-  let timer = null;
+  let stream: AbortController | null = null;
+  let timer: NodeJS.Timeout | undefined;
   let retry = RETRY_MIN_MS;
   let closed = false;
 
-  function add(topic, events, { replay = false } = {}) {
+  function add(topic: string, events: TransportEvent[], { replay = false } = {}): TransportEvent[] {
     const entry = topics.get(topic);
     if (closed) return [];
     if (!replay) events = history.add(topic, events);
     if (!entry?.loaded) return [];
-    const added = [];
+    const added: TransportEvent[] = [];
     for (const ev of events) {
       if (entry.ids.has(ev.id)) continue;
       added.push(ev);
@@ -36,18 +39,18 @@ export function createHub(cfg, { keep = () => false } = {}) {
     return added;
   }
 
-  function evict() {
+  function evict(): void {
     const idle = [...topics].filter(([topic, entry]) => entry.loaded && !keep(topic)).sort((a, b) => a[1].used - b[1].used);
-    while (topics.size > MAX_TOPICS && idle.length) topics.delete(idle.shift()[0]);
+    while (topics.size > MAX_TOPICS && idle.length) topics.delete((idle.shift() as [string, Entry])[0]);
   }
 
-  function schedule(ms) {
+  function schedule(ms: number): void {
     clearTimeout(timer);
     if (!closed) timer = setTimeout(connect, ms);
     timer?.unref?.();
   }
 
-  async function connect() {
+  async function connect(): Promise<void> {
     stream?.abort();
     const names = [...topics].filter(([, entry]) => entry.loaded).map(([topic]) => topic);
     if (closed || !names.length) return;
@@ -60,7 +63,7 @@ export function createHub(cfg, { keep = () => false } = {}) {
         latestTime = Math.max(latestTime, ev.time);
       }
     } catch (error) {
-      limited = error.ntfyStatus === 429;
+      limited = (error as { ntfyStatus?: number }).ntfyStatus === 429;
     }
     if (stream !== ctrl || closed) return;
     schedule(limited ? Math.max(retry, RATE_LIMIT_MS) : retry);
@@ -68,13 +71,14 @@ export function createHub(cfg, { keep = () => false } = {}) {
   }
 
   // tailBytes: history keeps the newest events when the topic's cache exceeds the poll cap.
-  function open(topic, { tailBytes = 0 } = {}) {
+  function open(topic: string, { tailBytes = 0 } = {}): Promise<void> | undefined {
     let entry = topics.get(topic);
     if (!entry) {
-      entry = { events: [], ids: new Set(), loaded: false, used: 0 };
-      topics.set(topic, entry);
-      entry.ready = (async () => {
-        let events;
+      const created: Entry = { events: [], ids: new Set(), loaded: false, used: 0 };
+      entry = created;
+      topics.set(topic, created);
+      created.ready = (async () => {
+        let events: TransportEvent[] | undefined;
         try {
           events = await pollCached(cfg, topic, "all", undefined, { tailBytes });
         } catch (error) {
@@ -86,7 +90,7 @@ export function createHub(cfg, { keep = () => false } = {}) {
         }
         if (closed) return;
         if (events) history.add(topic, events);
-        entry.loaded = true;
+        created.loaded = true;
         add(topic, history.events(topic, HISTORY_LIMIT), { replay: true });
         evict();
         schedule(RESUBSCRIBE_MS);
@@ -98,10 +102,10 @@ export function createHub(cfg, { keep = () => false } = {}) {
 
   return {
     open,
-    record: event => add(event.topic, [event]),
+    record: (event: TransportEvent) => add(event.topic, [event]),
     history,
-    events: topic => topics.get(topic)?.events ?? [],
-    listen(listener) {
+    events: (topic: string) => topics.get(topic)?.events ?? [],
+    listen(listener: Listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },

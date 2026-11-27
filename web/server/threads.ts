@@ -1,32 +1,39 @@
 // The UI server's side of threads (docs/threads.md): a cached list per project, sync of new sessions, and POST /api/thread.
 import { isAbsolute, sep } from "node:path";
 import { listProjects } from "../../lib/config.ts";
-import { listOwned, listSessions } from "../../lib/sessions.mjs";
-import { threadClient } from "../../lib/thread-routes.ts";
+import { listOwned, listSessions, type SessionCfg } from "../../lib/sessions/registry.ts";
+import { threadClient, type ThreadClientConfig } from "../../lib/thread-routes.ts";
 import { THREAD_ID, threadSessionsOf } from "../../lib/threads.ts";
 
 const SYNC_DELAY_MS = 1000;
 const OPS = ["list", "get", "create", "rename", "status", "pin", "attach-pr", "detach-pr", "move-session"];
 const TITLE_WORDS = 8;
 
-function reject(status, message) {
+// oxlint-disable-next-line typescript/no-explicit-any -- threads and op inputs are JSON from the bus and the browser
+type Json = any;
+type ThreadsCfg = SessionCfg & ThreadClientConfig & { root?: string };
+type ThreadClient = ReturnType<typeof threadClient>;
+
+function reject(status: number, message: string): never {
   throw Object.assign(new Error(message), { status });
 }
 
 /** A thread title from a first prompt: its first words, at most 80 characters. */
-export function promptTitle(prompt) {
+export function promptTitle(prompt: unknown): string {
   return String(prompt || "").replace(/\s+/g, " ").trim().split(" ").slice(0, TITLE_WORDS).join(" ").slice(0, 80);
 }
 
 /** Threads of one project: list() is the cached snapshot value; sync() posts unassigned sessions to the bus. */
-export function projectThreads(cfg, { env = process.env, broadcast = () => {}, client = threadClient(cfg), delayMs = SYNC_DELAY_MS } = {}) {
-  let threads = [];
+export function projectThreads(cfg: ThreadsCfg, { env = process.env, broadcast = () => {}, client = threadClient(cfg), delayMs = SYNC_DELAY_MS }: {
+  env?: NodeJS.ProcessEnv; broadcast?: () => void; client?: ThreadClient; delayMs?: number;
+} = {}) {
+  let threads: Json[] = [];
   let available = true;
-  let timer = null;
-  let running = null;
-  const root = () => listProjects(env).find(entry => entry.project === cfg.project)?.root || cfg.root || "";
+  let timer: NodeJS.Timeout | undefined;
+  let running: Promise<void> | null = null;
+  const root = (): string => listProjects(env).find(entry => entry.project === cfg.project)?.root || cfg.root || "";
 
-  async function refresh() {
+  async function refresh(): Promise<void> {
     try {
       const next = await client.list(cfg.project);
       if (!Array.isArray(next)) return;
@@ -37,11 +44,11 @@ export function projectThreads(cfg, { env = process.env, broadcast = () => {}, c
       }
     } catch (error) {
       // 404: the bus runs a store without threads; other errors keep the last list.
-      if (error.status === 404) available = false;
+      if ((error as { status?: number }).status === 404) available = false;
     }
   }
 
-  async function syncNow() {
+  async function syncNow(): Promise<void> {
     if (!available) return;
     try {
       // Sessions of a thread without a worktree go too: the sync gives the thread their folder.
@@ -54,16 +61,16 @@ export function projectThreads(cfg, { env = process.env, broadcast = () => {}, c
   }
 
   /** Debounced: hook writes touch the registry on every event, so one sync runs per quiet second. */
-  function sync() {
+  function sync(): void {
     if (timer) return;
     timer = setTimeout(() => {
-      timer = null;
+      timer = undefined;
       running = (running || Promise.resolve()).then(syncNow, syncNow);
     }, delayMs);
     timer.unref?.();
   }
 
-  async function own(id) {
+  async function own(id: unknown): Promise<Json> {
     if (typeof id !== "string" || !THREAD_ID.test(id)) reject(400, "Invalid thread");
     const thread = await client.get(id);
     if (thread.project !== cfg.project) reject(404, "Unknown thread");
@@ -71,7 +78,7 @@ export function projectThreads(cfg, { env = process.env, broadcast = () => {}, c
   }
 
   /** The thread a start runs in: its worktree as the start folder, or null for a new thread. */
-  async function startIn(id) {
+  async function startIn(id: unknown): Promise<Json> {
     if (id === undefined || id === null || id === "") return null;
     const thread = await own(id);
     const base = root();
@@ -82,7 +89,7 @@ export function projectThreads(cfg, { env = process.env, broadcast = () => {}, c
   }
 
   /** Attaches a started session to its thread, creating one titled from the prompt when none was named. */
-  async function claim(session, { thread, prompt } = {}) {
+  async function claim(session: unknown, { thread, prompt }: { thread?: Json; prompt?: string } = {}): Promise<Json> {
     if (!available || typeof session !== "string") return null;
     try {
       const target = thread || await client.create({ project: cfg.project, title: promptTitle(prompt) });
@@ -95,11 +102,11 @@ export function projectThreads(cfg, { env = process.env, broadcast = () => {}, c
     }
   }
 
-  async function handle(input) {
+  async function handle(input: Json): Promise<Json> {
     const { op, thread: id } = input;
     if (!OPS.includes(op)) reject(400, "Unknown thread op");
     if (!available) reject(503, "Threads need the postgres bus store");
-    let result;
+    let result: Json;
     if (op === "list") result = { threads: await client.list(cfg.project, { archived: input.archived === true }) };
     else if (op === "create") {
       const { title, worktree, branch, baseRef, parentThreadId } = input;
