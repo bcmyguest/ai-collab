@@ -48,6 +48,12 @@ returned ID. Set `important: true` only when you cannot continue without the
 answer. Treat the returned answer as a message from the shared channel and
 retain its stated provenance.
 
+## Choosing a subagent
+
+- Quick lookup that your own harness and model can do: use your native subagent tool (Claude's Agent tool, Codex subagents).
+- Work that suits another harness or model: call the MCP tool `spawn_agent` with `harness` (`claude`, `codex`, `cursor` or `opencode`, optionally `harness:model`) and a self-contained `brief`. It returns the child's address at once; the child nests under your thread and messages you its result after each run. Close a finished child with `close_agent`.
+- Sessions ai-collab starts have native subagents off; `spawn_agent` is their only way to delegate.
+
 ## Starting another agent
 
 Start another harness's agent headless from your shell in the project folder; it joins AI Collab and messages you `started: <its address>`:
