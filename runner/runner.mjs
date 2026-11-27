@@ -380,9 +380,15 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     if (place === "folder") return root;
     const adapter = adapterOf(harness);
     if (!(adapter.capabilities.places ?? ["folder", "worktree"]).includes(place)) fail(400, `${harness} owned sessions cannot use place ${place} yet`);
-    const tree = patternRun ? { name: "team-" + patternRun, branch: "team/" + patternRun } : worktreeNames(harness, now());
+    let tree = patternRun ? { name: "team-" + patternRun, branch: "team/" + patternRun } : worktreeNames(harness, now());
     const gitFile = findExecutable("git", childEnv(env).PATH);
     if (!gitFile) fail(500, "git is not installed");
+    // Names have one-second resolution and spawns skip the start gap, so a taken name gets a random suffix.
+    if (!patternRun && (existsSync(join(root, ".claude", "worktrees", tree.name))
+      || await git(gitFile, ["-C", root, "show-ref", "--verify", "--quiet", `refs/heads/${tree.branch}`], { cwd: root, env: childEnv(env) }) === 0)) {
+      const suffix = randomBytes(3).toString("hex");
+      tree = { name: `${tree.name}-${suffix}`, branch: `${tree.branch}-${suffix}` };
+    }
     const cwd = join(root, ".claude", "worktrees", tree.name);
     if (patternRun && existsSync(join(cwd, ".git"))) return cwd;
     const code = await git(gitFile, ["-C", root, "worktree", "add", "-b", tree.branch, cwd], { cwd: root, env: childEnv(env) });
