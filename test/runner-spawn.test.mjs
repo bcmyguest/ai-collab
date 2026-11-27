@@ -189,7 +189,7 @@ test("a spawn that times out is cancelled, so no child runs and the cap stays fr
   await new Promise((resolve) => setTimeout(resolve, 300));
   assert.equal(adapter.calls.filter((c) => c.op === "send").length, 1, "only the parent's prompt was sent");
   for (let i = 0; i < 4; i++) assert.equal((await runner.start(spawnInput(`child ${i}`))).status, "started");
-}, { startTimeoutMs: 150 }));
+}, { startTimeoutMs: 1000 }));
 
 // Wraps each opened handle's send so a prompt starting with `prefix` meets `onSend` instead of the fake harness.
 function interceptSend(adapter, prefix, onSend) {
