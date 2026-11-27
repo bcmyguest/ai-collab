@@ -2,8 +2,8 @@
 import { closeSync, existsSync, fstatSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, sep } from "node:path";
-import { sessionLabel, SESSION_LABEL } from "../config.mjs";
-import { codexRequiredRunCodeArgs, REQUIRE_RUN_CODE_ENV } from "../code-mode.mjs";
+import { sessionLabel, SESSION_LABEL } from "../config.ts";
+import { codexRequiredRunCodeArgs, REQUIRE_RUN_CODE_ENV } from "../code-mode.ts";
 import { CODEX_HOOK_TRUST } from "../harness.ts";
 import { runningJobs } from "../job.ts";
 import { stripControl } from "../format.ts";
@@ -124,7 +124,7 @@ export async function recordSession(cfg: SessionCfg, { id, cwd, harness, event, 
       ...(typeof own.identityName === "string" && NAME.test(own.identityName) ? { identityName: own.identityName } : {}),
     });
   });
-  // An auto-joined repo records its root so the UI and phone starts find it (lib/config.mjs listProjects).
+  // An auto-joined repo records its root so the UI and phone starts find it (lib/config.ts listProjects).
   if (cfg.auto && isAbsolute(cfg.root || "")) writeState(join(cfg.stateDir, "auto-projects", `${cfg.project}.json`), { root: cfg.root });
 }
 

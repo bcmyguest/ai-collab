@@ -2,7 +2,7 @@
  * Pulsar-style agent messaging on the existing primitives: inbox (claimInbox plus read receipts), wait (the Stop hook's
  * bus stream waiter), respond (a msg envelope with replyTo and state), and send with await_reply.
  */
-import { broadcastTopic, inboxTopic } from "./config.mjs";
+import { broadcastTopic, inboxTopic } from "./config.ts";
 import { RESPOND_STATES, claimInbox, parseEnvelope, replyToOperator, sendMessage, type AttachmentInput, type Cfg, type InboxMessage, type Step } from "./messaging.ts";
 import { pollCached } from "./messaging.ts";
 import { readInbox, streamWaiter, waitUntil } from "./messaging.ts";

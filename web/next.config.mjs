@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 
 import { PHASE_PRODUCTION_SERVER } from "next/constants.js";
-import { productionDistDir } from "../lib/ui-build-output.mjs";
+import { productionDistDir } from "../lib/ui-build-output.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const server = fileURLToPath(new URL("server/ui.mjs", import.meta.url));

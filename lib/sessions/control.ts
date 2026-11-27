@@ -2,13 +2,13 @@
 import { spawn, type SpawnOptions } from "node:child_process";
 import { homedir } from "node:os";
 import { delimiter, dirname, isAbsolute, join } from "node:path";
-import { sessionLabel } from "../config.mjs";
-import { REQUIRE_RUN_CODE_ENV } from "../code-mode.mjs";
-import { codexCompact, codexLiveCompact, CLIENT, connect } from "../codex-compact.mjs";
+import { sessionLabel } from "../config.ts";
+import { REQUIRE_RUN_CODE_ENV } from "../code-mode.ts";
+import { codexCompact, codexLiveCompact, CLIENT, connect } from "../codex-compact.ts";
 import { sendMessage } from "../messaging.ts";
 import { isRunning } from "../process.ts";
 import { WAKE_ENV, WAKE_PROMPT } from "../mode.ts";
-import { opencodeRequest } from "../opencode-api.mjs";
+import { opencodeRequest } from "../opencode-api.ts";
 import { argv, type Command, type Harness } from "../harness.ts";
 import type { Session, SessionCfg } from "./registry.ts";
 import { noSubagentArgs, noSubagentEnv } from "../subagent-guard.ts";
@@ -16,7 +16,7 @@ import { noSubagentArgs, noSubagentEnv } from "../subagent-guard.ts";
 type Outcome = { status: string; detail: string };
 type CodexRpcOptions = { cwd?: string; env?: NodeJS.ProcessEnv; command?: Command };
 type CodexLive = (threadId: string, options: CodexRpcOptions) => Promise<{ status: string }>;
-type CodexCall = (threadId: string, options: CodexRpcOptions) => Promise<void>;
+type CodexCall = (threadId: string, options: CodexRpcOptions) => Promise<object | void>;
 
 const NATIVE_UUID = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 // OpenCode session IDs are "ses_" and 26 base-62 characters (OpenCode 2.2.5 logs and API).
@@ -228,7 +228,7 @@ export async function interruptSession(peer: Session | null | undefined, { env =
   }
   if (harness === "opencode") {
     const r = await opencode("POST", `/api/session/${encodeURIComponent(sessionId)}/interrupt`);
-    if (!r.ok) return r.status === 404 ? { status: "not-running", detail: "OpenCode has no such running session." } : { status: "failed", detail: r.error as string };
+    if (!r.ok) return r.status === 404 ? { status: "not-running", detail: "OpenCode has no such running session." } : { status: "failed", detail: r.error };
     const interrupted = r.body?.interrupted ?? r.body?.data?.interrupted;
     return interrupted ? { status: "succeeded", detail: "OpenCode interrupted the turn." } : { status: "not-running", detail: "No turn was running." };
   }

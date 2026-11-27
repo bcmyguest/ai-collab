@@ -1,7 +1,7 @@
 /** Teams: named member lists from teams.json (global) and projects.json (per project), with member checks and team sessions. */
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { configDir } from "../config.mjs";
+import { configDir } from "../config.ts";
 import { listModels } from "../models.ts";
 import { listSessions } from "../sessions.mjs";
 import { formatHarnessModel, parseHarnessModel } from "../harness.ts";

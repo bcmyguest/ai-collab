@@ -1,8 +1,8 @@
 // Scripted in-process adapter for tests: "approve: <cmd>" asks for approval, "hang" runs until interrupted, else it echoes.
 import { randomUUID } from "node:crypto";
 import { EventType } from "@ag-ui/core";
-import { sessionLabel } from "../../lib/config.mjs";
-import { APPROVAL_REQUESTED, PERMISSION_MODES } from "../contract.mjs";
+import { sessionLabel } from "../../lib/config.ts";
+import { APPROVAL_REQUESTED, PERMISSION_MODES } from "../contract.ts";
 
 /** A fake Adapter; calls records every adapter call for assertions. */
 export function createFakeAdapter({ harness = "codex", capabilities = {}, openError = null, compact = true } = {}) {

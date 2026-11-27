@@ -10,7 +10,7 @@ import { appendFileSync, mkdirSync, readFileSync, renameSync, rmSync, existsSync
 import path from "node:path";
 import type { Readable } from "node:stream";
 import { encodeTraceRequest } from "./analyze-otlp.ts";
-import { autoDefaults, sessionLabel, stateDir } from "./config.mjs";
+import { autoDefaults, sessionLabel, stateDir } from "./config.ts";
 
 export const DEFAULT_OTLP_ENDPOINT = "http://localhost:6006/v1/traces";
 export const EXPORT_TIMEOUT_MS = 1500;

@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { MANAGED_ENV, SHELL_START_DENIED } from "./agent-guard.ts";
-import { loadConfig, stateDir } from "./config.mjs";
+import { loadConfig, stateDir } from "./config.ts";
 import { isRunning } from "./process.ts";
 import { harnessOfBinary, type Harness } from "./harness.ts";
 import { readOwned } from "./sessions/registry.ts";

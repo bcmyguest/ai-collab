@@ -7,7 +7,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { MAX_BODY_CHARS, MESSAGE_MAX_BYTES, SESSION_LABEL, isGithubLogin, isValidName, statusTopic, inboxTopic, broadcastTopic, type loadConfig } from "./config.mjs";
+import { MAX_BODY_CHARS, MESSAGE_MAX_BYTES, SESSION_LABEL, isGithubLogin, isValidName, statusTopic, inboxTopic, broadcastTopic, type loadConfig } from "./config.ts";
 import { deepLink } from "./deep-link.ts";
 import { alertPriority, readAlertLevel } from "./alerts.ts";
 import { parsePhoneReply, parseQuestionText } from "./questions.ts";
@@ -15,11 +15,11 @@ import { readState, writeState, statePath, withLock } from "./state.ts";
 import { parseMode, recordMode } from "./mode.ts";
 import { imageAttachment, readAttachment } from "./attachment.ts";
 import { attachmentOf, cacheAttachmentsWithin, cacheUploadedAttachment, localizedAttachment } from "./attachment-cache.ts";
-import { encodeEnvelope, parseWireEnvelope } from "./agui.mjs";
+import { encodeEnvelope, parseWireEnvelope } from "./agui.ts";
 import { sendReceipts, settleReceipts } from "./receipts.ts";
 import { reconnectBackoff } from "./operator.ts";
 
-export { MESSAGE_MAX_BYTES } from "./config.mjs";
+export { MESSAGE_MAX_BYTES } from "./config.ts";
 
 export const INITIAL_LOOKBACK_S = 3600; // first contact: deliver messages from the last hour
 export const MAX_PER_CLAIM = 20;
@@ -736,7 +736,7 @@ function applyEvents(cfg: Cfg, state: InboxState, fetched: Fetched, { inbox, all
       const attachment = attachmentOf(ev);
       const message = queuedMessage({
         id: ev.id,
-        from: addressOf(m.from as string, senderSession),
+        from: addressOf(m.from, senderSession),
         to: m.toSession ? `${m.to}#${m.toSession}` : m.to,
         ts: timestampOf(m),
         body: m.body.slice(0, MAX_BODY_CHARS),
@@ -777,7 +777,7 @@ export async function channelHistory(cfg: Cfg, { limit = HISTORY_DEFAULT }: { li
     const attachment = attachmentOf(ev);
     out.push({
       id: ev.id,
-      from: addressOf(m.from as string, sessionOf(m)),
+      from: addressOf(m.from, sessionOf(m)),
       to: "all",
       ts: timestampOf(m),
       body: m.body.slice(0, MAX_BODY_CHARS),
@@ -862,7 +862,7 @@ export function latestStatuses(events: TransportEvent[], latest = new Map<string
   for (const ev of events) {
     const m = parseEnvelope(ev.message);
     if (!m || m.kind !== "status" || !isValidName(m.from)) continue;
-    latest.set(addressOf(m.from as string, sessionOf(m)), {
+    latest.set(addressOf(m.from, sessionOf(m)), {
       event: String(m.event || "").slice(0, 10),
       harness: String(m.harness || "").slice(0, 10),
       ts: String(m.ts || "").slice(0, 40),

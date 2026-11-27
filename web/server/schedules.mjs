@@ -1,6 +1,6 @@
 // Read-only runner schedules for the UI: the control socket's GET routes; offline when no runner answers.
 import { runnerRequest } from "../../runner/client.ts";
-import { listProjects } from "../../lib/config.mjs";
+import { listProjects } from "../../lib/config.ts";
 import { projectOfFolder } from "../../lib/schedule-session.ts";
 
 const READ_TIMEOUT_MS = 2000;

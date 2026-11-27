@@ -1,7 +1,7 @@
 // Local runner transport shared with the dependency-free CLI and MCP plugin.
 import http from "node:http";
 import { join } from "node:path";
-import { stateDir } from "./config.mjs";
+import { stateDir } from "./config.ts";
 
 /** The control socket path: AI_COLLAB_RUNNER_SOCKET, else $XDG_RUNTIME_DIR/ai-collab/runner.sock, else the state dir. */
 export function runnerSocket(env: NodeJS.ProcessEnv = process.env): string {

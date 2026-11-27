@@ -3,12 +3,12 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { EventType } from "@ag-ui/core";
 import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
-import { sessionLabel } from "../../lib/config.mjs";
+import { sessionLabel } from "../../lib/config.ts";
 import { childEnv, findExecutable } from "../../lib/start.mjs";
 import { classifyLimit } from "../../lib/limits.ts";
-import { claudeCodeModeSettings } from "../../lib/code-mode.mjs";
+import { claudeCodeModeSettings } from "../../lib/code-mode.ts";
 import { CLAUDE_SUBAGENT_TOOLS } from "../../lib/subagent-guard.ts";
-import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, LIMIT, PERMISSION_MODES, permissionSettings } from "../contract.mjs";
+import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, LIMIT, PERMISSION_MODES, permissionSettings } from "../contract.ts";
 
 // Env marker on the CLI child; hooks stand down by the owned record, this names the harness that spawned the child.
 export const OWNED_ENV = "AI_COLLAB_OWNED";
@@ -76,7 +76,7 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
       ...(model ? { model } : {}),
       // A managed session has no native subagents; ai-collab spawn_agent replaces them.
       ...(managed ? { disallowedTools: [...CLAUDE_SUBAGENT_TOOLS] } : {}),
-      // Flag settings are the only layer a headless Claude reads code mode from (lib/code-mode.mjs).
+      // Flag settings are the only layer a headless Claude reads code mode from (lib/code-mode.ts).
       ...(typeof codeMode === "boolean" ? { settings: claudeCodeModeSettings(codeMode) } : {}),
       ...(resume ? { resume: nativeId } : { sessionId: nativeId }),
     },

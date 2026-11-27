@@ -14,25 +14,27 @@ const EventType = Object.freeze({
 });
 
 const CUSTOM_PREFIX = "ai-collab.";
+// oxlint-disable-next-line typescript/no-explicit-any -- wire events and envelopes are untrusted JSON checked field by field
+type Json = any;
 const ENVELOPE_KINDS = new Set(["activity", "msg", "receipt", "approval", "approval-view", "approval-end", "question", "mode", "status", "alert"]);
 
-function object(value) {
+function object(value: unknown): value is Json {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function read(raw) {
+function read(raw: unknown): Json {
   if (typeof raw !== "string") return raw;
   try { return JSON.parse(raw); } catch { return null; }
 }
 
-function legacy(value) {
+function legacy(value: unknown): boolean {
   return object(value) && value.v === 1 && ENVELOPE_KINDS.has(value.kind);
 }
 
-const string = value => typeof value === "string";
-const optionalString = value => value === undefined || string(value);
+const string = (value: unknown): value is string => typeof value === "string";
+const optionalString = (value: unknown): boolean => value === undefined || string(value);
 
-function problem(event) {
+function problem(event: Json): string | null {
   if (!object(event)) return "expected an event object";
   if (event.timestamp !== undefined && !Number.isSafeInteger(event.timestamp)) return "invalid timestamp";
   if (event.metadata !== undefined && !object(event.metadata)) return "invalid metadata";
@@ -46,7 +48,7 @@ function problem(event) {
       if (!optionalString(event.parentRunId)) return "invalid parentRunId";
       if (event.input !== undefined &&
         (!object(event.input) || !Array.isArray(event.input.messages) ||
-          !event.input.messages.every(message => object(message) && string(message.id) && string(message.role)))) return "invalid input";
+          !event.input.messages.every((message: Json) => object(message) && string(message.id) && string(message.role)))) return "invalid input";
       if (event.outcome !== undefined &&
         (!object(event.outcome) || !["success", "cancelled", "interrupt"].includes(event.outcome.type) ||
           (event.outcome.type === "interrupt" &&
@@ -74,7 +76,7 @@ function problem(event) {
 }
 
 /** Build an event supported by the wire codec, throwing on a producer error. */
-export function buildEvent(type, fields = {}) {
+export function buildEvent(type: string, fields: Json = {}): Json {
   const event = { ...fields, type };
   const issue = problem(event);
   if (issue) throw new TypeError(issue);
@@ -82,22 +84,22 @@ export function buildEvent(type, fields = {}) {
 }
 
 /** Read untrusted wire JSON or an event object. */
-export function parseEvent(raw) {
+export function parseEvent(raw: unknown): Json {
   const event = read(raw);
   return problem(event) ? null : event;
 }
 
-function activityEvent(fields, timestamp, id, run) {
+function activityEvent(fields: Json, timestamp: number | undefined, id: string | undefined, run: Json): Json {
   const { type, callId, input, output, tool, agent } = fields;
   const subagent = typeof agent?.id === "string" && agent.id ? { subagentRunId: agent.id } : {};
-  const metadata = (...keys) => ({ aiCollab: Object.fromEntries(Object.entries(fields).filter(([key]) => !keys.includes(key))) });
+  const metadata = (...keys: string[]) => ({ aiCollab: Object.fromEntries(Object.entries(fields).filter(([key]) => !keys.includes(key))) });
   const runId = run?.runId ?? run?.metadata?.aiCollab?.runId;
   if (runId && fields.session) {
     const threadId = `${fields.from}#${fields.session}`;
     if (run.type === EventType.RUN_STARTED && type === "prompt" && typeof input === "string") {
       const { parentRunId } = run;
       const lineage = { threadId, runId, ...(parentRunId ? { parentRunId } : {}) };
-      const messageId = run.input?.messages.findLast(message => message.role === "user")?.id ?? `${runId}:input`;
+      const messageId = run.input?.messages.findLast((message: Json) => message.role === "user")?.id ?? `${runId}:input`;
       return buildEvent(EventType.RUN_STARTED, {
         ...lineage, timestamp, metadata: metadata("type", "input"),
         input: { ...lineage, tools: [], context: [], messages: [{ id: messageId, role: "user", content: input }] },
@@ -147,7 +149,7 @@ function activityEvent(fields, timestamp, id, run) {
 }
 
 /** Convert a v1 envelope into one AG-UI event. The bus event ID can identify a legacy tool-result message. */
-export function envelopeToEvent(raw, { id, run } = {}) {
+export function envelopeToEvent(raw: unknown, { id, run }: { id?: string; run?: Json } = {}): Json {
   const value = read(raw);
   if (!legacy(value)) return null;
   const { v, kind, ...fields } = value;
@@ -161,7 +163,7 @@ export function envelopeToEvent(raw, { id, run } = {}) {
 }
 
 /** Encode an AI Collab control or messaging event for the bus. */
-export function encodeEnvelope(kind, fields, wire) {
+export function encodeEnvelope(kind: string, fields: Json, wire?: unknown): string {
   const envelope = { v: 1, kind, ...fields };
   if (wire !== "agui") return JSON.stringify(envelope);
   const event = envelopeToEvent(envelope);
@@ -169,10 +171,10 @@ export function encodeEnvelope(kind, fields, wire) {
   return JSON.stringify(event);
 }
 
-function activityFields(event) {
+function activityFields(event: Json): Json {
   switch (event.type) {
     case EventType.RUN_STARTED: {
-      const prompt = event.input?.messages.findLast(message => message.role === "user")?.content;
+      const prompt = event.input?.messages.findLast((message: Json) => message.role === "user")?.content;
       return typeof prompt === "string" ? { type: "prompt", input: prompt } : null;
     }
     case EventType.RUN_FINISHED:
@@ -202,13 +204,13 @@ function activityFields(event) {
 }
 
 /** Project an AI Collab event into the v1 envelope consumed by existing readers. */
-export function eventToEnvelope(raw) {
+export function eventToEnvelope(raw: unknown): Json {
   const event = parseEvent(raw);
   return event ? projectEvent(event) : null;
 }
 
 /** Project an already validated event. */
-export function projectEvent(event) {
+export function projectEvent(event: Json): Json {
   if (event.type === EventType.CUSTOM) {
     if (!event.name.startsWith(CUSTOM_PREFIX) || !object(event.value)) return null;
     const kind = event.name.slice(CUSTOM_PREFIX.length);
@@ -222,13 +224,13 @@ export function projectEvent(event) {
 }
 
 /** Read a legacy record or validate an AG-UI event at the wire boundary. */
-export function readWireRecord(raw) {
+export function readWireRecord(raw: unknown): Json {
   const value = read(raw);
   return object(value) && value.v === 1 ? value : parseEvent(value);
 }
 
 /** Read either wire format during the migration. */
-export function parseWireEnvelope(raw) {
+export function parseWireEnvelope(raw: unknown): Json {
   const record = readWireRecord(raw);
   return !record || record.v === 1 ? record : projectEvent(record);
 }

@@ -23,14 +23,14 @@
  * Every message handed to the agent gets a read receipt, published in the background like activity.
  */
 import path from "node:path";
-import { loadConfig, ownEnv, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, ownEnv, sessionLabel } from "../lib/config.ts";
 import { claimInbox, publishStatus } from "../lib/messaging.ts";
 import { childHint, exportParent, greetParent, parentLine } from "../lib/family.ts";
 import { formatInbox, hookOutput, identityLine, stopOutput } from "../lib/format.ts";
 import { currentMode, operatorPrompt, takeModeNote } from "../lib/mode.ts";
-import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.mjs";
+import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.ts";
 import { decideStop, markStopRunning, noteHeld, takeHeld } from "../lib/stop.ts";
-import { REQUIRE_RUN_CODE_ENV } from "../lib/code-mode.mjs";
+import { REQUIRE_RUN_CODE_ENV } from "../lib/code-mode.ts";
 import { readsThroughRunCode } from "../lib/code-run.mjs";
 import { storeReadDenial } from "../lib/store-read.ts";
 import { recordSession, sessionName, standsDown } from "../lib/sessions/registry.ts";
@@ -40,7 +40,7 @@ import { CLAIM_SETTLE_MS, STOP_GRACE_MS, WAITER_MAX_S, runWaiter, takeWaiterSlot
 import { ON_DEMAND_LOADS, contextUsage, dropOnDemandFiles, readContext, recordInstructions, reportContext } from "../lib/usage.ts";
 import { activityEvents, publishActivity } from "../lib/activity.ts";
 import { compactionFields } from "../lib/compaction.ts";
-import { clearFields } from "../lib/session-events.mjs";
+import { clearFields } from "../lib/session-events.ts";
 import { sendReceipts, settleReceipts } from "../lib/receipts.ts";
 import { closeTerminalCards, decideApproval, decideQuestion } from "../lib/approvals.ts";
 import { classifyLimit } from "../lib/limits.ts";

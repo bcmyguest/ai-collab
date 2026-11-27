@@ -4,9 +4,9 @@ import { alertPriority, readAlertLevel } from "./alerts.ts";
  * The ai-collab.receipt event carries the reader and read message IDs to ai-collab-<project>--receipts.
  * Best effort: publishes run in the background, never throw, and are capped at RECEIPT_TIMEOUT_MS.
  */
-import { MESSAGE_MAX_BYTES, SESSION_LABEL, isValidName, receiptsTopic } from "./config.mjs";
+import { MESSAGE_MAX_BYTES, SESSION_LABEL, isValidName, receiptsTopic } from "./config.ts";
 import { publish } from "./messaging.ts";
-import { encodeEnvelope, parseWireEnvelope } from "./agui.mjs";
+import { encodeEnvelope, parseWireEnvelope } from "./agui.ts";
 import type { Cfg } from "./messaging.ts";
 
 /** The config fields a receipt reads: who read it, and where to publish. */

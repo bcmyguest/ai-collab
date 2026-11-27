@@ -1,6 +1,6 @@
 /** Team author: chat becomes a writing agent's brief; its answer's DOT is checked by the save path before anything is written. */
 import { execFile } from "node:child_process";
-import { isValidName } from "../config.mjs";
+import { isValidName } from "../config.ts";
 import { childEnv, cursorBinary, findExecutable, PROMPT_MAX_CHARS } from "../start.mjs";
 import { argv, FALLBACK_MODEL, formatHarnessModel, HARNESSES, isHarness, parseHarnessModel, type Command, type Harness } from "../harness.ts";
 import { parseDot } from "./dot.ts";

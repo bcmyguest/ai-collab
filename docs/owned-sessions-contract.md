@@ -2,7 +2,7 @@
 
 The contract the four harness adapters (Claude, Codex, Cursor, OpenCode) code against. The `ai-collab-runner` user service drives these sessions directly instead of observing them through hooks. Background: [research](research/owned-sessions.md), [review](research/owned-sessions-review.md), [message delivery](research/pulsar-parity.md).
 
-The types live in `runner/types.d.ts`, the constants and validators in `runner/contract.mjs`, and the reference adapter in `runner/adapters/fake.mjs`. Where this page and the code disagree, the code wins; fix the page.
+The types live in `runner/types.d.ts`, the constants and validators in `runner/contract.ts`, and the reference adapter in `runner/adapters/fake.mjs`. Where this page and the code disagree, the code wins; fix the page.
 
 ## Deployment status
 
@@ -351,7 +351,7 @@ Activity and control events publish through: `publishActivity` (`lib/activity.mj
 | Item | Value |
 |---|---|
 | Native id | The harness's own id: Claude session UUID (chosen by the adapter), Codex `threadId`, OpenCode session id, Cursor ACP `sessionId` |
-| Label | `sessionLabel(nativeId)`: first 16 hex of SHA-256 (`lib/config.mjs`), the same label hooks compute from the same id |
+| Label | `sessionLabel(nativeId)`: first 16 hex of SHA-256 (`lib/config.ts`), the same label hooks compute from the same id |
 | Address | `<harness>#<label>`, for example `codex#3f2a9c0d1e4b5a69`; peer name = harness name |
 | Owned record | `$AI_COLLAB_STATE_DIR/<project>/owned/<label>.json`, written by `lib/sessions/registry.ts` `writeOwned` (0600 file, 0700 dir); shape `OwnedRecord` in `runner/types.d.ts` |
 | Registry entry | `$AI_COLLAB_STATE_DIR/<project>/registry/<address>.json` via `lib/sessions.mjs` `recordSession`, with `pid`/`pidStart` = the runner, `event: "owned"`; `list_agents`, `list_sessions` and the UI's agent list read it unchanged. At session end the entry is rewritten without a pid, so it shows offline |
@@ -364,7 +364,7 @@ Activity and control events publish through: `publishActivity` (`lib/activity.mj
 
 `scripts/ai-collab-hook.mjs` calls `lib/sessions/registry.ts` `standsDown(cfg, {label})` right after loading its config. When it returns true, the hook prints its neutral output (`{}`; `{permission:"ask"}` for Cursor permission hooks; `{continue:true}` for Cursor `beforeSubmitPrompt`) and publishes nothing: no activity, status, approval, inbox claim, receipt, Stop wait or registry write. It returns true when `owned/<label>.json` exists for the hook input's session id and its status is not `ended`. Only the process the runner spawned matches: its native session id is the one in the record.
 
-An agent started inside an owned session (say `claude -p` from an owned Claude's Bash) has its own native session id, matches no record, and reports normally. It registers as the owned session's child through `AI_COLLAB_PARENT` (`lib/family.ts`, `lib/config.mjs` `ownEnv`); the adapter exports that variable into the shell its agent runs commands in (see the adapter rules).
+An agent started inside an owned session (say `claude -p` from an owned Claude's Bash) has its own native session id, matches no record, and reports normally. It registers as the owned session's child through `AI_COLLAB_PARENT` (`lib/family.ts`, `lib/config.ts` `ownEnv`); the adapter exports that variable into the shell its agent runs commands in (see the adapter rules).
 
 Known limits:
 
@@ -414,7 +414,7 @@ The runner streams, per project, `ai-collab-<project>--to--all` plus `ai-collab-
 
 ## Permission modes
 
-Modes: `supervised`, `accept-edits`, `auto`, `full-access`. The table is `PERMISSION_TABLE` in `runner/contract.mjs`; `permissionSettings(harness, mode, place)` returns the settings the adapter receives as `options.permission`, or an error. Codex values follow T3 Code `CodexAdapterV2.ts` L751-L800 at `5935157` (MIT).
+Modes: `supervised`, `accept-edits`, `auto`, `full-access`. The table is `PERMISSION_TABLE` in `runner/contract.ts`; `permissionSettings(harness, mode, place)` returns the settings the adapter receives as `options.permission`, or an error. Codex values follow T3 Code `CodexAdapterV2.ts` L751-L800 at `5935157` (MIT).
 
 | Mode | Claude `permissionMode` | Codex `approvalPolicy` / `approvalsReviewer` / `sandboxPolicy` | OpenCode (auto-reply `once` to) | Cursor |
 |---|---|---|---|---|
@@ -555,7 +555,7 @@ entry points, see [Live OpenShell bootstrap smoke](sandbox-smoke.md).
 | Path | Role |
 |---|---|
 | `runner/types.d.ts` | Adapter interface, events, records |
-| `runner/contract.mjs` | Harness, mode and event constants; `PERMISSION_TABLE`; `eventProblem` |
+| `runner/contract.ts` | Harness, mode and event constants; `PERMISSION_TABLE`; `eventProblem` |
 | `runner/durable.mjs` | SQLite workflow/step/message log; `scheduled` ticks |
 | `runner/schedules.ts` | `schedules.json` loader and the scheduled command step |
 | `lib/schedule-session.ts` | The registered session a schedule's command resumes, and the project a schedule's folder names |
@@ -608,7 +608,7 @@ Codex 0.171.0 (`codex-cli`). Protocol facts come from `codex app-server generate
 | permission modes (`PERMISSION_TABLE.codex`) | supported | `thread/start` `sandbox` enum mapped from `sandboxPolicy.type` |
 | unanswered server requests | error reply plus notice | fake |
 | child exit mid-run → RUN_ERROR; next input re-attaches | supported | fake "crash" |
-| context tokens (`thread/tokenUsage/updated`) | supported | `tokenUsage.last.totalTokens` as used in `lib/codex-compact.mjs`; fake |
+| context tokens (`thread/tokenUsage/updated`) | supported | `tokenUsage.last.totalTokens` as used in `lib/codex-compact.ts`; fake |
 | models (`model/list`), commands (`skills/list`) | partial | fake only; `model` as the id and `SkillMetadata.name` UNVERIFIED |
 | `AI_COLLAB_PARENT` for agents the session starts | not implemented | a shared child has one env; a per-thread shell env setting (`shell_environment_policy.set`) is UNVERIFIED in the schema |
 | hooks stand down on `AI_COLLAB_OWNED=codex` | UNVERIFIED | no hook reads the marker yet; Codex passing the child env to its hooks is not checked |

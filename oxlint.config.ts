@@ -43,13 +43,13 @@ export default defineConfig({
     'no-promise-executor-return': 'off',
     // web/app/notify.jsx refers to reg outside the callback that declares it.
     'no-undef': 'off',
-    // A ternary in lib/codex-compact.mjs is a statement that resolves or rejects.
+    // A ternary in lib/codex-compact.ts is a statement that resolves or rejects.
     'no-unused-expressions': 'off',
     // Unused locals do not use a leading underscore.
     'no-unused-vars': 'off',
     // Some assignments are unused on the paths this rule sees.
     'no-useless-assignment': 'off',
-    // lib/config.mjs escapes slashes that this rule treats as unnecessary.
+    // lib/config.ts escapes slashes that this rule treats as unnecessary.
     'no-useless-escape': 'off',
     // Some bindings are never reassigned.
     'prefer-const': 'off',

@@ -3,7 +3,7 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { MESSAGE_MAX_BYTES, autoDefaults, broadcastTopic } from "./config.mjs";
+import { MESSAGE_MAX_BYTES, autoDefaults, broadcastTopic } from "./config.ts";
 import { fitApprovalEnvelope } from "./approval-card.ts";
 import { approvalEnd } from "./operator.ts";
 import { deepLink } from "./deep-link.ts";

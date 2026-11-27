@@ -1,6 +1,6 @@
 // The registered session a scheduled command resumes, so a run can link to that session's timeline.
 import { basename, isAbsolute, relative as relativePath, sep } from "node:path";
-import { sessionLabel } from "./config.mjs";
+import { sessionLabel } from "./config.ts";
 import { harnessOfBinary } from "./harness.ts";
 
 // The flag that names the session to resume, per harness; Codex takes it as `codex exec resume <id>`.

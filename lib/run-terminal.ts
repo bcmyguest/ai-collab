@@ -8,7 +8,7 @@ import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import type { Readable } from "node:stream";
 import path from "node:path";
-import { autoDefaults } from "./config.mjs";
+import { autoDefaults } from "./config.ts";
 import { readJson, writeFileAtomic } from "./store.ts";
 
 // oxlint-disable-next-line typescript/no-explicit-any -- request, decision and result files are JSON any same-user process can write
@@ -47,7 +47,7 @@ export const FINAL = ["done", "lost", "rejected", "expired", "refused"];
 export function runInTerminalEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   if (env.AI_COLLAB_RUN_IN_TERMINAL === "1") return true;
   if (env.AI_COLLAB_RUN_IN_TERMINAL === "0") return false;
-  return (autoDefaults(env) as Json)?.runInTerminal === true;
+  return autoDefaults(env)?.runInTerminal === true;
 }
 
 /** False inside an OpenShell sandbox or a builder, where the tool is never offered. */

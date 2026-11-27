@@ -2,7 +2,7 @@
 import { clipSummary, SLACK_S, splitTurns } from "./chat-turns.js";
 import { interleave, readableText, runningSubagents, summarize } from "./activity-rows.js";
 import { WORKING_MS } from "./session-state.js";
-import { machinePrompt, operatorPrompt } from "../../lib/machine-prompt.mjs";
+import { machinePrompt, operatorPrompt } from "../../lib/machine-prompt.ts";
 
 // A turn counts as finished only when its stop row says the turn ended; "session ended" and subagent stops do not.
 const TURN_ENDED = /^turn ended/;

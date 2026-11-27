@@ -5,7 +5,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
-import { isGithubLogin } from "../../lib/config.mjs";
+import { isGithubLogin } from "../../lib/config.ts";
 
 export const SESSION_COOKIE = "__Host-ai-collab-session";
 export const STATE_COOKIE = "__Host-ai-collab-state";

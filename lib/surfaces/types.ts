@@ -3,7 +3,7 @@ import type { Cfg } from "../messaging.ts";
 // Shapes the operation table passes between tool arguments and the ai-collab modules.
 export type Args = Record<string, unknown>;
 
-// The loaded config (lib/config.mjs) the surfaces pass to the messaging functions.
+// The loaded config (lib/config.ts) the surfaces pass to the messaging functions.
 export type SurfaceConfig = Cfg;
 
 export interface TaskView {

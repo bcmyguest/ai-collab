@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync, rmSync } from "node:fs";
-import { parseWireEnvelope } from "./agui.mjs";
+import { parseWireEnvelope } from "./agui.ts";
 import { fitApprovalEnvelope } from "./approval-card.ts";
-import { MESSAGE_MAX_BYTES, SESSION_LABEL, broadcastTopic, isValidName } from "./config.mjs";
+import { MESSAGE_MAX_BYTES, SESSION_LABEL, broadcastTopic, isValidName } from "./config.ts";
 import { assertWaitSeconds, choiceLabels, matchReply, waitForOperatorReply, type ChoiceQuestion, type Match, type PollFn } from "./operator.ts";
 import { pollCached, publish, type Cfg } from "./messaging.ts";
 import { deepLink } from "./deep-link.ts";

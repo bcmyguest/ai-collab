@@ -17,7 +17,7 @@ Default **on**. Precedence, highest first:
 | One start (runner control API) | `POST /v1/sessions` with `codeMode: true\|false` |
 | One role (team.dot) | `code_mode="on"` or `code_mode="off"` on the node ([Teams](teams.md)) |
 | Everything | `"codeMode": false` in `~/.config/ai-collab/defaults.json` ([Configuration](configuration.md)) |
-| Built in | on (`lib/code-mode.mjs` `CODE_MODE_DEFAULT`) |
+| Built in | on (`lib/code-mode.ts` `CODE_MODE_DEFAULT`) |
 
 What each harness gets:
 
@@ -130,7 +130,7 @@ Each trace has an `AGENT` root (`cursor-agent run`), one `LLM` child (`llm.model
 
 | Path | Role |
 |---|---|
-| `lib/code-mode.mjs` | the setting and each harness's switch |
+| `lib/code-mode.ts` | the setting and each harness's switch |
 | `lib/code-run.mjs` | run_code: description, schema check, sandbox staging, the in-sandbox bootstrap, limits |
 | `lib/analyze-run-code.ts`, `lib/analyze-sources.ts`, `lib/analyze-otlp.ts` | `ai-collab analyze run-code`: aggregation and report, per-harness log readers, OTLP encoder |
 | `lib/cursor-trace.ts` | Cursor run traces: stream-json, ACP and hook recorders, OTLP export |

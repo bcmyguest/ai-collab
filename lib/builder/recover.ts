@@ -3,7 +3,7 @@ import * as S from "../sandbox.ts";
 import { isProjectPaused, PROJECT_PAUSED } from "../project-pause.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { stateDir } from "../config.mjs";
+import { stateDir } from "../config.ts";
 import { PROMPT_MAX_CHARS } from "../start.mjs";
 import { withLock } from "../state.ts";
 import { openTasks } from "../tasks.mjs";

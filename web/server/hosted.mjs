@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { isGithubLogin } from "../../lib/config.mjs";
+import { isGithubLogin } from "../../lib/config.ts";
 
 function error(status, message) {
   return Response.json({ error: message }, { status, headers: { "cache-control": "no-store" } });

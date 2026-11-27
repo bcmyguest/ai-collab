@@ -11,7 +11,7 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { broadcastTopic, inboxTopic, receiptsTopic } from "../../lib/config.mjs";
+import { broadcastTopic, inboxTopic, receiptsTopic } from "../../lib/config.ts";
 import { backoffMs, MAX_ATTEMPTS, nextAction, REDELIVER_MS, TTL_MS } from "../../lib/delivery.ts";
 import { PUSHED, busyWithPush, direct, holdRunning, pushSession, readySession, runCommand } from "../../lib/deliver-push.ts";
 import { formatInbox } from "../../lib/format.ts";
@@ -20,7 +20,7 @@ import { claimInbox, ATTACHMENT_BUDGET_MS, markDelivered, parseEnvelope, release
 import { cacheAttachmentsWithin } from "../../lib/attachment-cache.ts";
 import { pollCached } from "../../lib/messaging.ts";
 import { handOff } from "../../lib/stop.ts";
-import { opencodeRequest } from "../../lib/opencode-api.mjs";
+import { opencodeRequest } from "../../lib/opencode-api.ts";
 import { readReceipts } from "../../lib/receipts.ts";
 import { listSessions } from "../../lib/sessions.mjs";
 import { writeState } from "../../lib/state.ts";

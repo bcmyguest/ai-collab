@@ -1,7 +1,7 @@
 // `ai-collab builder ...`: start, run, list, stop and clean.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { stateDir } from "../config.mjs";
+import { stateDir } from "../config.ts";
 import { cleanBuilders } from "../builder-clean.ts";
 import { BUILDER_HARNESSES, FINAL_PHASES, LIVE_STATES, builderPaths, readState } from "./state.ts";
 import type { Env } from "./state.ts";

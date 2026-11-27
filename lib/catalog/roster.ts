@@ -1,5 +1,5 @@
 /** Team operations that also read patterns: create a team and start one. Patterns import teams, never the reverse. */
-import { isValidName } from "../config.mjs";
+import { isValidName } from "../config.ts";
 import { checkPrompt, startSession } from "../start.mjs";
 import { parseHarnessModel } from "../harness.ts";
 import { entryTeams, updateProject } from "./projects.ts";

@@ -2,7 +2,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { configDir, isValidName } from "../config.mjs";
+import { configDir, isValidName } from "../config.ts";
 import { readJson, writeFileAtomic } from "../store.ts";
 import { parseDot, serializeDot, type DotTeam } from "./dot.ts";
 import { deleteTeam, listTeams, validateMember, type Models } from "./teams.ts";

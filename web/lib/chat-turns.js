@@ -1,7 +1,7 @@
 // Pure grouping of a session's activity rows: the session timeline's flow of texts and tool groups, and the turns the project feed reads.
 import { interleave, readableText, summarize } from "./activity-rows.js";
 import { foldCompactionRestarts, pairCompactions } from "./compaction-view.js";
-import { operatorPrompt } from "../../lib/machine-prompt.mjs";
+import { operatorPrompt } from "../../lib/machine-prompt.ts";
 
 const SUMMARY_CHARS = 60;
 // Seconds around a turn in which a chat message from the agent counts as the same text as its final row.

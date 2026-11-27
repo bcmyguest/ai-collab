@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { stateDir } from "./config.mjs";
+import { stateDir } from "./config.ts";
 import { openPostgresBusStore } from "./bus-postgres.ts";
 import { pgUrl } from "./postgres.ts";
 

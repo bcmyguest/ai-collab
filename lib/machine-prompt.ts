@@ -10,13 +10,13 @@ export const SYSTEM_PROMPT_ENV = "AI_COLLAB_SYSTEM_PROMPT";
 export const MACHINE_PREFIXES = ["<task-notification>", "[SYSTEM NOTIFICATION", "<agent-message", "<cross-session-message", "[ai-collab]", "Another Claude session sent a message"];
 
 /** True when prompt text came from harness machinery, another agent, or ai-collab itself. */
-export function machinePrompt(prompt) {
+export function machinePrompt(prompt: unknown): boolean {
   const text = typeof prompt === "string" ? prompt.trimStart() : "";
   return MACHINE_PREFIXES.some((prefix) => text.startsWith(prefix));
 }
 
 /** True when a submitted prompt came from the operator: not a wake run, the wake prompt, or machine text. */
-export function operatorPrompt(prompt, env = process.env) {
+export function operatorPrompt(prompt: unknown, env: NodeJS.ProcessEnv = process.env): boolean {
   const text = typeof prompt === "string" ? prompt.trim() : "";
   return env[WAKE_ENV] !== "1" && text !== "" && !machinePrompt(text) && text !== WAKE_PROMPT;
 }

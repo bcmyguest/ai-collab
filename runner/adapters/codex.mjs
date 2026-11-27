@@ -5,11 +5,11 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { EventType } from "@ag-ui/core";
-import { sessionLabel } from "../../lib/config.mjs";
-import { CLIENT } from "../../lib/codex-compact.mjs";
-import { codexThreadConfig } from "../../lib/code-mode.mjs";
+import { sessionLabel } from "../../lib/config.ts";
+import { CLIENT } from "../../lib/codex-compact.ts";
+import { codexThreadConfig } from "../../lib/code-mode.ts";
 import { CODEX_NO_SUBAGENT_ARGS } from "../../lib/subagent-guard.ts";
-import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, NOTICE, PERMISSION_MODES, permissionSettings } from "../contract.mjs";
+import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, NOTICE, PERMISSION_MODES, permissionSettings } from "../contract.ts";
 
 export const APP_SERVER_ARGS = ["app-server", "-c", "thread_unload_delay_secs=0"];
 const DEFAULT_COMMAND = { file: "codex", args: APP_SERVER_ARGS, version: ["--version"] };
