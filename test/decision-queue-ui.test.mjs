@@ -24,12 +24,12 @@ const exports = {};
 new Function("require", "exports", code)(id => dependencies[id] ?? require(id), exports);
 const { DecisionQueue } = exports;
 
-test("new unanswered decisions have an orange badge that clears after an answer", () => {
+test("new unanswered decisions have an accent badge that clears after an answer", () => {
   const previous = { project: "demo", key: "previous", kind: "Question", from: "agent", body: "Previous decision", time: 1 };
   const fresh = { ...previous, key: "fresh", body: "Fresh decision", time: 2 };
   const seen = new Set([JSON.stringify([previous.project, previous.key])]);
   const render = (decisions, inbox) => renderToStaticMarkup(createElement(DecisionQueue, { decisions, inbox, now: 2000, seen }));
-  const badge = /aria-label="Mark new decision as seen"[^>]*bg-orange-500[^>]*>New<\/button>/g;
+  const badge = /aria-label="Mark new decision as seen"[^>]*bg-primary[^>]*>New<\/button>/g;
   for (const inbox of [false, true]) {
     assert.equal([...render([previous], inbox).matchAll(badge)].length, 0);
     const arrived = render([previous, fresh], inbox);
