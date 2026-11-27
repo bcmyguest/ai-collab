@@ -4,7 +4,9 @@ import { memo, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks"
 import remarkGfm from "remark-gfm"
-import { CodeBlock, CodeBlockCode } from "./code-block"
+import { CodeBlock, CodeBlockCode, CodeBlockGroup } from "./code-block"
+import { CopyButton } from "./copy-button"
+import { codeText } from "@/lib/copy-text"
 
 function extractLanguage(className) {
   if (!className) return "plaintext"
@@ -48,6 +50,10 @@ const INITIAL_COMPONENTS = {
 
     return (
       <CodeBlock className={className}>
+        <CodeBlockGroup className="border-b border-border py-0.5 pr-1 pl-3">
+          <div className="font-mono text-xs text-muted-foreground">{language === "plaintext" ? "" : language}</div>
+          <CopyButton text={codeText(children)} />
+        </CodeBlockGroup>
         <CodeBlockCode code={children} language={language} />
       </CodeBlock>
     );
