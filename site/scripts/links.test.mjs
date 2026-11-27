@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import { checkLinks } from './lib/links.mjs';
 
 const BASE = '/ai-collab/';
@@ -10,6 +10,7 @@ const ORIGIN = 'https://bcmyguest.github.io';
 
 function dist(files) {
   const dir = mkdtempSync(join(tmpdir(), 'sc-links-'));
+  after(() => rmSync(dir, { recursive: true, force: true }));
   for (const [name, body] of Object.entries(files)) {
     mkdirSync(dirname(join(dir, name)), { recursive: true });
     writeFileSync(join(dir, name), body);

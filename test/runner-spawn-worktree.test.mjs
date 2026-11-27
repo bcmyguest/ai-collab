@@ -8,7 +8,7 @@ import { loadConfig } from "../lib/config.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
-import { tempDir } from "./helpers/tmp.mjs";
+import { fileEnd, tempDir } from "./helpers/tmp.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 
 const ID = ["-c", "user.name=Test", "-c", "user.email=test@example.invalid"];
@@ -16,7 +16,7 @@ const ID = ["-c", "user.name=Test", "-c", "user.email=test@example.invalid"];
 test("parallel worktree spawns in the same second each get their own worktree and branch", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = tempDir(t, "ai-collab-spawn-worktree-");
+  const home = tempDir(fileEnd, "ai-collab-spawn-worktree-");
   const root = path.join(home, "demo");
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
   execFileSync("git", ["init", "--quiet", "--template=", "-b", "main", root]);

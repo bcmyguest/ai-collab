@@ -11,7 +11,7 @@ import { listOwned } from "../lib/sessions/registry.ts";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
-import { tempDir } from "./helpers/tmp.mjs";
+import { fileEnd, tempDir } from "./helpers/tmp.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 
 const OPENSHELL = fileURLToPath(new URL("./helpers/fake-openshell.mjs", import.meta.url));
@@ -23,7 +23,7 @@ const SIX = ["b-one-111111", "b-two-222222", "b-three-333333", "s-pm-444444", "a
 async function lab(t, sandboxes, { openshell = OPENSHELL } = {}) {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = tempDir(t, "ai-collab-spawn-openshell-");
+  const home = tempDir(fileEnd, "ai-collab-spawn-openshell-");
   const root = path.join(home, "demo");
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
   execFileSync("git", ["init", "--quiet", "--template=", "-b", "main", root]);
