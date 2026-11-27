@@ -12,6 +12,7 @@ import { ClosedProjects, ProjectMenu } from "./project-menu";
 import { RunningCount, SubagentRuns } from "./subagent-runs";
 import { InactiveSessions, SessionMenu } from "./home";
 import { namedAgents, unnamedAgents } from "@/lib/sidebar";
+import { THREAD_STATUS_LABELS, threadRows } from "@/lib/threads";
 import { Avatar, Dot, SessionName, ago, short } from "./chat-shared";
 
 const AFK_MODES = [["off", "Off", Monitor], ["on", "On", Coffee], ["quiet", "Quiet", VolumeX]];
@@ -96,6 +97,25 @@ function AgentList({ agents, project, selected, now, navigate, dispose, openRaw,
   </section>;
 }
 
+// Threads of this project with their sessions nested; the shown status comes from the live session cards.
+function ThreadList({ threads, project, selected, now, navigate, dispose, openRaw, disabled }) {
+  return <section aria-label="Threads">
+    <h2 className="min-w-0 truncate px-2 pb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Threads · {project}</h2>
+    <ul className="flex flex-col gap-2">
+      {threads.map(thread => <li key={thread.id} className="flex min-w-0 flex-col gap-1">
+        <div className="flex min-w-0 items-center gap-2 px-2 text-sm">
+          <span className="min-w-0 flex-1 truncate font-medium" title={thread.worktree || thread.title}>{thread.title || thread.branch || thread.id}</span>
+          {thread.pinned && <span className="shrink-0 text-[11px] text-muted-foreground">Pinned</span>}
+          <span className={cn("shrink-0 text-[11px]", thread.status === "waiting" ? "font-medium text-amber-700 dark:text-amber-300" : "text-muted-foreground")}>{THREAD_STATUS_LABELS[thread.status] || thread.status}</span>
+        </div>
+        {thread.agents.length > 0 && <ul className="flex flex-col gap-1 pl-3">
+          {thread.agents.map(agent => <SessionRow key={thread.id + ":" + agent.id} agent={agent} project={project} selected={selected} now={now} navigate={navigate} dispose={dispose} openRaw={openRaw} disabled={disabled} lead={agent.identityName ? "name" : undefined}/>)}
+        </ul>}
+      </li>)}
+    </ul>
+  </section>;
+}
+
 export function Sidebar({ data, selected, now, navigate, newSession, dispose, openRaw, disabled, projectAction, openHash, inactiveOpen, onInactiveToggle }) {
   const current = selected.project || data.project;
   // Home's state carries the server's default project's agents; they are not "this project" here.
@@ -107,6 +127,7 @@ export function Sidebar({ data, selected, now, navigate, newSession, dispose, op
     const group = isLive(agent, now) ? active : inactive;
     group.push(agent);
   }
+  const threads = home ? [] : threadRows(data.threads, visible, now);
   return <div className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto p-4">
     <button type="button" data-tap onClick={() => navigate({ level: "home" })} aria-current={selected.level === "home" ? "page" : undefined}
       className="flex items-center gap-2 rounded-xl px-2 text-left text-sm font-semibold tracking-tight" title="Home: every project's sessions">
@@ -138,6 +159,7 @@ export function Sidebar({ data, selected, now, navigate, newSession, dispose, op
     <ScheduledJobs project={home ? "" : current} openRun={openHash}/>
     {/* Agents (sessions that set an identity name) sit apart from the plain session rows and from Scheduled jobs. */}
     {!home && namedAgents(active).length > 0 && <AgentList agents={namedAgents(active)} project={current} selected={selected} now={now} navigate={navigate} dispose={dispose} openRaw={openRaw} disabled={disabled}/>}
+    {threads.length > 0 && <ThreadList threads={threads} project={current} selected={selected} now={now} navigate={navigate} dispose={dispose} openRaw={openRaw} disabled={disabled}/>}
     <section>
       <div className="flex items-center justify-between px-2 pb-2">
         <h2 className="min-w-0 truncate text-xs font-medium uppercase tracking-wider text-muted-foreground" title={home ? undefined : current}>{home ? "Sessions" : "Sessions · " + current}</h2>
