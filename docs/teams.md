@@ -65,7 +65,7 @@ Does not load (the file shows `invalid` with the line):
 
 ## Enforcement
 
-- Team and pattern members start managed: native subagents are off and shell harness starts are refused. A member hands work on with `spawn_agent` (see [Agents starting agents](messaging.md#agents-starting-agents)).
+- Team and pattern members start managed: native subagents are off and shell harness starts are refused. This is cooperative, not a security boundary: it keeps agents on `spawn_agent`, but an agent with a shell can still find a way around it. A member hands work on with `spawn_agent` (see [Agents starting agents](messaging.md#agents-starting-agents)).
 - `required: true`: the run finishes only after this handoff has fired. `finished` before that is refused and names the missing handoff.
 - `required: false` (guidance): the active role may skip it.
 - `cap`: a handoff that would exceed `cap` suspends the run and notifies the operator. Each advance that fires the handoff counts once.

@@ -174,6 +174,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   const adapterOf = (harness) => adapters.get(harness) || fail(400, `No ${harness} adapter is loaded`);
   // Spawns per parent between the child-cap check and the claim.
   const spawning = new Map();
+  // Session workflow id -> managed, from the workflow's durable input; the owned record file is writable by the session itself.
+  const managedByWorkflow = new Map();
   const ownedEnv = (managed, harness) => {
     const base = childEnv(env);
     return managed && MANAGED_ENV_HARNESSES.has(harness) ? { ...base, ...noSubagentEnv(harness, base) } : base;
@@ -275,6 +277,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
 
   // The in-memory session for a claimed record; built fresh on every workflow execution, replay included.
   function runtime(wf, record, holder) {
+    if (managedByWorkflow.get(record.workflowId) === true) record.managed = true;
+    else delete record.managed;
     let wakeAll = () => {};
     const s = {
       record, cfg: sessionCfg(record.project, record.harness, record.label), live: holder.live || null, pending: new Map(), timers: new Map(),
@@ -395,6 +399,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   // The durable session workflow: place → open → claim, then one run.send/run.wait pair per input until closed.
   async function sessionWorkflow(wf, input) {
     const { project, harness, place, permissionMode, model, codeMode, taskId, patternRun, builder, continuation, managed, parent, spawn } = input;
+    managedByWorkflow.set(wf.id, managed === true);
     // Fields a managed or spawned session adds to its owned record; none for an operator start.
     const family = { ...(managed ? { managed: true } : {}), ...(parent ? { parent } : {}), ...(spawn ? { spawn } : {}) };
     checkOpenShellLaunch(harness, place, builder);
@@ -1306,6 +1311,14 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   async function boot() {
     // Scheduled ticks recover too, but only session workflows hold the boot until they claim.
     const isSession = async (id) => (await durable.status(id))?.name === "session";
+    // Before recovery, so a recovered wake workflow knows which sessions are managed.
+    for (const cfg of configs.values()) {
+      for (const record of listOwned(cfg)) {
+        if (!record.workflowId || managedByWorkflow.has(record.workflowId)) continue;
+        const workflow = await durable.status(record.workflowId).catch(() => null);
+        if (workflow?.name === "session") managedByWorkflow.set(record.workflowId, workflow.input?.managed === true);
+      }
+    }
     const pending = await durable.pending();
     const sessionIds = [];
     for (const id of pending) if (await isSession(id)) sessionIds.push(id);
