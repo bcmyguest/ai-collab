@@ -11,7 +11,7 @@ import { isProjectPaused, PROJECT_PAUSED } from "../lib/project-pause.ts";
 import { harnessOfCommand, projectOfFolder, sessionOfCommand } from "../lib/schedule-session.mjs";
 import { childEnv } from "../lib/start.mjs";
 import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.mjs";
-import { ROLE_ENV } from "../lib/cursor-trace.mjs";
+import { ROLE_ENV } from "../lib/cursor-trace.ts";
 import { scopeLaunch } from "../lib/sessions/scope.ts";
 import { agentHarness, hostAgentRefusal } from "../lib/agent-guard.mjs";
 

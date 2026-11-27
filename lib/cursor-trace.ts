@@ -8,6 +8,7 @@
 import { randomBytes } from "node:crypto";
 import { appendFileSync, mkdirSync, readFileSync, renameSync, rmSync, existsSync } from "node:fs";
 import path from "node:path";
+import type { Readable } from "node:stream";
 import { encodeTraceRequest } from "./analyze-otlp.mjs";
 import { autoDefaults, sessionLabel, stateDir } from "./config.mjs";
 
@@ -21,6 +22,31 @@ const OFF = new Set(["", "off", "false", "0", "none"]);
 const INPUT_MAX = 1000;
 const HOOK_DIR = "cursor-traces";
 
+export type Span = {
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  name: string;
+  startMs: number;
+  endMs: number;
+  attrs: Record<string, unknown>;
+};
+
+export type Usage = {
+  input?: number;
+  output?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+};
+
+export type ToolCall = {
+  name: string;
+  startMs: number;
+  endMs: number;
+  input?: unknown;
+  failed?: boolean;
+};
+
 /**
  * The OTLP/HTTP traces URL, or "" when export is off. AI_COLLAB_OTLP_ENDPOINT wins, then defaults.json "otlpEndpoint";
  * a machine with a defaults.json but no such key gets DEFAULT_OTLP_ENDPOINT. No defaults.json (an isolated test
@@ -28,12 +54,12 @@ const HOOK_DIR = "cursor-traces";
  */
 export function otlpEndpoint(env = process.env) {
   const defaults = autoDefaults(env);
-  const value = env.AI_COLLAB_OTLP_ENDPOINT ?? (defaults ? defaults.otlpEndpoint ?? DEFAULT_OTLP_ENDPOINT : "");
+  const value = env.AI_COLLAB_OTLP_ENDPOINT ?? (defaults ? (defaults as Record<string, unknown>).otlpEndpoint ?? DEFAULT_OTLP_ENDPOINT : "");
   return typeof value === "string" && !OFF.has(value.trim().toLowerCase()) ? value.trim() : "";
 }
 
-const newId = (bytes) => randomBytes(bytes).toString("hex");
-const clip = (value) => {
+const newId = (bytes: number) => randomBytes(bytes).toString("hex");
+const clip = (value: unknown) => {
   const text = typeof value === "string" ? value : JSON.stringify(value ?? {});
   return text.length > INPUT_MAX ? text.slice(0, INPUT_MAX) : text;
 };
@@ -42,7 +68,16 @@ const clip = (value) => {
  * The spans of one run. usage is {input, output, cacheRead, cacheWrite}; the prompt count includes cached tokens.
  * tools are [{name, startMs, endMs, input, failed}].
  */
-export function runSpans({ address, role, model, startMs, endMs, usage, tools = [], status = "ok" }) {
+export function runSpans({ address, role, model, startMs, endMs, usage, tools = [], status = "ok" }: {
+  address?: string;
+  role?: string;
+  model?: string;
+  startMs: number;
+  endMs: number;
+  usage?: Usage | null;
+  tools?: ToolCall[];
+  status?: string;
+}): Span[] {
   const traceId = newId(16);
   const rootId = newId(8);
   const shared = { "session.id": address, ...(role ? { "ai_collab.role": role } : {}) };
@@ -71,7 +106,11 @@ export function runSpans({ address, role, model, startMs, endMs, usage, tools = 
 }
 
 /** POSTs the spans as OTLP protobuf; resolves true on a 2xx, false on anything else. Never rejects. */
-export async function exportSpans(spans, { endpoint, timeoutMs = EXPORT_TIMEOUT_MS, project = "ai-collab" } = {}) {
+export async function exportSpans(spans: Span[], { endpoint, timeoutMs = EXPORT_TIMEOUT_MS, project = "ai-collab" }: {
+  endpoint?: string;
+  timeoutMs?: number;
+  project?: string;
+} = {}): Promise<boolean> {
   if (!endpoint || !spans.length) return false;
   try {
     const res = await fetch(endpoint, {
@@ -87,10 +126,11 @@ export async function exportSpans(spans, { endpoint, timeoutMs = EXPORT_TIMEOUT_
 }
 
 // The tool name of a stream-json tool_call: its one key without "ToolCall" (shellToolCall -> shell), or an MCP tool's own name.
-function streamTool(toolCall) {
+function streamTool(toolCall: Record<string, unknown>): { name: string; body: unknown } {
   const key = Object.keys(toolCall ?? {})[0] ?? "tool";
   const body = toolCall?.[key] ?? {};
-  const name = body.args?.toolName || body.args?.name;
+  const args = (body as Record<string, unknown>)?.args as Record<string, unknown> | undefined;
+  const name = args?.toolName || args?.name;
   return { name: key === "mcpToolCall" && name ? `mcp ${name}` : key.replace(/ToolCall$/, "") || "tool", body };
 }
 
@@ -98,19 +138,32 @@ function streamTool(toolCall) {
  * One run's recorder: tool calls by id, usage, status. spans() closes calls still open as failed. The runner's ACP
  * adapter drives it directly; streamTrace feeds it from stream-json.
  */
-export function runRecorder({ address, role, model, now = Date.now } = {}) {
+export function runRecorder({ address, role, model, now = Date.now }: {
+  address?: string;
+  role?: string;
+  model?: string;
+  now?: () => number;
+} = {}): {
+  address?: string;
+  model?: string;
+  usage: Usage | null;
+  status: string;
+  toolStart(id: string, name: string, input?: unknown): void;
+  toolEnd(id: string, info?: { name?: string; input?: unknown; failed?: boolean }): void;
+  spans(options?: { status?: string }): Span[];
+} {
   const startMs = now();
-  const open = new Map();
-  const tools = [];
+  const open = new Map<string, { name: string; startMs: number; input?: unknown }>();
+  const tools: ToolCall[] = [];
   const rec = {
     address, model, usage: null, status: "ok",
-    toolStart(id, name, input) { open.set(id, { name, startMs: now(), input }); },
-    toolEnd(id, { name, input, failed = false } = {}) {
-      const started = open.get(id) ?? { name: name || "tool", startMs: now(), input };
+    toolStart(id: string, name: string, input?: unknown) { open.set(id, { name, startMs: now(), input }); },
+    toolEnd(id: string, info?: { name?: string; input?: unknown; failed?: boolean }) {
+      const started = open.get(id) ?? { name: info?.name || "tool", startMs: now(), input: info?.input };
       open.delete(id);
-      tools.push({ ...started, endMs: now(), failed });
+      tools.push({ ...started, endMs: now(), failed: info?.failed ?? false });
     },
-    spans({ status } = {}) {
+    spans({ status }: { status?: string } = {}) {
       const endMs = now();
       const unfinished = [...open.values()].map((tool) => ({ ...tool, endMs, failed: true }));
       return runSpans({ address: rec.address, role, model: rec.model, startMs, endMs, usage: rec.usage, tools: [...tools, ...unfinished], status: status ?? rec.status });
@@ -123,26 +176,35 @@ export function runRecorder({ address, role, model, now = Date.now } = {}) {
  * A tracer fed the lines of `cursor-agent -p --output-format stream-json`. model is the --model the launcher passed
  * (the init event names only a display label); address defaults to cursor#<label of the run's session id>.
  */
-export function streamTrace({ address, role, model, now = Date.now } = {}) {
+export function streamTrace({ address, role, model, now = Date.now }: {
+  address?: string;
+  role?: string;
+  model?: string;
+  now?: () => number;
+} = {}): {
+  line(text: string): void;
+  spans(options?: { exitStatus?: string }): Span[];
+} {
   const rec = runRecorder({ address, role, model, now });
   let sessionId = "";
   let shownModel = "";
   return {
     line(text) {
-      let event;
+      let event: Record<string, unknown>;
       try { event = JSON.parse(text); } catch { return; }
       if (!event || typeof event !== "object") return;
-      if (typeof event.session_id === "string") sessionId ||= event.session_id;
-      if (event.type === "system" && typeof event.model === "string") shownModel = event.model;
+      if (typeof event.session_id === "string") sessionId ||= event.session_id as string;
+      if (event.type === "system" && typeof event.model === "string") shownModel = event.model as string;
       if (event.type === "tool_call" && typeof event.call_id === "string") {
-        const { name, body } = streamTool(event.tool_call);
-        if (event.subtype === "started") rec.toolStart(event.call_id, name, body.args);
-        if (event.subtype === "completed") rec.toolEnd(event.call_id, { name, input: body.args, failed: Boolean(body.result) && !body.result.success });
+        const { name, body } = streamTool(event.tool_call as Record<string, unknown>);
+        const bodyArgs = body as Record<string, unknown>;
+        if (event.subtype === "started") rec.toolStart(event.call_id, name, bodyArgs.args);
+        if (event.subtype === "completed") rec.toolEnd(event.call_id, { name, input: bodyArgs.args, failed: Boolean(bodyArgs.result) && !Boolean((bodyArgs.result as Record<string, unknown>)?.success) });
       }
       if (event.type === "result") {
         rec.status = event.is_error ? "error" : "ok";
         const u = event.usage;
-        if (u && typeof u === "object") rec.usage = { input: u.inputTokens, output: u.outputTokens, cacheRead: u.cacheReadTokens, cacheWrite: u.cacheWriteTokens };
+        if (u && typeof u === "object") rec.usage = { input: Number((u as Record<string, unknown>).inputTokens), output: Number((u as Record<string, unknown>).outputTokens), cacheRead: Number((u as Record<string, unknown>).cacheReadTokens), cacheWrite: Number((u as Record<string, unknown>).cacheWriteTokens) };
       }
     },
     spans({ exitStatus } = {}) {
@@ -154,15 +216,20 @@ export function streamTrace({ address, role, model, now = Date.now } = {}) {
 }
 
 /** Feeds a child's stdout through a streamTrace while passing it on to `out`; finish() exports the trace. */
-export function traceStream(stream, { env = process.env, out, ...options }) {
+export function traceStream(stream: Readable, { env = process.env, out, ...options }: {
+  env?: NodeJS.ProcessEnv;
+  out?: { write(chunk: string): void };
+} & Parameters<typeof streamTrace>[0]): {
+  finish(options?: { exitStatus?: string }): Promise<boolean>;
+} {
   const trace = streamTrace(options);
   let rest = "";
   stream.setEncoding("utf8");
-  stream.on("data", (chunk) => {
+  stream.on("data", (chunk: string) => {
     out?.write(chunk);
     rest += chunk;
     const lines = rest.split("\n");
-    rest = lines.pop();
+    rest = lines.pop() ?? "";
     for (const line of lines) trace.line(line);
   });
   return {
@@ -183,7 +250,19 @@ const END_EVENTS = new Set(["stop", "sessionend"]);
  * sessionStart or beforeSubmitPrompt and ends at the next stop or sessionEnd (`-p` runs fire no stop). Returns the
  * exported spans, or null.
  */
-export async function hookTrace(msg, { env = process.env, now = Date.now } = {}) {
+export async function hookTrace(msg: {
+  conversation_id?: string;
+  session_id?: string;
+  hook_event_name?: string;
+  model?: string;
+  duration?: string | number;
+  tool_name?: string;
+  tool_use_id?: string;
+  tool_input?: unknown;
+  duration_ms?: string | number;
+  final_status?: string;
+  status?: string;
+}, { env = process.env, now = Date.now } = {}): Promise<Span[] | null> {
   // A launcher that traces the run itself (builder, runner-owned session) marks its Cursor process.
   if (env[TRACE_ENV] || env.AI_COLLAB_OWNED) return null;
   const endpoint = otlpEndpoint(env);
@@ -193,7 +272,7 @@ export async function hookTrace(msg, { env = process.env, now = Date.now } = {})
   const dir = path.join(stateDir(env), HOOK_DIR);
   const file = path.join(dir, `${label}.jsonl`);
   const at = now();
-  const add = (record) => { mkdirSync(dir, { recursive: true, mode: 0o700 }); appendFileSync(file, JSON.stringify(record) + "\n", { mode: 0o600 }); };
+  const add = (record: unknown) => { mkdirSync(dir, { recursive: true, mode: 0o700 }); appendFileSync(file, JSON.stringify(record) + "\n", { mode: 0o600 }); };
   if (START_EVENTS.has(key) && !existsSync(file)) add({ start: at, model: msg.model });
   if (TOOL_EVENTS.has(key)) {
     const duration = Number(msg.duration) || 0;
@@ -203,22 +282,22 @@ export async function hookTrace(msg, { env = process.env, now = Date.now } = {})
   // Claimed by rename, so a second registration of the same hook finds nothing to export.
   const claimed = `${file}.${process.pid}.${newId(4)}`;
   try { renameSync(file, claimed); } catch { return null; }
-  let records = [];
+  let records: Record<string, unknown>[] = [];
   try {
     records = readFileSync(claimed, "utf8").split("\n").filter(Boolean).map((line) => { try { return JSON.parse(line); } catch { return null; } }).filter(Boolean);
   } finally {
     rmSync(claimed, { force: true });
   }
-  const seen = new Set();
-  const tools = [];
+  const seen = new Set<string>();
+  const tools: ToolCall[] = [];
   for (const r of records) {
-    if (!r.tool || (r.id && seen.has(r.id))) continue;
-    if (r.id) seen.add(r.id);
-    tools.push({ name: r.tool, startMs: r.at - Math.round(r.duration), endMs: r.at, input: r.input, failed: r.failed });
+    if (!r.tool || (r.id && seen.has(r.id as string))) continue;
+    if (r.id) seen.add(r.id as string);
+    tools.push({ name: r.tool as string, startMs: (r.at as number) - Math.round((r.duration as number) || 0), endMs: r.at as number, input: r.input, failed: r.failed as boolean });
   }
   const durationMs = Number(msg.duration_ms) || 0;
-  const startMs = Math.min(records.find((r) => r.start)?.start ?? at, durationMs ? at - durationMs : at, ...tools.map((t) => t.startMs));
-  const model = records.find((r) => r.start && r.model)?.model || records.find((r) => r.model)?.model || msg.model;
+  const startMs = Math.min(records.find((r) => r.start)?.start as number ?? at, durationMs ? at - durationMs : at, ...tools.map((t) => t.startMs));
+  const model = (records.find((r) => r.start && r.model)?.model as string) || (records.find((r) => r.model)?.model as string) || msg.model;
   const status = typeof msg.final_status === "string" ? msg.final_status : typeof msg.status === "string" ? msg.status : "ok";
   const spans = runSpans({ address: `cursor#${label}`, role: env[ROLE_ENV] || "session", model, startMs, endMs: at, tools, status });
   await exportSpans(spans, { endpoint });

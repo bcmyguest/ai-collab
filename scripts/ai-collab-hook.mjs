@@ -44,7 +44,7 @@ import { sendReceipts, settleReceipts } from "../lib/receipts.mjs";
 import { closeTerminalCards, decideApproval, decideQuestion } from "../lib/approvals.mjs";
 import { classifyLimit } from "../lib/limits.ts";
 import { alertLimit } from "../lib/limit-alert.mjs";
-import { hookTrace } from "../lib/cursor-trace.mjs";
+import { hookTrace } from "../lib/cursor-trace.ts";
 
 const HOSTS = new Set(["claude", "codex", "cursor", "opencode"]);
 const EVENTS = new Map([

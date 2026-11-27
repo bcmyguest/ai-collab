@@ -6,7 +6,7 @@ import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { EventType } from "@ag-ui/core";
 import { autoDefaults, sessionLabel } from "../../lib/config.mjs";
-import { exportSpans, otlpEndpoint, runRecorder } from "../../lib/cursor-trace.mjs";
+import { exportSpans, otlpEndpoint, runRecorder } from "../../lib/cursor-trace.ts";
 import { cursorBinary, findExecutable } from "../../lib/start.mjs";
 import { argv, LAUNCH_BINARY } from "../../lib/harness.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, permissionSettings } from "../contract.mjs";
