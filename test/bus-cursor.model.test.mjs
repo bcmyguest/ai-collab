@@ -187,9 +187,16 @@ function openStream(r, s, topics, since) {
 async function closeReal(r) {
   for (const rs of r.subs) rs?.ctrl?.abort();
   await Promise.all(r.subs.filter(Boolean).map((rs) => rs.done));
-  await r.server.close();
-  await r.store.close();
-  if (r.kind === "postgres") await dropSchema(r.schema);
+  // Each step runs even when an earlier one throws, so a failed run still releases its connections and schema.
+  try {
+    await r.server.close();
+  } finally {
+    try {
+      await r.store.close();
+    } finally {
+      if (r.kind === "postgres") await dropSchema(r.schema);
+    }
+  }
 }
 
 async function dropSchema(schema) {
