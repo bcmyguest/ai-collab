@@ -1,11 +1,12 @@
-// `ai-collab land request <branch>` on any agent checkout; `ai-collab deploy [--if-moved]` on the host checkout.
+// `ai-collab land request|finish <branch>` on any agent checkout; `ai-collab deploy [--if-moved]` on the host checkout.
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { broadcastTopic, stateDir } from "./config.mjs";
-import { AUTO_DEPLOY_TIMEOUT_MS, deployHost, execRun, readLastDeploy, requestLand, restartServices, writeLastDeploy } from "./land.mjs";
-import { HOST_CHECKOUT } from "./merge-cli.mjs";
+import { AUTO_DEPLOY_TIMEOUT_MS, HOST_CHECKOUT, deployHost, execRun, finishBranch, readLastDeploy, requestLand, restartServices, writeLastDeploy } from "./land.mjs";
 import { operatorConfigs } from "./mode.mjs";
 import { publish } from "./messaging.ts";
 import { withLock } from "./state.mjs";
+import { openTasks } from "./tasks.mjs";
 import { passJs } from "./surfaces/types.ts";
 import type { Cfg } from "./messaging.ts";
 
@@ -13,9 +14,13 @@ type Writer = { write: (chunk: string) => void };
 type Run = typeof execRun;
 type Publish = (line: string, env: NodeJS.ProcessEnv) => Promise<void>;
 type DeployResult = { status: string; line?: string; to?: string };
+type LandCfg = { project?: string; peer?: string; session?: string };
 
 const LAND_USAGE = `Usage: ai-collab land request <branch>
 Pushes <branch> (never main) and opens its PR into main, or reuses the open one. Prints the PR URL.
+Usage: ai-collab land finish <branch> [--proof <file>] [--landing pr|packet|branch] [--task <id>]
+The default is a draft PR with the proof in its body when origin is GitHub and gh is signed in, else a
+review packet on the project's task board; never pushes main.
 `;
 const DEPLOY_USAGE = `Usage: ai-collab deploy [--if-moved]
 Runs on the PM host using ${HOST_CHECKOUT}. Refuses a dirty checkout or one not on main, pulls --ff-only,
@@ -35,21 +40,60 @@ async function publishToOperators(line: string, env: NodeJS.ProcessEnv): Promise
     publish(cfg, broadcastTopic(cfg.project), line, { title: "ai-collab: deploy" })));
 }
 
-export async function land(args: string[], { out, err, run = execRun, cwd = process.cwd() }: {
-  env?: NodeJS.ProcessEnv; out: Writer; err: Writer; run?: Run; cwd?: string;
+// Reads `land finish` flags; null on an unknown flag or a missing value.
+function finishFlags(rest: string[]): { proof?: string; landing?: string; task?: string } | null {
+  const flags: Record<string, string> = {};
+  for (let i = 0; i < rest.length; i++) {
+    const name = rest[i];
+    const value = rest[++i];
+    if (value === undefined || !["--proof", "--landing", "--task"].includes(name)) return null;
+    flags[name.slice(2)] = value;
+  }
+  return flags;
+}
+
+export async function land(args: string[], { out, err, run = execRun, cwd = process.cwd(), env = process.env, cfg = {} }: {
+  env?: NodeJS.ProcessEnv; out: Writer; err: Writer; run?: Run; cwd?: string; cfg?: LandCfg;
 }): Promise<number> {
   if (args.length === 0 || args[0] === "help" || args.includes("--help")) {
     out.write(LAND_USAGE);
     return 0;
   }
   const [action, branch, ...rest] = args;
-  if (action !== "request" || !branch || rest.length) {
+  if (action === "request") {
+    if (!branch || rest.length) {
+      err.write(LAND_USAGE);
+      return 1;
+    }
+    try {
+      const { url } = await requestLand(branch, { run, cwd });
+      out.write(`${url}\n`);
+      return 0;
+    } catch (error) {
+      err.write(`ai-collab: land: ${(error as Error).message}\n`);
+      return 1;
+    }
+  }
+  const flags = action === "finish" && branch ? finishFlags(rest) : null;
+  if (!flags) {
     err.write(LAND_USAGE);
     return 1;
   }
+  const { proof: proofFile, landing, task } = flags;
+  if (!proofFile && landing !== "branch") {
+    err.write("ai-collab: land: finish needs --proof <file> unless --landing branch\n");
+    return 1;
+  }
   try {
-    const { url } = await requestLand(branch, { run, cwd });
-    out.write(`${url}\n`);
+    const proof = proofFile ? readFileSync(proofFile, "utf8") : "";
+    const by = cfg.peer && cfg.session ? `${cfg.peer}#${cfg.session}` : cfg.peer || "cli";
+    // The store opens only when the packet path uses it; without a project that path refuses.
+    const noBoard = () => { throw new Error("the packet landing needs a project task board: set AI_COLLAB_PROJECT or pass --landing pr|branch"); };
+    const tasks = cfg.project ? openTasks(cfg.project, env) : { add: noBoard, submitReview: noBoard };
+    const result = await finishBranch(branch, passJs({ run, cwd, proof, tasks, by, ...(landing ? { landing } : {}), ...(task ? { task } : {}) }));
+    if (result.landing === "pr") out.write(`pr: ${result.url}${result.created ? "" : " (existing)"}\n`);
+    else if (result.landing === "packet") out.write(`packet: task ${result.task}\n`);
+    else out.write(`branch: pushed ${result.branch}\n`);
     return 0;
   } catch (error) {
     err.write(`ai-collab: land: ${(error as Error).message}\n`);
