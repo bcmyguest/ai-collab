@@ -103,7 +103,7 @@ function lockFile(cfg: Cfg): string {
 }
 
 function readJson<T>(file: string, pick: (v: Obj) => T): T {
-  return pick((readStoreJson<Obj>(file) ?? {}) as Obj);
+  return pick((readStoreJson<Obj>(file) ?? {}));
 }
 
 const readAlerted = (cfg: Cfg): Record<string, WindowEntry> => readJson(alertsFile(cfg), (v) => (v && typeof v.windows === "object" ? v.windows : {}) as Record<string, WindowEntry>);
@@ -115,7 +115,7 @@ function priorIndexEntry(index: Record<string, IndexEntry>, harness: string, win
   const own = `${harness}|${window}`;
   const legacy = Object.keys(index).filter((name) => name.startsWith(`${own}|`));
   const entries = [own, ...legacy].map((name) => ({ name, entry: index[name] })).filter(({ entry }) => live(entry, now));
-  entries.sort((a, b) => ((b.entry as IndexEntry).expiresAt ?? 0) - ((a.entry as IndexEntry).expiresAt ?? 0));
+  entries.sort((a, b) => ((b.entry).expiresAt ?? 0) - ((a.entry).expiresAt ?? 0));
   return entries[0]?.entry ?? null;
 }
 
@@ -192,8 +192,9 @@ function cardMessage(cfg: Cfg, card: Card): string {
 
 async function publishCard(cfg: Cfg, card: Card, { send, env }: { send: typeof publish; env: NodeJS.ProcessEnv }): Promise<void> {
   const names = card.sessions.map((s) => `${s.peer}#${s.session}`).join(", ");
+  const click = { project: cfg.project, session: card.sessions[0].session };
   await send(cfg, broadcastTopic(cfg.project), cardMessage(cfg, card), {
-    title: `${headlineOf(card)} for ${names}`, click: deepLink({ project: cfg.project, session: card.sessions[0].session } as Parameters<typeof deepLink>[0]), priority: alertPriority(readAlertLevel(env), "question"),
+    title: `${headlineOf(card)} for ${names}`, click: deepLink(click), priority: alertPriority(readAlertLevel(env), "question"),
   });
 }
 
@@ -225,7 +226,7 @@ export async function alertLimit(cfg: Cfg, { harness, limit, env = process.env, 
     const freshen = async (card: Card | null): Promise<Card | null> => {
       if (!card) return null;
       const held = await withLock(cardFile(cfg, card.id), async () => readCard(cfg, card.id));
-      return held.locked ? (held.value as Card | null) : null;
+      return held.locked ? (held.value) : null;
     };
     // This session's untyped card may have been superseded by another session joining it: follow it to the card now offered.
     const current = async (id: string): Promise<Card | null> => {
@@ -236,7 +237,7 @@ export async function alertLimit(cfg: Cfg, { harness, limit, env = process.env, 
     // The hook (untyped StopFailure) and the runner (typed rate_limit_event) report one limit. A typed report that follows this
     // session's own untyped alert replaces that card, so the phone shows the window and reset it learned.
     const untypedLive = Boolean(limit.window) && live(mine.unknown, now);
-    const inherited = untypedLive ? await current((mine.unknown as WindowEntry).card) : null;
+    const inherited = untypedLive ? await current((mine.unknown).card) : null;
     const upgrading = cardOpen(inherited, now) && (inherited as Card).harness === harness && (inherited as Card).sessions.some((s) => `${s.peer}#${s.session}` === sessionKey) ? inherited : null;
     // A live alert for the window covers a typed report; a live untyped alert covers a typed one it cannot replace, and every live
     // alert covers an untyped report.
@@ -295,7 +296,7 @@ export async function alertLimit(cfg: Cfg, { harness, limit, env = process.env, 
     const kept = Object.fromEntries(Object.entries(index).filter(([name]) => name !== key && !name.startsWith(`${key}|`))
       .map(([name, value]) => [name, closedIds.has((value as IndexEntry | undefined)?.card as string) ? entry : value]));
     writeJson(indexFile(cfg), { ...kept, [key]: entry });
-    const windows: Record<string, WindowEntry> = { ...mine, [window]: { at: now, expiresAt: card.expiresAt, card: id } };
+    const windows = { ...mine, [window]: { at: now, expiresAt: card.expiresAt, card: id } };
     // The untyped alert this report upgraded is spent: the window entry now covers the same limit, and it must not outlive the card.
     if (untypedLive && upgrading && closed.some((old) => old.id === upgrading.id)) delete windows.unknown;
     writeJson(alertsFile(cfg), { windows });
@@ -309,7 +310,7 @@ export async function alertLimit(cfg: Cfg, { harness, limit, env = process.env, 
   // A busy lock means a concurrent alert may be publishing this window: no second card.
   if (!decided.locked || !decided.value) return { status: "duplicate" };
   if (decided.value.status !== "auto") return decided.value;
-  return startAuto(cfg, decided.value as Decided & { id: string; replacements: Replacement[] }, { start, send, env, now, listed, available });
+  return startAuto(cfg, decided.value, { start, send, env, now, listed, available });
 }
 
 export interface StartedAlert { status: "started"; id: string; session: string; line: string; started: Array<{ from: string; session: string }> }
@@ -397,7 +398,7 @@ export async function chooseLimit(cfg: Cfg, {
     const card = readCard(cfg, id);
     if (!card) return { status: "failed", detail: "This limit card is unknown" };
     const models = await listed(cfg.stateDir, env, { peers: cfg.peers, run: noSpawn }).catch(() => ({})) as Record<string, string[]>;
-    picked = typedReplacement(typed, { limited: card.harness, models, available: available(cfg, env) }) as Replacement | null;
+    picked = typedReplacement(typed, { limited: card.harness, models, available: available(cfg, env) });
     if (!picked) return { status: "failed", detail: `No listed model matches "${typed.trim()}" outside ${card.harness}` };
   }
   type Claim = { problem: "failed" | "duplicate"; detail: string } | { card: Card; option: Replacement };
@@ -412,7 +413,7 @@ export async function chooseLimit(cfg: Cfg, {
     return { card, option };
   });
   if (!claim.locked) return { status: "failed", detail: "The limit card is busy; try again" };
-  const won = claim.value as Claim;
+  const won = claim.value;
   if ((won as { problem?: string }).problem) {
     const lost = won as { problem: "failed" | "duplicate"; detail: string };
     return { status: lost.problem, detail: lost.detail };
@@ -453,7 +454,7 @@ export function typedReplacement(text: string, { limited, models, available }: {
   }
   const needle = want.toLowerCase();
   for (const harness of usable) {
-    const list = ((models?.[harness] ?? []) as string[]).filter((m) => modelShape(harness, m));
+    const list = ((models?.[harness] ?? [])).filter((m) => modelShape(harness, m));
     const model = list.find((m) => m.toLowerCase() === needle) ?? list.find((m) => m.toLowerCase().includes(needle));
     if (model) return { label: who(harness, model), harness, model };
   }

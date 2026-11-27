@@ -85,7 +85,7 @@ function hookEvents(host: string, key: string, msg: Record<string, unknown>): Ac
     case "beforesubmitprompt":
       if (!msg.prompt) return [];
       // Task notifications and agent hand-backs arrive as prompts; show them as agent text, not the operator's.
-      return machinePrompt(msg.prompt as string) ? [{ type: "text", tool: "Agent message", output: msg.prompt as string }] : [{ type: "prompt", input: msg.prompt as string }];
+      return machinePrompt(msg.prompt) ? [{ type: "text", tool: "Agent message", output: msg.prompt as string }] : [{ type: "prompt", input: msg.prompt as string }];
     case "pretooluse":
       return host === "cursor" ? [] : [call];
     case "posttooluse": {
@@ -140,7 +140,7 @@ function hookEvents(host: string, key: string, msg: Record<string, unknown>): Ac
 }
 
 // A non-Cursor result carries its call's input, so a result whose PreToolUse hook never ran still shows the command.
-function withInput(host: string, msg: Record<string, unknown>): { input: string } | {} {
+function withInput(host: string, msg: Record<string, unknown>): { input?: string } {
   return host !== "cursor" && msg.tool_input !== undefined ? { input: msg.tool_input as string } : {};
 }
 
@@ -163,7 +163,7 @@ function clip(value: string, maxBytes: number): string {
 }
 
 /** Fits input and output into max bytes of JSON; the smaller field keeps its share, the larger takes the rest. */
-export function fitEnvelope(base: Record<string, unknown>, fields: Record<string, unknown>, max = ACTIVITY_MAX_BYTES, encode = JSON.stringify): { envelope: Record<string, unknown>; clipped: Record<string, boolean> } {
+export function fitEnvelope(base: Record<string, unknown>, fields: Record<string, unknown>, max = ACTIVITY_MAX_BYTES, encode = JSON.stringify) {
   const full = { ...base, ...fields };
   if (Buffer.byteLength(encode(full)) <= max) return { envelope: full, clipped: {} };
   const keys = Object.keys(fields).sort((a, b) => cost(fields[a]) - cost(fields[b]));
@@ -179,9 +179,17 @@ export function fitEnvelope(base: Record<string, unknown>, fields: Record<string
   return { envelope: { ...base, ...out }, clipped };
 }
 
+type ActivityEnvelope = {
+  v: number; kind: string; from: string; session?: string; harness: string; ts: string; type: string;
+  system?: boolean; tool?: string; callId?: string; agent?: { id: string; type: string };
+  compaction?: NonNullable<ReturnType<typeof compactionFields>>;
+  clear?: NonNullable<ReturnType<typeof clearFields>>;
+  modelSwitch?: NonNullable<ReturnType<typeof modelFields>>;
+};
+
 /** One activity event → the bus message (≤ 4095 bytes) plus, for a truncated result, the full text as an attachment. */
 export function buildActivity(cfg: Cfg, harness: string, event: ActivityEvent, ts = new Date().toISOString(), run?: unknown): ActivityMessage {
-  const base: Record<string, unknown> = {
+  const base: ActivityEnvelope = {
     v: 1, kind: "activity", from: cfg.peer, ...(cfg.session ? { session: cfg.session } : {}),
     harness: HARNESSES.has(harness) ? harness : "other", ts, type: event.type,
   };
@@ -189,10 +197,10 @@ export function buildActivity(cfg: Cfg, harness: string, event: ActivityEvent, t
   if (event.tool) base.tool = stripControl(asText(event.tool)).slice(0, NAME_MAX);
   if (event.callId) base.callId = stripControl(asText(event.callId)).slice(0, NAME_MAX);
   if (event.agent?.id) base.agent = { id: stripControl(event.agent.id).slice(0, NAME_MAX), type: stripControl(event.agent.type || "").slice(0, NAME_MAX) };
-  const compaction = event.compaction ? compactionFields(event.compaction as { trigger?: string; phase?: string }) : null;
+  const compaction = event.compaction ? compactionFields(event.compaction) : null;
   if (compaction) base.compaction = compaction;
-  if (event.clear) base.clear = clearFields(event.clear as { tokensBefore?: number });
-  const modelSwitch = event.modelSwitch ? modelFields(event.modelSwitch as { from?: string; to?: string }) : null;
+  if (event.clear) base.clear = clearFields(event.clear);
+  const modelSwitch = event.modelSwitch ? modelFields(event.modelSwitch) : null;
   if (modelSwitch) base.modelSwitch = modelSwitch;
   const fields: Record<string, string> = {};
   for (const key of ["input", "output"] as const) {

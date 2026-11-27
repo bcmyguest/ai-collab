@@ -16,7 +16,7 @@ import { withLock } from "./state.mjs";
 export const IMAGE_FILE = /^[A-Za-z0-9]{1,32}\.(?:png|jpe?g|gif|webp)$/i;
 export const TEXT_FILE = /^[A-Za-z0-9]{1,32}\.txt$/;
 const TEXT_TYPE = "text/plain; charset=utf-8";
-const IMAGE_TYPES: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp" };
+const IMAGE_TYPES = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp" };
 // A bounded cache: old attachments go, and the newest CACHE_MAX_FILES stay.
 const CACHE_MAX_FILES = 200;
 const CACHE_MAX_AGE_MS = 7 * 24 * 3_600_000;
@@ -31,7 +31,7 @@ export function isAttachmentFile(name: string | number | bigint | boolean | null
 /** The served type of a cached attachment, from its extension (ntfy keeps the extension in the file name). */
 export function attachmentType(name: string | number | bigint | boolean | null | undefined): string {
   const file = String(name);
-  return file.endsWith(".txt") ? TEXT_TYPE : IMAGE_TYPES[file.slice(file.lastIndexOf(".")).toLowerCase()] || "application/octet-stream";
+  return file.endsWith(".txt") ? TEXT_TYPE : IMAGE_TYPES[file.slice(file.lastIndexOf(".")).toLowerCase() as keyof typeof IMAGE_TYPES] || "application/octet-stream";
 }
 
 /**
