@@ -84,6 +84,8 @@ export type UiOptions = {
   setMode?: typeof publishMode; env?: NodeJS.ProcessEnv; start?: typeof startSession; models?: typeof listModels; push?: Push | null;
   auth?: Auth | null; runner?: typeof runnerClient; hasDraft?: typeof terminalHasDraft; hosted?: boolean; landingCheckout?: string;
   runMergeReview?: typeof mergeReview; land?: typeof hostLand;
+  /** The thread store client per project; tests and the UI fixture pass an in-memory one. */
+  threadClient?: (cfg: Json) => Json;
 };
 /** The land-reviews run the snapshot reports. */
 type Landing = { running: boolean; receipts: Receipt[]; error?: string; finished?: boolean };
@@ -105,6 +107,8 @@ const MODES = ["on", "off", "quiet"];
 const MAX_REQUEST_BYTES = 32768;
 const ONLINE_MS = 30 * 60_000;
 const KEEPALIVE_MS = 25_000;
+// Finished subagent runs the sidebar lists per session.
+const FINISHED_RUNS = 10;
 const PUSH_DELAY_MS = 25;
 const MAX_MESSAGES = 100;
 const SCHEDULE_NAME = /^[a-z0-9-]{1,40}$/;
@@ -419,7 +423,7 @@ function originalOf(quote: Json) {
   return { sender: typeof source.sender === "string" ? source.sender : "", body: typeof source.body === "string" ? source.body : "" };
 }
 
-export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start: launch = startSession, models = listModels, push: notifier = null, auth = null, runner = runnerClient, hasDraft = terminalHasDraft, hosted = false, landingCheckout = HOST_CHECKOUT, runMergeReview = mergeReview, land = hostLand }: UiOptions) {
+export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start: launch = startSession, models = listModels, push: notifier = null, auth = null, runner = runnerClient, hasDraft = terminalHasDraft, hosted = false, landingCheckout = HOST_CHECKOUT, runMergeReview = mergeReview, land = hostLand, threadClient: threadClientOf }: UiOptions) {
   if (!configs.length) throw new Error("No ai-collab project is configured");
   for (const item of configs) if (!item.enabled) throw new Error(item.reason);
   if (allowedOrigin && (!allowedOrigin.startsWith("https://") || new URL(allowedOrigin).origin !== allowedOrigin)) {
@@ -473,7 +477,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const registry = join(item.stateDir, item.project, "registry");
     mkdirSync(registry, { recursive: true, mode: 0o700 });
     // A registry change may be a new session: it gets a thread at the next sync (docs/threads.md).
-    const threads = hosted ? null : projectThreads(item, { env, broadcast });
+    const threads = hosted ? null : projectThreads(item, { env, broadcast, ...(threadClientOf ? { client: threadClientOf(item) } : {}) });
     const watcher = watch(registry, () => { threads?.sync(); broadcast(); });
     watcher.unref();
     threads?.sync();
@@ -874,6 +878,18 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     });
   }
 
+  /** Each session's finished subagent runs, newest first and capped, for the sidebar; gone sessions keep theirs. */
+  function finishedRuns(project: Json): Map<string, Json[]> {
+    const done = new Map<string, Json[]>();
+    for (const run of groupSubagents(activityRows(activityList(project)))) {
+      if (run.type !== "subagent" || !run.done) continue;
+      if (!done.has(run.agent)) done.set(run.agent, []);
+      done.get(run.agent)?.push({ id: run.id, agent: run.agent, run: run.run, kind: run.kind, description: run.description, steps: run.steps, time: run.time, lastTime: run.lastTime, done: true });
+    }
+    for (const [agent, runs] of done) done.set(agent, runs.reverse().slice(0, FINISHED_RUNS));
+    return done;
+  }
+
   function harnesses(project: Json, list: Json, last: Json) {
     const names = project.cfg.peers.length ? project.cfg.peers : [...new Set(list.map((agent: Json) => agent.peer))].sort();
     return names.map((id: Json) => {
@@ -1201,6 +1217,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       : item.failed ? [] : sessionCards(item, agents(item, lastMessages(item)), mode))
       : scope === "sessions" ? sessionCards(project, list, mode) : undefined;
     const runs = listRuns(project.cfg);
+    const finished = finishedRuns(project);
     // Each agent's compactions, clears and model switches from the activity in memory; only the compactions view asks (history=1).
     const history = wantHistory ? sessionHistory(activityList(project)) : new Map();
     return {
@@ -1228,7 +1245,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         const modelControl = owned?.address === agent.id && ["idle", "running"].includes(owned.status)
           ? { current: owned.model || "", busy: owned.status === "running" } : null;
         const { lastActivityAt, openCallAt, turnStartAt, afkHold, pending, team, role } = card || {};
-        const base = { ...agent, lastActivityAt, openCallAt, turnStartAt, afkHold, pending, ...(team ? { team, role } : {}), ...(subagents.length ? { subagents } : {}), ...(modelControl ? { modelControl } : {}) };
+        const base = { ...agent, lastActivityAt, openCallAt, turnStartAt, afkHold, pending, ...(team ? { team, role } : {}), ...(subagents.length ? { subagents } : {}),
+          ...(finished.has(agent.id) ? { finishedSubagents: finished.get(agent.id) } : {}), ...(modelControl ? { modelControl } : {}) };
         // Context telemetry and instruction files from the session's state file (lib/usage.ts).
         const context = readContext({ stateDir: project.cfg.stateDir, project: project.cfg.project, peer: agent.peer, session: agent.session } as Cfg);
         const withContext = context.tokens !== null || context.files.length ? { ...base, context } : base;
@@ -1240,9 +1258,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       ...(scope === "home" ? {
         ...(!hosted ? { shipped: shown.flatMap(item => item.failed ? [] :
           shippedTasks(item.tasks, item.cfg.project, taskRoot(item))).sort((a, b) => b.at - a.at) } : {}),
-        decisions: shown.flatMap(item => item.failed ? [] : projectDecisions(item,
-          item === project ? runs : listRuns(item.cfg), item === project ? list : cards.filter((card: Json) => card.project === item.cfg.project))),
         unavailable: shown.filter(item => item.failed).map(item => item.cfg.project) } : {}),
+      // Every scope carries every shown project's decisions, so the bell counts them anywhere.
+      decisions: shown.flatMap(item => item.failed ? [] : projectDecisions(item, item === project ? runs : listRuns(item.cfg),
+        item === project ? list : cards ? cards.filter((card: Json) => card.project === item.cfg.project) : agents(item, lastMessages(item)))),
       ...((scope === "home" ? shown.some(canLand) : canLand(project)) ? { landing } : {}),
       ...(hosted ? { hosted: true } : {}),
       // A tree other than main serves this UI (`ai-collab deploy --from`); the header shows a banner.
