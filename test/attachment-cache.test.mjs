@@ -4,7 +4,7 @@ import path from "node:path";
 import { test, after as afterAll } from "node:test";
 import { attachmentOf, cacheAttachments, cachedAttachment, ensureAttachment, pruneAttachments } from "../lib/attachment-cache.ts";
 import { loadConfig } from "../lib/config.mjs";
-import { formatInbox } from "../lib/format.mjs";
+import { formatInbox } from "../lib/format.ts";
 import { claimInbox, channelHistory, sendMessage } from "../lib/inbox.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";

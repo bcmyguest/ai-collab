@@ -12,7 +12,7 @@ import { resetClock } from "../lib/limit-alert.ts";
 import { setProjectPaused } from "../lib/project-pause.ts";
 import { recordSession } from "../lib/sessions.mjs";
 import { codexResetFrom, classifyLimit, limitFromRunError } from "../lib/limits.ts";
-import { limitEndNotice, readStartLog } from "../lib/start-limit.mjs";
+import { limitEndNotice, readStartLog } from "../lib/start-limit.ts";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { paneHasDraft } from "../lib/terminal-draft.mjs";
+import { paneHasDraft } from "../lib/terminal-draft.ts";
 
 test("terminal draft detection checks the matching pane's cursor row and ignores placeholders", () => {
   const tty = "/dev/pts/7";

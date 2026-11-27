@@ -5,7 +5,7 @@ import { test, after } from "node:test";
 import { runCli } from "../lib/cli.mjs";
 import { MISSION_FILE, parseMission, readMission, renderMission, withMission } from "../lib/mission.ts";
 import { tickFn } from "../runner/schedules.mjs";
-import { projectOfFolder } from "../lib/schedule-session.mjs";
+import { projectOfFolder } from "../lib/schedule-session.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const GOOD = `# Ship the phone loop

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { writeOwned } from "../lib/sessions/registry.ts";
-import { writeState } from "../lib/state.mjs";
+import { writeState } from "../lib/state.ts";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

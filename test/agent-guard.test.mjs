@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { agentHarness, assertHostAgent, hostAgentRefusal, unsafeAgentFlags } from "../lib/agent-guard.mjs";
+import { agentHarness, assertHostAgent, hostAgentRefusal, unsafeAgentFlags } from "../lib/agent-guard.ts";
 
 test("each harness's approval-off flags are found by binary name, wherever the binary lives", () => {
   assert.deepEqual(unsafeAgentFlags(["/home/b/.local/bin/cursor-agent", "-p", "--force", "--trust", "tick"]), ["--force"]);

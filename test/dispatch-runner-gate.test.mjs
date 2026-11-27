@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { createDispatcher } from "../web/server/dispatch.mjs";
 import { listenControl } from "../runner/control.mjs";
-import { runnerUp } from "../runner/client.mjs";
+import { runnerUp } from "../runner/client.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 // A dispatcher tick runs one OpenCode probe before any project; a counted probe shows whether a tick ran.

@@ -5,7 +5,7 @@ import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test, after } from "node:test";
 import { fileURLToPath } from "node:url";
-import { runCodeReadRecipe } from "../lib/store-read.mjs";
+import { runCodeReadRecipe } from "../lib/store-read.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));

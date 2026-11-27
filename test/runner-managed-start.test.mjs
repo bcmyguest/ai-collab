@@ -5,7 +5,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
-import { processStart } from "../lib/process.mjs";
+import { processStart } from "../lib/process.ts";
 import { recordSession } from "../lib/sessions.mjs";
 import { readOwned } from "../lib/sessions/registry.ts";
 import { managedStartAllowed } from "../lib/subagent-guard.ts";

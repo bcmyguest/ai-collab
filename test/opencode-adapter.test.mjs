@@ -5,10 +5,10 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { sessionLabel } from "../lib/config.mjs";
 import { controlSession, nativeSessionId } from "../lib/sessions/control.ts";
-import { installOpenCode, mcpEntry, mergeMcp, opencodeConfigDir, pluginShim } from "../lib/install-opencode.mjs";
-import { opencodeModels, parseOpenCodeModels } from "../lib/models.mjs";
-import { packageRoot } from "../lib/install-cursor.mjs";
-import { WAKE_PROMPT } from "../lib/mode.mjs";
+import { installOpenCode, mcpEntry, mergeMcp, opencodeConfigDir, pluginShim } from "../lib/install-opencode.ts";
+import { opencodeModels, parseOpenCodeModels } from "../lib/models.ts";
+import { packageRoot } from "../lib/install-cursor.ts";
+import { WAKE_PROMPT } from "../lib/mode.ts";
 import { sessionDirectory } from "../lib/sessions.mjs";
 import { START_HARNESSES, outputId, startCommand } from "../lib/start.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
@@ -134,7 +134,7 @@ test("opencode install keeps a flat mcp layout, honours XDG_CONFIG_HOME, and ref
 });
 
 test("opencode install adds the skills path to an object-form skills setting and keeps its other keys", async () => {
-  const { mergeSkills } = await import("../lib/install-opencode.mjs");
+  const { mergeSkills } = await import("../lib/install-opencode.ts");
   const config = { skills: { paths: ["/a", "/b"], urls: ["https://x"] } };
   assert.deepEqual(mergeSkills(config, "/c").skills, { paths: ["/a", "/b", "/c"], urls: ["https://x"] });
   assert.deepEqual(mergeSkills(mergeSkills(config, "/c"), "/c").skills.paths, ["/a", "/b", "/c"], "added once");

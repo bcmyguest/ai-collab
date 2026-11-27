@@ -4,7 +4,7 @@ import { readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../lib/config.mjs";
 import { claimInbox } from "../lib/inbox.mjs";
-import { formatInbox } from "../lib/format.mjs";
+import { formatInbox } from "../lib/format.ts";
 import { SESSION_COOKIE, STATE_COOKIE, createAuth, signSession, verifySession } from "../web/server/auth.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";

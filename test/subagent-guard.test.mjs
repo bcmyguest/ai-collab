@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
-import { managedShellStartRefusal, SHELL_START_DENIED } from "../lib/agent-guard.mjs";
+import { managedShellStartRefusal, SHELL_START_DENIED } from "../lib/agent-guard.ts";
 import {
   MANAGED_ENV, MANAGED_TICKET_ENV, SUBAGENT_DENIED, managedEnv, nativeSubagentCall, noSubagentArgs, noSubagentEnv, shellHarnessStart, subagentDenial,
 } from "../lib/subagent-guard.ts";

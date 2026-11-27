@@ -13,7 +13,7 @@ import { runCli } from "../lib/cli.mjs";
 import { decideStop } from "../lib/stop.mjs";
 import { requestWait } from "../lib/questions.mjs";
 import { claimInbox } from "../lib/inbox.mjs";
-import { settleReceipts } from "../lib/receipts.mjs";
+import { settleReceipts } from "../lib/receipts.ts";
 
 const SESSION_ID = "11111111-2222-3333-4444-555555555555";
 const LABEL = sessionLabel(SESSION_ID);

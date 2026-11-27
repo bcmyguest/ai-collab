@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test, after } from "node:test";
-import { agentHarness } from "../lib/agent-guard.mjs";
+import { agentHarness } from "../lib/agent-guard.ts";
 import { limitFallback } from "../lib/builder.ts";
 import { loadConfig, START_DEFAULT, startDefaultSetting } from "../lib/config.mjs";
 import { CURSOR_FALLBACK } from "../lib/limit-alert.ts";
 import { FALLBACK_MODEL, formatHarnessModel, harnessOfBinary, parseHarnessModel } from "../lib/harness.ts";
 import { getPattern, listPatterns } from "../lib/patterns.mjs";
-import { harnessOfCommand } from "../lib/schedule-session.mjs";
+import { harnessOfCommand } from "../lib/schedule-session.ts";
 import { parseMember } from "../lib/teams.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

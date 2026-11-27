@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { refreshPmWorkspace } from "../lib/pm-workspace.mjs";
+import { refreshPmWorkspace } from "../lib/pm-workspace.ts";
 import { loadSchedules, tickFn } from "../runner/schedules.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

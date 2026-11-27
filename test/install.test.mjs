@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { installCursorPlugin, cursorPluginDest } from "../lib/install-cursor.mjs";
+import { installCursorPlugin, cursorPluginDest } from "../lib/install-cursor.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 test("cursor install copies the plugin into a (temporary) home's local plugin dir", (t) => {

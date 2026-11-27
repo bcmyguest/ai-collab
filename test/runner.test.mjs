@@ -16,14 +16,14 @@ import { listSessions } from "../lib/sessions.mjs";
 import { openTasks } from "../lib/tasks.mjs";
 import { builderPaths } from "../lib/builder.ts";
 import { setProjectPaused } from "../lib/project-pause.ts";
-import { settleReceipts } from "../lib/receipts.mjs";
+import { settleReceipts } from "../lib/receipts.ts";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
 import cursorAdapter, { sandboxName } from "../runner/adapters/cursor.mjs";
 import { wrapOpen } from "./helpers/fake-adapter-hooks.mjs";
 import { listenControl } from "../runner/control.mjs";
-import { runnerClient } from "../runner/client.mjs";
+import { runnerClient } from "../runner/client.ts";
 import { loadAdapters } from "../runner/main.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

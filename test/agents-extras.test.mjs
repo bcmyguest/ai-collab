@@ -12,8 +12,8 @@ import { claimInbox, parseEnvelope } from "../lib/inbox.mjs";
 import { waitForIdle } from "../lib/agents.mjs";
 import { agentDirectory } from "../lib/sessions.mjs";
 import { runCli } from "../lib/cli.mjs";
-import { processStart } from "../lib/process.mjs";
-import { writeState } from "../lib/state.mjs";
+import { processStart } from "../lib/process.ts";
+import { writeState } from "../lib/state.ts";
 
 const PEERS = "alice,bob,codex,claude";
 const CODEX_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";

@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { waitForIdle } from "../lib/agents.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
-import { sessionIdleState } from "../lib/idle.mjs";
+import { sessionIdleState } from "../lib/idle.ts";
 import { listSessions, recordSession } from "../lib/sessions.mjs";
 import { sessionState } from "../web/lib/session-state.js";
 import { taskBoard } from "../web/server/task-board.mjs";

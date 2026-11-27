@@ -10,8 +10,8 @@ import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, sendMessage } from "../lib/inbox.mjs";
 import { RESERVE_MS } from "../lib/messaging.ts";
 import { markStopRunning } from "../lib/stop.mjs";
-import { processStart } from "../lib/process.mjs";
-import { writeState } from "../lib/state.mjs";
+import { processStart } from "../lib/process.ts";
+import { writeState } from "../lib/state.ts";
 import { createDispatcher } from "../web/server/dispatch.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

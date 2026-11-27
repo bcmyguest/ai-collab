@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CODE_MCP_NAME, installOpenCode, mcpEntry, mergeMcp } from "../lib/install-opencode.mjs";
+import { CODE_MCP_NAME, installOpenCode, mcpEntry, mergeMcp } from "../lib/install-opencode.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));

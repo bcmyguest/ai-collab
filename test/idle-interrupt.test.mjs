@@ -5,7 +5,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sessionLabel } from "../lib/config.mjs";
-import { sessionIdleState } from "../lib/idle.mjs";
+import { sessionIdleState } from "../lib/idle.ts";
 import { codexLiveInterrupt, interruptSession } from "../lib/sessions/control.ts";
 import { activeOpencodeSessions, opencodeRequest } from "../lib/opencode-api.mjs";
 import { tempDir } from "./helpers/tmp.mjs";

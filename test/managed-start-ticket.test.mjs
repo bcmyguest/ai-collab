@@ -6,7 +6,7 @@ import { existsSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig, sessionLabel, stateDir } from "../lib/config.mjs";
-import { processStart } from "../lib/process.mjs";
+import { processStart } from "../lib/process.ts";
 import { writeOwned } from "../lib/sessions/registry.ts";
 import {
   MANAGED_ENV, MANAGED_START_REFUSED, MANAGED_TICKET_ENV, managedStartAllowed, mintManagedTicket, noSubagentEnv, shellHarnessStart,

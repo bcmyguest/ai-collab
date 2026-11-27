@@ -7,7 +7,7 @@ import { test, after } from "node:test";
 import { readStore, reviewPacket, taskStoreFile, writeStore } from "../lib/tasks.mjs";
 import { loadProjects } from "../lib/config.mjs";
 import { createUi } from "../web/server/ui.mjs";
-import { forgetBranchTips } from "../lib/build-review.mjs";
+import { forgetBranchTips } from "../lib/build-review.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

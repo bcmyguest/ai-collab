@@ -8,8 +8,8 @@ import { peerEnv } from "./helpers/env.mjs";
 import { fakeClaudeHome, fakeClaudeSocket } from "./helpers/fake-claude.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, sendMessage } from "../lib/inbox.mjs";
-import { processStart } from "../lib/process.mjs";
-import { writeState } from "../lib/state.mjs";
+import { processStart } from "../lib/process.ts";
+import { writeState } from "../lib/state.ts";
 import { createDispatcher } from "../web/server/dispatch.mjs";
 
 const CODEX_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";

@@ -11,8 +11,8 @@ import { claimInbox, markDelivered, readInbox, releaseDelivery, releaseOwned, re
 import { holdRunning } from "../lib/deliver-push.mjs";
 import { decideStop, handOff, markStopRunning } from "../lib/stop.mjs";
 import { requestWait } from "../lib/questions.mjs";
-import { processStart } from "../lib/process.mjs";
-import { statePath, writeState } from "../lib/state.mjs";
+import { processStart } from "../lib/process.ts";
+import { statePath, writeState } from "../lib/state.ts";
 import { runWaiter } from "../lib/waiter.ts";
 import { openDurable } from "../runner/durable.mjs";
 import { deliveryWorkflow } from "../runner/delivery.mjs";

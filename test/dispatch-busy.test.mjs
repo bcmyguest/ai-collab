@@ -6,8 +6,8 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { sendMessage } from "../lib/inbox.mjs";
-import { processStart } from "../lib/process.mjs";
-import { writeState } from "../lib/state.mjs";
+import { processStart } from "../lib/process.ts";
+import { writeState } from "../lib/state.ts";
 import { REDELIVER_MS, createDispatcher } from "../web/server/dispatch.mjs";
 
 const OPENCODE_ID = "ses_0123456789abcdefghijABCDEFGH";

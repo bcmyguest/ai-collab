@@ -9,7 +9,7 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { sendMessage } from "../lib/inbox.mjs";
-import { formatInbox, identityLine, stopOutput } from "../lib/format.mjs";
+import { formatInbox, identityLine, stopOutput } from "../lib/format.ts";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 const MCP = fileURLToPath(new URL("../scripts/ai-collab-mcp.mjs", import.meta.url));

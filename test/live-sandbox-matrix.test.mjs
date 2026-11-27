@@ -13,7 +13,7 @@ import { builderPaths } from "../lib/builder.ts";
 import { activityTopic } from "../lib/config.mjs";
 import { cursorBinary, findExecutable } from "../lib/start.mjs";
 import { openTasks } from "../lib/tasks.mjs";
-import { runnerClient, runnerRequest } from "../runner/client.mjs";
+import { runnerClient, runnerRequest } from "../runner/client.ts";
 import { destroySandbox, parseSandboxList, runTool, sandboxName } from "../runner/sandbox.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { tempDir } from "./helpers/tmp.mjs";

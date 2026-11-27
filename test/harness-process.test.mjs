@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { copyFileSync, chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { harnessProcess } from "../lib/process.mjs";
+import { harnessProcess } from "../lib/process.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const linux = existsSync("/proc/self/stat");

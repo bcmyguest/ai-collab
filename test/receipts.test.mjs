@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { publishActivity } from "../lib/activity.ts";
 import { loadConfig, MESSAGE_MAX_BYTES, receiptsTopic, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, publishStatus, sendMessage } from "../lib/inbox.mjs";
-import { readReceipts, receiptMessages, sendReceipts, settleReceipts } from "../lib/receipts.mjs";
+import { readReceipts, receiptMessages, sendReceipts, settleReceipts } from "../lib/receipts.ts";
 import { runCli } from "../lib/cli.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";

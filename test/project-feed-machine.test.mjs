@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { activityRows, groupSubagents } from "../web/lib/activity-rows.js";
 import { chatTurns, turnSummary } from "../web/lib/chat-turns.js";
 import { completionRows, liveRows, sessionTurns } from "../web/lib/project-feed.js";
-import * as mode from "../lib/mode.mjs";
+import * as mode from "../lib/mode.ts";
 import * as machine from "../lib/machine-prompt.mjs";
 
 const A = "claude#abc12345";

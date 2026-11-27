@@ -9,7 +9,7 @@ import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
 import { listenControl, route } from "../runner/control.mjs";
 import { loadSchedules, registerSchedules, runCommand } from "../runner/schedules.mjs";
-import { acquireLock } from "../runner/lock.mjs";
+import { acquireLock } from "../runner/lock.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const tmp = () => tempDir({ after }, "ai-collab-harden-");

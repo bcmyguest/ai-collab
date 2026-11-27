@@ -5,7 +5,7 @@ import os from "node:os";
 import { createBusServer, openMemoryStore } from "../lib/bus.mjs";
 import { loadConfig } from "../lib/config.mjs";
 import { claimInbox, parseEnvelope, sendMessage } from "../lib/inbox.mjs";
-import { settleReceipts } from "../lib/receipts.mjs";
+import { settleReceipts } from "../lib/receipts.ts";
 import { readInbox, waitUntil } from "../lib/messaging.ts";
 import { pollCached, publish, querySafe, streamEvents } from "../lib/transport.mjs";
 import { tempDir } from "./helpers/tmp.mjs";

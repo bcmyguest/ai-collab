@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { test, after } from "node:test";
-import { readContext, recordInstructions, reportContext } from "../lib/usage.mjs";
+import { readContext, recordInstructions, reportContext } from "../lib/usage.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const dir = tempDir({ after }, "ai-collab-compact-");

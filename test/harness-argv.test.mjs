@@ -8,7 +8,7 @@ import { authorCommand } from "../lib/catalog/author.ts";
 import { pushSession } from "../lib/deliver-push.mjs";
 import { acpArgs } from "../runner/adapters/cursor.mjs";
 import { argv, claudePermissionFlag } from "../lib/harness.ts";
-import { WAKE_PROMPT } from "../lib/mode.mjs";
+import { WAKE_PROMPT } from "../lib/mode.ts";
 
 // Pinned from the per-harness sites before they moved into lib/harness.ts; each row is what that site returned.
 const MODEL = { claude: "claude-haiku-5-5", codex: "gpt-5-codex", cursor: "deepseek-v41-flash-1017-high", opencode: "openai/gpt-5" };

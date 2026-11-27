@@ -4,8 +4,8 @@ import { EventType } from "@ag-ui/core";
 import { envelopeToEvent, parseEvent } from "../lib/agui.mjs";
 import { activityTopic } from "../lib/config.mjs";
 import { parseEnvelope } from "../lib/inbox.mjs";
-import { parseMode } from "../lib/mode.mjs";
-import { readReceipts } from "../lib/receipts.mjs";
+import { parseMode } from "../lib/mode.ts";
+import { readReceipts } from "../lib/receipts.ts";
 import { publishEvent } from "../runner/publish.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 

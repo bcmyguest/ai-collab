@@ -2,8 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { claudeTarget, deliverToClaude } from "../lib/claude-socket.mjs";
-import { processStart } from "../lib/process.mjs";
+import { claudeTarget, deliverToClaude } from "../lib/claude-socket.ts";
+import { processStart } from "../lib/process.ts";
 import { fakeClaudeHome, fakeClaudeSocket } from "./helpers/fake-claude.mjs";
 
 const SESSION_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";

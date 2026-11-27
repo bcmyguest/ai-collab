@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test, after } from "node:test";
 import { broadcastTopic, inboxTopic, loadConfig, sessionLabel } from "../lib/config.mjs";
 import { parseEnvelope } from "../lib/inbox.mjs";
-import { writeState } from "../lib/state.mjs";
+import { writeState } from "../lib/state.ts";
 import { openTasks } from "../lib/tasks.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { composerDestination } from "../web/lib/message-routing.js";

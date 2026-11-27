@@ -18,7 +18,7 @@ function fixture(defaults) {
   return { env: { XDG_CONFIG_HOME: xdg }, cfg: { project: "demo", stateDir } };
 }
 
-// Records the AFK mode this machine read for the project, the way lib/mode.mjs stores it.
+// Records the AFK mode this machine read for the project, the way lib/mode.ts stores it.
 function recordAfk({ cfg }, mode) {
   const dir = path.join(cfg.stateDir, cfg.project);
   mkdirSync(dir, { recursive: true });

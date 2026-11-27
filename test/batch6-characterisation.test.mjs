@@ -5,7 +5,7 @@ import { test, after } from "node:test";
 import { childHint, exportParent, parentLine } from "../lib/family.ts";
 import { job, runningJobs } from "../lib/job.ts";
 import { pattern } from "../lib/pattern-cli.ts";
-import { processStart } from "../lib/process.mjs";
+import { processStart } from "../lib/process.ts";
 import { task } from "../lib/task-cli.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { publishActivity } from "../lib/activity.ts";
 import { loadConfig } from "../lib/config.mjs";
 import { sendMessage } from "../lib/inbox.mjs";
-import { WAKE_PROMPT } from "../lib/mode.mjs";
+import { WAKE_PROMPT } from "../lib/mode.ts";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 

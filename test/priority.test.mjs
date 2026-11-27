@@ -4,7 +4,7 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig } from "../lib/config.mjs";
 import { claimInbox, markDelivered, parseEnvelope, sendMessage } from "../lib/inbox.mjs";
-import { formatInbox } from "../lib/format.mjs";
+import { formatInbox } from "../lib/format.ts";
 
 async function setup(t) {
   const fake = await startFakeNtfy();

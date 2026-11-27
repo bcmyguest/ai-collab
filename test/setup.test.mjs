@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test, after } from "node:test";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { PLUGIN_COPY_MAX_BYTES, packPluginCopy, setup } from "../lib/setup.mjs";
+import { PLUGIN_COPY_MAX_BYTES, packPluginCopy, setup } from "../lib/setup.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 function harness(bins) {

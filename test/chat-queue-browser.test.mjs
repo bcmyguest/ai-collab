@@ -22,7 +22,8 @@ test("phone chat routes mentions and urgent messages, preserves drafts, and edit
   await composer.fill("Project draft");
 
   await page.goto(sessionUrl);
-  const direct = "Direct to " + fixture.address.slice(0, "claude#".length + 8);
+  // The fixture session takes its project's name.
+  const direct = "Direct to " + fixture.project;
   await page.getByText(direct, { exact: true }).waitFor();
   assert.equal(await composer.inputValue(), "");
   await composer.fill("Review the first revision");

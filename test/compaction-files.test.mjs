@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { test, after } from "node:test";
-import { dropOnDemandFiles, readContext, recordInstructions } from "../lib/usage.mjs";
+import { dropOnDemandFiles, readContext, recordInstructions } from "../lib/usage.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const dir = tempDir({ after }, "ai-collab-dropped-");

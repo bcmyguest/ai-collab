@@ -4,7 +4,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { loadProjects } from "../lib/config.mjs";
-import { codexModels, cursorModels, parseCursorModels } from "../lib/models.mjs";
+import { codexModels, cursorModels, parseCursorModels } from "../lib/models.ts";
 import { startCommand } from "../lib/start.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, MESSAGE_MAX_BYTES, sendMessage } from "../lib/inbox.mjs";
-import { operatorPrompt, WAKE_PROMPT } from "../lib/mode.mjs";
+import { operatorPrompt, WAKE_PROMPT } from "../lib/mode.ts";
 import { askQuestion, requestWait } from "../lib/questions.mjs";
 import { lastOperatorPromptAt, recordSession } from "../lib/sessions.mjs";
 import { decideStop } from "../lib/stop.mjs";
@@ -13,7 +13,7 @@ import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { appendFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { queuedByOperator, watchQueue } from "../lib/transcript.mjs";
+import { queuedByOperator, watchQueue } from "../lib/transcript.ts";
 import { fileEnd, tempDir } from "./helpers/tmp.mjs";
 
 const enqueue = (content) => JSON.stringify({ type: "queue-operation", operation: "enqueue", timestamp: new Date().toISOString(), sessionId: "s", content }) + "\n";

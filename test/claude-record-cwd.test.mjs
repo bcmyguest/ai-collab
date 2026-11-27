@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
-import { claudeTarget } from "../lib/claude-socket.mjs";
-import { processStart } from "../lib/process.mjs";
+import { claudeTarget } from "../lib/claude-socket.ts";
+import { processStart } from "../lib/process.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const SESSION_ID = "382cfeea-e0fb-45b2-b729-6b13b118f48f";

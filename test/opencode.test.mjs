@@ -10,7 +10,7 @@ import { loadConfig } from "../lib/config.mjs";
 import { sendMessage } from "../lib/inbox.mjs";
 import { activityEvents, buildActivity } from "../lib/activity.ts";
 import { approvalOutput, approvalRequest } from "../lib/approvals.mjs";
-import { contextTokens } from "../lib/usage.mjs";
+import { contextTokens } from "../lib/usage.ts";
 import { sessionName } from "../lib/sessions/registry.ts";
 import { appendContent, createPlugin, permissionInput, resultOutput, runHook, stepTokens } from "../lib/opencode-plugin.mjs";
 import { tempDir } from "./helpers/tmp.mjs";

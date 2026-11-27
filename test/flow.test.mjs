@@ -7,9 +7,9 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig } from "../lib/config.mjs";
 import { claimInbox, publishStatus, readStatuses, sendMessage, MAX_PER_CLAIM } from "../lib/inbox.mjs";
-import { formatInbox, hookOutput } from "../lib/format.mjs";
+import { formatInbox, hookOutput } from "../lib/format.ts";
 import { runCli } from "../lib/cli.mjs";
-import { statePath } from "../lib/state.mjs";
+import { statePath } from "../lib/state.ts";
 
 const TOKEN = "tok-test";
 

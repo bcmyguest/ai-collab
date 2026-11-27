@@ -2,7 +2,7 @@ import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { appendFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { transcriptConfirms } from "../lib/claude-socket.mjs";
+import { transcriptConfirms } from "../lib/claude-socket.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 // One transcript line holding a user record whose content is the given string, as JSON.

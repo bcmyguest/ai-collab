@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { encodeTraceRequest } from "../lib/analyze-otlp.mjs";
+import { encodeTraceRequest } from "../lib/analyze-otlp.ts";
 import { DEFAULT_OTLP_ENDPOINT, TRACE_ENV, exportSpans, hookTrace, otlpEndpoint, runRecorder, streamTrace } from "../lib/cursor-trace.ts";
 import { sessionLabel } from "../lib/config.mjs";
 import { tempDir } from "./helpers/tmp.mjs";

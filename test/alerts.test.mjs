@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { alertPriority, buzzes, readAlertLevel, writeAlertLevel } from "../lib/alerts.mjs";
+import { alertPriority, buzzes, readAlertLevel, writeAlertLevel } from "../lib/alerts.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const KINDS = ["question", "direct", "other"];

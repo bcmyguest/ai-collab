@@ -11,8 +11,8 @@ import { claimInbox, readStatuses, sendMessage } from "../lib/messaging.ts";
 import { decideStop, noteHeld, stopHookRunning } from "../lib/stop.mjs";
 import { requestWait } from "../lib/questions.mjs";
 import { runWaiter } from "../lib/waiter.ts";
-import { processStart } from "../lib/process.mjs";
-import { statePath, writeState } from "../lib/state.mjs";
+import { processStart } from "../lib/process.ts";
+import { statePath, writeState } from "../lib/state.ts";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 

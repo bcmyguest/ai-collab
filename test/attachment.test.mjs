@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test, after } from "node:test";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
-import { readAttachment } from "../lib/attachment.mjs";
+import { readAttachment } from "../lib/attachment.ts";
 import { loadConfig } from "../lib/config.mjs";
 import { parseEnvelope, sendMessage } from "../lib/inbox.mjs";
 import { createUi } from "../web/server/ui.mjs";

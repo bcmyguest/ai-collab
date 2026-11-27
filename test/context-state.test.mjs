@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test, after } from "node:test";
-import { contextUsage, readContext, recordInstructions, reportContext } from "../lib/usage.mjs";
+import { contextUsage, readContext, recordInstructions, reportContext } from "../lib/usage.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const dir = tempDir({ after }, "ai-collab-context-");
