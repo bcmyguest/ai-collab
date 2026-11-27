@@ -2,7 +2,7 @@
 // The console shell: hash routing, the header for each level, the streamed screen (via useStream),
 // pull-to-refresh, scroll memory, and the wiring from every action to its /api call.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, CornerLeftUp, PanelRight, RotateCw } from "lucide-react";
+import { ArrowLeft, CornerLeftUp, PanelRight, Plus, RotateCw } from "lucide-react";
 import { ThreadPrimitive, getExternalStoreMessages } from "@assistant-ui/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -413,6 +413,9 @@ export function Console({ account }) {
           </>}
         </div>
         {level === "project" && paused && <Badge variant="secondary">New work paused</Badge>}
+        {/* A phone hides the sidebar, so New thread repeats here as the header's second stop. */}
+        {project && !home && !inbox && <Button variant="ghost" size="icon" className="md:hidden" aria-label={"New thread in " + project}
+          title={paused ? "New work is paused" : "New thread"} disabled={working || paused} onClick={() => newSession(project)}><Plus/></Button>}
         {level === "session" && agent?.session && <div className="flex shrink-0 items-center gap-1">
           {agent.modelControl && modelsOf(models, "claude").length > 0 && <select
             aria-label="Claude model" className="h-8 w-28 truncate rounded-md border bg-background px-2 text-sm max-md:hidden"

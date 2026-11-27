@@ -79,7 +79,8 @@
   --destructive: oklch(0.53 0.19 27);
   --border: oklch(0.9 0.005 75);
   --input: oklch(0.88 0.005 75);
-  --ring: oklch(0.55 0.01 60);
+  /* Focus rings use the accent: at least 4.4:1 against every light surface and 7.1:1 against every dark one. */
+  --ring: var(--primary);
   --sidebar: oklch(0.965 0.004 75);
   --sidebar-foreground: oklch(0.22 0.006 60);
   --sidebar-accent: oklch(0.92 0.006 75);
@@ -110,7 +111,6 @@
   --destructive: oklch(0.7 0.17 25);
   --border: oklch(0.29 0.005 60);
   --input: oklch(0.33 0.005 60);
-  --ring: oklch(0.65 0.01 70);
   --sidebar: oklch(0.155 0.004 60);
   --sidebar-foreground: oklch(0.93 0.004 75);
   --sidebar-accent: oklch(0.24 0.005 60);
@@ -124,7 +124,12 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-ring;
+  }
+  /* Every keyboard stop shows the accent ring; components that draw their own ring set outline-none. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
   }
   html, body {
     @apply h-full overscroll-none;
