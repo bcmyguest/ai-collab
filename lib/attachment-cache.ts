@@ -16,7 +16,7 @@ import { withLock } from "./state.mjs";
 export const IMAGE_FILE = /^[A-Za-z0-9]{1,32}\.(?:png|jpe?g|gif|webp)$/i;
 export const TEXT_FILE = /^[A-Za-z0-9]{1,32}\.txt$/;
 const TEXT_TYPE = "text/plain; charset=utf-8";
-const IMAGE_TYPES = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp" };
+const IMAGE_TYPES: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp" };
 // A bounded cache: old attachments go, and the newest CACHE_MAX_FILES stay.
 const CACHE_MAX_FILES = 200;
 const CACHE_MAX_AGE_MS = 7 * 24 * 3_600_000;
@@ -24,10 +24,12 @@ const DOWNLOAD_TIMEOUT_MS = 30_000;
 const LOCK_WAIT_MS = 30_000;
 const LOCK_STALE_MS = 120_000;
 
-export const isAttachmentFile = (name, text = false) => (text ? TEXT_FILE : IMAGE_FILE).test(String(name));
+export function isAttachmentFile(name: string | number | bigint | boolean | null | undefined, text = false): boolean {
+  return (text ? TEXT_FILE : IMAGE_FILE).test(String(name));
+}
 
 /** The served type of a cached attachment, from its extension (ntfy keeps the extension in the file name). */
-export function attachmentType(name) {
+export function attachmentType(name: string | number | bigint | boolean | null | undefined): string {
   const file = String(name);
   return file.endsWith(".txt") ? TEXT_TYPE : IMAGE_TYPES[file.slice(file.lastIndexOf(".")).toLowerCase()] || "application/octet-stream";
 }
@@ -36,28 +38,49 @@ export function attachmentType(name) {
  * The attachment metadata of an ntfy event as {file, name, type, size}, or undefined when the file is not one
  * this UI shows: chat topics carry images only, the activity topic also carries a large result's .txt.
  */
-export function attachmentOf(event, { text = false } = {}) {
-  const a = event?.attachment;
-  const file = typeof a?.url === "string" ? a.url.slice(a.url.lastIndexOf("/") + 1).split(/[?#]/)[0] : "";
-  const type = typeof a?.type === "string" ? a.type : "";
+export interface AttachmentMeta {
+  file: string;
+  name: string;
+  type: string;
+  size: number;
+}
+
+export function attachmentOf(event: Record<string, unknown> | undefined, { text = false }: { text?: boolean } = {}): AttachmentMeta | undefined {
+  const a = event?.attachment as Record<string, unknown> | undefined;
+  if (a === undefined) return undefined;
+  const file = typeof a.url === "string" ? a.url.slice(a.url.lastIndexOf("/") + 1).split(/[?#]/)[0] : "";
+  const type = typeof a.type === "string" ? a.type : "";
   const ok = isAttachmentFile(file, text) && (text ? /^text\/plain(?:;|$)/.test(type) : /^image\//.test(type));
   if (!ok) return undefined;
   return { file, name: String(a.name || file).slice(0, 200), type: type || attachmentType(file), size: Number(a.size) || 0 };
 }
 
-export function attachmentDir(cfg) {
+export interface StateConfig {
+  stateDir: string;
+  project: string;
+  url?: string;
+  token?: string;
+}
+
+export function attachmentDir(cfg: StateConfig): string {
   return join(cfg.stateDir, cfg.project, "attachments");
 }
 
 /** The local path for a file name, validated so a name can never step outside the cache directory. */
-export function attachmentPath(cfg, file) {
+export function attachmentPath(cfg: StateConfig, file: string): string {
   if (!isAttachmentFile(file) && !TEXT_FILE.test(String(file))) throw new Error("invalid attachment name");
   return join(attachmentDir(cfg), String(file));
 }
 
+export interface CachedAttachment {
+  path: string;
+  size: number;
+  type: string;
+}
+
 /** The cached copy of a file, {path, size, type}, or null when this machine has not downloaded it yet. */
-export function cachedAttachment(cfg, file) {
-  let path;
+export function cachedAttachment(cfg: StateConfig, file: string): CachedAttachment | null {
+  let path: string;
   try { path = attachmentPath(cfg, file); } catch { return null; }
   try {
     const stat = statSync(path);
@@ -67,23 +90,27 @@ export function cachedAttachment(cfg, file) {
   }
 }
 
+export interface LocalizedAttachment extends AttachmentMeta {
+  local_path?: string;
+}
+
 /** Attachment metadata plus local_path when this machine already holds the file; the inbox prints that path. */
-export function localizedAttachment(cfg, attachment) {
+export function localizedAttachment(cfg: StateConfig, attachment: AttachmentMeta | undefined): LocalizedAttachment | undefined {
   if (!attachment) return undefined;
   const hit = cachedAttachment(cfg, attachment.file);
   return hit ? { ...attachment, local_path: hit.path } : attachment;
 }
 
-function requestSignal(signal) {
+function requestSignal(signal: AbortSignal | undefined): AbortSignal {
   const timeout = AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS);
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
 // Reads the body under a hard cap, so a hostile server cannot exhaust memory.
-async function readLimited(res, maxBytes) {
+async function readLimited(res: Response, maxBytes: number): Promise<Buffer> {
   if (!res.body) return Buffer.alloc(0);
   const reader = res.body.getReader();
-  const chunks = [];
+  const chunks: Buffer[] = [];
   let total = 0;
   for (;;) {
     const { done, value } = await reader.read();
@@ -98,12 +125,17 @@ async function readLimited(res, maxBytes) {
   return Buffer.concat(chunks);
 }
 
+interface PruneEntry {
+  name: string;
+  at: number;
+}
+
 // Drops attachments past the age limit, then the oldest beyond the file cap. Best effort: a prune never fails a fetch.
-export function pruneAttachments(cfg, now = Date.now()) {
+export function pruneAttachments(cfg: StateConfig, now = Date.now()): number {
   const dir = attachmentDir(cfg);
-  let names;
+  let names: string[];
   try { names = readdirSync(dir); } catch { return 0; }
-  const entries = [];
+  const entries: PruneEntry[] = [];
   for (const name of names) {
     if (!IMAGE_FILE.test(name) && !TEXT_FILE.test(name)) continue;
     try {
@@ -119,7 +151,7 @@ export function pruneAttachments(cfg, now = Date.now()) {
   return stale.length + excess.length;
 }
 
-function storeAttachment(cfg, file, data, now) {
+function storeAttachment(cfg: StateConfig, file: string, data: Buffer, now: number): void {
   const path = attachmentPath(cfg, file);
   mkdirSync(attachmentDir(cfg), { recursive: true, mode: 0o700 });
   const tmp = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
@@ -132,11 +164,30 @@ function storeAttachment(cfg, file, data, now) {
   try { pruneAttachments(cfg, now); } catch { /* best effort */ }
 }
 
+export interface UploadedAttachment {
+  filename: string;
+  data: Buffer;
+}
+
 /** Seed the local cache with bytes already uploaded to the bus. */
-export function cacheUploadedAttachment(cfg, event, { filename, data }) {
+export function cacheUploadedAttachment(cfg: StateConfig, event: Record<string, unknown>, { filename, data }: UploadedAttachment): void {
   const attachment = attachmentOf(event, { text: TEXT_FILE.test(filename) });
   if (!attachment || attachment.size !== data.length || cachedAttachment(cfg, attachment.file)) return;
   storeAttachment(cfg, attachment.file, data, Date.now());
+}
+
+export interface EnsureOptions {
+  signal?: AbortSignal;
+  waitMs?: number;
+  fetch?: typeof fetch;
+  now?: () => number;
+}
+
+export interface EnsuredAttachment {
+  path: string;
+  size: number;
+  type: string;
+  cached: boolean;
 }
 
 /**
@@ -145,7 +196,7 @@ export function cacheUploadedAttachment(cfg, event, { filename, data }) {
  * the UI, two sessions) share one download. A failed download writes nothing, so a retry starts clean.
  * waitMs bounds the wait for that lock: a hook passes a short one so its message is not delayed.
  */
-export async function ensureAttachment(cfg, file, { signal, waitMs = LOCK_WAIT_MS, fetch: doFetch = fetch, now = Date.now } = {}) {
+export async function ensureAttachment(cfg: StateConfig, file: string, { signal, waitMs = LOCK_WAIT_MS, fetch: doFetch = fetch, now = Date.now }: EnsureOptions = {}): Promise<EnsuredAttachment> {
   const hit = cachedAttachment(cfg, file);
   if (hit) return { ...hit, cached: true };
   const path = attachmentPath(cfg, file);
@@ -172,8 +223,12 @@ export async function ensureAttachment(cfg, file, { signal, waitMs = LOCK_WAIT_M
 }
 
 /** The bytes of a cached attachment; used by the UI to answer a request without another network read. */
-export function readAttachmentFile(cached) {
+export function readAttachmentFile(cached: CachedAttachment): Buffer {
   return readFileSync(cached.path);
+}
+
+export interface CacheableMessage {
+  attachment?: unknown;
 }
 
 /**
@@ -181,9 +236,9 @@ export function readAttachmentFile(cached) {
  * A message that already knows its local path is left alone; a failed download keeps the metadata and no
  * local_path, so the UI (or a later delivery) can still try. Never throws: a hook must not fail over a file.
  */
-export async function cacheAttachments(cfg, messages, { signal, waitMs, ensure = ensureAttachment } = {}) {
+export async function cacheAttachments(cfg: StateConfig, messages: CacheableMessage[], { signal, waitMs, ensure = ensureAttachment }: { signal?: AbortSignal; waitMs?: number; ensure?: typeof ensureAttachment } = {}): Promise<CacheableMessage[]> {
   return Promise.all(messages.map(async (m) => {
-    const attachment = m?.attachment;
+    const attachment = m?.attachment as AttachmentMeta & { local_path?: string } | undefined;
     if (!attachment?.file || attachment.local_path) return m;
     const hit = cachedAttachment(cfg, attachment.file);
     if (hit) return { ...m, attachment: { ...attachment, local_path: hit.path } };
@@ -201,8 +256,8 @@ export async function cacheAttachments(cfg, messages, { signal, waitMs, ensure =
  * A download still running at the deadline keeps going in the cache on the next visit; the message just
  * arrives without local_path this time.
  */
-export async function cacheAttachmentsWithin(cfg, messages, { budgetMs = 4000, signal, ensure } = {}) {
-  if (!messages.some((m) => m?.attachment && !m.attachment.local_path)) return messages;
+export async function cacheAttachmentsWithin(cfg: StateConfig, messages: CacheableMessage[], { budgetMs = 4000, signal, ensure }: { budgetMs?: number; signal?: AbortSignal; ensure?: typeof ensureAttachment } = {}): Promise<CacheableMessage[]> {
+  if (!messages.some((m) => { const a = m?.attachment as AttachmentMeta & { local_path?: string } | undefined; return a && !a.local_path; })) return messages;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(new Error("attachment cache budget spent")), budgetMs);
   timer.unref?.();
