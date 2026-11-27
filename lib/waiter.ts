@@ -108,12 +108,13 @@ export async function runWaiter(cfg: Cfg, {
     stream: (ms, sig) => (held() ? released(held, Math.min(ms, SLICE_MS), sig) : waitFor(Math.min(ms, SLICE_MS), sig)),
     until: async () => {
       if (held()) return undefined;
-      const waiting = await readInbox(cfg, { peek: true, strict: false, accept: (m) => m.priority !== "fyi", claim }).catch(() => []);
-      const claimed: InboxMessage[] = waiting.length ? await readInbox(cfg, { limit: 4, strict: false, claim }).catch(() => []) : [];
-      // Messages handed to a hold that ended without them; taken after the inbox read, as the hold does (lib/stop.mjs).
+      // Messages handed to a hold that ended without them.
       const handed: InboxMessage[] = await takeHandoff(cfg).catch(() => []);
-      if (!claimed.length) return handed.length ? handed : undefined;
-      const messages = [...handed, ...claimed.filter((m) => !handed.some((h) => h.id === m.id))];
+      if (handed.length) return handed;
+      const waiting = await readInbox(cfg, { peek: true, strict: false, accept: (m) => m.priority !== "fyi", claim }).catch(() => []);
+      if (!waiting.length) return undefined;
+      const messages = await readInbox(cfg, { limit: 4, strict: false, claim }).catch(() => []);
+      if (!messages.length) return undefined;
       // A Stop hook that started as this waiter claimed holds the session now, and Claude queues a rewake until it ends.
       const settled = Date.now() + settleMs;
       if (settleMs > 0) await delay(settleMs, undefined, { signal }).catch(() => {});

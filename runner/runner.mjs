@@ -674,7 +674,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     probe: (session) => (session.harness === "opencode" ? openCodeActive() : null),
     ready: async (session, active, project) => readySession(session, active, { env, idle: sessionIdleState, cfg: configs.get(project) ?? null }),
     held: (session, scfg) => holdRunning(session, scfg),
-    handOff: (scfg, messages) => handOff(scfg, messages),
+    handOff: (scfg, messages) => handOff(scfg, messages, { via: "push" }),
     busy: async (session, active) => busyWithPush(session, active),
     reserve: (scfg, ids, { owner, allowSeen = false }) => reserveOwned(scfg, ids, { owner, allowSeen, ttlMs: reserveTtlMs }),
     release: (scfg, ids, owner) => releaseOwned(scfg, ids, owner),
