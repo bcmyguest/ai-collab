@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { MessageContent } from "@/components/ui/message";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { IN_TERMINAL, SKIPPED, approvalOutcome, approvalSurfaceId, questionSurfaceId, terminalHint } from "@/lib/a2ui";
+import { IN_TERMINAL, SKIPPED, approvalOutcome, approvalSurfaceId, questionText, questionSurfaceId, terminalHint } from "@/lib/a2ui";
 import { CARD, Surface } from "@/components/a2ui/surface";
 import { ConfirmButton } from "./pattern-graph";
 
@@ -114,7 +114,7 @@ export function LegacyQuestionCard({ body, answer, by, skipped, disabled, onAnsw
   const [draft, setDraft] = useState("");
   return <div className={cn(CARD, "flex flex-col gap-2", !answer && !skipped && "border-primary/50")} data-card="question">
     <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><CircleHelp className="size-3.5"/>Question</p>
-    <MessageContent markdown taskLinks={taskLinks} className="bubble max-w-full bg-transparent p-0 text-base leading-relaxed">{body}</MessageContent>
+    <MessageContent markdown taskLinks={taskLinks} className="bubble max-w-full bg-transparent p-0 text-base leading-relaxed">{typeof body === "string" ? questionText(body) : body}</MessageContent>
     {answer ? <p className="text-xs text-muted-foreground">Answered: <span className="font-medium text-foreground">{answer}</span>{by && " · " + by}</p>
       : skipped ? <p className="text-xs text-muted-foreground" data-outcome="skipped">{SKIPPED}</p>
       : <div className="flex flex-col gap-2">

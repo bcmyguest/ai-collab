@@ -37,7 +37,7 @@ export function useModels(project) {
 
 export const modelsOf = (models, harness) => Array.isArray(models[harness]) ? models[harness].filter(id => typeof id === "string" && id) : [];
 
-export function Composer({ conversation, agents, harnesses, teams = [], startable = [], models = {}, now, disabled, placeholder, routing, onSend, question, cancel, urgentable, replying, cancelReply, harness = "", initialDraft = "", sendBridgeRef }) {
+export function Composer({ conversation, agents, harnesses, teams = [], startable = [], models = {}, now, disabled, placeholder, routing, onSend, urgentable, replying, cancelReply, harness = "", initialDraft = "", sendBridgeRef }) {
   // The draft lives in the runtime composer; the per-conversation store mirrors it so a view switch restores it.
   const aui = useAui();
   const draft = useAuiState(s => s.composer.text);
@@ -91,14 +91,13 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
   const busy = disabled || posting;
   const text = draft.trim();
   const quoted = Boolean(replying?.id && !usableReplyId(replying.id));
-  const image = question ? undefined : images[0];
+  const image = images[0];
   const canSend = Boolean(text || image);
   const command = !image && routing.session && commandFor(text, picked.current) !== null;
-  const destination = question ? "Reply to question " + question
-    : command ? "Command for " + short(routing.target)
+  const destination = command ? "Command for " + short(routing.target)
     : composerDestination({ ...routing, agents, teams, startable, models, quoted,
       text: quoted ? quotedReply(text, replying) : text });
-  const sendName = question || command ? destination
+  const sendName = command ? destination
     : "Send · " + destination;
 
   // Every edit is kept per conversation, so a tab or view switch that remounts the composer restores it.
@@ -145,7 +144,7 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
       const { urgent: now, command, sendAnyway, image } = flags.current;
       // onSend returns true only when the message was sent (or a command ran or was requested); otherwise the draft stays.
       const result = await onSend(body, urgentable && now, command, sendAnyway, image);
-      if (result === "draftHeld") setHeld({ text: body, replying, question, sendNow: now });
+      if (result === "draftHeld") setHeld({ text: body, replying, sendNow: now });
       if (result === true) {
         setShowPicker(false); setUrgent(false); picked.current.clear();
         if (image) selectImages([]);
@@ -169,15 +168,11 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
     }
   }
   return <div className="relative mx-auto w-full max-w-3xl px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
-    {held?.text === draft.trim() && held.replying === replying && held.question === question && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3 py-1.5 text-sm">
+    {held?.text === draft.trim() && held.replying === replying && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3 py-1.5 text-sm">
       <span role="status">The terminal has an unsent draft.</span>
       <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => send(true, held.sendNow)}>Send anyway</Button>
     </div>}
-    {question && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3 py-1.5 text-sm">
-      <span className="min-w-0 truncate">Replying to question {question}</span>
-      <Button variant="ghost" size="sm" onClick={cancel}>Cancel</Button>
-    </div>}
-    {replying && !question && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border bg-muted px-3 py-1.5 text-sm">
+    {replying && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border bg-muted px-3 py-1.5 text-sm">
       <span className="min-w-0 truncate">Replying to {short(replying.sender)}{replying.body && <span className="text-muted-foreground"> · {quoteText(replying.body)}</span>}</span>
       <Button variant="ghost" size="icon" className="size-6" aria-label="Cancel reply" onClick={cancelReply}><X/></Button>
     </div>}
@@ -224,11 +219,11 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
       else return;
       event.preventDefault(); event.stopPropagation();
     }}>
-      <ImagePicker files={images} onChange={selectImages} onError={setImageError} disabled={busy || Boolean(question)}>
+      <ImagePicker files={images} onChange={selectImages} onError={setImageError} disabled={busy}>
         <ComposerPrimitive.Root onSubmit={event => { event.preventDefault(); send(); }}
           className={cn("cursor-text rounded-3xl border bg-card p-2 shadow-sm focus-within:ring-2 focus-within:ring-ring/50", busy && "cursor-not-allowed opacity-60")}>
           {image && <ImageDraft file={image} disabled={busy} remove={() => { selectImages([]); focus(); }}/>}
-          {!question && imageError && <p role="alert" className="px-3 text-sm text-destructive">{imageError}</p>}
+          {imageError && <p role="alert" className="px-3 text-sm text-destructive">{imageError}</p>}
           <div id="composer-destination" aria-live="polite" className="max-h-[20dvh] overflow-y-auto break-words px-3 pt-1 text-xs font-medium text-muted-foreground">
             {destination}
           </div>
@@ -240,7 +235,7 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
           <TooltipProvider>
             <div className="flex items-center justify-between px-1 pt-1">
               <div className="flex items-center gap-1">
-                {!question && <AttachImageButton replacing={Boolean(image)}/>}
+                <AttachImageButton replacing={Boolean(image)}/>
                 <Tooltip>
                   <TooltipTrigger asChild disabled={busy} onClick={event => event.stopPropagation()}>
                     <Button type="button" variant="ghost" size="sm" className="rounded-md" aria-expanded={picking} disabled={busy}

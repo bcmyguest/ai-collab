@@ -17,6 +17,8 @@ export const IN_TERMINAL_HINT = "AFK is off, so the terminal holds this prompt. 
 export const IN_TERMINAL_STALE = "AFK is on again, so the next approval comes to the phone. This prompt is already in the terminal.";
 // The hook could not read the mode, so the card may not claim the operator is at the terminal either way.
 export const IN_TERMINAL_UNKNOWN = "This prompt is already in the terminal, so answer it there. New approvals follow the current AFK mode.";
+// The wire prefix of a blocking question; the server reads it, the card hides it.
+const BLOCKING_PREFIX = /^IMPORTANT, the agent waits for this answer: /;
 // Why a view-only card has no buttons, from the live mode: the hook saw AFK off, and the card must not outlive that
 // reading to claim the operator is present while AFK is on, or the reverse when the hook's own read failed.
 export function terminalHint(mode) {
@@ -154,9 +156,12 @@ export function approvalOperations(approval, now) {
   return approval.questions ? choiceOps(approval, open, outcome, terminal) : permissionOps(approval, open, outcome, terminal);
 }
 
+/** A question's text without the wire prefix that marks it blocking; the open card's accent border already says so. */
+export const questionText = body => String(body ?? "").replace(BLOCKING_PREFIX, "");
+
 /** Operations for an ask_question post: its body, then an answer field, or the answer once given, or Skipped. */
 export function questionOperations(question, body, answer, by, skipped = false) {
-  const components = [column("root", []), text("body", body)];
+  const components = [column("root", []), text("body", questionText(body))];
   const children = ["body"];
   if (skipped && !answer) {
     components.push(text("status", SKIPPED));

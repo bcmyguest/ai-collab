@@ -47,7 +47,7 @@ export function QueueRow({ message, disabled, change }) {
   </li>;
 }
 
-export function ChatMessage({ message, operator, me, now, reply, replyFrom, open, act, answer, skip, disabled, detail, taskLinks }) {
+export function ChatMessage({ message, operator, me, now, replyFrom, open, act, answer, skip, disabled, detail, name, taskLinks }) {
   const bubble = useMemo(() => ({ plugins: remarkPluginsFor(taskLinks) }), [taskLinks]);
   const sender = message.from || message.sender || "ntfy";
   const outgoing = sender === operator;
@@ -55,7 +55,8 @@ export function ChatMessage({ message, operator, me, now, reply, replyFrom, open
   const shown = sender === "ntfy" ? "operator" : sender;
   // A signed-in family member's message names them; the viewer's own stays "You".
   const other = message.by && message.by !== me ? message.by : "";
-  const label = message.system ? "System" : ["Question", "Reply", "Approval"].includes(message.kind) ? message.kind + " · " + (message.by || short(shown)) : short(shown);
+  const who = message.by || name || short(shown);
+  const label = message.system ? "System" : ["Question", "Reply", "Approval"].includes(message.kind) ? message.kind + " · " + who : who;
   const at = message.time ? message.time * 1000 : 0;
   // An agent's avatar and name open its session (or harness) view; the operator's own, system and channel posts stay plain.
   const openable = !outgoing && sender !== "ntfy" && sender !== "operator" && sender !== "system";
@@ -63,7 +64,7 @@ export function ChatMessage({ message, operator, me, now, reply, replyFrom, open
   // A reply to an agent prefills its address so the mention routes the reply to that session.
   const prefill = openable ? "@" + sender + " " : "";
   // The asking agent's avatar and name, the header row of an A2UI card.
-  const cardHead = <><Avatar address={sender} by={other} className="size-6 text-xs"/><span className="truncate">{short(sender)}</span></>;
+  const cardHead = <><Avatar address={sender} by={other} className="size-6 text-xs"/><span className="truncate" title={sender}>{name || short(sender)}</span></>;
   return <MessagePrimitive.Root data-message-id={message.id} className={cn("flex max-w-full gap-3", outgoing && "flex-row-reverse")}
     onClick={event => { const tag = event.target.closest?.("[data-mention]"); if (tag) open(tag.textContent.replace(/^@/, "").split(/[:/]/)[0]); }}>
     {openable ? <button type="button" aria-label={"Open avatar " + sender} tabIndex={-1} className="shrink-0 self-start rounded-md" onClick={go}><Avatar address={sender}/></button> : <Avatar address={shown} by={other}/>}
@@ -77,7 +78,7 @@ export function ChatMessage({ message, operator, me, now, reply, replyFrom, open
         {message.terminal && <Badge variant="outline" data-terminal title="Typed in the agent's terminal" className="h-4 px-1.5 text-xs">terminal</Badge>}
         {message.replyTo && <Badge variant="outline" data-answer title={"Answers question " + message.replyTo} className="h-4 px-1.5 text-xs">answer</Badge>}
         {at > 0 && <time dateTime={new Date(at).toISOString()} title={clock.format(at)}>{ago(at, now)}</time>}
-        {replyFrom && message.kind !== "Approval" && <button type="button" data-tap aria-label={"Reply to " + sender} title="Reply" onClick={() => replyFrom({ id: message.id, sender, prefill, body: message.body })}
+        {replyFrom && message.kind !== "Approval" && message.kind !== "Question" && <button type="button" data-tap aria-label={"Reply to " + sender} title="Reply" onClick={() => replyFrom({ id: message.id, sender, prefill, body: message.body })}
           className="rounded-md p-0.5 hover:bg-muted hover:text-foreground"><Reply className="size-3.5"/></button>}
         {message.scope === "all" && <Badge variant="secondary" className="h-4 px-1.5 text-xs">to all</Badge>}
         {message.urgent && !message.cancelled && <span role="img" aria-label="Sent now" title="Sent now: delivered at the agent's next tool call" data-urgent className="text-primary"><Zap className="size-3.5"/></span>}
@@ -92,7 +93,6 @@ export function ChatMessage({ message, operator, me, now, reply, replyFrom, open
         message.kind === "Question" && "border-primary/50")}><MessagePrimitive.Content components={{ Text: BubbleText }}/></div>
         </BubbleContext.Provider>}
       {message.attachment && <ChatImage attachment={message.attachment}/>}
-      {message.kind === "Question" && message.question && !message.answer && <Button variant="ghost" size="sm" className="rounded-md text-xs" onClick={() => reply(message.question)}>Reply from the composer</Button>}
     </div>
   </MessagePrimitive.Root>;
 }

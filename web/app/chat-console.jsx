@@ -119,7 +119,6 @@ export function Console({ account }) {
   const [schedulesOpen, setSchedulesOpen] = useState(false);
   const wide = useWide();
   const [notice, setNotice] = useState("");
-  const [question, setQuestion] = useState("");
   const [replyTo, setReplyTo] = useState(null);
   const [creating, setCreating] = useState("");
   const [working, setWorking] = useState(false);
@@ -186,7 +185,7 @@ export function Console({ account }) {
       // old snapshot's project list beside it until its own state frame arrives, so the sidebar never empties.
       restore(nextStream);
       latestAction.current++;
-      setNotice(""); setQuestion(""); setReplyTo(null); setNavOpen(false);
+      setNotice(""); setReplyTo(null); setNavOpen(false);
     };
     window.addEventListener("hashchange", change);
     return () => window.removeEventListener("hashchange", change);
@@ -503,10 +502,9 @@ export function Console({ account }) {
                   ? <CompletionRow row={{ ...entry.activity, seat: seatOf(data.agents, entry.activity.agent) }} when={at => ago(at, now)} open={openAddress}/>
                   : <ActivityRow row={entry.activity} when={at => ago(at, now)} now={now} goRun={goRun}/>;
                 return <ChatMessage message={entry.message} operator={data.operator} me={account.user?.login} now={now} open={openAddress} disabled={!ready || working} taskLinks={taskLinks}
-                  detail={agentDetail(data.agents.find(agent => agent.id === entry.message.from))}
+                  detail={agentDetail(data.agents.find(agent => agent.id === entry.message.from))} name={shortName(data.agents.find(agent => agent.id === entry.message.from))}
                   act={payload => action("approve", payload, "Sent")} answer={(id, body) => action("reply", { question: id, body }, "Reply sent")}
                   skip={payload => action("skip", payload, "Skipped")}
-                  reply={id => { setQuestion(id); setNotice(""); document.getElementById("composer")?.focus(); }}
                   replyFrom={target => setReplyTo(target)}/>;
               }}
             </ThreadPrimitive.Messages>}
@@ -534,15 +532,14 @@ export function Console({ account }) {
       </section>}
       {!home && !listing && !patterns && !tasksView && !composing && <ChatRuntimeProvider key={requested + ":" + composeTask} entries={NO_ENTRIES} operator={data.operator} onSend={body => sendBridgeRef.current?.(body)}>
         <Composer sendBridgeRef={sendBridgeRef} conversation={conversationKey(project, composeTask ? "#" + composeTask : level === "session" ? selected.session : "")} initialDraft={composeTask ? `#${composeTask} ` : ""} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
-        placeholder={placeholder} routing={routing} question={question} cancel={() => setQuestion("")} urgentable={!question} replying={replyTo} cancelReply={() => setReplyTo(null)}
+        placeholder={placeholder} routing={routing} urgentable replying={replyTo} cancelReply={() => setReplyTo(null)}
         onSend={async (body, urgent, command, sendAnyway, image) => {
           // Project chat never runs commands: a leading / there is ordinary chat.
-          if (command && !question && level === "session" && selected.session) return runCommand(body);
+          if (command && level === "session" && selected.session) return runCommand(body);
           const composeHash = composeTask && location.hash;
-          const sent = question ? await action("reply", { question, body }, "Reply sent")
-            : await action("send", { target, body, ...(sendAnyway ? { sendAnyway: true } : {}), ...(urgent ? { urgent: true } : {}), ...(replyTo ? { replyTo: replyTo.id, quote: { sender: replyTo.sender, body: replyTo.body } } : {}) }, "Sent", image);
+          const sent = await action("send", { target, body, ...(sendAnyway ? { sendAnyway: true } : {}), ...(urgent ? { urgent: true } : {}), ...(replyTo ? { replyTo: replyTo.id, quote: { sender: replyTo.sender, body: replyTo.body } } : {}) }, "Sent", image);
           if (sent === true && requested === route.current) {
-            setQuestion(""); setReplyTo(null); stick.current?.scrollToBottom();
+            setReplyTo(null); stick.current?.scrollToBottom();
             if (composeHash && location.hash === composeHash) navigate({ project, level: "project" });
           }
           return sent;
