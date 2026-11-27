@@ -93,8 +93,8 @@ test("argv is the one owner: interrupt and the kinds a harness lacks return null
 
 test("acp argv", () => {
   assert.deepEqual(acpArgs({}), ["acp"]);
-  assert.deepEqual(acpArgs({ force: true }), ["acp", "--force"]);
-  assert.deepEqual(acpArgs({ force: true, model: MODEL.cursor }), ["acp", "--force", "--model", "deepseek-v41-flash-1017-high"]);
+  assert.deepEqual(acpArgs({ force: true }), ["--force", "acp"]);
+  assert.deepEqual(acpArgs({ force: true, model: MODEL.cursor }), ["--force", "--model", "deepseek-v41-flash-1017-high", "acp"]);
 });
 
 // Rows for the configured Claude permission mode: a start passes it, a plan start keeps its own flag, no other harness takes it.

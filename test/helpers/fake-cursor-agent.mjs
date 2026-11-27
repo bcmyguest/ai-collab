@@ -13,7 +13,7 @@ if (args[0] === "--list-models") {
   process.stdout.write("Available models\n\ncomposer-2.5 - Composer 2.5\nfake-1\n");
   process.exit(0);
 }
-if (args[0] !== "acp") { process.stderr.write(`fake cursor-agent: unexpected argv ${args.join(" ")}\n`); process.exit(2); }
+if (args.at(-1) !== "acp") { process.stderr.write(`fake cursor-agent: unexpected argv ${args.join(" ")}\n`); process.exit(2); }
 
 const write = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
 const SESSION = "fake-cursor-session";

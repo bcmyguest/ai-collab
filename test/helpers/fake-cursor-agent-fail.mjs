@@ -10,7 +10,7 @@ if (!args.length) process.exit(0); // loaded by the test glob; no argv means no-
 log({ kind: "argv", args, cwd: process.cwd(), owned: process.env.AI_COLLAB_OWNED ?? null });
 if (args[0] === "--version") { process.stdout.write("2026.11.22-fake\n"); process.exit(0); }
 if (args[0] === "--list-models") { process.stdout.write("fake-1\n"); process.exit(0); }
-if (args[0] !== "acp") { process.stderr.write(`fake cursor-agent: unexpected argv ${args.join(" ")}\n`); process.exit(2); }
+if (args.at(-1) !== "acp") { process.stderr.write(`fake cursor-agent: unexpected argv ${args.join(" ")}\n`); process.exit(2); }
 
 const write = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
 const SESSION = "fake-cursor-session";

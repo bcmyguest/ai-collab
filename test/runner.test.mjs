@@ -493,7 +493,7 @@ test("starting a Cursor session in OpenShell defaults to full-access and complet
     assert.ok(rows(fake).some((row) => row.output === "echo: offline smoke"));
     const launch = readFileSync(ctx.env.FAKE_CURSOR_LOG, "utf8").trim().split("\n").map(JSON.parse)
       .find((entry) => entry.kind === "argv");
-    assert.deepEqual(launch?.args, ["acp", "--force"]);
+    assert.deepEqual(launch?.args, ["--force", "acp"]);
     assert.equal(launch.owned, "cursor");
     // The sandbox is the boundary, so an OpenShell session keeps approvals off: a mode change is refused.
     await assert.rejects(runner.setMode(started.session, "supervised"), /full access/);

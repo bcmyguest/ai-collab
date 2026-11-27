@@ -154,7 +154,7 @@ test("a sandbox prompt streams through exec and finishes the run", async () => {
   assert.ok(create?.includes("--policy"));
   assert.equal(create[create.indexOf("--policy") + 1], policy);
   const exec = commands.find((command) => command.includes("acp"));
-  assert.deepEqual(exec?.slice(exec.indexOf("acp")), ["acp", "--force"]);
+  assert.deepEqual(exec?.slice(exec.indexOf("--force")), ["--force", "acp"]);
   await handle.send({ text: "hello" });
   for (let i = 0; i < 200 && !c.events.some((e) => e.type === EventType.RUN_FINISHED); i += 1) {
     await new Promise((r) => setTimeout(r, 10));
