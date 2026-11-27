@@ -10,7 +10,7 @@ import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, sendMessage } from "../lib/inbox.mjs";
 import { readySession } from "../lib/deliver-push.mjs";
-import { markStopRunning } from "../lib/stop.mjs";
+import { markStopRunning, takeHandoff } from "../lib/stop.mjs";
 import { processStart } from "../lib/process.mjs";
 import { writeState } from "../lib/state.mjs";
 import { createDispatcher } from "../web/server/dispatch.mjs";
@@ -75,7 +75,7 @@ test("the dispatcher leaves a direct message to a holding Claude session for the
   assert.match(frames.find((f) => f.type === "user")?.message.content ?? "", /after the hold/);
 });
 
-test("the dispatcher releases a claimed message when a Stop hook starts between its ready check and the push", async (t) => {
+test("the dispatcher hands a claimed message to the hold when a Stop hook starts between its ready check and the push", async (t) => {
   const { cfg, bob, target, frames, env } = await setup(t);
   let release = null;
   // The claim runs after the ready check and before the push: the Stop hook marks itself in that gap.
@@ -85,9 +85,9 @@ test("the dispatcher releases a claimed message when a Stop hook starts between 
   };
   const dispatcher = createDispatcher({ projects: () => [cfg], env, claim, opencode: async () => ({ ok: true, status: 200, body: {} }), run: async () => 1 });
   await sendMessage(bob, ADDRESS, "in the gap");
-  assert.equal((await dispatcher.tick()).delivered, 0);
+  assert.equal((await dispatcher.tick()).delivered, 1, "the hand-off counts as a delivery");
   assert.equal(frames.length, 0, "nothing went over the socket");
-  const held = await claimInbox(target);
-  assert.equal(held.length, 1, "the released message is in the hold's inbox read");
+  assert.equal((await claimInbox(target)).length, 0, "the inbox does not show the handed message");
+  assert.equal((await takeHandoff(target)).length, 1, "the hold's hand-off read gets it");
   release();
 });
