@@ -195,6 +195,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   }
 
   function onEvent(s, e) {
+    // A session released after its start was cancelled stays ended; its harness's late run events must not reopen it.
+    if (s.released) return;
     const problem = eventProblem(e);
     if (problem) return log(`${s.record.harness}: dropped event (${problem})`);
     const r = s.record;
@@ -981,6 +983,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   // Ends whatever session a cancelled start's workflow claimed, so it holds no cap slot and no harness.
   async function releaseCancelled(project, workflowId) {
     const late = [...sessions.values()].find(({ record }) => record.workflowId === workflowId && record.status !== "ended");
+    if (late) late.released = true;
     if (late) return endSession(late, "start timed out").catch((error) => log(`could not end ${late.record.address}: ${error.message}`));
     const cfg = configs.get(project);
     for (const record of cfg?.enabled ? listOwned(cfg) : []) {

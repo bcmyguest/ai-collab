@@ -98,8 +98,13 @@ test("a spawn whose claim lands after its 504 ends that child, so it does not co
     const spawnInput = (prompt) => ({ project: "demo", harness: "codex", prompt, place: "folder", managed: true, parent, spawn: true, system: false });
     const open = adapter.open.bind(adapter);
     const slow = gate();
-    adapter.open = async (...args) => { await slow.shut; return open(...args); };
-    const late = runner.start(spawnInput("late child")).catch((error) => error);
+    // The late child's run ends only after the runner released it, as a loaded machine orders the two.
+    adapter.open = async (options, context) => {
+      await slow.shut;
+      const late = (e) => (e.type === "RUN_FINISHED" ? setTimeout(() => context.emit(e), 100) : context.emit(e));
+      return open(options, { ...context, emit: late });
+    };
+    const late = runner.start(spawnInput("late child, hang")).catch((error) => error);
     await until(() => cancelling, "the 504 cancel");
     slow.open();
     adapter.open = open;
@@ -108,6 +113,9 @@ test("a spawn whose claim lands after its 504 ends that child, so it does not co
     held.open();
     assert.equal((await late).status, 504);
     await until(() => listOwned(ctx.cfg).filter((r) => r.spawn).every((r) => r.status === "ended"), "late child ended");
+    // It stays ended after its harness reports the run's end.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.deepEqual(listOwned(ctx.cfg).filter((r) => r.spawn).map((r) => r.status), ["ended"]);
     for (let i = 0; i < 4; i++) assert.equal((await runner.start(spawnInput(`child ${i}`))).status, "started");
   } finally {
     await runner.stop();
