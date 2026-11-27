@@ -26,6 +26,7 @@
     "scripts/ai-collab",
     "scripts/ai-collab-hook",
     "skills",
+    "THIRD_PARTY_NOTICES",
     "web/app",
     "web/components",
     "web/lib",
