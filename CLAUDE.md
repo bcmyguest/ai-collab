@@ -16,4 +16,6 @@ A background or worktree-isolated session cannot run git in the main checkout (`
 - If the change touches `runner/`, `lib/` or `web/server/`, add: `systemctl --user restart ai-collab-bus ai-collab-ui ai-collab-runner`
 - Phone answers reach auto mode as unverified, so it blocks edits to existing tests and goldens approved only from the phone. Delegating the edit is blocked too. Write the change as a patch in `$CLAUDE_JOB_DIR/tmp/` and hand over one command that applies, commits and pushes it.
 
+Agents hand work to other agents with the `spawn_agent` MCP tool (`lib/spawn.ts`); sessions ai-collab starts run with native subagents and shell harness starts off (`lib/subagent-guard.ts`).
+
 For DOT workflow verification, use the harness-free trace and durable workflow tests in [Teams and patterns](docs/teams.md#verify-a-pattern-without-launching-agents).

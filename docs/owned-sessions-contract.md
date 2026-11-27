@@ -356,6 +356,7 @@ Activity and control events publish through: `publishActivity` (`lib/activity.mj
 | Owned record | `$AI_COLLAB_STATE_DIR/<project>/owned/<label>.json`, written by `lib/sessions/registry.ts` `writeOwned` (0600 file, 0700 dir); shape `OwnedRecord` in `runner/types.d.ts` |
 | Registry entry | `$AI_COLLAB_STATE_DIR/<project>/registry/<address>.json` via `lib/sessions.mjs` `recordSession`, with `pid`/`pidStart` = the runner, `event: "owned"`; `list_agents`, `list_sessions` and the UI's agent list read it unchanged. At session end the entry is rewritten without a pid, so it shows offline |
 | Workflow | `OwnedRecord.workflowId` = `session-<uuid>` in `runner.db` |
+| Managed and spawn fields | `managed: true` for team, pattern, builder and spawned sessions (adapters turn native subagents off, and keep them off on resume); `parent` (the spawning address) and `spawn: {depth}` for a `spawn_agent` child, which reports each finished run to `parent` inside the `run.wait` step |
 
 `OwnedRecord.status` is `starting`, `idle`, `running` or `ended`. The durable log is the source of truth; the owned record is a projection that hooks and the UI can read without opening SQLite.
 
