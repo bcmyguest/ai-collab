@@ -19,7 +19,8 @@ import { MESSAGE_MAX_BYTES, latestStatuses, changeQueuedMessage, queuedMessage, 
 import { ATTACHMENT_MAX_BYTES, imageAttachment } from "../../lib/attachment.mjs";
 import { IMAGE_FILE, TEXT_FILE, attachmentOf, ensureAttachment, cachedAttachment, readAttachmentFile } from "../../lib/attachment-cache.ts";
 import { publish } from "../../lib/messaging.ts";
-import { parsePhoneReply, parseQuestionText } from "../../lib/questions.mjs";
+import { parseQuestionText } from "../../lib/questions.mjs";
+import { readReply } from "../../lib/operator.ts";
 import { disposeSession, listSessions, sessionPlace, worktreeGone } from "../../lib/sessions.mjs";
 import { readState, statePath } from "../../lib/state.mjs";
 import { readReceipts } from "../../lib/receipts.mjs";
@@ -212,9 +213,9 @@ function baseEntry(event) {
     // A reply to a message names it as replyOf; replyTo stays the answer link to a question.
     return { id, time, kind: "Message", sender, from: sender, to, body: envelope.body, thread: envelope.operatorThread === true, ...(system ? { system: true } : {}), ...(envelope.urgent === true ? { urgent: true } : {}), ...(envelope.startOnly === true ? { startOnly: true } : {}), ...(typeof envelope.replyTo === "string" && envelope.replyTo ? { replyOf: envelope.replyTo } : {}), ...(typeof envelope.mentionedIn === "string" ? { mentionedIn: envelope.mentionedIn } : {}), ...by };
   }
-  const reply = parsePhoneReply(message);
+  const reply = readReply(event);
   const by = replyBy(event);
-  if (reply) return { id, time, kind: "Reply", sender: "ntfy", from: "ntfy", body: reply.answer, question: reply.id, ...(by ? { by } : {}) };
+  if (reply && !reply.skipped) return { id, time, kind: "Reply", sender: "ntfy", from: "ntfy", body: reply.answer, question: reply.id, ...(by ? { by } : {}) };
   return { id, time, kind: "Message", sender: "ntfy", from: "ntfy", body: message };
 }
 
@@ -238,11 +239,11 @@ function outcomes(events) {
   const replies = new Map();
   const senders = new Map();
   for (const event of events) {
-    const reply = parsePhoneReply(event.message);
-    if (reply) {
-      if (!replies.has(reply.id)) { replies.set(reply.id, []); senders.set(reply.id, []); }
-      replies.get(reply.id).push(reply.answer);
-      senders.get(reply.id).push(replyBy(event));
+    const match = readReply(event);
+    if (match && !match.skipped) {
+      if (!replies.has(match.id)) { replies.set(match.id, []); senders.set(match.id, []); }
+      replies.get(match.id).push(match.answer);
+      senders.get(match.id).push(replyBy(event));
       continue;
     }
     const e = parseEnvelope(event.message);
@@ -884,8 +885,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       if (item.kind === "Approval") asks.set(item.approval.id, { asker: item.from, approval: item.approval });
     }
     return events.flatMap(event => {
-      const reply = parsePhoneReply(event.message);
-      const ask = reply && asks.get(reply.id);
+      const reply = readReply(event);
+      const ask = reply && !reply.skipped && asks.get(reply.id);
       if (!ask) return [];
       const decision = ask.approval ? replyDecision(ask.approval, reply.answer) : null;
       return [{ id: event.id, time: event.time, asker: ask.asker, question: reply.id, body: answerText(decision, reply.answer), by: replyBy(event) }];

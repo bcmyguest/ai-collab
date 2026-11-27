@@ -73,14 +73,23 @@ export function parseChoice(questions: ChoiceQuestion[], answer: string): Record
   return labels && Object.fromEntries(Object.entries(labels).map(([question, parts]) => [question, parts.join(", ")]));
 }
 
+/** Any operator reply or skip, whatever id it names: a skip, or a reply with a non-blank answer; null for anything else. */
+export function readReply(event: Envelope): Match | null {
+  const skipped = skippedQuestionId(event.message);
+  if (skipped !== null) return { skipped: true, id: skipped };
+  const reply = parsePhoneReply(event.message);
+  if (!reply) return null;
+  return { skipped: false, id: reply.id, answer: reply.answer, messageId: event.id };
+}
+
 /** The one reply parser: a skip of id, or a reply to id (a choice reply must name valid labels); null for anything else. */
 export function matchReply(event: Envelope, { id, questions }: { id: string; questions?: ChoiceQuestion[] }): Match | null {
-  if (skippedQuestionId(event.message) === id) return { skipped: true, id };
-  const reply = parsePhoneReply(event.message);
-  if (!reply || reply.id !== id) return null;
-  const labels = questions ? choiceLabels(questions, reply.answer) : undefined;
+  const match = readReply(event);
+  if (!match || match.id !== id) return null;
+  if (match.skipped) return match;
+  const labels = questions ? choiceLabels(questions, match.answer) : undefined;
   if (questions && !labels) return null;
-  return { skipped: false, id, answer: reply.answer, messageId: event.id, ...(labels ? { labels } : {}) };
+  return labels ? { ...match, labels } : match;
 }
 
 /** Throws unless seconds is an integer from 0 to WAIT_MAX_S. */
