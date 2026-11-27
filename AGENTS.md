@@ -7,3 +7,7 @@ Load `antislop` on every session. It is a filter.
 - `antislop-human` when the work is accessibility or focus.
 - `antislop-code` when cleaning comments.
 - `ui-sdk` for web UI component work. Read `node_modules/@ui-sdk/react/docs/llms.txt` for the installed version's API, then the relevant component docs.
+
+# Local notes
+
+If `AGENTS.local.md` exists at the repo root, read it and follow it. It holds this machine's private notes and is not committed.

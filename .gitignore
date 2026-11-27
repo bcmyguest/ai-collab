@@ -7,5 +7,6 @@ web/.next-builds/
 .claude/worktrees/
 .cursor/cli.json
 .claude/settings.local.json
+AGENTS.local.md
 web/AGENTS.md
 web/next-env.d.ts
