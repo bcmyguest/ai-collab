@@ -1,6 +1,6 @@
 # Messaging
 
-Structured messages use the project's [wire format](ag-ui.md) (an ntfy-compatible subset). Plain questions and replies stay human-readable.
+Messages travel over the local bus (`ai-collab-bus`, Postgres-backed; see [Bus store](configuration.md#bus-store)). Structured messages use the project's [wire format](ag-ui.md) (an ntfy-compatible subset). Plain questions and replies stay human-readable.
 
 ## CLI
 

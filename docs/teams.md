@@ -109,7 +109,7 @@ The attribute is parsed by `lib/catalog/dot.ts`, carried on the pattern by `with
 
 ### Finishing from an OpenShell sandbox
 
-A member in an OpenShell sandbox has no `ai-collab` CLI, no host git and no network beyond its harness API and ntfy, so it cannot run `land finish`. Its brief tells it to put this line last in its reply, or just before the `PATTERN_ADVANCE` line:
+A member in an OpenShell sandbox has no `ai-collab` CLI, no host git and no network beyond its harness API and the host's bus, so it cannot run `land finish`. Its brief tells it to put this line last in its reply, or just before the `PATTERN_ADVANCE` line:
 
 ```text
 LAND_FINISH {"proof":"<commands you ran and their output>"}

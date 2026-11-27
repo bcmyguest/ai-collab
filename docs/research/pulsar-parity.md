@@ -1,5 +1,7 @@
 # Pulsar parity research
 
+> Historical: written before the switch from ntfy to the local Postgres-backed bus; see [Messaging](../messaging.md#waking-idle-sessions).
+
 Pulsar 2.0.0 (github.com/yocontra/pulsar). Anchors are in the shipped bundle `~/.local/share/pulsar/current/dist/`. Claude Code claims come from strings in the 2.1.330 binary. Nothing ran against live agents; idle-wake behaviour is read from code, not observed.
 
 ## 1. Pulsar features vs AI Collab

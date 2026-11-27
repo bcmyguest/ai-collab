@@ -1,5 +1,7 @@
 # Legion: what ai-collab can learn
 
+> Historical: written before the switch from ntfy to the local Postgres-backed bus; see [ntfy removal](../ntfy-removal.md).
+
 Source: [huggingface/legion](https://github.com/huggingface/legion) at `e04645bc00babafe80d9bfe1be0265889690530d` (2026-11-25, shallow clone). Read only: no script, installer or test from it ran. Links below point to exact lines at that commit.
 
 ## Summary

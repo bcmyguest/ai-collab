@@ -1,12 +1,14 @@
 # AI Collab messaging requirements
 
-Build and deploy a mobile-friendly operator chat in `~/ai-collab` so a human can talk to specific Claude Code, Codex, and Cursor sessions through ntfy, including when the session needs to be woken.
+Historical: written when ntfy was the transport; the local Postgres-backed bus replaced it (see [ntfy removal](docs/ntfy-removal.md)). Read "ntfy" in the quote and work split below as the bus.
+
+Build and deploy a mobile-friendly operator chat in `~/ai-collab` so a human can talk to specific Claude Code, Codex, and Cursor sessions through the local message bus, including when the session needs to be woken.
 
 ## User request
 
 > 1. i should be able to enter into any existing channels 2. i should be able to message agents 3. if an agent is not online, it should be woken up 4. agent high (>200k) token usage should be sent to ntfy 5. i should be able to send compact messages 6. i should be able to tag agent 7 you shouldn't hand-roll the ui, just use an off the shelf one with a few custom components and make it look nice 8 put the ui in ai-collab 9. i should have the ability to click and talk directly to one agent, and the agent should know (by being told by the tool) to respond to me in the messaging) 10 it should be mobile friendly. split the work howevery you want but luna generally should be used for easy stuff.
 
-Earlier requirements still apply. Install the plugin in Claude Code, Codex, and Cursor. Give each running session an automatic identity, including multiple sessions of the same harness. Let agents receive phone messages and ask a human a question over MCP, then wait for a reply. Keep those question replies on the existing shared ntfy topic. Publish the source in the existing private GitHub repository and serve the UI through the approved `ai-collab-ui` Tailscale service.
+Earlier requirements still apply. Install the plugin in Claude Code, Codex, and Cursor. Give each running session an automatic identity, including multiple sessions of the same harness. Let agents receive phone messages and ask a human a question over MCP, then wait for a reply. Keep those question replies on the project's shared broadcast topic. Publish the source in the existing private GitHub repository and serve the UI through the approved `ai-collab-ui` Tailscale service.
 
 ## Acceptance checks
 
@@ -15,7 +17,7 @@ Earlier requirements still apply. Install the plugin in Claude Code, Codex, and 
 | 1. Join existing channels | Channels are the projects in `~/.config/ai-collab/projects.json`. The project sidebar lists every project, each served with its own configuration, and opening one shows its history and new posts. Inside a project, zoom by sender: Project (all agents and the operator), Harness (one of claude, codex, cursor), and Session (one `peer#session` thread). Custom topics opened by name are no longer supported. |
 | 2. Message agents | Send a channel message from the UI. The expected agent receives it under the operator's identity. A text post from the phone still reaches the agents. |
 | 3. Wake an offline agent | Send a direct message to a known offline session. Keep the message queued, resume that exact session through its harness adapter, and show whether wake succeeded, failed, or is unsupported. Exercise retry without starting duplicate sessions. |
-| 4. Alert above 200k current context tokens | Use a harness-reported measurement of the session's current context. Verify that 200,000 does not trigger and crossing to 200,001 posts an ntfy alert with the session identity and measured context tokens. Repeated samples above the threshold should produce one alert per crossing. Verify a drop to 200,000 or fewer re-arms the alert. |
+| 4. Alert above 200k current context tokens | Use a harness-reported measurement of the session's current context. Verify that 200,000 does not trigger and crossing to 200,001 posts an alert on the bus with the session identity and measured context tokens. Repeated samples above the threshold should produce one alert per crossing. Verify a drop to 200,000 or fewer re-arms the alert. |
 | 5. Request remote compaction | Provide an explicit Compact action in direct chat. Verify it requests compaction of the selected session and shows the outcome reported by its harness. Inspect the existing smarter-compact integration for the supported compaction path in each harness. |
 | 6. Tag an agent | Use an autocomplete picker to insert and send an `@` tag that resolves to the selected session even when two agents share a harness. Verify the tagged agent can see the mention in its inbox. Each mention option and session picker entry shows when that session (or harness) last sent a message, such as `3m ago` or `never`, derived from history the server already holds. |
 | 7. Use a chat UI kit | Use an off-the-shelf chat component kit (shadcn/ui with Tailwind CSS and the prompt-kit chat components) for the project list, message history, and composer. Build small custom controls for agent status, session selection, and ai-collab actions. Replace the hand-built prototype. |
@@ -24,7 +26,7 @@ Earlier requirements still apply. Install the plugin in Claude Code, Codex, and 
 | 10. Mobile layout | At a 390 px viewport, switch projects from the drawer, change the zoom level, open a direct chat, tag a session, and send a message with no horizontal overflow. Verify sign-in and posting from a tailnet client against the HTTPS service. |
 | 11. Operator AFK mode | A header switch sets `on`, `off`, or `quiet`. Each change publishes `{v:1, kind:"mode", from:"operator", mode, ts}` to the broadcast topic of every project. The latest mode envelope in history is shown and pushed to open browsers (none means `off`); mode envelopes never appear as chat messages. |
 
-Retest phone question and reply with MCP `ask_question` and `wait_for_answer`. The existing phone syntax is `reply <id> <answer>`. For wake and compaction, only explicit authenticated operator actions may invoke host-side controls. Keep ntfy credentials and raw harness session IDs server-side.
+Retest phone question and reply with MCP `ask_question` and `wait_for_answer`. The existing phone syntax is `reply <id> <answer>`. For wake and compaction, only explicit authenticated operator actions may invoke host-side controls. Keep the bus token and raw harness session IDs server-side.
 
 ## Work split
 
@@ -45,7 +47,7 @@ Start by reviewing `git status --short` in the live checkout and comparing the s
 - Start new agent sessions from the phone (built on a branch: README "Start a session from the phone").
 - Agents that start other agents themselves (any harness, via their shell) join ai-collab and can message each other: the child learns its parent's address and the parent its child's. No launcher tool or limits for agents; phone approvals cover the start in AFK (built on a branch: README "Agents starting agents").
 - Browser notifications (Web Push, works with the tab closed; Chrome and Firefox on Android) for actions the operator must take: permission approvals and agent questions (built on a branch: README "Push notifications").
-- Heartbeat over ntfy for agents on other machines.
+- Heartbeat over the bus for agents on other machines.
 
 ## Decided against
 

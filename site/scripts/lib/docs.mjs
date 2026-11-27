@@ -14,14 +14,14 @@ export const PAGES = [
     group: 'Start',
     title: 'AI Collab',
     label: 'Overview',
-    description: 'Phone chat, approvals, and live activity for Claude Code, Codex, Cursor, and OpenCode agents over a private, self-hosted ntfy server.',
+    description: 'Phone chat, approvals, and live activity for Claude Code, Codex, Cursor, and OpenCode agents over a private, local message bus.',
   },
   {
     slug: 'quick-start',
     source: 'docs/quick-start.md',
     group: 'Start',
     title: 'Quick start',
-    description: 'One command starts ntfy in Docker, installs every harness plugin and the phone UI.',
+    description: 'Start Postgres, then one command installs the message bus, every harness plugin and the phone UI.',
   },
   {
     slug: 'install',

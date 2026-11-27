@@ -1,5 +1,7 @@
 # Unknown bus cursors: what happens today
 
+> Historical: written before the switch from the SQLite bus store to Postgres only; see [Bus store](../configuration.md#bus-store).
+
 Research for 4b batch 3, at main ba67eb79. A `since` names where a reader resumes: the cached poll `GET /<topic>/json?poll=1&since=` (lib/bus.ts:320-334) and the live stream `GET /<topics>/json?since=` (lib/bus.ts:336-365). `parseSince` sorts every value into all, time, id, or none (lib/bus.ts:43-54): "" and "all" read everything (lib/bus.ts:45), durations and 9+ digit unix seconds read by time (lib/bus.ts:46-51), any other digits read as an event id (lib/bus.ts:52), and anything else is none (lib/bus.ts:53).
 
 An unknown cursor is an id the store cannot place: pruned away, newer than everything, not an id at all, or from another bus. Today no response says "unknown". Poll falls back to the whole topic, stream falls back to nothing, and each client absorbs the result its own way.

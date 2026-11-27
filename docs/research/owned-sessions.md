@@ -1,5 +1,7 @@
 # Owned sessions: research
 
+> Historical: written before the switch from ntfy to the local Postgres-backed bus; see [Owned sessions: shared contract](../owned-sessions-contract.md) and [ntfy removal](../ntfy-removal.md).
+
 Researched 2026-11-21. Read-only: no agent turn was run and no code changed. Sources: T3 Code at commit [`5935157`](https://github.com/pingdotgg/t3code/tree/5935157711bc7f8640946a9008e91b5590553bff) (cloned to `/tmp/research-t3`), Codex at tag [`rust-v0.171.0`](https://github.com/openai/codex/tree/rust-v0.171.0) (sparse clone in `/tmp/research-codex`), the Codex protocol generated locally with `codex app-server generate-ts` (`/tmp/research-codex-schema`), `--help` output, and npm metadata. Below, `T3:` links are relative to the T3 commit and `codex:` links to the Codex tag.
 
 Installed here: `codex-cli 0.171.0`, Claude Code `2.1.330`, `cursor-agent 2026.11.19-f005e9d`, `opencode v2.2.5` (the registered OpenCode service runs 2.2.6).
