@@ -215,10 +215,11 @@ function authorArgv(harness: Harness, o: ArgvOpts["author"]): Command | null {
   }
 }
 
-// The Cursor ACP server, the runner's own protocol: `acp`, then `--force` when the mode asks for it, then `--model` when one is named.
+// The Cursor ACP server: `--force` when the mode asks for it, `--model` when one is named, then `acp`.
+// Both are top-level options; `agent acp --help` lists only -h (agent 2026.11.22-e9042b2).
 function acpArgv(harness: Harness, o: ArgvOpts["acp"]): Command | null {
   if (harness !== "cursor") return null;
-  return [LAUNCH_BINARY.cursor, ["acp", ...(o.force ? ["--force"] : []), ...(o.model ? ["--model", o.model] : [])]];
+  return [LAUNCH_BINARY.cursor, [...(o.force ? ["--force"] : []), ...(o.model ? ["--model", o.model] : []), "acp"]];
 }
 
 /**

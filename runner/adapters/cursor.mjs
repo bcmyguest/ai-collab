@@ -50,7 +50,7 @@ const SANDBOX_HOOKS = `${JSON.stringify({ version: 1, hooks: { subagentStart: [{
 /** The OpenShell sandbox name for a project: ai-collab-<project>, lowercase, at most 40 characters of project. */
 export const sandboxName = (project) => sandboxNameFor(project);
 
-/** Argv of the ACP server: `acp`, then `--force` when the mode asks for it, then `--model` when one is named. */
+/** Argv of the ACP server: `--force` when the mode asks for it, `--model` when one is named, then the `acp` subcommand. */
 export function acpArgs({ force = false, model } = {}) {
   return argv("cursor", "acp", { force, model })[1];
 }
