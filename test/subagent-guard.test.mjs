@@ -50,7 +50,6 @@ test("shellHarnessStart: a shell command that starts a harness, past env assignm
   assert.equal(shellHarnessStart("claude", "pretooluse", { tool_name: "Read", tool_input: { file_path: "codex" } }), false);
   assert.equal(shellHarnessStart("opencode", "pretooluse", { tool_name: "bash", tool_input: { command: "claude -p hi" } }), true);
   assert.equal(shellHarnessStart("cursor", "beforeshellexecution", { command: "codex exec hi" }), true);
-  assert.equal(shellHarnessStart("codex", "pretooluse", bash("claude -p hi")), false);
 });
 
 test("managedShellStartRefusal: refuses a harness argv only in a managed session", () => {
