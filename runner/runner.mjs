@@ -148,7 +148,7 @@ export function createClaims({ now = Date.now } = {}) {
 }
 
 /** Creates the runner over project configs, a Map harness → Adapter and a durable log (runner/durable.mjs). */
-export function createRunner({ projects, adapters, durable: rawDurable, env = process.env, git = runGit, now = Date.now, startGapMs = START_GAP_MS, approvalMs = approvalTimeoutMs(env), watch = true, log = () => {}, scheduleErrors = [], scheduleEntries = [], pumpMs = PUMP_MS, delivery = {} }) {
+export function createRunner({ projects, adapters, durable: rawDurable, env = process.env, git = runGit, now = Date.now, startGapMs = START_GAP_MS, approvalMs = approvalTimeoutMs(env), watch = true, log = () => {}, scheduleErrors = [], scheduleEntries = [], pumpMs = PUMP_MS, delivery = {}, startTimeoutMs = START_TIMEOUT_MS }) {
   // Tests hand createRunner a raw sqlite log; the runner itself passes an openWorkflows engine. One async surface either way.
   const durable = rawDurable.isAsync === true ? rawDurable : adaptSqlite(rawDurable);
   const configs = new Map(projects.map((cfg) => [cfg.project, cfg]));
@@ -450,7 +450,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
         ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode), ...(taskId ? { taskId } : {}), ...family, status: "idle", run: null, approvals: [], createdAt: now(),
       };
       try {
-        if (continuation) wf.signal.throwIfAborted();
+        // A continuation or spawn whose start timed out was cancelled; it must not claim a session nobody waits for.
+        if (continuation || spawn) wf.signal.throwIfAborted();
         if (builder) {
           await claimOwnedBuilder(builder, record.address, env);
           record.builder = builder.id;
@@ -458,8 +459,9 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
         writeOwned(cfg, record);
         if (continuation) await openTasks(project, env).update(taskId, { owner: record.address, status: "building" });
       } catch (error) {
-        if (continuation) writeOwned(cfg, { ...record, status: "ended" });
-        if (builder || continuation) return { failed: error.message };
+        if (continuation || spawn) writeOwned(cfg, { ...record, status: "ended" });
+        // A cancel aborts with the string "cancel", which has no message.
+        if (builder || continuation || spawn) return { failed: String(error?.message ?? error) };
         throw error;
       }
       return null;
@@ -908,7 +910,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     const workflowId = `session-${randomUUID()}`;
     const claimed = claims.take(workflowId);
     const timer = new AbortController();
-    const timeout = builder ? BUILDER_START_TIMEOUT_MS : START_TIMEOUT_MS;
+    const timeout = builder ? BUILDER_START_TIMEOUT_MS : startTimeoutMs;
     try {
       const run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, system: Boolean(builder || patternRun) || system !== false, ...(continuation ? { continuation } : {}), ...(builder ? { builder } : {}), ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), codeMode: resolveCodeMode(codeMode, env), ...(managed ? { managed: true } : {}), ...(spawned ? { parent, spawn: { depth } } : {}) });
       if (builder) watchBuilderFailure(workflowId, run);
@@ -921,7 +923,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       ]);
       return { status: "started", session: s.record.address, nativeId: s.record.nativeId, workflowId, ...(taskId ? { taskId } : {}), ...(spawned ? { cwd: s.record.cwd } : {}), detail: `${harness} owned session started` };
     } catch (error) {
-      if (continuation && error.status === 504) await durable.cancel(workflowId);
+      // A start the caller was told failed must not leave a child running: a continuation or a spawn is cancelled.
+      if ((continuation || spawned) && error.status === 504) await durable.cancel(workflowId).catch((cancelError) => log(`could not cancel ${workflowId}: ${cancelError.message}`));
       if (error.status) throw error;
       throw Object.assign(new Error(`${harness} failed to start: ${error.message}`), { status: 502 });
     } finally {
