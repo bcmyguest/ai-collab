@@ -566,7 +566,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   function adoptedRecord(workflowId, project, label, a) {
     return {
       v: 1, label, address: `${a.harness}#${label}`, workflowId, harness: a.harness, nativeId: a.nativeId, project, cwd: a.cwd,
-      place: "folder", permissionMode: defaultPermission(a.harness, "folder"), ...(a.model ? { model: a.model } : {}),
+      place: "folder", permissionMode: defaultPermission(a.harness, "folder"), ...(a.model ? { model: a.model } : {}), ...(a.managed === true ? { managed: true } : {}),
       status: "ended", run: null, approvals: [], createdAt: now(),
     };
   }
@@ -584,6 +584,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   async function wakeWorkflow(wf, input) {
     const { project, address, messages: first, adopt = null } = input;
     const [harness, label] = address.split("#");
+    // An adopted record's workflowId is this wake's id, so its managed flag is this wake's durable input.
+    if (adopt) managedByWorkflow.set(wf.id, adopt.managed === true);
     if (!adapters.has(harness)) return { status: "no-adapter", error: `no ${harness} adapter yet` };
     const previous = wakeTail.get(address);
     const gate = { id: wf.id, release: () => {}, done: null };
@@ -840,7 +842,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
         if (!canWake || session.seenAt < now() - SEEN_WITHIN_MS || wakes >= WAKES_PER_TICK || wakeTail.has(session.id)) continue;
         const messages = await deps.claim(scfg, { commit: false, limit: WAKE_BATCH, accept: (m) => direct(m) && m.to === session.id, ...wake }).catch(() => []);
         if (!messages.length) continue;
-        const adopt = { nativeId: session.sessionId, cwd: session.cwd, ...(session.model ? { model: session.model } : {}) };
+        // managed comes from the registry the hook wrote at an authorised start; the wake's durable input then carries it.
+        const adopt = { nativeId: session.sessionId, cwd: session.cwd, ...(session.model ? { model: session.model } : {}), ...(session.managed === true ? { managed: true } : {}) };
         const id = await startWake(cfg.project, session.id, messages, { adopt });
         if (id) { started.push(id); wakes += 1; }
       }
@@ -1324,6 +1327,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
         if (!record.workflowId || managedByWorkflow.has(record.workflowId)) continue;
         const workflow = await durable.status(record.workflowId).catch(() => null);
         if (workflow?.name === "session") managedByWorkflow.set(record.workflowId, workflow.input?.managed === true);
+        if (workflow?.name === WAKE && workflow.input?.adopt) managedByWorkflow.set(record.workflowId, workflow.input.adopt.managed === true);
       }
     }
     const pending = await durable.pending();
