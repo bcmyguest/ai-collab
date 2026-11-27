@@ -2,10 +2,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Box, Check, ChevronDown, Folder, FolderGit2, FolderTree, GitBranch, GitPullRequest, Plus, type LucideIcon } from "lucide-react";
 import { useAsyncOptions } from "@ui-sdk/react/async-options";
-import { Combobox, ComboboxContent, ComboboxCreate, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxItemIndicator, ComboboxItemText, ComboboxList, ComboboxStatus, ComboboxTrigger } from "@ui-sdk/react/combobox";
+import { Combobox, ComboboxContent, ComboboxCreate, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxItemIndicator, ComboboxList, ComboboxStatus, ComboboxTrigger } from "@ui-sdk/react/combobox";
 import { Select, SelectContent, SelectItem, SelectItemIndicator, SelectTrigger, SelectValue } from "@ui-sdk/react/select";
 import { cn } from "@/lib/utils";
-import { EMPTY_PICK, createOption, envOptions, prNumber, shortSha, triggerLabel, worktreeMarks, type EnvId, type Pick, type Pr, type Ref, type Worktree } from "@/lib/branch-picker";
+import { EMPTY_PICK, createOption, envOptions, markSegments, prNumber, shortSha, triggerLabel, worktreeMarks, type EnvId, type Pick, type Pr, type Ref, type Worktree } from "@/lib/branch-picker";
 
 const ENV_ICONS: Record<EnvId, LucideIcon> = { folder: Folder, worktree: FolderGit2, existing: FolderTree, openshell: Box };
 const CONTROL = "inline-flex h-11 items-center gap-1.5 rounded-lg border bg-background px-2.5 text-sm sm:h-8 focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50";
@@ -71,8 +71,8 @@ function CurrentBranch({ project, env, current, setCurrent }: { project: string;
     return () => controller.abort();
   }, [project]);
   const text = triggerLabel(env, EMPTY_PICK, current);
-  return <span aria-label={"Branch: " + text} className="inline-flex h-11 min-w-0 items-center gap-1.5 px-1 text-sm text-muted-foreground sm:h-8">
-    <GitBranch aria-hidden="true" className="size-4 shrink-0"/><span className="truncate">{text}</span>
+  return <span className="inline-flex h-11 min-w-0 items-center gap-1.5 px-1 text-sm text-muted-foreground sm:h-8">
+    <GitBranch aria-hidden="true" className="size-4 shrink-0"/><span className="truncate"><span className="sr-only">Branch: </span>{text}</span>
   </span>;
 }
 
@@ -137,7 +137,7 @@ function BranchPicker({ project, env, pick, setPick, current, setCurrent, disabl
             <span className="truncate text-xs text-muted-foreground">{pr.base === null ? "Fetch this PR first" : "head " + pr.head}</span>
           </span>
         </ComboboxItem>}
-        {options.items.map(option => option.row ? <WorktreeItem key={option.value} option={option} row={option.row}/> : <BranchItem key={option.value} option={option}/>)}
+        {options.items.map(option => option.row ? <WorktreeItem key={option.value} option={option} row={option.row} query={query}/> : <BranchItem key={option.value} option={option} query={query}/>)}
         {create && <ComboboxCreate onCreate={text => setPick({ ...EMPTY_PICK, base, branch: text.trim() })} className={ITEM}>
           <Plus aria-hidden="true" className="size-4 shrink-0 text-muted-foreground"/>
           <span className="min-w-0 flex-1 truncate">Create branch <b className="font-semibold">{create.name}</b> from <b className="font-semibold">{create.base}</b></span>
@@ -147,20 +147,21 @@ function BranchPicker({ project, env, pick, setPick, current, setCurrent, disabl
   </Combobox>;
 }
 
-function BranchItem({ option }: { option: Option }) {
+function BranchItem({ option, query }: { option: Option; query: string }) {
   return <ComboboxItem value={option.value} label={option.label} className={ITEM}>
-    <Marked/>
+    <Marked label={option.label} query={query}/>
     {option.ref?.remote && <span className="shrink-0 text-xs text-muted-foreground">remote</span>}
     <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">{shortSha(option.ref?.sha ?? "")}</span>
     <ComboboxItemIndicator><Check aria-hidden="true" className="size-3.5 text-primary"/></ComboboxItemIndicator>
   </ComboboxItem>;
 }
 
-function WorktreeItem({ option, row }: { option: Option; row: Worktree }) {
+function WorktreeItem({ option, row, query }: { option: Option; row: Worktree; query: string }) {
   return <ComboboxItem value={option.value} label={option.label} className={ITEM}>
     <span className="flex min-w-0 flex-1 flex-col py-1">
-      {row.branch === null ? <span className="truncate">detached at {shortSha(row.head)}</span> : <Marked/>}
-      <span title={row.path} className="truncate text-xs text-muted-foreground">{row.path}</span>
+      {row.branch === null ? <span className="truncate">detached at {shortSha(row.head)}</span> : <Marked label={option.label} query={query}/>}
+      {/* rtl moves the ellipsis to the front, so the distinctive end of a long path stays visible */}
+      <span title={row.path} dir="rtl" className="truncate text-left text-xs text-muted-foreground"><bdi>{row.path}</bdi></span>
     </span>
     {worktreeMarks(row).map(mark => <span key={mark} className="shrink-0 rounded border px-1 text-xs text-muted-foreground">{mark}</span>)}
     <ComboboxItemIndicator><Check aria-hidden="true" className="size-3.5 text-primary"/></ComboboxItemIndicator>
@@ -168,10 +169,10 @@ function WorktreeItem({ option, row }: { option: Option; row: Worktree }) {
 }
 
 // The item's label with the typed text marked, so a match is visible at a glance.
-function Marked(): ReactNode {
-  return <ComboboxItemText className="min-w-0 truncate">
-    {state => state.segments.map((segment, index) => segment.match ? <mark key={index} className={MARK}>{segment.text}</mark> : segment.text)}
-  </ComboboxItemText>;
+function Marked({ label, query }: { label: string; query: string }): ReactNode {
+  return <span className="min-w-0 truncate">
+    {markSegments(label, query).map(segment => segment.match ? <mark key={segment.at} className={MARK}>{segment.text}</mark> : <span key={segment.at}>{segment.text}</span>)}
+  </span>;
 }
 
 function refsUrl(project: string, kind: "branches" | "worktrees", query: string) {
