@@ -34,7 +34,7 @@ import { REQUIRE_RUN_CODE_ENV } from "../lib/code-mode.mjs";
 import { readsThroughRunCode } from "../lib/code-run.mjs";
 import { storeReadDenial } from "../lib/store-read.mjs";
 import { recordSession, sessionName, standsDown } from "../lib/sessions/registry.ts";
-import { managedDenial } from "../lib/subagent-guard.ts";
+import { MANAGED_ENV, managedDenial } from "../lib/subagent-guard.ts";
 import { harnessProcess, isRunning } from "../lib/process.mjs";
 import { CLAIM_SETTLE_MS, STOP_GRACE_MS, WAITER_MAX_S, runWaiter, takeWaiterSlot } from "../lib/waiter.ts";
 import { ON_DEMAND_LOADS, contextUsage, dropOnDemandFiles, readContext, recordInstructions, reportContext } from "../lib/usage.mjs";
@@ -285,7 +285,7 @@ async function main() {
       if (!subagent) await recordSession(cfg, {
         id: sessionId, cwd, harness: host, event: event || key.slice(0, 32), proc: harnessProcess(host), parent: cfg.parent,
         name: NAMED_EVENTS.has(event) ? sessionName(host, msg, env) : "", model: msg.model,
-        requireRunCode: env[REQUIRE_RUN_CODE_ENV] === "1",
+        requireRunCode: env[REQUIRE_RUN_CODE_ENV] === "1", managed: env[MANAGED_ENV] === "1",
         ...(typed ? { operatorPromptAt: Date.now() } : {}),
       }).catch(() => {});
       if (event && !activityOnly) output = await deliver(cfg, host, event, msg, key);

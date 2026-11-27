@@ -47,7 +47,7 @@ const BINARY_HARNESS = new Map<string, Harness>([
 
 export type ArgvOpts = {
   start: { root: string; prompt: string; worktree?: string; model?: string; mode?: string; permission?: string; codeMode?: boolean; requireRunCode?: boolean; noSubagents?: string[] };
-  wake: { id: string; prompt: string; requireRunCode?: boolean; path?: string; permission?: string };
+  wake: { id: string; prompt: string; requireRunCode?: boolean; path?: string; permission?: string; noSubagents?: string[] };
   compact: { id: string };
   queue: { id: string; text: string };
   interrupt: Record<string, never>;
@@ -156,10 +156,11 @@ function startArgv(harness: Harness, o: ArgvOpts["start"]): Command | null {
 
 // A wake resumes a saved session with the wake prompt; Cursor's binary is the one cursorBinary finds on the wake's PATH.
 function wakeArgv(harness: Harness, o: ArgvOpts["wake"]): Command | null {
+  const off = o.noSubagents ?? [];
   switch (harness) {
     // A stored /permission value is the session's next-wake mode; without one the wake passes no flag.
-    case "claude": return [LAUNCH_BINARY.claude, ["--print", "--resume", o.id, ...(o.permission ? ["--permission-mode", o.permission] : []), o.prompt]];
-    case "codex": return [LAUNCH_BINARY.codex, ["exec", ...(o.requireRunCode ? codexRequiredRunCodeArgs() : []), "resume", o.id, o.prompt]];
+    case "claude": return [LAUNCH_BINARY.claude, ["--print", "--resume", o.id, ...(o.permission ? ["--permission-mode", o.permission] : []), ...off, o.prompt]];
+    case "codex": return [LAUNCH_BINARY.codex, ["exec", ...(o.requireRunCode ? codexRequiredRunCodeArgs() : []), ...off, "resume", o.id, o.prompt]];
     case "cursor": return [cursorBinary(o.path ?? ""), ["--print", "--resume", o.id, o.prompt]];
     case "opencode": return [LAUNCH_BINARY.opencode, ["run", "--session", o.id, o.prompt]];
     default: return null;
