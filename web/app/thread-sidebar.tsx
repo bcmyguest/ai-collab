@@ -9,8 +9,8 @@ import { cn } from "@/lib/utils";
 import { isLive, sessionState } from "@/lib/session-state";
 import { COLLAPSED, GROUPS, elapsed, shortName, threadGroups, threadSession, unthreaded, workingTime, type Agent, type GroupId, type Thread, type ThreadRow } from "@/lib/thread-groups";
 import { AgentName, HarnessMark } from "./agent-mark";
-import { SessionTree, missingSession, type OpenSession } from "./thread-sessions";
-import { ago } from "./chat-shared";
+import { SessionTree, missingSession, workingCount, type OpenSession } from "./thread-sessions";
+import { Dot, ago } from "./chat-shared";
 import { Logo } from "./logo";
 import { TasksStrip } from "./tasks-strip";
 
@@ -88,12 +88,16 @@ function ThreadItem({ row, all, selected, now, navigate, project }: { row: Threa
     : navigate({ project, level: "project" });
   const byId = new Map(all.map(agent => [agent.id, agent]));
   const sessions = (row.sessions || []).map(id => byId.get(id) || missingSession(id));
+  const busy = workingCount(sessions, all, now);
+  const [shut, setShut] = useState(false);
   const openRun: OpenSession = (session, run) => run
     ? navigate({ project, level: "session", harness: session.split("#")[0], session, tab: "subagents", run })
     : go(session);
+  const label = row.title || row.branch || row.id;
   return <li className="flex min-w-0 flex-col">
-    <button type="button" data-thread={row.id} aria-current={open ? "true" : undefined} onClick={() => go(target)}
-      className={cn("flex min-w-0 flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left hover:bg-sidebar-accent max-md:py-2.5", open && "bg-sidebar-accent/60")}>
+    <div className="flex min-w-0 items-start">
+      <button type="button" data-thread={row.id} data-working={busy || undefined} aria-current={open ? "true" : undefined} onClick={() => go(target)}
+        className={cn("flex min-w-0 flex-1 flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left hover:bg-sidebar-accent max-md:py-2.5", open && "bg-sidebar-accent/60")}>
       <span className="flex min-w-0 items-center gap-2">
         {waiting && <span role="img" aria-label="Waiting on you" className="size-1.5 shrink-0 rounded-full bg-primary"/>}
         <span className={cn("min-w-0 flex-1 truncate", (open || waiting) && "font-medium")} title={row.title || row.branch || row.id}>{row.title || row.branch || row.id}</span>
@@ -107,8 +111,14 @@ function ThreadItem({ row, all, selected, now, navigate, project }: { row: Threa
         {!row.branch && <span className="flex-1"/>}
         <PrBadges prs={row.prs}/>
       </span>}
-    </button>
-    {sessions.length > 0 && <SessionTree sessions={sessions} all={all} label={"Sessions in " + (row.title || row.id)} title={row.title} selected={selected} now={now} open={openRun}/>}
+      {busy > 0 && <span className="flex items-center gap-1.5 text-xs text-foreground"><Dot online/>{busy} working</span>}
+      </button>
+      {sessions.length > 0 && <button type="button" aria-expanded={!shut} aria-label={(shut ? "Show" : "Hide") + " sessions in " + label} onClick={() => setShut(!shut)}
+        className="mt-1 grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground max-md:mt-0 max-md:size-11">
+        <ChevronDown aria-hidden className={cn("size-3.5 transition-transform motion-reduce:transition-none", shut && "-rotate-90")}/>
+      </button>}
+    </div>
+    {sessions.length > 0 && !shut && <SessionTree sessions={sessions} all={all} label={"Sessions in " + (row.title || row.id)} title={row.title} selected={selected} now={now} open={openRun}/>}
   </li>;
 }
 
