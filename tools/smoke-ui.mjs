@@ -175,9 +175,9 @@ async function threadFixture({ cfg, root, address, label, inject }) {
   events.forEach((event, index) => inject(activityTopic(cfg.project), buildActivity(agent, "claude", event, new Date(now - (events.length - index) * 1000).toISOString()).message));
   const thread = (id, title, sessions, extra = {}) => ({ id, project: cfg.project, title, sessions, leadSession: sessions[0], status: "active", createdAt: now - 7200_000, updatedAt: now - 60_000, ...extra });
   return [
-    thread("t-redesign", "UI redesign", [lead, child, gone, missing], { branch: "feat/ui-redesign-v2", updatedAt: now - 5000, prs: [{ number: 812, state: "open" }] }),
-    thread("t-composer", "Composer keeps focus", [address], { branch: "fix/composer-keep-focus" }),
-    thread("t-spike", "Old layout spike", [gone, missing], { updatedAt: now - 3 * 3600_000 }),
+    thread("th_00000000000000a1", "UI redesign", [lead, child, gone, missing], { branch: "feat/ui-redesign-v2", updatedAt: now - 5000, prs: [{ number: 812, state: "open" }] }),
+    thread("th_00000000000000a2", "Composer keeps focus", [address], { branch: "fix/composer-keep-focus" }),
+    thread("th_00000000000000a3", "Old layout spike", [gone, missing], { updatedAt: now - 3 * 3600_000 }),
   ];
 }
 

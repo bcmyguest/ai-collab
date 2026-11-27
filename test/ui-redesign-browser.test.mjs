@@ -83,7 +83,7 @@ test("a thread lists its lead, child session and both running subagents, and cou
   await tree.locator(`[data-session="${child}"]`).waitFor();
   await tree.locator('[data-run="run-live"]').waitFor();
   await tree.locator('[data-run="run-tabs"]').waitFor();
-  const row = page.locator('[data-thread="t-redesign"]');
+  const row = page.locator('[data-thread="th_00000000000000a1"]');
   assert.equal(await row.getAttribute("data-working"), "4");
   await page.getByRole("button", { name: "Hide sessions in UI redesign" }).click();
   await tree.waitFor({ state: "detached" });
