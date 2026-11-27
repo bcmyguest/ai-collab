@@ -4,7 +4,10 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { EventType } from "@ag-ui/core";
+import { answerOptionId, grantKey, permissionQuestion, selectPermissionOptionId } from "../../lib/acp/permission.ts";
+import { flattenSelectChoices, modelConfigOption, sessionModels } from "../../lib/acp/sessionConfig.ts";
 import { autoDefaults, sessionLabel } from "../../lib/config.ts";
 import { exportSpans, otlpEndpoint, runRecorder } from "../../lib/cursor-trace.ts";
 import { cursorBinary } from "../../lib/harness.ts";
@@ -47,12 +50,48 @@ const SANDBOX_HOOKS = `${JSON.stringify({ version: 1, hooks: { subagentStart: [{
   command: `cat >/dev/null; if [ "$${MANAGED_ENV}" = 1 ]; then printf '%s\\n' ${quoteSh(JSON.stringify(subagentDenial("cursor")))}; else printf '{}\\n'; fi`, timeout: 10,
 }] } }, null, 2)}\n`;
 
+// The ai-collab bus MCP server a host session gets in session/new and load; a sandbox has no node or app tree to run it.
+const BUS_MCP_SCRIPT = fileURLToPath(new URL("../../scripts/ai-collab-mcp.mjs", import.meta.url));
+// Env the bus MCP server needs to find its config and project; secrets stay out of the ACP request.
+const BUS_MCP_ENV = /^(HOME|PATH|XDG_[A-Z_]+|AI_COLLAB_[A-Z0-9_]+)$/;
+const SECRET_ENV = /TOKEN|SECRET|PASSWORD|KEY/;
+
 /** The OpenShell sandbox name for a project: ai-collab-<project>, lowercase, at most 40 characters of project. */
 export const sandboxName = (project) => sandboxNameFor(project);
 
 /** Argv of the ACP server: `--force` when the mode asks for it, `--model` when one is named, then the `acp` subcommand. */
 export function acpArgs({ force = false, model } = {}) {
   return argv("cursor", "acp", { force, model })[1];
+}
+
+/** Configured MCP servers in the ACP McpServer shape: an ACP array as given, or a Cursor mcp.json `mcpServers` record converted. */
+export function acpMcpServers(configured) {
+  if (Array.isArray(configured)) return configured.filter((s) => s && typeof s.name === "string" && s.name);
+  if (!configured || typeof configured !== "object") return [];
+  const pairs = (record) => Object.entries(record ?? {}).map(([name, value]) => ({ name, value: String(value) }));
+  return Object.entries(configured).map(([name, s]) => {
+    if (typeof s?.url === "string") return { type: s.type === "sse" ? "sse" : "http", name, url: s.url, headers: pairs(s.headers) };
+    if (typeof s?.command === "string") return { name, command: s.command, args: Array.isArray(s.args) ? s.args.map(String) : [], env: pairs(s.env) };
+    return null;
+  }).filter(Boolean);
+}
+
+// The bus MCP server's env: HOME, PATH, XDG and AI_COLLAB variables without secrets, then its peer and project.
+function busMcpEnv(env, project) {
+  const vars = Object.entries(env).filter(([name]) => BUS_MCP_ENV.test(name) && !SECRET_ENV.test(name) && name !== "AI_COLLAB_OWNED");
+  const fixed = { AI_COLLAB_PEER: "cursor", ...(project ? { AI_COLLAB_PROJECT: project } : {}) };
+  return [...vars.filter(([name]) => !Object.hasOwn(fixed, name)), ...Object.entries(fixed)].map(([name, value]) => ({ name, value: String(value) }));
+}
+
+/**
+ * The mcpServers of session/new, load and resume: the bus server on the host (a configured server of the same name
+ * replaces it), then the configured ones; http and sse servers only when initialize advertised that transport.
+ */
+export function sessionMcpServers({ place, project, env = {}, configured, mcpCapabilities = {} } = {}) {
+  const extra = acpMcpServers(configured);
+  const bus = place === "openshell" || extra.some((s) => s.name === "ai-collab")
+    ? [] : [{ name: "ai-collab", command: process.execPath, args: [BUS_MCP_SCRIPT, "cursor"], env: busMcpEnv(env, project) }];
+  return [...bus, ...extra].filter((s) => (s.type === "http" ? mcpCapabilities.http === true : s.type === "sse" ? mcpCapabilities.sse === true : true));
 }
 
 /**
@@ -421,7 +460,11 @@ export default function cursorAdapter(config = {}) {
     // A restored session already holds its claim on the sandbox: resuming takes it over instead of counting a second one.
     const held = spec.address ? restored.get(spec.address) : undefined;
     if (held) restored.delete(spec.address);
-    const session = { sessionId: null, run: null, approvals: new Map(), tools: new Map(), closed: false, ctx, sandbox: null, env, cwd: spec.cwd, model: spec.model, project: spec.project, owned: ownerOf(spec) };
+    const session = {
+      sessionId: null, run: null, approvals: new Map(), tools: new Map(), closed: false, ctx, sandbox: null, env, cwd: spec.cwd, model: spec.model, project: spec.project, owned: ownerOf(spec),
+      // Grant keys (lib/acp/permission.ts grantKey) the operator allowed for the rest of this session; the runner answers those itself.
+      grants: new Set(), loading: false, configOptions: null, modelState: null, init: null, place: spec.place, mcpConfigured: spec.mcpServers,
+    };
     try {
       if (spec.place === "openshell") {
         // One sandbox per project, reused: created by the first session and deleted when the last one closes.
@@ -468,7 +511,8 @@ export default function cursorAdapter(config = {}) {
         clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
         clientInfo: CLIENT,
       }, SETUP_TIMEOUT_MS);
-      if (spec.requireLoad && !init?.agentCapabilities?.loadSession) throw new Error("the Cursor CLI does not advertise loadSession; the session cannot resume");
+      session.init = init ?? {};
+      if (spec.requireLoad && !resumeMethod(session)) throw new Error("the Cursor CLI advertises neither session/resume nor loadSession; the session cannot resume");
       return { conn, session };
     } catch (error) {
       // The CLI may have died before initialize answered; closing the connection is what ends a sandbox run.
@@ -479,14 +523,38 @@ export default function cursorAdapter(config = {}) {
     }
   }
 
+  // session/resume when the agent advertises it (no replay), else session/load; null when it offers neither.
+  function resumeMethod(session) {
+    const caps = session.init?.agentCapabilities ?? {};
+    if (caps.sessionCapabilities?.resume != null) return "session/resume";
+    return caps.loadSession === true ? "session/load" : null;
+  }
+
+  // The mcpServers this session sends on every session/new, load and resume.
+  const mcpServersOf = (session) => sessionMcpServers({
+    place: session.place, project: session.project, env: session.env, configured: session.mcpConfigured, mcpCapabilities: session.init?.agentCapabilities?.mcpCapabilities,
+  });
+
+  // Keeps what a session/new, load, resume or set_config_option response says about config options and models.
+  function adoptConfig(session, response) {
+    if (Array.isArray(response?.configOptions)) session.configOptions = response.configOptions;
+    if (response?.models && typeof response.models === "object") session.modelState = response.models;
+    session.model ||= sessionModels({ configOptions: session.configOptions, models: session.modelState }).current;
+  }
+
   function handleRequest(session, conn, message) {
     if (message.method === "session/request_permission") return askPermission(session, conn, message);
     conn.replyError(message.id, -32601, `ai-collab does not serve ${message.method}`);
   }
 
   function handleNotify(session, method, params) {
-    if (method !== "session/update" || !session.run) return;
+    if (method !== "session/update") return;
+    // session/load replays the whole conversation as session/update before it answers. The runner already holds that
+    // history (durable log and bus), so the replay is dropped on purpose; the session is idle once load answers.
+    if (session.loading) return;
     const update = params.update ?? {};
+    if (update.sessionUpdate === "config_option_update") return adoptConfig(session, update);
+    if (!session.run) return;
     const run = session.run;
     switch (update.sessionUpdate) {
       case "agent_message_chunk":
@@ -521,28 +589,60 @@ export default function cursorAdapter(config = {}) {
     }
   }
 
+  // A question-shaped request (Cursor's ask_question fallback) becomes a question card; a tool the operator allowed
+  // for the session is answered here; anything else becomes an approval card.
   function askPermission(session, conn, message) {
-    const toolCall = message.params?.toolCall ?? {};
-    const options = message.params?.options ?? [];
-    const interruptId = randomUUID();
+    const request = message.params ?? {};
+    const toolCall = request.toolCall ?? {};
     const toolCallName = toolCall.title || toolCall.kind || "tool";
+    const question = permissionQuestion(request);
+    const key = grantKey(toolCall);
+    if (!question && session.grants.has(key)) {
+      const optionId = selectPermissionOptionId(request, "acceptForSession");
+      if (optionId) {
+        conn.reply(message.id, { outcome: { outcome: "selected", optionId } });
+        session.ctx.log(`cursor: allowed ${toolCallName} for this session (${key})`);
+        return;
+      }
+    }
+    const interruptId = randomUUID();
+    session.approvals.set(interruptId, { rpcId: message.id, conn, request, question, key });
+    if (question) {
+      session.ctx.emit({
+        type: EventType.CUSTOM, name: APPROVAL_REQUESTED,
+        value: { interruptId, reason: "question", toolCallId: toolCall.toolCallId, toolCallName: "AskQuestion", summary: question.question.question, questions: [question.question] },
+      });
+      return;
+    }
     const input = toolCall.rawInput === undefined ? "" : `: ${JSON.stringify(toolCall.rawInput).slice(0, 1000)}`;
-    session.approvals.set(interruptId, { rpcId: message.id, conn, options });
     session.ctx.emit({
       type: EventType.CUSTOM, name: APPROVAL_REQUESTED,
       value: { interruptId, reason: "tool_approval", toolCallId: toolCall.toolCallId, toolCallName, summary: `${toolCallName}${input}` },
     });
   }
 
+  // The option a decision picks and its resolve reason: a question's chosen label (else its skip), or allow once,
+  // allow for the session (scope "session", remembered in session.grants), or reject once.
+  function chosenOption(session, approval, decision) {
+    const allow = decision.behavior === "allow";
+    if (approval.question) {
+      const picked = allow ? answerOptionId(approval.question, decision.answers) : undefined;
+      if (picked) return { optionId: picked, reason: "answered" };
+      return { optionId: approval.question.skipOptionId ?? selectPermissionOptionId(approval.request, "decline"), reason: "denied" };
+    }
+    const always = allow && decision.scope === "session";
+    if (always) session.grants.add(approval.key);
+    return { optionId: selectPermissionOptionId(approval.request, always ? "acceptForSession" : allow ? "accept" : "decline"), reason: allow ? "allowed" : "denied" };
+  }
+
   function respond(session, interruptId, decision) {
     const approval = session.approvals.get(interruptId);
     if (!approval) return;
     session.approvals.delete(interruptId);
-    const allow = decision.behavior === "allow";
-    const option = approval.options.find((o) => o.kind === (allow ? "allow_once" : "reject_once"));
-    if (option) {
-      approval.conn.reply(approval.rpcId, { outcome: { outcome: "selected", optionId: option.optionId } });
-      session.ctx.emit({ type: EventType.CUSTOM, name: APPROVAL_RESOLVED, value: { interruptId, status: "resolved", reason: allow ? "allowed" : "denied" } });
+    const { optionId, reason } = chosenOption(session, approval, decision);
+    if (optionId) {
+      approval.conn.reply(approval.rpcId, { outcome: { outcome: "selected", optionId } });
+      session.ctx.emit({ type: EventType.CUSTOM, name: APPROVAL_RESOLVED, value: { interruptId, status: "resolved", reason } });
     } else {
       approval.conn.reply(approval.rpcId, { outcome: { outcome: "cancelled" } });
       session.ctx.emit({ type: EventType.CUSTOM, name: APPROVAL_RESOLVED, value: { interruptId, status: "cancelled", reason: "cancelled" } });
@@ -662,11 +762,26 @@ export default function cursorAdapter(config = {}) {
         cancelApprovals(session);
       },
       async respond(interruptId, decision) { respond(session, interruptId, decision); },
-      // UNVERIFIED: session/set_model is in cursor-agent 2026.11.22's ACP dispatcher; the params follow the ACP spec. Not called live.
+      // session/set_config_option on the model option the session advertised, else the unstable session/set_model (an agent
+      // without it answers -32601). cursor-agent 2026.11.22 implements both (its set_model calls set_config_option with configId "model"); not called live.
       async setModel(modelId) {
         if (conn.dead) throw conn.dead;
-        return conn.request("session/set_model", { sessionId: session.sessionId, modelId }, TOOL_TIMEOUT_MS);
+        if (session.run) throw new Error("the Cursor session must be idle to switch models");
+        const option = modelConfigOption(session.configOptions);
+        if (option) {
+          const values = flattenSelectChoices(option.options).map((c) => c.value);
+          // Cursor takes bracket overrides on a listed model, as `<model>[effort=high]` (`agent --help`, --model).
+          if (values.length && !values.includes(modelId) && !values.includes(modelId.replace(/\[[^\]]*\]$/, ""))) throw new Error(`the Cursor session offers no model ${modelId}`);
+          adoptConfig(session, await conn.request("session/set_config_option", { sessionId: session.sessionId, configId: option.id, value: modelId }, TOOL_TIMEOUT_MS));
+        } else {
+          await conn.request("session/set_model", { sessionId: session.sessionId, modelId }, TOOL_TIMEOUT_MS);
+        }
+        session.model = modelId;
       },
+      // The session's models as the agent listed them in its last session response.
+      models() { return sessionModels({ configOptions: session.configOptions, models: session.modelState }); },
+      // Configured MCP servers outlive a runner restart, so resume sends the same list.
+      resumeData() { return session.mcpConfigured === undefined ? {} : { mcpServers: session.mcpConfigured }; },
       // Copies the sandbox's commits to the host worktree for land finish; uncommitted work is refused so the two never diverge.
       async syncBack() {
         if (!session.sandbox || !session.cwd) throw new Error("this session has no sandbox to copy back");
@@ -703,9 +818,10 @@ export default function cursorAdapter(config = {}) {
     async open(options, ctx) {
       const attached = await attach({ ...options, requireLoad: false }, ctx);
       try {
-        const created = await attached.conn.request("session/new", { cwd: attached.session.remoteCwd ?? options.cwd, mcpServers: [] }, SETUP_TIMEOUT_MS);
-        attached.session.sessionId = created.sessionId;
-        attached.session.model ||= created.models?.currentModelId;
+        const { session } = attached;
+        const created = await attached.conn.request("session/new", { cwd: session.remoteCwd ?? options.cwd, mcpServers: mcpServersOf(session) }, SETUP_TIMEOUT_MS);
+        session.sessionId = created.sessionId;
+        adoptConfig(session, created);
         return makeHandle(attached);
       } catch (error) {
         attached.conn.kill();
@@ -721,10 +837,18 @@ export default function cursorAdapter(config = {}) {
       const attached = await attach({
         project: record.project, cwd: record.cwd, place: record.place, permission: settings.settings,
         model: record.model, patternRun: record.patternRun, address: record.address, env, requireLoad: true, managed: record.managed === true,
+        ...(record.resume?.mcpServers !== undefined ? { mcpServers: record.resume.mcpServers } : {}),
       }, ctx);
       try {
-        attached.session.sessionId = record.nativeId;
-        await attached.conn.request("session/load", { sessionId: record.nativeId, cwd: attached.session.remoteCwd ?? record.cwd, mcpServers: [] }, TOOL_TIMEOUT_MS);
+        const { session } = attached;
+        session.sessionId = record.nativeId;
+        const method = resumeMethod(session);
+        session.loading = method === "session/load";
+        try {
+          adoptConfig(session, await attached.conn.request(method, { sessionId: record.nativeId, cwd: session.remoteCwd ?? record.cwd, mcpServers: mcpServersOf(session) }, TOOL_TIMEOUT_MS));
+        } finally {
+          session.loading = false;
+        }
         return makeHandle(attached);
       } catch (error) {
         attached.conn.kill();

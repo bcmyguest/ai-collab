@@ -451,7 +451,11 @@ Argv: `<cursor cli> [--force] [--model <m>] acp`: `--force` for full-access and 
 | AG-UI events pass `eventProblem` | supported | same test |
 | Approval card, allow and deny map to `allow_once` and `reject_once` | supported (fake ACP) | same test |
 | Interrupt ends the run as `cancelled`, cancels open approvals | supported (fake ACP) | same test |
-| Resume by `session/load` | partial: needs `loadSession`; real replay UNVERIFIED | same test (fake) |
+| Resume | `session/resume` when `sessionCapabilities.resume` is advertised, else `session/load` (needs `loadSession`). The load replay is dropped: the runner already holds the history. Real replay UNVERIFIED | `test/cursor-acp-harden.test.mjs` (fake) |
+| MCP servers in `session/new` and resume | supported (fake ACP): the bus server (`node scripts/ai-collab-mcp.mjs cursor`, secrets stripped from its env; skipped in OpenShell) plus the configured ones in the ACP shape; http and sse only when `mcpCapabilities` advertises them. Duplication with the Cursor plugin's own server UNVERIFIED | same test |
+| Models | supported (fake ACP): `configOptions` and `models` read from `session/new`; `setModel` calls `session/set_config_option` on the model option, else `session/set_model`. The runner's `setModel` still accepts only Claude sessions | same test |
+| Questions | supported (fake ACP): a permission request with Cursor's `__ask_question_skip__` option, or several `allow_once` options and no `allow_always`, becomes a single-select question card; the answer picks its option, deny picks skip. `cursor/ask_question` itself is not served, so multi-select questions are lost | same test |
+| Allow for this session | supported (fake ACP): decision `{behavior:"allow", scope:"session"}` (phone `reply <id> always`, UI "Always for this session") answers `allow_always` if offered, else `allow_once`, and the adapter answers later requests with the same tool kind itself | same test |
 | Tool calls and results | supported (fake ACP); field names follow the ACP spec | same test |
 | `setPermissionMode` | not built (409) | |
 | `steer`, `contextUsage`, `listCommands` | not built; `listCommands` returns `[]` | |
@@ -459,7 +463,7 @@ Argv: `<cursor cli> [--force] [--model <m>] acp`: `--force` for full-access and 
 | `available` | supported | `agent --version` prints `2026.11.22-e9042b2` |
 | Runs inside a real OpenShell sandbox: staged CLI, auth, worktree upload, edits back, sandbox deleted on close | supported, but **no prompt completed** (see below) | `test/cursor-sandbox.test.mjs` (fake); live 2026-11-22: `initialize` succeeded (`isAuthenticated: true` in the CLI log), `session/new` failed |
 | Real ACP schema, `protocolVersion: 1`, method names | **initialize verified live**: `protocolVersion: 1`, `loadSession`, `authMethods: [cursor_login]`, `sessionCapabilities.list` | live `agent acp` in a sandbox, 2026-11-22 |
-| `--force` applied by ACP mode | UNVERIFIED: the flag parses after `acp` (see below), not whether ACP honours it | |
+| `--force` applied by ACP mode | UNVERIFIED: the flag now precedes `acp` as a top-level option; whether ACP honours it is unknown | |
 | `AI_COLLAB_PARENT` in the agent's shell | not built: the native session id is known only after `session/new`, after the child starts | |
 | Hooks stand down for the cursor child | not verified: `AI_COLLAB_OWNED=cursor` is set on the child, in a sandbox through `--env` |
 
