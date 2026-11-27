@@ -231,7 +231,7 @@ export async function openPostgresBusStore({ url, filesDir, retentionMs = DEFAUL
       }
       return { events: gone, files: stale.length };
     },
-    /** True when the events table holds no row; the bus start refuses an empty store beside a leftover bus.db. */
+    /** True when the events table holds no row. */
     async isEmpty(): Promise<boolean> {
       return (await pool.query<{ empty: boolean }>(`SELECT NOT EXISTS (SELECT 1 FROM ${schema}.events) AS empty`)).rows[0].empty;
     },
