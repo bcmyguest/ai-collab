@@ -55,7 +55,7 @@ After a deploy, an open page shows an "Update available" toast when it reconnect
 | State | Rule (`web/lib/session-state.js`) |
 |---|---|
 | Waiting on you | an open approval or choice (not expired), or an unanswered important question |
-| AFK hold | online, AFK mode not `off`, the latest row is `turn ended`, and the latest status is `hold`, which the Stop hook publishes only when it waits for the operator (after `wait_for_operator` or an important question). A `start` status ends it when the hold continues with a message or an answer, or at the session's next prompt, tool call, subagent start or compaction |
+| AFK hold | online, AFK mode not `off`, the latest row is `turn ended`, and the latest status is `hold`, which the Stop hook publishes only when it waits for the operator (after `wait_for_operator` or an important question). A `start` status ends it when the hold continues with a message or an answer, or at the session's next prompt (Cursor `beforeSubmitPrompt` included), tool call other than the ai-collab `wait_for_answer` and `wait_for_operator`, subagent start or compaction |
 | Working | an open tool call or running subagent under 15 minutes old, or any activity in the last 60 seconds |
 | Idle / Offline | the registry PID check |
 | Dead | offline, and the card (or a session nested under it) was last active a day ago or more: kept, but behind one tap |

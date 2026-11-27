@@ -64,7 +64,9 @@ const EVENTS = new Map([
 // Events that refresh the recorded session name; Codex names a thread after its first prompt.
 const NAMED_EVENTS = new Set(["SessionStart", "UserPromptSubmit", "Stop"]);
 // Events that show the session working: the first one after a published "hold" publishes "start".
-const WORK_EVENTS = new Set(["userpromptsubmit", "pretooluse", "posttooluse", "posttoolusefailure", "subagentstart", "precompact"]);
+const WORK_EVENTS = new Set(["userpromptsubmit", "beforesubmitprompt", "pretooluse", "posttooluse", "posttoolusefailure", "subagentstart", "precompact"]);
+// ai-collab tools that wait for the operator inside a hold: calling them keeps the hold status.
+const HOLD_TOOLS = new Set(["wait_for_answer", "wait_for_operator"]);
 // Stop continuations that put the session back to work after a hold.
 const WORK_AFTER_HOLD = new Set(["messages", "answer"]);
 // Cursor permission hooks fall through to Cursor's own prompt with "ask".
@@ -80,6 +82,13 @@ function stampContext(cfg, events) {
     if (event.compaction?.phase === "started") return { ...event, compaction: compactionFields({ ...event.compaction, tokensBefore, filesDropped }) };
     return event;
   });
+}
+
+// An ai-collab wait tool, by its MCP name (mcp__ai-collab__wait_for_answer, mcp__plugin_ai-collab_ai-collab__…) or bare name.
+function holdTool(name) {
+  if (typeof name !== "string") return false;
+  const parts = name.split("__");
+  return HOLD_TOOLS.has(parts.at(-1)) && (parts.length === 1 || parts.slice(0, -1).some((p) => p.endsWith("ai-collab")));
 }
 
 function hostArg(argv) {
@@ -257,7 +266,7 @@ async function main() {
     return emit(subagent ? {} : await decideQuestion(cfg, { host, input: msg, signal: ctrl.signal }));
   }
   // A turn start or a tool call after a hold: the session works again, so the hold status ends.
-  const resumed = !subagent && WORK_EVENTS.has(key) && takeHeld(cfg) ? publishStatus(cfg, { event: "start", harness: host }).catch(() => {}) : Promise.resolve();
+  const resumed = !subagent && WORK_EVENTS.has(key) && !holdTool(msg.tool_name) && takeHeld(cfg) ?publishStatus(cfg, { event: "start", harness: host }).catch(() => {}) : Promise.resolve();
   // Claude's InstructionsLoaded: an instruction file entered the context; recorded for the session's context view.
   if (key === "instructionsloaded" && !subagent) await recordInstructions(cfg, msg).catch(() => {});
   if (event || events.length) {

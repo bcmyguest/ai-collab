@@ -142,6 +142,30 @@ test("the hold status gives way to start on the session's next tool call", { tim
   assert.equal(await lastStatus(cfg), "hold");
 });
 
+test("the hold status stays while the session waits on the ai-collab wait tools", { timeout: 30000 }, async (t) => {
+  const { env, cfg } = await setup(t);
+  const { publishStatus } = await import("../lib/messaging.ts");
+  noteHeld(cfg);
+  await publishStatus(cfg, { event: "hold", harness: "claude" });
+  for (const tool of ["mcp__plugin_ai-collab_ai-collab__wait_for_answer", "mcp__ai-collab__wait_for_operator"]) {
+    for (const event of ["PreToolUse", "PostToolUse"]) {
+      await runHook(env, ["--activity", "--host", "claude"], { hook_event_name: event, session_id: SESSION_ID, cwd: "/tmp", tool_name: tool, tool_input: { id: "q1" } });
+      assert.equal(await lastStatus(cfg), "hold", `${event} ${tool}`);
+    }
+  }
+  await runHook(env, ["--activity", "--host", "claude"], { hook_event_name: "PreToolUse", session_id: SESSION_ID, cwd: "/tmp", tool_name: "Bash", tool_input: { command: "ls" } });
+  assert.equal(await lastStatus(cfg), "start");
+});
+
+test("a Cursor prompt after a hold publishes start", { timeout: 20000 }, async (t) => {
+  const { env, cfg } = await setup(t);
+  const { publishStatus } = await import("../lib/messaging.ts");
+  noteHeld(cfg);
+  await publishStatus(cfg, { event: "hold", harness: "cursor" });
+  await runHook(env, ["--activity", "--host", "cursor"], { hook_event_name: "beforeSubmitPrompt", conversation_id: SESSION_ID, workspace_roots: ["/tmp"], prompt: "next step" });
+  assert.equal(await lastStatus(cfg), "start");
+});
+
 test("the waiter yields while any of two Stop hooks runs, and wakes once both have ended", { timeout: 20000 }, async (t) => {
   const { cfg, operator } = await setup(t);
   const other = liveProcess(t);
