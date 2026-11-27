@@ -42,7 +42,7 @@ import { clearFields } from "../lib/session-events.mjs";
 import { sendReceipts, settleReceipts } from "../lib/receipts.mjs";
 import { closeTerminalCards, decideApproval, decideQuestion } from "../lib/approvals.mjs";
 import { classifyLimit } from "../lib/limits.ts";
-import { alertLimit } from "../lib/limit-alert.mjs";
+import { alertLimit } from "../lib/limit-alert.ts";
 import { hookTrace } from "../lib/cursor-trace.ts";
 
 const HOSTS = new Set(["claude", "codex", "cursor", "opencode"]);
@@ -223,7 +223,7 @@ async function main() {
   const dropped = key === "postcompact" ? dropOnDemandFiles(cfg).catch(() => false) : Promise.resolve(false);
   // A view-only approval card (AFK off) closes once a later event shows the terminal prompt resolved.
   const closing = closeTerminalCards(cfg, { host, key, input: msg }).catch(() => []);
-  // Claude's StopFailure with error rate_limit: a limit card for this session, one per window (lib/limit-alert.mjs).
+  // Claude's StopFailure with error rate_limit: a limit card for this session, one per window (lib/limit-alert.ts).
   const limit = key === "stopfailure" && host === "claude" && !(typeof msg.agent_id === "string" && msg.agent_id) ? classifyLimit("claude", { kind: "stop_failure", ...msg }) : null;
   const limited = limit ? alertLimit(cfg, { harness: "claude", limit, auto: true }).catch(() => ({})) : Promise.resolve({});
   const event = EVENTS.get(key);
