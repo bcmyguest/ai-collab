@@ -434,8 +434,8 @@ export function Console({ account }) {
               <h1 className="min-w-0 truncate text-base font-semibold" title={selected.session}>
                 {selected.session ? <AgentName address={selected.session} name={sessionName}/> : title}
               </h1>
-              {agent && <StateChip state={sessionState(agent, now)}/>}
-              {agent && <RunningCount runs={agent.subagents} now={now}/>}
+              {agent && <span className="shrink-0 max-md:hidden"><StateChip state={sessionState(agent, now)}/></span>}
+              {agent && <span className="shrink-0 max-md:hidden"><RunningCount runs={agent.subagents} now={now}/></span>}
             </div>
             <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground">
               <span className="truncate">{currentThread?.title && currentThread.title !== sessionName ? currentThread.title : project}</span>
