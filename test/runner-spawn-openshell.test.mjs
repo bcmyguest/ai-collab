@@ -57,6 +57,14 @@ test("a spawned Cursor child runs in OpenShell with full access, whatever place 
   assert.deepEqual(listOwned(cfg).filter((r) => r.harness === "cursor").map((r) => [r.place, r.permissionMode]), [["openshell", "full-access"], ["openshell", "full-access"]]);
 });
 
+test("without OpenShell a spawned Cursor child is refused with an error naming it, not started on the host", async (t) => {
+  const { cursor, spawn } = await lab(t, [], { openshell: path.join(os.tmpdir(), "no-such-openshell-bin") });
+  for (let i = 0; i < 5; i++) {
+    await assert.rejects(spawn(`no sandbox ${i}`), (error) => error.status === 409 && /OpenShell/.test(error.message) && /not installed/.test(error.message));
+  }
+  assert.equal(cursor.calls.filter((c) => c.op === "open").length, 0);
+});
+
 test("a spawned Cursor child at the sandbox cap is refused with the cap named and holds no child slot", async (t) => {
   const { cursor, spawn, list } = await lab(t, SIX);
   for (let i = 0; i < 5; i++) {
