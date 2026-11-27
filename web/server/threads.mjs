@@ -3,7 +3,7 @@ import { isAbsolute, sep } from "node:path";
 import { listProjects } from "../../lib/config.mjs";
 import { listOwned, listSessions } from "../../lib/sessions.mjs";
 import { threadClient } from "../../lib/thread-routes.ts";
-import { THREAD_ID, threadSessionsOf } from "../../lib/threads.mjs";
+import { THREAD_ID, threadSessionsOf } from "../../lib/threads.ts";
 
 const SYNC_DELAY_MS = 1000;
 const OPS = ["list", "get", "create", "rename", "status", "pin", "attach-pr", "detach-pr", "move-session"];

@@ -3,7 +3,7 @@ import * as S from "../sandbox.ts";
 import { isProjectPaused, PROJECT_PAUSED } from "../project-pause.ts";
 import { randomUUID } from "node:crypto";
 import type { ChildProcess } from "node:child_process";
-import type { openDurable } from "../durable.mjs";
+import type { openDurable } from "../durable.ts";
 import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { autoDefaults } from "../config.mjs";
@@ -141,7 +141,7 @@ export async function runBuilder(id: string, { env, out, err }: { env: Env; cfg?
     stopping = true;
     child?.kill("SIGTERM");
   };
-  const { openDurable } = await import("../durable.mjs");
+  const { openDurable } = await import("../durable.ts");
   const { acquireLock } = await import("../../runner/lock.ts");
   const release = acquireLock(join(paths.dir, "workflow.lock"));
   let durable: ReturnType<typeof openDurable> | undefined;

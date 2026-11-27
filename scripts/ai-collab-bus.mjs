@@ -11,7 +11,7 @@ import { DEFAULT_RETENTION_MS, openBus, resolveBusStoreKind } from "../lib/bus.t
 import { openPostgresBusStore } from "../lib/bus-postgres.ts";
 import { pgPasswordFile, pgReachable, pgUrl } from "../lib/postgres.ts";
 import { listOwned, listSessions } from "../lib/sessions.mjs";
-import { threadSessionsOf } from "../lib/threads.mjs";
+import { threadSessionsOf } from "../lib/threads.ts";
 
 function busToken(env) {
   if (env.AI_COLLAB_BUS_TOKEN !== undefined) return env.AI_COLLAB_BUS_TOKEN.trim();

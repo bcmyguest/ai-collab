@@ -1,6 +1,6 @@
 /**
  * Stop-hook policy: deliver waiting messages, wait in AFK mode when the agent asked to, hold an important question open.
- * The agent asks with ask_question or wait_for_operator (lib/questions.ts requestWait); a plain Stop never waits.
+ * The agent asks with ask_question or wait_for_operator (lib/questions.mjs requestWait); a plain Stop never waits.
  * One call waits at most STOP_SLICE_MAX_S, below every registered Stop hook timeout (660 s).
  * Loop guard: at most cfg.stopCap consecutive message continuations, then the agent stops.
  * The chain resets when a Stop is not a continuation (stop_hook_active false, or no recent block).
@@ -12,13 +12,13 @@
  */
 import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
-import { claimInbox, markDelivered } from "./messaging.ts";
+import { claimInbox, markDelivered, type Cfg, type InboxMessage, type Step } from "./messaging.ts";
 import { sendReceipts } from "./receipts.ts";
 import { readInbox, streamWaiter, waitUntil } from "./messaging.ts";
 import { cleanBody, formatInbox } from "./format.ts";
 import { storedMode } from "./mode.ts";
 import { watchQueue } from "./transcript.ts";
-import { clearWait, closeQuestion, findAnswers, openQuestions, waitRequestedAt } from "./questions.ts";
+import { clearWait, closeQuestion, findAnswers, openQuestions, waitRequestedAt, type Answer, type OpenQuestion } from "./questions.ts";
 import { statePath, withLock, writeState } from "./state.ts";
 import { isRunning, processStart } from "./process.ts";
 
@@ -26,39 +26,49 @@ export const STOP_SLICE_MAX_S = 600;
 const CHAIN_FRESH_MS = 3_600_000;
 const QUEUE_CHECK_MS = 1000;
 
-function stopFile(cfg) {
+// oxlint-disable-next-line typescript/no-explicit-any -- state files and hook input are JSON read back field by field
+type Json = any;
+type StopState = { chain: number; lastBlockAt: number; waitStartedAt: number };
+export type StopDecision = { action: "stop" } | { action: "continue"; why: string; text: string };
+export type StopOptions = {
+  host?: string; input?: Json; now?: () => number; wait?: Step; claim?: typeof claimInbox;
+  answers?: (cfg: Cfg, questions: OpenQuestion[]) => Promise<Answer[]>; sliceMaxS?: number;
+  queued?: (() => boolean) | null; onHold?: () => void | Promise<void>; marked?: boolean;
+};
+
+function stopFile(cfg: Cfg): string {
   return statePath(cfg).replace(/\.json$/, ".stop.json");
 }
 
 // One marker per Stop hook process: <session>.stop-running.<pid>.json.
-function runningPrefix(cfg) {
+function runningPrefix(cfg: Cfg): string {
   return path.basename(statePath(cfg)).replace(/\.json$/, ".stop-running.");
 }
 
-function runningFile(cfg, pid) {
+function runningFile(cfg: Cfg, pid: number): string {
   return path.join(path.dirname(statePath(cfg)), `${runningPrefix(cfg)}${pid}.json`);
 }
 
-function heldFile(cfg) {
+function heldFile(cfg: Cfg): string {
   return statePath(cfg).replace(/\.json$/, ".held.json");
 }
 
-function readJson(file) {
+function readJson(file: string): Json {
   try { return JSON.parse(readFileSync(file, "utf8")); } catch { return null; }
 }
 
 /** Marks a process as one of the session's running Stop hooks; returns the function that removes the mark. */
-export function markStopRunning(cfg, pid = process.pid) {
+export function markStopRunning(cfg: Cfg, pid: number = process.pid): () => void {
   const file = runningFile(cfg, pid);
   try { writeState(file, { pid, start: processStart(pid) || "" }); } catch { return () => {}; }
   return () => rmSync(file, { force: true });
 }
 
 /** True while any live process runs this session's Stop hook; a marker of a dead or reused pid is removed. */
-export function stopHookRunning(cfg) {
+export function stopHookRunning(cfg: Cfg): boolean {
   const dir = path.dirname(statePath(cfg));
   const prefix = runningPrefix(cfg);
-  let names;
+  let names: string[];
   try { names = readdirSync(dir); } catch { return false; }
   let running = false;
   for (const name of names) {
@@ -73,7 +83,7 @@ export function stopHookRunning(cfg) {
   return running;
 }
 
-function handoffFile(cfg) {
+function handoffFile(cfg: Cfg): string {
   return statePath(cfg).replace(/\.json$/, ".handoff.json");
 }
 
@@ -81,23 +91,23 @@ function handoffFile(cfg) {
  * Hands messages to the session's running hold (or, if it ends first, the next waiter): the waiter's claims, and pushes
  * that found a hold (the pusher marks them delivered, so the inbox does not show them again).
  */
-export async function handOff(cfg, messages) {
+export async function handOff(cfg: Cfg, messages: InboxMessage[]): Promise<void> {
   const file = handoffFile(cfg);
   const r = await withLock(file, async () => {
     const held = readJson(file)?.messages;
-    const kept = Array.isArray(held) ? held : [];
+    const kept: InboxMessage[] = Array.isArray(held) ? held : [];
     writeState(file, { messages: [...kept, ...messages.filter((m) => !kept.some((k) => k.id === m.id))] });
   });
   if (!r.locked) throw new Error("hand-off file is locked");
 }
 
 /** Takes the handed-over messages; [] when there are none. */
-export async function takeHandoff(cfg) {
+export async function takeHandoff(cfg: Cfg): Promise<InboxMessage[]> {
   const file = handoffFile(cfg);
   if (!handoffWaiting(cfg)) return [];
   const r = await withLock(file, async () => {
     const stored = readJson(file)?.messages;
-    const messages = Array.isArray(stored) ? stored : [];
+    const messages: InboxMessage[] = Array.isArray(stored) ? stored : [];
     rmSync(file, { force: true });
     // Marked under the hand-off lock, so no later inbox read shows a handed message again.
     if (messages.length) await markDelivered(cfg, messages.map((m) => m.id)).catch(() => {});
@@ -107,29 +117,29 @@ export async function takeHandoff(cfg) {
 }
 
 /** Whether the session's hand-off file holds the message id. */
-export function handedOff(cfg, id) {
+export function handedOff(cfg: Cfg, id: string): boolean {
   const messages = readJson(handoffFile(cfg))?.messages;
-  return Array.isArray(messages) && messages.some((m) => m?.id === id);
+  return Array.isArray(messages) && messages.some((m: Json) => m?.id === id);
 }
 
-export function handoffWaiting(cfg) {
+export function handoffWaiting(cfg: Cfg): boolean {
   return existsSync(handoffFile(cfg));
 }
 
 /** Records that the session's status was published as "hold". */
-export function noteHeld(cfg) {
+export function noteHeld(cfg: Cfg): void {
   try { writeState(heldFile(cfg), { at: Date.now() }); } catch { /* the status stays as published */ }
 }
 
 /** True once after noteHeld: the caller then publishes the status that ends the hold. */
-export function takeHeld(cfg) {
+export function takeHeld(cfg: Cfg): boolean {
   const file = heldFile(cfg);
   if (!readJson(file)) return false;
   rmSync(file, { force: true });
   return true;
 }
 
-function readStop(cfg) {
+function readStop(cfg: Cfg): StopState {
   try {
     const s = JSON.parse(readFileSync(stopFile(cfg), "utf8"));
     return { chain: Number(s.chain) || 0, lastBlockAt: Number(s.lastBlockAt) || 0, waitStartedAt: Number(s.waitStartedAt) || 0 };
@@ -138,41 +148,41 @@ function readStop(cfg) {
   }
 }
 
-async function saveStop(cfg, state) {
+async function saveStop(cfg: Cfg, state: StopState): Promise<void> {
   const file = stopFile(cfg);
-  await withLock(file, () => writeState(file, state)).catch(() => {});
+  await withLock(file, async () => writeState(file, state)).catch(() => {});
 }
 
-function messagesText(cfg, messages) {
+function messagesText(cfg: Cfg, messages: InboxMessage[]): string {
   return [
     formatInbox(messages, { session: cfg.session, peer: cfg.peer }),
     "[ai-collab] These messages arrived as you were stopping. Answer the operator as instructed above, then end your turn.",
   ].filter(Boolean).join("\n");
 }
 
-function answersText(answers) {
+function answersText(answers: Answer[]): string {
   return answers.map((a) => a.skipped ? `[ai-collab] The operator skipped your question id=${a.id}.`
     : `[ai-collab] The operator answered your question id=${a.id}: `
     + `answer=${JSON.stringify(cleanBody(a.answer))} (from the shared channel broadcast; the sender is unverified). Continue with this answer.`).join("\n");
 }
 
-function holdText(cfg, questions, mode) {
+function holdText(cfg: Cfg, questions: OpenQuestion[], mode: string): string {
   const ids = questions.map((q) => q.id).join(", ");
   return `[ai-collab] AFK mode is ${mode.toUpperCase()} and your important question (id ${ids}) is still unanswered. `
     + `Call the ai-collab wait_for_answer tool once with id=${JSON.stringify(questions[0].id)} and wait_seconds=45. `
     + "If it is still pending, end your turn with no other action: the Stop hook keeps waiting. Do not ask the question again.";
 }
 
-function afkWaitText(remainingMs) {
+function afkWaitText(remainingMs: number): string {
   return `[ai-collab] AFK mode is ON and no operator message has arrived. End your turn now with no other action; `
     + `the Stop hook keeps waiting up to ${Math.ceil(remainingMs / 60000)} more min.`;
 }
 
 // Waits like wait(ms), but resolves check()'s outcome within about a second of check() returning one.
-async function waitOrWatch(wait, ms, check) {
+async function waitOrWatch<T>(wait: Step, ms: number, check: () => T | null): Promise<T | Awaited<ReturnType<Step>>> {
   const ctrl = new AbortController();
-  let timer;
-  const watch = new Promise((resolve) => {
+  let timer: NodeJS.Timeout | undefined;
+  const watch = new Promise<T>((resolve) => {
     const tick = () => {
       const outcome = check();
       if (outcome) resolve(outcome);
@@ -196,7 +206,7 @@ async function waitOrWatch(wait, ms, check) {
  * onHold() runs once before the hook starts waiting for the operator (an AFK wait or an important question).
  * marked: the caller already wrote this process's Stop marker, so decideStop leaves it in place.
  */
-export async function decideStop(cfg, options = {}) {
+export async function decideStop(cfg: Cfg, options: StopOptions = {}): Promise<StopDecision> {
   if (!cfg.enabled) return { action: "stop" };
   // A caller that marked the hook itself (scripts/ai-collab-hook.mjs main) owns that marker until it exits.
   const release = options.marked ? () => {} : markStopRunning(cfg);
@@ -207,16 +217,16 @@ export async function decideStop(cfg, options = {}) {
   }
 }
 
-async function decide(cfg, {
+async function decide(cfg: Cfg, {
   host, input = {}, now = Date.now, wait, claim = claimInbox, answers = findAnswers,
-  sliceMaxS = STOP_SLICE_MAX_S, queued = watchQueue(host, input), onHold = () => {},
-} = {}) {
+  sliceMaxS = STOP_SLICE_MAX_S, queued = watchQueue(host as string, input), onHold = () => {},
+}: StopOptions = {}): Promise<StopDecision> {
   if (!cfg.enabled) return { action: "stop" };
   const st = readStop(cfg);
   const stop = async () => {
     await clearWait(cfg);
     await saveStop(cfg, { chain: 0, lastBlockAt: 0, waitStartedAt: 0 });
-    return { action: "stop" };
+    return { action: "stop" } as StopDecision;
   };
   if (host === "cursor" && input.status !== undefined && input.status !== "completed") return stop();
 
@@ -225,7 +235,7 @@ async function decide(cfg, {
   if (!continued) Object.assign(st, { chain: 0, waitStartedAt: 0 });
   if (st.chain >= cfg.stopCap) return stop();
 
-  const proceed = async (why, text) => {
+  const proceed = async (why: string, text: string): Promise<StopDecision> => {
     if (why === "messages") Object.assign(st, { chain: st.chain + 1, waitStartedAt: 0 });
     if (why === "answer") st.waitStartedAt = 0;
     if (why === "messages") await clearWait(cfg);
@@ -235,8 +245,8 @@ async function decide(cfg, {
   };
   const checkMessages = async () => {
     // Handed messages (lib/waiter.ts claims, pushes that found this hold) come first.
-    const handed = await takeHandoff(cfg).catch(() => []);
-    const read = await readInbox(cfg, { limit: 4, strict: false, settle: false, claim }).catch(() => []);
+    const handed = await takeHandoff(cfg).catch((): InboxMessage[] => []);
+    const read = await readInbox(cfg, { limit: 4, strict: false, settle: false, claim }).catch((): InboxMessage[] => []);
     const messages = [...handed, ...read.filter((m) => !handed.some((h) => h.id === m.id))];
     return messages.length ? proceed("messages", messagesText(cfg, messages)) : null;
   };
@@ -251,10 +261,10 @@ async function decide(cfg, {
   const afkOn = mode === "on" && waitRequestedAt(cfg) > 0;
   const checkAnswers = async () => {
     if (!asked.length) return null;
-    const found = await answers(cfg, asked).catch(() => []);
+    const found = await answers(cfg, asked).catch((): Answer[] => []);
     if (!found.length) return null;
     for (const a of found) await closeQuestion(cfg, a.id).catch(() => {});
-    sendReceipts(cfg, found.filter((a) => !a.skipped).map((a) => a.messageId));
+    sendReceipts(cfg, found.flatMap((a) => (a.skipped ? [] : [a.messageId])));
     return proceed("answer", answersText(found));
   };
 
@@ -270,7 +280,7 @@ async function decide(cfg, {
   // The operator queued a prompt here (terminal or Remote Control): no wait or hold may delay it.
   // A hand-off from the waiter brings no bus event, so the wait also watches for it.
   const watch = () => (queued?.() ? "queued" : handoffWaiting(cfg) ? "event" : null);
-  const step = async (ms) => watch() ?? waitOrWatch(waitFor, ms, watch);
+  const step: Step = async (ms) => watch() ?? waitOrWatch(waitFor, ms, watch);
   const r = await waitUntil({
     deadline: end,
     now,

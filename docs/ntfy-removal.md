@@ -28,7 +28,7 @@ The wire stays ntfy-compatible on purpose: `defaults.json` can still point `url`
 The research pass (2026-11-25) compared DBOS Transact TS, Temporal, Restate, Inngest, and Hatchet as the
 "durable pod runs" engine, and NATS, Redis Streams, and Matrix as the bus:
 
-- **DBOS Transact TS** (MIT) is the closest fit to `lib/durable.mjs`, but the TypeScript SDK is Postgres-only;
+- **DBOS Transact TS** (MIT) is the closest fit to `lib/durable.ts`, but the TypeScript SDK is Postgres-only;
   adopting it means running a database to replace a 370-line tested module that already provides stable ids,
   checkpointed steps, recovery, and dedup'd messages.
 - **Temporal** and **Hatchet** need Postgres plus their own server processes: two stateful services for one user.
@@ -41,8 +41,8 @@ The research pass (2026-11-25) compared DBOS Transact TS, Temporal, Restate, Inn
 - **Matrix** (synapse) is heavy machinery (Python + Postgres + E2EE) for a loopback system.
 
 So the product boundary moved instead of growing: one small bus service (this file) plus the existing
-`lib/durable.mjs` core, with systemd supervising both. The pre-approved escape hatch stays in
-`docs/orchestration-migration-spike.md`: if `lib/durable.mjs` ever outgrows itself, the pilot target is
+`lib/durable.ts` core, with systemd supervising both. The pre-approved escape hatch stays in
+`docs/orchestration-migration-spike.md`: if `lib/durable.ts` ever outgrows itself, the pilot target is
 DBOS Transact TS on a Postgres container, with the spike's tick-idempotency kill tests as the gate.
 
 ## Migration for an existing install

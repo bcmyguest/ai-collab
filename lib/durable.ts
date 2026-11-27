@@ -4,6 +4,47 @@ import { DatabaseSync } from "node:sqlite";
 import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
+// oxlint-disable-next-line typescript/no-explicit-any -- database rows and workflow payloads are untyped JSON
+type Json = any;
+
+interface Schedule {
+  name: string;
+  everyMs: number;
+  firstStep: string | null;
+  timer: NodeJS.Timeout | null;
+}
+
+interface Running {
+  promise: Promise<Json | undefined>;
+  ctrl: AbortController;
+  name: string;
+}
+
+interface StepOptions {
+  onCut?: () => Json | Promise<Json>;
+}
+
+interface RecvOptions {
+  all?: boolean;
+  name?: string;
+  timeoutSeconds?: number | null;
+}
+
+interface WorkflowContext {
+  id: string;
+  input: Json;
+  signal: AbortSignal;
+  readonly replaying: boolean;
+  step(name: string, fn: () => Json | Promise<Json>, options?: StepOptions): Promise<Json>;
+  recv(topic: string, options?: RecvOptions): Promise<Json>;
+  pending(topic: string): number;
+  pause?(ms: number): Promise<void>;
+  sleep?(ms: number): Promise<void>;
+}
+
+type WorkflowFn = (ctx: WorkflowContext, input: Json) => Json | Promise<Json>;
+type ScheduledFn = (scheduledTime: Date, actualTime: Date, wf: WorkflowContext) => Json | Promise<Json>;
+
 export const WORKFLOW_STATUSES = ["PENDING", "SUCCESS", "ERROR", "CANCELLED", "SKIPPED"];
 const MAX_TIMER_MS = 2 ** 31 - 1;
 // A missed tick this close to the next boundary waits for that boundary.
@@ -20,11 +61,11 @@ CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, workf
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 `;
 
-const json = (value) => JSON.stringify(value === undefined ? null : value);
-const parse = (text) => (text === null || text === undefined ? undefined : JSON.parse(text));
+const json = (value: unknown) => JSON.stringify(value === undefined ? null : value);
+const parse = (text: string | null | undefined): Json => (text === null || text === undefined ? undefined : JSON.parse(text));
 
 // Resolves after ms, or rejects with the signal's reason when it aborts first. Not checkpointed.
-function pauseFor(ms, signal) {
+function pauseFor(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) return reject(signal.reason);
     const timer = setTimeout(() => {
@@ -42,7 +83,7 @@ function pauseFor(ms, signal) {
 export class NonDeterminismError extends Error {}
 
 /** Opens (or creates) the log at file; ":memory:" serves tests. */
-export function openDurable(file, { now = Date.now } = {}) {
+export function openDurable(file: string, { now = Date.now }: { now?: () => number } = {}) {
   if (file !== ":memory:") mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(file);
   if (file !== ":memory:") chmodSync(file, 0o600);
@@ -70,14 +111,14 @@ export function openDurable(file, { now = Date.now } = {}) {
     kvGet: db.prepare("SELECT value FROM kv WHERE key = ?"),
     kvSet: db.prepare("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"),
   };
-  const registry = new Map();
-  const running = new Map();
-  const waiters = new Map();
-  const schedules = new Map();
+  const registry = new Map<string, WorkflowFn>();
+  const running = new Map<string, Running>();
+  const waiters = new Map<string, (() => void)[]>();
+  const schedules = new Map<string, Schedule>();
   const closing = new AbortController();
   let closed = false;
 
-  function tx(fn) {
+  function tx<T>(fn: () => T): T {
     db.exec("BEGIN IMMEDIATE");
     try {
       const value = fn();
@@ -89,12 +130,12 @@ export function openDurable(file, { now = Date.now } = {}) {
     }
   }
 
-  function wake(id) {
+  function wake(id: string) {
     for (const resolve of waiters.get(id) || []) resolve();
     waiters.delete(id);
   }
 
-  function waitFor(id, signal) {
+  function waitFor(id: string, signal: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
       if (signal.aborted) return reject(signal.reason);
       const list = waiters.get(id) || [];
@@ -107,12 +148,12 @@ export function openDurable(file, { now = Date.now } = {}) {
 
   // The context a workflow function receives; seq numbers its steps and receives in call order.
   // ownStep: the first step's row was written with this run, so it is not a cut.
-  function context(id, input, ctrl, ownStep = false) {
+  function context(id: string, input: Json, ctrl: AbortController, ownStep = false): WorkflowContext {
     let seq = 0;
     let own = ownStep;
     const signal = AbortSignal.any([closing.signal, ctrl.signal]);
-    const recorded = (n) => q.stepGet.get(id, n);
-    const ctx = {
+    const recorded = (n: number): Json => q.stepGet.get(id, n);
+    const ctx: WorkflowContext = {
       id, input, signal,
       get replaying() { return Boolean(recorded(seq)); },
       async step(name, fn, { onCut } = {}) {
@@ -134,7 +175,7 @@ export function openDurable(file, { now = Date.now } = {}) {
           q.stepEnd.run("done", json(value), null, now(), id, n);
           return value;
         } catch (error) {
-          if (!signal.aborted) q.stepEnd.run("error", null, String(error?.message || error), now(), id, n);
+          if (!signal.aborted) q.stepEnd.run("error", null, String((error as Json)?.message || error), now(), id, n);
           throw error;
         }
       },
@@ -147,7 +188,7 @@ export function openDurable(file, { now = Date.now } = {}) {
           const messages = q.msgNext.all(id, topic);
           if (messages.length) {
             const taken = all ? messages : messages.slice(0, 1);
-            const values = taken.map((m) => parse(m.value));
+            const values = taken.map((m: Json) => parse(m.value));
             const value = all ? values : values[0];
             tx(() => {
               for (const m of taken) q.msgConsume.run(m.id);
@@ -163,7 +204,7 @@ export function openDurable(file, { now = Date.now } = {}) {
           await waitFor(id, signal);
         }
       },
-      pending: (topic) => q.msgPending.get(id, topic).n,
+      pending: (topic) => (q.msgPending.get(id, topic) as Json).n,
     };
     // Waits ms without a checkpoint: a restart waits again. Use it for polling, never for a deadline.
     ctx.pause = (ms) => pauseFor(ms, signal);
@@ -175,7 +216,7 @@ export function openDurable(file, { now = Date.now } = {}) {
     return ctx;
   }
 
-  function run(id, name, input, { ownStep = false } = {}) {
+  function run(id: string, name: string, input: Json, { ownStep = false }: { ownStep?: boolean } = {}) {
     const fn = registry.get(name);
     if (!fn) throw new Error(`no workflow named ${name}`);
     const ctrl = new AbortController();
@@ -187,7 +228,7 @@ export function openDurable(file, { now = Date.now } = {}) {
         return output;
       } catch (error) {
         if (closing.signal.aborted) return undefined;
-        q.wfEnd.run(ctrl.signal.reason === "cancel" ? "CANCELLED" : "ERROR", null, String(error?.message || error), now(), id);
+        q.wfEnd.run(ctrl.signal.reason === "cancel" ? "CANCELLED" : "ERROR", null, String((error as Json)?.message || error), now(), id);
         throw error;
       } finally {
         running.delete(id);
@@ -198,15 +239,15 @@ export function openDurable(file, { now = Date.now } = {}) {
     return promise;
   }
 
-  const tickName = (name) => `scheduled:${name}`;
-  const tickId = (name, at) => `${name}@${new Date(at).toISOString()}`;
+  const tickName = (name: string) => `scheduled:${name}`;
+  const tickId = (name: string, at: number) => `${name}@${new Date(at).toISOString()}`;
   // Interval ticks align to the epoch, so a tick's id is the same on every boot.
-  const dueAt = (everyMs, at) => Math.floor(at / everyMs) * everyMs;
-  const overlapping = (name) => [...running.values()].some((r) => r.name === tickName(name));
+  const dueAt = (everyMs: number, at: number) => Math.floor(at / everyMs) * everyMs;
+  const overlapping = (name: string) => [...running.values()].some((r) => r.name === tickName(name));
 
   // Why a scheduled tick at scheduledTime is skipped for an edited interval, or null.
-  function intervalReason(s, scheduledTime) {
-    const last = q.wfLastActual.get(tickName(s.name));
+  function intervalReason(s: Schedule, scheduledTime: number): string | null {
+    const last: Json = q.wfLastActual.get(tickName(s.name));
     if (!last) return null;
     const previous = parse(last.input).scheduledTime;
     if (scheduledTime - previous >= s.everyMs) return null;
@@ -214,7 +255,7 @@ export function openDurable(file, { now = Date.now } = {}) {
   }
 
   // Starts a tick once and returns {id, status}; a tick that cannot start is recorded SKIPPED with its reason.
-  function fire(s, scheduledTime, actualTime, { manual = false } = {}) {
+  function fire(s: Schedule, scheduledTime: number, actualTime: number, { manual = false }: { manual?: boolean } = {}) {
     if (closing.signal.aborted) return { id: null, status: "closed" };
     const name = tickName(s.name);
     const id = manual ? `${s.name}@manual@${randomUUID()}` : tickId(s.name, scheduledTime);
@@ -237,9 +278,9 @@ export function openDurable(file, { now = Date.now } = {}) {
   }
 
   // Sleeps until the next tick boundary, then fires the latest due tick and re-arms.
-  function arm(s) {
+  function arm(s: Schedule) {
     if (closing.signal.aborted) return;
-    clearTimeout(s.timer);
+    clearTimeout(s.timer ?? undefined);
     const at = now();
     const wait = dueAt(s.everyMs, at) + s.everyMs - at;
     s.timer = setTimeout(() => {
@@ -251,12 +292,12 @@ export function openDurable(file, { now = Date.now } = {}) {
   }
 
   return {
-    register(name, fn) { registry.set(name, fn); },
+    register(name: string, fn: WorkflowFn) { registry.set(name, fn); },
     /**
      * DBOS-style scheduled workflow: fn(scheduledTime, actualTime, wf) runs once per everyMs tick as workflow
      * `<name>@<scheduledTime ISO>`. firstStep names a step the tick records with its row, before fn runs.
      */
-    scheduled(name, { everyMs, firstStep = null } = {}, fn) {
+    scheduled(name: string, { everyMs, firstStep = null }: { everyMs?: Json; firstStep?: string | null } = {}, fn: ScheduledFn) {
       if (!Number.isSafeInteger(everyMs) || everyMs < 1) throw new Error(`schedule ${name}: everyMs must be a positive integer`);
       if (typeof fn !== "function") throw new Error(`schedule ${name}: fn must be a function`);
       if (schedules.has(name)) throw new Error(`schedule ${name} is already registered`);
@@ -272,9 +313,9 @@ export function openDurable(file, { now = Date.now } = {}) {
         arm(s);
       }
     },
-    hasSchedule: (name) => schedules.has(name),
+    hasSchedule: (name: string) => schedules.has(name),
     /** Starts a manual tick now under <name>@manual@<uuid>; resolves {id, status: "started" | "skipped"}. */
-    runScheduled(name) {
+    runScheduled(name: string) {
       const s = schedules.get(name);
       if (!s) throw new Error(`no schedule named ${name}`);
       const at = now();
@@ -285,7 +326,7 @@ export function openDurable(file, { now = Date.now } = {}) {
       const at = now();
       return [...schedules.values()].map((s) => {
         // A tick skipped while the previous run still goes, or for an edited interval, never replaces the last real run's status.
-        const last = q.wfLatestReal.get(tickName(s.name));
+        const last: Json = q.wfLatestReal.get(tickName(s.name));
         return {
           name: s.name, everyMs: s.everyMs, nextRun: new Date(dueAt(s.everyMs, at) + s.everyMs).toISOString(),
           last: last ? { id: last.id, status: last.status, scheduledTime: new Date(parse(last.input).scheduledTime).toISOString(), output: parse(last.output), error: last.error } : null,
@@ -293,9 +334,9 @@ export function openDurable(file, { now = Date.now } = {}) {
       });
     },
     /** The latest tick rows of one schedule, newest first: status, scheduled time, window and error. */
-    scheduleRuns(name, limit = 20) {
+    scheduleRuns(name: string, limit = 20) {
       if (!schedules.has(name)) throw Object.assign(new Error(`no schedule named ${name}`), { status: 404 });
-      return q.wfListNamed.all(tickName(name), limit).map((row) => ({
+      return q.wfListNamed.all(tickName(name), limit).map((row: Json) => ({
         id: row.id, status: row.status, scheduledTime: new Date(parse(row.input).scheduledTime).toISOString(),
         // created_at is the run's start and updated_at its end; a PENDING row has no end yet.
         startedAt: row.created_at, finishedAt: row.status === "PENDING" ? null : row.updated_at,
@@ -303,52 +344,52 @@ export function openDurable(file, { now = Date.now } = {}) {
       }));
     },
     /** Starts a new workflow; the id must be unused. Resolves with its output. */
-    startWorkflow(name, id, input) {
+    startWorkflow(name: string, id: string, input: Json) {
       q.wfInsert.run(id, name, json(input), now(), now());
       return run(id, name, input);
     },
     /** Starts a workflow once per id: null when the id already has a row, so a repeated start does nothing. */
-    startWorkflowOnce(name, id, input) {
+    startWorkflowOnce(name: string, id: string, input: Json) {
       if (!q.wfInsertIgnore.run(id, name, json(input), now(), now()).changes) return null;
       return run(id, name, input);
     },
     /** The latest workflows of one name, newest first, with parsed input and output. */
-    listNamed: (name, limit = 100) => q.wfListNamed.all(name, limit).map((row) => ({
+    listNamed: (name: string, limit = 100) => q.wfListNamed.all(name, limit).map((row: Json) => ({
       id: row.id, name: row.name, status: row.status, input: parse(row.input), output: parse(row.output), error: row.error,
       createdAt: row.created_at, updatedAt: row.updated_at,
     })),
     /** Ids of PENDING workflows that recover() would run. */
-    pending: () => q.wfPending.all().filter((w) => !running.has(w.id) && registry.has(w.name)).map((w) => w.id),
+    pending: () => q.wfPending.all().filter((w: Json) => !running.has(w.id) && registry.has(w.name)).map((w: Json) => w.id),
     /** Re-runs every PENDING workflow from its log; returns their ids. */
     recover() {
-      return q.wfPending.all().filter((w) => !running.has(w.id) && registry.has(w.name)).map((w) => {
-        run(w.id, w.name, parse(w.input));
+      return q.wfPending.all().filter((w: Json) => !running.has(w.id) && registry.has(w.name)).map((w: Json) => {
+        void run(w.id, w.name, parse(w.input));
         return w.id;
       });
     },
     /** Queues a durable message; dedupe (e.g. an ntfy event id) drops repeats. Returns false for a repeat. */
-    send(workflowId, topic, value, { dedupe = null } = {}) {
+    send(workflowId: string, topic: string, value: Json, { dedupe = null }: { dedupe?: string | null } = {}) {
       const { changes } = q.msgInsert.run(workflowId, topic, json(value), dedupe, now());
       if (changes) wake(workflowId);
       return changes > 0;
     },
-    status(id) {
-      const row = q.wfGet.get(id);
+    status(id: string) {
+      const row: Json = q.wfGet.get(id);
       return row ? { id, name: row.name, status: row.status, input: parse(row.input), output: parse(row.output), error: row.error } : null;
     },
-    result: (id) => running.get(id)?.promise ?? Promise.resolve(parse(q.wfGet.get(id)?.output)),
-    cancel(id) { running.get(id)?.ctrl.abort("cancel"); },
-    steps: (id) => db.prepare("SELECT seq, name, status, output, error FROM steps WHERE workflow_id = ? ORDER BY seq").all(id),
-    getKv: (key) => parse(q.kvGet.get(key)?.value),
-    setKv: (key, value) => q.kvSet.run(key, json(value)),
+    result: (id: string) => running.get(id)?.promise ?? Promise.resolve(parse((q.wfGet.get(id) as Json)?.output)),
+    cancel(id: string) { running.get(id)?.ctrl.abort("cancel"); },
+    steps: (id: string) => db.prepare("SELECT seq, name, status, output, error FROM steps WHERE workflow_id = ? ORDER BY seq").all(id),
+    getKv: (key: string) => parse((q.kvGet.get(key) as Json)?.value),
+    setKv: (key: string, value: Json) => q.kvSet.run(key, json(value)),
     /**
      * Deletes the steps and messages of finished workflows of the given names last updated before `before` (ms). The
      * workflow row stays as a tombstone, so a message the log knows is never started again. Resolves the count pruned.
      */
-    prune(names, before) {
+    prune(names: string[], before: number) {
       let count = 0;
       for (const name of names) {
-        const ids = db.prepare("SELECT id FROM workflows WHERE name = ? AND status != 'PENDING' AND updated_at < ? AND id IN (SELECT workflow_id FROM steps UNION SELECT workflow_id FROM messages)").all(name, before).map((r) => r.id);
+        const ids = db.prepare("SELECT id FROM workflows WHERE name = ? AND status != 'PENDING' AND updated_at < ? AND id IN (SELECT workflow_id FROM steps UNION SELECT workflow_id FROM messages)").all(name, before).map((r: Json) => r.id);
         tx(() => {
           for (const id of ids) {
             db.prepare("DELETE FROM steps WHERE workflow_id = ?").run(id);
@@ -360,18 +401,18 @@ export function openDurable(file, { now = Date.now } = {}) {
       return count;
     },
     /** Unconsumed messages on a topic of a workflow, consumed in one transaction: a message is handed over once. */
-    drain(workflowId, topic) {
+    drain(workflowId: string, topic: string) {
       const rows = db.prepare("SELECT id, value FROM messages WHERE workflow_id = ? AND topic = ? AND consumed = 0 ORDER BY id").all(workflowId, topic);
       tx(() => { for (const r of rows) q.msgConsume.run(r.id); });
-      return rows.map((r) => parse(r.value));
+      return rows.map((r: Json) => parse(r.value));
     },
     /** Unconsumed messages on a topic of a workflow. */
-    pendingCount: (workflowId, topic) => q.msgPending.get(workflowId, topic).n,
+    pendingCount: (workflowId: string, topic: string) => (q.msgPending.get(workflowId, topic) as Json).n,
     /** Aborts running workflows where they wait, leaving unfinished steps as started (cut), then closes the file. Idempotent: a second close is a no-op. */
     async close() {
       if (closed) return;
       closed = true;
-      for (const s of schedules.values()) clearTimeout(s.timer);
+      for (const s of schedules.values()) clearTimeout(s.timer ?? undefined);
       closing.abort(new Error("durable log closed"));
       await Promise.all([...running.values()].map((r) => r.promise.catch(() => {})));
       db.close();

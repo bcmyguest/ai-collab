@@ -19,7 +19,7 @@ import { sessionIdleState } from "../../lib/idle.ts";
 import { claimInbox, ATTACHMENT_BUDGET_MS, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery, reservedMessage } from "../../lib/messaging.ts";
 import { cacheAttachmentsWithin } from "../../lib/attachment-cache.ts";
 import { pollCached } from "../../lib/messaging.ts";
-import { handOff } from "../../lib/stop.mjs";
+import { handOff } from "../../lib/stop.ts";
 import { opencodeRequest } from "../../lib/opencode-api.mjs";
 import { readReceipts } from "../../lib/receipts.ts";
 import { listSessions } from "../../lib/sessions.mjs";

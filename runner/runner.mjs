@@ -19,7 +19,7 @@ import { replyDecision, APPROVAL_ID } from "../lib/approvals.mjs";
 import { formatInbox } from "../lib/format.ts";
 import { attachmentOf, cacheAttachmentsWithin, localizedAttachment } from "../lib/attachment-cache.ts";
 import { streamEvents } from "../lib/messaging.ts";
-import { handedOff, handOff } from "../lib/stop.mjs";
+import { handedOff, handOff } from "../lib/stop.ts";
 import { listSessions, recordSession } from "../lib/sessions.mjs";
 import { claudeConfirmedSince, claudeSnapshot, claudeWindowMs } from "../lib/claude-socket.ts";
 import { ackTracker, busyWithPush, direct, holdRunning, PUSHED, pushSession, readDispatchLedger, readySession, writeDispatchLedger } from "../lib/deliver-push.mjs";
