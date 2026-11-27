@@ -11,6 +11,8 @@ import os from "node:os";
 import path from "node:path";
 
 const ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+// pg waits forever for a connection by default; a saturated server must fail the caller instead of hanging it.
+export const PG_CONNECT_TIMEOUT_MS = 10_000;
 
 export type RunResult = { code: number; stdout: string; stderr: string };
 export type PgPassword = { file: string; password: string; created: boolean };
@@ -57,7 +59,7 @@ export async function ensureDatabase(env: NodeJS.ProcessEnv = process.env): Prom
   if (!/^[a-z_][a-z0-9_]*$/.test(database)) throw new Error(`postgres: invalid database name ${database}`);
   const { password } = ensurePgPassword({ env });
   const { default: pg } = await import("pg");
-  const admin = new pg.Pool({ connectionString: `postgres://ai_collab:${password}@${env.AI_COLLAB_PG_HOST || "127.0.0.1"}:${env.AI_COLLAB_PG_PORT || "5432"}/postgres` });
+  const admin = new pg.Pool({ connectionString: `postgres://ai_collab:${password}@${env.AI_COLLAB_PG_HOST || "127.0.0.1"}:${env.AI_COLLAB_PG_PORT || "5432"}/postgres`, connectionTimeoutMillis: PG_CONNECT_TIMEOUT_MS });
   try {
     const { rows } = await admin.query("SELECT 1 FROM pg_database WHERE datname = $1", [database]);
     if (!rows.length) {
