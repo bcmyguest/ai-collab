@@ -49,6 +49,7 @@ const MENTIONED_IN = /^(all|[a-z0-9-]{1,24}#[a-f0-9]{16})$/;
 const SUBAGENT_RUN = /^[A-Za-z0-9_-]{1,64}$/;
 // A team name when the operator routed work to a team orchestrator.
 const TEAM_NAME = /^(?=.{1,24}$)[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const THREAD_ID = /^th_[a-f0-9]{16}$/;
 // A project-chat @tag: a harness, harness#session, harness#session/run, or harness:model.
 const AGENT_MENTION = /(^|[^\w#-])@([a-z0-9-]{1,24}(?:#[a-f0-9]{16}(?:\/[A-Za-z0-9_-]{1,64})?|:[A-Za-z0-9][A-Za-z0-9._/-]{0,119})?)(?![\w-])/g;
 
@@ -78,7 +79,7 @@ export type WaitOptions<T> = {
 export type ReadOptions = { peek?: boolean; strict?: boolean; limit?: number; accept?: (m: InboxMessage) => boolean; receipts?: boolean; settle?: boolean; claim?: Claim };
 export type SendOptions = {
   operatorThread?: boolean; system?: boolean; replyTo?: string; attachment?: AttachmentInput; urgent?: boolean; state?: string; by?: string;
-  mentionedIn?: string; forSubagent?: string; forTeam?: string; priority?: string; expectReply?: boolean; startOnly?: boolean; onPublished?: (ev: TransportEvent) => void;
+  mentionedIn?: string; forSubagent?: string; forTeam?: string; priority?: string; expectReply?: boolean; startOnly?: boolean; threadId?: string; onPublished?: (ev: TransportEvent) => void;
 };
 // A file path, or an image held in memory under a file name.
 export type AttachmentInput = string | { filename: string; data: Buffer };
@@ -177,14 +178,14 @@ function headers(cfg: Cfg, extra: Record<string, string> = {}) {
   return h;
 }
 
-type PublishOptions = { title?: string; attach?: { filename: string; data: Buffer }; signal?: AbortSignal; priority?: string | number; click?: string; onPublished?: (ev: TransportEvent) => void };
+type PublishOptions = { title?: string; attach?: { filename: string; data: Buffer }; signal?: AbortSignal; priority?: string | number; click?: string; threadId?: string; onPublished?: (ev: TransportEvent) => void };
 
 /** Publishes one message; resolves with the new event's id (true when ntfy's answer carries none). */
-export async function publish(cfg: Cfg, topic: string, message: string, { title, attach, signal, priority, click, onPublished }: PublishOptions = {}): Promise<string | true> {
+export async function publish(cfg: Cfg, topic: string, message: string, { title, attach, signal, priority, click, threadId, onPublished }: PublishOptions = {}): Promise<string | true> {
   // An attachment is the request body; ntfy then takes message and title from the query string.
   const query = attach && new URLSearchParams({
     message: querySafe(message), filename: attach.filename,
-    ...(title ? { title } : {}), ...(click ? { click } : {}), ...(priority ? { priority: String(priority) } : {}),
+    ...(title ? { title } : {}), ...(click ? { click } : {}), ...(priority ? { priority: String(priority) } : {}), ...(threadId ? { thread_id: threadId } : {}),
   });
   const res = attach
     ? await fetch(`${cfg.url}/${topic}?${query}`, {
@@ -193,7 +194,7 @@ export async function publish(cfg: Cfg, topic: string, message: string, { title,
     : await fetch(`${cfg.url}/`, {
       method: "POST",
       headers: headers(cfg, { "content-type": "application/json" }),
-      body: JSON.stringify({ topic, message, ...(title ? { title } : {}), ...(priority ? { priority } : {}), ...(click ? { click } : {}) }),
+      body: JSON.stringify({ topic, message, ...(title ? { title } : {}), ...(priority ? { priority } : {}), ...(click ? { click } : {}), ...(threadId ? { thread_id: threadId } : {}) }),
       signal: withSignal(signal, cfg.timeoutMs),
     });
   const text = await res.text().catch(() => "");
@@ -413,7 +414,7 @@ export async function publishStatus(cfg: Cfg, { event, harness }: { event: strin
  * address: it reaches the operator's own reply routes, but readers show the sender as "system", not as the operator.
  * startOnly marks a project-chat post that only starts sessions, so no running session takes it.
  */
-export async function sendMessage(cfg: Cfg, target: string, body: string, { operatorThread, system, replyTo, attachment, urgent, state, by, mentionedIn, forSubagent, forTeam, priority, expectReply, startOnly, onPublished }: SendOptions = {}) {
+export async function sendMessage(cfg: Cfg, target: string, body: string, { operatorThread, system, replyTo, attachment, urgent, state, by, mentionedIn, forSubagent, forTeam, priority, expectReply, startOnly, threadId, onPublished }: SendOptions = {}) {
   if (!cfg.enabled) throw new Error(`disabled: ${cfg.reason}`);
   const [peer, session, ...extra] = String(target).split("#");
   if (!isValidName(peer) || extra.length || (session !== undefined && (peer === "all" || !SESSION_LABEL.test(session)))) {
@@ -441,6 +442,7 @@ export async function sendMessage(cfg: Cfg, target: string, body: string, { oper
   if (expectReply === true && (peer === "all" || priority === "fyi")) throw new Error("expect_reply needs a direct, non-fyi message");
   if (startOnly !== undefined && typeof startOnly !== "boolean") throw new Error("start_only must be true or false");
   if (startOnly === true && peer !== "all") throw new Error("start_only needs the project chat");
+  if (threadId !== undefined && (cfg.peer !== "operator" || !THREAD_ID.test(threadId))) throw new Error("threadId must be a thread id on an operator message");
   if (priority === "urgent") urgent = true;
   const sent = await sendEnvelope(cfg, topic, {
     to: peer, ...(session ? { toSession: session } : {}), ts: new Date().toISOString(), body,
@@ -456,7 +458,8 @@ export async function sendMessage(cfg: Cfg, target: string, body: string, { oper
     ...(mentionedIn ? { mentionedIn } : {}),
     ...(forSubagent ? { forSubagent } : {}),
     ...(forTeam ? { forTeam } : {}),
-  }, { attachment, onPublished });
+    ...(threadId ? { threadId } : {}),
+  }, { attachment, onPublished, threadId });
   if (urgent === true) markUrgent(cfg, String(target));
   return sent;
 }
@@ -485,7 +488,7 @@ export function urgentSince(cfg: Cfg, at: number): boolean {
   });
 }
 
-async function sendEnvelope(cfg: Cfg, topic: string, fields: Record<string, unknown>, { attachment, onPublished }: { attachment?: AttachmentInput; onPublished?: (ev: TransportEvent) => void } = {}) {
+async function sendEnvelope(cfg: Cfg, topic: string, fields: Record<string, unknown>, { attachment, onPublished, threadId }: { attachment?: AttachmentInput; onPublished?: (ev: TransportEvent) => void; threadId?: string } = {}) {
   const msg = envelope(cfg, "msg", fields);
   // With an attachment the message travels in the query string, respelled by querySafe.
   if (Buffer.byteLength(attachment === undefined ? msg : querySafe(msg)) > MESSAGE_MAX_BYTES) {
@@ -498,7 +501,7 @@ async function sendEnvelope(cfg: Cfg, topic: string, fields: Record<string, unkn
   // deep-link.mjs infers its parameter type without project; the call passes it.
   const link = { project: cfg.project, session: cfg.session ? from : "" };
   const click = deepLink(link);
-  const id = await publish(cfg, topic, msg, { title: `ai-collab from ${from}`, attach, onPublished, click, priority: alertPriority(readAlertLevel(), "direct") });
+  const id = await publish(cfg, topic, msg, { title: `ai-collab from ${from}`, attach, onPublished, click, priority: alertPriority(readAlertLevel(), "direct"), ...(threadId ? { threadId } : {}) });
   return { topic, ...(typeof id === "string" ? { id } : {}) };
 }
 
