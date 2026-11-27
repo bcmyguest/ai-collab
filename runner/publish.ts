@@ -36,7 +36,7 @@ function compactRow(type: string, meta: Json): Json {
   return { type: "compact", input: ["compacting", meta?.note].filter(Boolean).join(" · "), ...compaction };
 }
 
-/** Activity rows (lib/activity.ts event shape) for one RunnerEvent; [] when the event has no row on ntfy. */
+/** Activity rows (lib/activity.ts event shape) for one RunnerEvent; [] when the event has no row on the bus. */
 export function activityFor(e: Json, { system }: { system?: boolean } = {}): Json[] {
   const meta = e.metadata?.aiCollab;
   switch (e.type) {
@@ -88,7 +88,7 @@ export function approvalEndMessage(cfg: Cfg, id: string, reason: string) {
 /** Publishes the owned approval card on the broadcast topic; throws when it cannot fit or publish. */
 export async function publishApproval(cfg: Cfg, harness: Harness, card: ApprovalCard, ttlMs?: number): Promise<void> {
   const message = ownedApprovalMessage(cfg, harness, card, { ttlMs });
-  if (!message) throw new Error("approval does not fit in one ntfy message");
+  if (!message) throw new Error("approval does not fit in one bus message");
   const who = `${cfg.peer}#${cfg.session}`;
   await publish(cfg, broadcastTopic(cfg.project), message, { title: `${card.tool} needs approval for ${who}: ${card.summary}`.slice(0, 200), signal: AbortSignal.timeout(PUBLISH_TIMEOUT_MS) });
 }

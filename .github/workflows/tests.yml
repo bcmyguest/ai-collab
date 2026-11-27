@@ -29,7 +29,7 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build:package && node dist/scripts/ai-collab.mjs --help
-      # Isolated HOME: tests never read the runner's agent configs; fake-ntfy replaces a server.
+      # Isolated HOME: tests never read the runner's agent configs; the in-process bus (test/helpers/fake-ntfy.mjs) replaces a server.
       # A step cap below the job cap keeps the log when a test file hangs.
       - name: npm test
         timeout-minutes: 20

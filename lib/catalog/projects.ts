@@ -78,12 +78,12 @@ export function requireProject(env: Env, project: string): ProjectEntry {
   return entry;
 }
 
-/** Marks a registered project closed or open; its repo, worktrees and ntfy history stay. */
+/** Marks a registered project closed or open; its repo, worktrees and bus history stay. */
 export function setProjectClosed(env: Env, project: string, closed: boolean): void {
   updateProject(env, project, (entry) => ({ entry: { ...entry, closed }, result: undefined }), { status: 404 });
 }
 
-/** Removes a project's projects.json entry; its repo, worktrees and ntfy history stay. */
+/** Removes a project's projects.json entry; its repo, worktrees and bus history stay. */
 export function removeProject(env: Env, project: string): void {
   updateProjects(env, (projects) => {
     if (!projects.some((entry) => entry?.project === project)) throw Object.assign(new Error(NOT_REGISTERED), { status: 404 });

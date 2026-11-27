@@ -10,7 +10,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { stateDir } from "./config.ts";
 import { openPostgresBusStore } from "./bus-postgres.ts";
-import { pgUrl } from "./postgres.ts";
+import { PG_CONNECT_TIMEOUT_MS, pgUrl } from "./postgres.ts";
 
 const BATCH = 1000;
 
@@ -45,7 +45,7 @@ export async function migrateBusToPostgres({ env = process.env, dataDir = busDat
   const url = pgUrl(env);
   // The store's own migrate creates schema, tables and sequence; this command never repeats that DDL.
   const store = await openPostgresBusStore({ url, schema });
-  const pool = new pg.Pool({ connectionString: url, max: 1 });
+  const pool = new pg.Pool({ connectionString: url, max: 1, connectionTimeoutMillis: PG_CONNECT_TIMEOUT_MS });
   pool.on("error", () => {}); // an idle client that dies server-side must not crash the command
   try {
     const { rows: [target] } = await pool.query<{ n: number; max_id: string }>(`SELECT COUNT(*)::int AS n, COALESCE(MAX(id), 0)::bigint AS max_id FROM ${schema}.events`);

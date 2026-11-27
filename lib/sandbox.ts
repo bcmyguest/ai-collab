@@ -362,7 +362,7 @@ export async function uploadLogins({ openshell, env, sandbox, home, remoteHome, 
   return copied;
 }
 
-/** The host's ntfy token file from defaults.json, or "". */
+/** The host's bus token file from defaults.json, or "". */
 export function hostTokenFile(env: Env = process.env): string {
   const defaults: { tokenFile?: unknown } | null = autoDefaults(env);
   const file = defaults?.tokenFile;

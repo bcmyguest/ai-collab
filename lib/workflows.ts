@@ -14,6 +14,7 @@ import type { WorkflowStatus } from "@dbos-inc/dbos-sdk";
 import { runWithTopContext } from "@dbos-inc/dbos-sdk/internal/context";
 import pg from "pg";
 import { openDurable } from "./durable.ts";
+import { PG_CONNECT_TIMEOUT_MS } from "./postgres.ts";
 
 /** The DBOS applicationVersion: bump it whenever a workflow's recorded op sequence changes (test/dbos-step-sequences.test.mjs). */
 export const DBOS_APP_VERSION = "ai-collab-1";
@@ -165,7 +166,7 @@ type DbosOpts = {
 
 /** The DBOS-backed engine. Same surface as openDurable; every query is async (Postgres). */
 async function openDbosEngine({ pgUrl = "", now = Date.now, log = () => {}, applicationVersion = DBOS_APP_VERSION, priorStepsQuery, priorStepsRetry = {} }: DbosOpts): Promise<Workflows> {
-  const pool = new pg.Pool({ connectionString: pgUrl, max: 5 });
+  const pool = new pg.Pool({ connectionString: pgUrl, max: 5, connectionTimeoutMillis: PG_CONNECT_TIMEOUT_MS });
   const stepQuery: StepQuery = priorStepsQuery ?? ((sql, params) => pool.query(sql, params));
   await pool.query(`CREATE SCHEMA IF NOT EXISTS ai_collab;
     CREATE TABLE IF NOT EXISTS ai_collab.kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);

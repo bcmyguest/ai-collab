@@ -1,7 +1,7 @@
 {
   "name": "ai-collab",
   "version": "0.11.0",
-  "description": "Best-effort messaging and status between coding-agent peers over a private ntfy server.",
+  "description": "Best-effort messaging and status between coding-agent peers over a private local message bus (Postgres-backed, loopback only).",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {

@@ -244,7 +244,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, { cwd = process
     try {
       token = readFileSync(settings.tokenFile, "utf8");
     } catch {
-      return { enabled: false, reason: "could not read configured ntfy token file" };
+      return { enabled: false, reason: "could not read configured bus token file" };
     }
   }
   const label = session || env.AI_COLLAB_SESSION || sessionLabel(env.CURSOR_CONVERSATION_ID);

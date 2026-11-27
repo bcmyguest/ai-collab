@@ -203,7 +203,7 @@ A writing agent turns a plain-language request into one `team.dot`; the operator
 
 ## Code map
 
-Code lives in `lib/catalog/`. `lib/patterns.mjs` and `lib/teams.mjs` re-export it for their importers.
+Code lives in `lib/catalog/`: patterns in `patterns.ts` and `pattern-model.ts`, teams in `teams.ts` and `roster.ts`, the projects.json registry in `projects.ts`.
 
 - `dot.ts`: parses and serializes `team.dot`. Node attributes: agent, count, skill, prompt, fallback, code_mode. Edge attributes: on, kind, required, cap. Graph attributes: description, max_visits, permission, landing. Parse errors carry the line of the first problem. Serialization writes the canonical form the parser reads back.
 - `pattern-model.ts`: pattern validation and the `team.dot` round trip, with no file access. Pattern: named roles (responsibility, harness, model) and handoffs. A handoff is required (the run cannot finish without it) or guidance (`required: false`, the lead may skip it).

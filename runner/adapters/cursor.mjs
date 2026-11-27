@@ -30,7 +30,7 @@ const OWNED = { AI_COLLAB_OWNED: "cursor" };
 const SANDBOX_ROOT = "/sandbox";
 const SANDBOX_HOME = "/sandbox/home";
 const SANDBOX_BIN = "/sandbox/bin";
-// The host ntfy, as the runner's sandbox stage publishes it. The file is the only copy of the bearer token.
+// The host bus, as the runner's sandbox stage publishes it. The file is the only copy of the bearer token.
 const NTFY_URL = "http://host.openshell.internal:8794";
 const TOKEN_IN = `${SANDBOX_HOME}/.config/ai-collab/ntfy-token`;
 // The name the CLI is launched by inside a sandbox, whatever it is called on the host.
@@ -189,7 +189,7 @@ function connect(argv, { env, cwd, log, onRequest, onNotify }) {
  * is uploaded before the run and downloaded after it; the CLI tree is uploaded once under SANDBOX_ROOT; auth is the
  * host's `$XDG_CONFIG_HOME/cursor/auth.json` (or `~/.config/cursor/auth.json`), written to a 0600 temp file and
  * uploaded, never passed in argv or --env, so it never reaches a log. Missing auth is not fatal: the CLI asks to log in.
- * The ntfy token is uploaded the same way when the host has one, and defaults.json points tokenFile at that path,
+ * The bus token is uploaded the same way when the host has one, and defaults.json points tokenFile at that path,
  * so send_to_all, reply_to_operator and ask_question can publish. A team worktree reuses the clone and still
  * gets the token: the marker skips only the worktree upload.
  */
@@ -253,7 +253,7 @@ async function stageHooks({ openshell, env, sandbox }) {
   }
 }
 
-// The host's ntfy token file from defaults.json, or "" when none is configured.
+// The host's bus token file from defaults.json, or "" when none is configured.
 function hostTokenFile(env) {
   const file = autoDefaults(env)?.tokenFile;
   return typeof file === "string" && existsSync(file) ? file : "";
@@ -274,7 +274,7 @@ async function stageNtfy({ openshell, env, sandbox, project, workdir, log }) {
     await uploadTree({ openshell, env, sandbox, local: config, remote: dirname(dirname(TOKEN_IN)), gitIgnore: false });
     await uploadSecret({ openshell, env, sandbox, file: token, remoteDir: dirname(TOKEN_IN), name: basename(TOKEN_IN) });
   } catch (error) {
-    log(`cursor: could not stage the ntfy token; sends from the sandbox will be refused (${error.message.split("\n")[0]})`);
+    log(`cursor: could not stage the bus token; sends from the sandbox will be refused (${error.message.split("\n")[0]})`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -368,7 +368,7 @@ export async function syncSandboxBack({ openshell, env, sandbox, cwd, log = () =
   }
 }
 
-/** The network policy a Cursor sandbox gets when AI_COLLAB_OPENSHELL_POLICY names none: Cursor's API and the host's ntfy, for the uploaded CLI's binaries. */
+/** The network policy a Cursor sandbox gets when AI_COLLAB_OPENSHELL_POLICY names none: Cursor's API and the host's bus, for the uploaded CLI's binaries. */
 export function cursorPolicy(cursorTree) {
   const inTree = `${SANDBOX_ROOT}/agent/${basename(cursorTree)}`;
   let files = [];

@@ -28,14 +28,14 @@ export function isAttachmentFile(name: string | number | bigint | boolean | null
   return (text ? TEXT_FILE : IMAGE_FILE).test(String(name));
 }
 
-/** The served type of a cached attachment, from its extension (ntfy keeps the extension in the file name). */
+/** The served type of a cached attachment, from its extension (the bus keeps the extension in the file name). */
 export function attachmentType(name: string | number | bigint | boolean | null | undefined): string {
   const file = String(name);
   return file.endsWith(".txt") ? TEXT_TYPE : IMAGE_TYPES[file.slice(file.lastIndexOf(".")).toLowerCase() as keyof typeof IMAGE_TYPES] || "application/octet-stream";
 }
 
 /**
- * The attachment metadata of an ntfy event as {file, name, type, size}, or undefined when the file is not one
+ * The attachment metadata of a bus event as {file, name, type, size}, or undefined when the file is not one
  * this UI shows: chat topics carry images only, the activity topic also carries a large result's .txt.
  */
 export interface AttachmentMeta {
@@ -191,7 +191,7 @@ export interface EnsuredAttachment {
 }
 
 /**
- * The cached copy of file, downloaded from ntfy the first time. Resolves {path, size, type, cached}: cached is
+ * The cached copy of file, downloaded from the bus the first time. Resolves {path, size, type, cached}: cached is
  * true when this call found the file already present. The lock makes concurrent readers (two tabs, a hook and
  * the UI, two sessions) share one download. A failed download writes nothing, so a retry starts clean.
  * waitMs bounds the wait for that lock: a hook passes a short one so its message is not delayed.

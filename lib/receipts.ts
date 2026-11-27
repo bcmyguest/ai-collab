@@ -21,7 +21,7 @@ function receipt(cfg: ReceiptCfg, ids: string[], ts: string): string {
   return encodeEnvelope("receipt", { from: cfg.peer, ...(cfg.session ? { session: cfg.session } : {}), ids, state: "read", ts }, cfg.wire);
 }
 
-// Receipt envelopes for ids, split so each stays within ntfy's message limit.
+// Receipt envelopes for ids, split so each stays within the wire message cap.
 export function receiptMessages(cfg: ReceiptCfg, ids: string[], ts: string = new Date().toISOString()): string[] {
   const batches: string[][] = [];
   for (const id of ids) {

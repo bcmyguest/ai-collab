@@ -4,7 +4,7 @@
  * One call waits at most STOP_SLICE_MAX_S, below every registered Stop hook timeout (660 s).
  * Loop guard: at most cfg.stopCap consecutive message continuations, then the agent stops.
  * The chain resets when a Stop is not a continuation (stop_hook_active false, or no recent block).
- * Waiting holds one ntfy streaming subscription and re-reads the inbox only when an event arrives.
+ * Waiting holds one bus streaming subscription and re-reads the inbox only when an event arrives.
  * A Claude wait also checks the transcript once a second and ends when the operator queues a prompt (lib/transcript.ts).
  * While decideStop runs, a marker per process (<session>.stop-running.<pid>.json) names it; the rewake waiter (lib/waiter.ts) leaves the inbox to it, because
  * Claude queues a rewake until the Stop hook ends and the hold no longer sees a message the waiter claimed.

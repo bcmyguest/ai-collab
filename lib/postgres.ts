@@ -1,5 +1,5 @@
 /**
- * Local Postgres for the DBOS workflow engine (workflowEngine: "dbos"). The container is defined in
+ * Local Postgres for the message bus (schema bus) and the DBOS workflow engine. The container is defined in
  * deploy/postgres/compose.yaml and bound to loopback only; the password lives in ~/.config/ai-collab/pg-password
  * (0600) and the data under ~/.local/state/ai-collab/postgres, both owned by the user.
  */

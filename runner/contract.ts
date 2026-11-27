@@ -66,7 +66,7 @@ export const defaultPermission = (harness: string, place: string = "folder"): st
 /** The runner mode for a Claude --permission-mode value, or null when the runner has none for it. */
 export const runnerModeOfClaude = (flag: string): string | null => (Object.hasOwn(CLAUDE_CLI_MODES, flag) ? CLAUDE_CLI_MODES[flag] : null);
 
-/** Milliseconds an owned approval waits before the runner denies it: AI_COLLAB_APPROVAL_TIMEOUT_MIN (default 30, at most 12 h, the ntfy cache window). */
+/** Milliseconds an owned approval waits before the runner denies it: AI_COLLAB_APPROVAL_TIMEOUT_MIN (default 30, at most 12 h, the cache window of an operator-run ntfy server). */
 export function approvalTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
   const minutes = Number(env.AI_COLLAB_APPROVAL_TIMEOUT_MIN);
   return (Number.isFinite(minutes) && minutes > 0 ? Math.min(minutes, APPROVAL_TIMEOUT_MAX_MIN) : APPROVAL_TIMEOUT_MIN) * 60_000;

@@ -6,7 +6,7 @@ export type PermissionMode = "supervised" | "accept-edits" | "auto" | "full-acce
 export type Place = "folder" | "worktree" | "openshell";
 export type SessionStatus = "starting" | "idle" | "running" | "ended";
 
-// Text plus optional images; messageIds are the ntfy ids this input carries, for read receipts.
+// Text plus optional images; messageIds are the bus event ids this input carries, for read receipts.
 export interface UserInput {
   text: string;
   images?: { path: string; mime: string }[];

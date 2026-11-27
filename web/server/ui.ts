@@ -455,7 +455,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   // Adds a project once; a hub new to this instance gets its listener, and push keeps its topics open.
   function addProject(item: Json) {
     if (projects.has(item.project) || closed) return false;
-    // Projects on the same ntfy server and account share one hub, hence one streaming subscription.
+    // Projects on the same bus URL and token share one hub, hence one streaming subscription.
     const key = JSON.stringify([item.url, item.token]);
     if (!hubs.has(key)) {
       const hub = createHub(item, { keep: name => known.has(name) });
@@ -938,7 +938,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const topic = sharedEvents.map(entry).filter(Boolean);
     const answers = answersOf(sharedEvents, topic);
     const answered = new Set(answers.map((answer: Json) => answer.question));
-    // An answer shows as an operator message, so the ntfy Reply entry it came from goes.
+    // An answer shows as an operator message, so the bus Reply entry it came from goes.
     const shared = topic.filter((item: Json) => !(item.kind === "Reply" && answered.has(item.question)));
     const states = new Map();
     const local = new Set(agentList.filter((agent: Json) => agent.registered).map((agent: Json) => agent.id));
@@ -1059,7 +1059,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return { sent: true, status: approval.questions ? "Answer sent" : decision === "allow" ? "Allow sent" : "Deny sent" };
   }
 
-  // A limit card's pick: "Wait for reset" acknowledges; a replacement starts a session (lib/limit-alert.ts chooseLimit). No ntfy reply: no hook waits.
+  // A limit card's pick: "Wait for reset" acknowledges; a replacement starts a session (lib/limit-alert.ts chooseLimit). No bus reply: no hook waits.
   async function answerLimit(project: Json, approval: Json, answer: Json) {
     if (hosted) reject(403, "Handle usage limits on the agent machine");
     const label = Object.values(parseChoice(approval.questions, answer) ?? {})[0];
@@ -1899,7 +1899,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         await project.threads?.claim(started.session, { thread: inThread, prompt: checked.text });
         return json(201, started);
       }
-      // A queued message is already on ntfy: the urgent marker makes the recipient's next hook poll at once.
+      // A queued message is already on the bus: the urgent marker makes the recipient's next hook poll at once.
       if (action === "nudge") {
         recipient(cfg, target, true);
         markUrgent(operator, target);
@@ -2092,7 +2092,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
    * Serves an attachment that appears in a loaded project's history; anything else is 404.
    * Images come from chat topics; text/plain comes only from the activity topic (a large tool result).
    * The first request downloads the file into the shared local cache; later ones read it from disk, so
-   * ntfy's attachment bandwidth is spent once per file however many tabs, reloads or devices ask.
+   * each attachment is downloaded once, however many tabs, reloads or devices ask.
    */
   async function file(name: Json, request: Request) {
     if (auth && !(request && auth.user(request))) return json(401, { error: "Sign in with GitHub" });

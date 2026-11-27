@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Records the README demo: a fake ntfy server, the built Next.js UI, real hook processes and sendMessage
+ * Records the README demo: the in-process bus (test/helpers/fake-ntfy.mjs), the built Next.js UI, real hook processes and sendMessage
  * drive scripts/demo/scenario.mjs in a 390×844 dark phone viewport; a CDP screenshot loop captures frames
- * and encode.mjs turns them into the GIF. Touches no real ntfy topic, config or session.
+ * and encode.mjs turns them into the GIF. Touches no real bus topic, config or session.
  * Usage: npm run demo [-- --out docs/demo.gif --keep]
  */
 import { spawn } from "node:child_process";
@@ -31,7 +31,7 @@ const PING_MS = 4500;
 const { values: args } = parseArgs({ options: { out: { type: "string", default: join(ROOT, "docs/demo.gif") }, keep: { type: "boolean", default: false } } });
 
 const PLAYWRIGHT_CACHE = process.env.PLAYWRIGHT_BROWSERS_PATH || join(homedir(), ".cache/ms-playwright");
-// Isolate this process before any ai-collab module reads the environment: a throwaway HOME, the fake ntfy, no real project.
+// Isolate this process before any ai-collab module reads the environment: a throwaway HOME, the in-process bus, no real project.
 const work = mkdtempSync(join(tmpdir(), "calc-demo-"));
 const home = join(work, "home");
 mkdirSync(join(home, ".codex"), { recursive: true });
@@ -221,7 +221,7 @@ async function renderCards(browser, dir, captions) {
     <div style="font-size:22px;color:#c7d2fe;line-height:1.35">${sub}</div>
     <div style="margin-top:18px;font-size:15px;color:#94a3b8">${foot}</div></div>`;
   const title = await shot(card("AI Collab", "your agents,<br>from your phone", "Claude Code · Codex · Cursor"), "title.png");
-  const end = await shot(card("AI Collab", "chat · activity · subagents<br>images · approvals", "self-hosted over your own ntfy server"), "end.png");
+  const end = await shot(card("AI Collab", "chat · activity · subagents<br>images · approvals", "self-hosted over a local message bus"), "end.png");
   await page.close();
   return { title, end };
 }

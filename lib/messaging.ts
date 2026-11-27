@@ -180,9 +180,9 @@ function headers(cfg: Cfg, extra: Record<string, string> = {}) {
 
 type PublishOptions = { title?: string; attach?: { filename: string; data: Buffer }; signal?: AbortSignal; priority?: string | number; click?: string; threadId?: string; onPublished?: (ev: TransportEvent) => void };
 
-/** Publishes one message; resolves with the new event's id (true when ntfy's answer carries none). */
+/** Publishes one message; resolves with the new event's id (true when the server's answer carries none). */
 export async function publish(cfg: Cfg, topic: string, message: string, { title, attach, signal, priority, click, threadId, onPublished }: PublishOptions = {}): Promise<string | true> {
-  // An attachment is the request body; ntfy then takes message and title from the query string.
+  // An attachment is the request body; the bus then takes message and title from the query string.
   const query = attach && new URLSearchParams({
     message: querySafe(message), filename: attach.filename,
     ...(title ? { title } : {}), ...(click ? { click } : {}), ...(priority ? { priority: String(priority) } : {}), ...(threadId ? { thread_id: threadId } : {}),
@@ -211,7 +211,7 @@ export async function publish(cfg: Cfg, topic: string, message: string, { title,
   return id || true;
 }
 
-// The id of the event ntfy answers a publish with, or "".
+// The id of the event the bus answers a publish with, or "".
 function publishedId(text: string): string {
   try {
     const id = JSON.parse(text)?.id;
@@ -289,12 +289,12 @@ export async function pollCached(cfg: Cfg, topic: string, since: string, signal?
   return text.split("\n").map(messageEvent).filter((ev): ev is TransportEvent => ev !== null);
 }
 
-// The JSON error body of an ntfy response, or {} when the body is not JSON.
+// The JSON error body of a bus response, or {} when the body is not JSON.
 function ntfyErrorOf(body: string) {
   try { return JSON.parse(body) ?? {}; } catch { return {}; }
 }
 
-// Writes one stderr line per distinct ntfy status and error code: "ntfy HTTP 429 code 42905: <error>".
+// Writes one stderr line per distinct bus status and error code: "bus HTTP 429 code 42905: <error>".
 function logNtfyErrorOnce(status: number, body: string): void {
   const parsed = ntfyErrorOf(body);
   const key = `${status}:${parsed.code ?? ""}`;
@@ -302,7 +302,7 @@ function logNtfyErrorOnce(status: number, body: string): void {
   loggedNtfyErrors.add(key);
   const code = parsed.code ? ` code ${parsed.code}` : "";
   const error = typeof parsed.error === "string" ? `: ${parsed.error}` : "";
-  process.stderr.write(`ai-collab: ntfy HTTP ${status}${code}${error}\n`);
+  process.stderr.write(`ai-collab: bus HTTP ${status}${code}${error}\n`);
 }
 
 function messageEvent(line: string): TransportEvent | null {
@@ -588,7 +588,7 @@ export async function claimInbox(cfg: Cfg, opts: ClaimOptions = {}): Promise<Inb
       return [];
     }
     // A delivered attachment is cached once for the whole machine, outside the lock and under a short budget,
-    // so the agent reads the file the UI already has instead of downloading it from ntfy again.
+    // so the agent reads the file the UI already has instead of downloading it from the bus again.
     return r.value.some((m) => m.attachment && !(m.attachment as { local_path?: string }).local_path)
       ? await cacheAttachmentsWithin(cfg, r.value, { budgetMs: ATTACHMENT_BUDGET_MS }) as InboxMessage[]
       : r.value;
