@@ -1,11 +1,11 @@
-// From page load, Tab reaches New thread in a fixed number of stops, every stop shows a focus ring, and Enter opens the new-session prompt.
+// From page load, Tab reaches New thread, below the tasks strip, in a fixed number of stops, every stop shows a focus ring, and Enter opens the new-session prompt.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { chromium } from "playwright-core";
 import { phoneFixture } from "../tools/smoke-ui.mjs";
 
 const LAYOUTS = [
-  { width: 1280, stops: ["ai-collab", "decision-first", "New thread in decision-first"] },
+  { width: 1280, stops: ["ai-collab", "decision-first", "Tasks1 open", "P1Mobile layoutopen", "New thread in decision-first"] },
   { width: 390, stops: ["Threads", "New thread in decision-first"] },
 ];
 
@@ -101,7 +101,7 @@ test("on a phone, opening Threads by keyboard moves focus into the list and Spac
   await page.keyboard.press("Tab");
   await page.keyboard.press("Enter");
   await assert.doesNotReject(() => until(async () => (await page.evaluate(focused)).name === "ai-collab"), "focus lands on the list's first control");
-  for (const stop of ["decision-first", "New thread in decision-first"]) {
+  for (const stop of ["decision-first", "Tasks1 open", "P1Mobile layoutopen", "New thread in decision-first"]) {
     await page.keyboard.press("Tab");
     assert.equal((await page.evaluate(focused)).name, stop);
   }
