@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "ai-collab" };
 export const viewport = {
   width: "device-width", initialScale: 1, interactiveWidget: "resizes-content",
-  themeColor: [{ media: "(prefers-color-scheme: dark)", color: "#1d1b19" }, { media: "(prefers-color-scheme: light)", color: "#fbfaf8" }],
+  themeColor: [{ media: "(prefers-color-scheme: dark)", color: "#101117" }, { media: "(prefers-color-scheme: light)", color: "#f9fafe" }],
 };
 
 export default async function RootLayout({ children }) {

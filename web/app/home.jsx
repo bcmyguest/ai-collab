@@ -16,7 +16,7 @@ import { ActivityRow, GoToAgent } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
 import { Avatar, ago } from "./chat-shared";
 
-const SUBAGENT_DOT = { running: "bg-emerald-500", finished: "bg-muted-foreground/40", stale: "bg-primary" };
+const SUBAGENT_DOT = { running: "bg-live", finished: "bg-muted-foreground/40", stale: "bg-primary" };
 const CHIP = {
   waiting: "border-primary/50 bg-primary/10 text-primary",
   afk: "border-border bg-transparent text-foreground",
@@ -66,7 +66,7 @@ function SessionCard({ node, now, open, openAddress, act, answer, skip, dispose,
   const label = running.length ? running.length + " subagent" + (running.length === 1 ? "" : "s") : "";
   const meter = contextMeter(node.context || {});
   return <li data-session={node.id} className="flex min-w-0 flex-col gap-2">
-    <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border bg-card px-3 py-2.5 text-sm shadow-xs">
+    <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl bg-card shadow-surface px-3 py-2.5 text-sm">
       {compact ? <div className="flex min-w-0 items-center gap-1">
         <button type="button" onClick={() => open(node)} aria-label={"Open " + name}
           className="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-md text-left hover:bg-accent">
@@ -208,7 +208,7 @@ export function SubagentList({ rows, session, run, pick, when, now, back, childR
   if (!runs.length && !childRuns.length) return <p className="py-16 text-center text-sm text-muted-foreground">{run ? "That subagent run is not in the recent activity." : "No subagents in the recent activity."}</p>;
   const children = <ul aria-label="Child sessions" className="flex min-w-0 flex-col gap-2">
     {childRuns.map(child => <li key={child.id}>
-      <button type="button" onClick={() => openChild(child)} className="flex w-full min-w-0 items-start gap-2.5 rounded-2xl border bg-card px-3 py-2.5 text-left text-sm shadow-xs">
+      <button type="button" onClick={() => openChild(child)} className="flex w-full min-w-0 items-start gap-2.5 rounded-2xl bg-card shadow-surface px-3 py-2.5 text-left text-sm">
         <CircleDot aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground"/>
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="min-w-0 font-medium">{child.kind} · {short(child.id)} · {child.online ? "online" : "offline"}</span>
@@ -223,7 +223,7 @@ export function SubagentList({ rows, session, run, pick, when, now, back, childR
   {childRuns.length > 0 && children}
   <ul aria-label="Subagents" className="flex min-w-0 flex-col gap-2">
     {[...runs].reverse().map(row => <li key={row.id}>
-      <button type="button" onClick={() => pick(row.run)} className="flex w-full min-w-0 items-start gap-2.5 rounded-2xl border bg-card px-3 py-2.5 text-left text-sm shadow-xs">
+      <button type="button" onClick={() => pick(row.run)} className="flex w-full min-w-0 items-start gap-2.5 rounded-2xl bg-card shadow-surface px-3 py-2.5 text-left text-sm">
         {runState(row, now) === "running" ? <LoaderCircle className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground"/> : <CircleDot aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground"/>}
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">

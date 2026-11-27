@@ -127,14 +127,14 @@ function PanelBody({ tab, setTab, close, project, thread, activity, raw }: Panel
 
 /** The panel as a right column (wide) or a bottom sheet (phone); `wide` comes from the console's media query. */
 export function SessionPanel({ wide, ...props }: PanelProps & { wide: boolean }) {
-  if (wide) return <aside aria-label="Thread panel" className="flex w-[min(34rem,40vw)] shrink-0 flex-col border-l bg-background">
+  if (wide) return <aside aria-label="Thread panel" className="relative z-10 flex w-[min(34rem,40vw)] shrink-0 flex-col bg-card shadow-raised">
     <PanelBody {...props}/>
   </aside>;
   return <Drawer open onOpenChange={(open: boolean) => { if (!open) props.close(); }}>
     <DrawerBackdrop className="bg-black/30"/>
-    <DrawerContent className="flex h-[85dvh] w-full flex-col rounded-t-md border-t bg-background">
+    <DrawerContent className="flex h-[85dvh] w-full flex-col rounded-t-3xl bg-card shadow-raised">
       <DrawerTitle className="sr-only">Thread panel</DrawerTitle>
-      <div aria-hidden className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-sm bg-border"/>
+      <div aria-hidden className="mx-auto mt-2 h-1.5 w-10 shrink-0 rounded-full bg-muted-foreground/30"/>
       <PanelBody {...props}/>
     </DrawerContent>
   </Drawer>;

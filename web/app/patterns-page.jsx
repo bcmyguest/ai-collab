@@ -101,7 +101,7 @@ function PatternInspect({ pattern, own, go, act, busy, disabled, notice, raw }) 
 
     <section className="flex flex-col gap-2">
       <h3 className="text-xs font-medium text-muted-foreground">Graph</h3>
-      <div className="rounded-xl border bg-card p-2"><RoleGraph graph={graph} label={`Graph of ${pattern.name}`}/></div>
+      <div className="rounded-xl bg-card shadow-surface p-2"><RoleGraph graph={graph} label={`Graph of ${pattern.name}`}/></div>
       {pattern.handoffs.length ? <HandoffDiagram handoffs={pattern.handoffs}/> : <p className="text-xs text-muted-foreground">No handoffs. A team starts its members directly.</p>}
     </section>
 
@@ -237,7 +237,7 @@ function RunView({ run, data, go, act, busy, disabled, notice }) {
       {run.error && <p role="alert" className="text-xs text-destructive">{run.error}</p>}
     </div>
 
-    <div className="rounded-xl border bg-card p-2"><RoleGraph graph={toGraph(definition)} active={run.status === "running" ? run.active : ""} used={run} label={`Run ${run.id} graph`}/></div>
+    <div className="rounded-xl bg-card shadow-surface p-2"><RoleGraph graph={toGraph(definition)} active={run.status === "running" ? run.active : ""} used={run} label={`Run ${run.id} graph`}/></div>
 
     <section className="flex flex-col gap-2">
       <h3 className="text-xs font-medium text-muted-foreground">Roles</h3>

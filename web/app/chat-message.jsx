@@ -91,7 +91,7 @@ export function ChatMessage({ message, operator, me, now, replyFrom, open, act, 
         : message.kind === "Question" && message.question ? <QuestionCard question={message.question} body={withMentions(message.body)} taskLinks={taskLinks} answer={message.answer} by={message.answeredBy} skipped={message.skipped} disabled={disabled} onAnswer={body => answer(message.question, body)} skip={skip}/>
         : (message.body || !message.attachment) && <BubbleContext.Provider value={bubble}>
           <div className={cn("bubble max-w-full rounded-2xl px-3.5 py-2 text-base leading-relaxed shadow-xs [overflow-wrap:anywhere]",
-        outgoing ? "rounded-tr-md border border-primary/25 bg-primary/10 text-foreground" : "rounded-tl-md border bg-card text-card-foreground",
+        outgoing ? "rounded-tr-md border border-primary/25 bg-primary/10 text-foreground" : "rounded-tl-md bg-card shadow-surface text-card-foreground",
         message.kind === "Question" && "border-primary/50")}><MessagePrimitive.Content components={{ Text: BubbleText }}/></div>
         </BubbleContext.Provider>}
       {message.attachment && <ChatImage attachment={message.attachment}/>}

@@ -32,7 +32,7 @@ export function Shipped({ items, open }) {
     setSeen(next);
   }
 
-  return <section aria-labelledby="shipped-heading" className="rounded-xl border bg-card p-3">
+  return <section aria-labelledby="shipped-heading" className="rounded-xl bg-card shadow-surface p-3">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h2 id="shipped-heading" className="text-sm font-medium">Shipped since last check · {unseen.length}</h2>
       <Button size="sm" variant="outline" onClick={checkIn}>Mark all seen</Button>

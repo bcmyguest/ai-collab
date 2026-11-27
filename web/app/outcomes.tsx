@@ -70,7 +70,7 @@ export function OutcomeCards({ outcomes, tasks, inspect, controls }: OutcomeCard
         approved: done ? "Open · Acceptance check" : "Open · Tasks in progress",
         closed: "Closed",
       }[entry.state];
-      return <article key={entry.id} className="grid gap-2 rounded-xl border bg-card p-3 text-sm [overflow-wrap:anywhere]">
+      return <article key={entry.id} className="grid gap-2 rounded-xl bg-card shadow-surface p-3 text-sm [overflow-wrap:anywhere]">
         <h2 className="font-semibold">{entry.outcome}</h2>
         <p className="text-muted-foreground">{status}</p>
         <p><strong>Acceptance check</strong> · {entry.check}</p>
