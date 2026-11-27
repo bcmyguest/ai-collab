@@ -22,6 +22,7 @@ scripts/ai-collab wait 30                            # block for the next messag
 scripts/ai-collab wait idle:bob#0123456789abcdef 45  # block until that agent has no turn running
 scripts/ai-collab wait reply:m00000042 45  # block until a reply to that message id
 scripts/ai-collab interrupt codex#0123456789abcdef   # interrupt a running Codex or OpenCode turn
+scripts/ai-collab mode codex#0123456789abcdef auto   # operator only: change a runner-owned session's permission mode
 scripts/ai-collab respond m00000042 done "merged"    # answer a message by id
 scripts/ai-collab identity --activity "reviewing PR 12" --tag pr:12
 scripts/ai-collab agents [--tag role:reviewer]       # live sessions with their identity, optionally by tag

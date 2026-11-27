@@ -911,15 +911,17 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     if (!PLACES.includes(place)) fail(400, "Unknown start place");
     // OpenShell is the boundary: every harness there runs with approvals off, whatever mode the caller named.
     // An unnamed Claude start takes the configured claudePermissionMode when it names a runner mode.
-    // Team, pattern and continuation starts default to auto; an instance setting replaces the team or configured one.
-    // A spawned child is a team member too: auto by default (docs/spawn-agent-spec.md, answer 6).
-    const scoped = Boolean(patternRun || continuation || spawned);
-    const claude = harness === "claude" && place !== "openshell" && permissionMode === undefined ? claudePermissionFor(harness, configs.get(project), env, { setting: claudePermission ?? (scoped ? "auto" : undefined) }) : {};
+    // A non-Claude start maps claudePermission through runnerModeOfClaude when the adapter supports the mode.
+    // Members (pattern, continuation, spawned, managed) default to auto; operator starts default to supervised.
+    const member = Boolean(patternRun || continuation || spawned || managedInput === true);
+    const claude = harness === "claude" && place !== "openshell" && permissionMode === undefined ? claudePermissionFor(harness, configs.get(project), env, { setting: claudePermission ?? (member ? "auto" : undefined) }) : {};
     if (claude.error) fail(400, claude.error);
     if (claude.flag && !runnerModeOfClaude(claude.flag)) fail(400, `claudePermissionMode ${claude.flag} has no runner mode; use default, acceptEdits, auto or bypassPermissions`);
     const configuredMode = claude.flag ? runnerModeOfClaude(claude.flag) : null;
-    const spawnMode = spawned && adapter.capabilities.permissionModes.includes("auto") ? "auto" : null;
-    const mode = place === "openshell" ? OPENSHELL_PERMISSION : permissionMode ?? configuredMode ?? spawnMode ?? defaultPermission(harness, place);
+    const mapped = harness === "claude" || typeof claudePermission !== "string" ? null : runnerModeOfClaude(claudePermission);
+    const mappedMode = mapped && adapter.capabilities.permissionModes.includes(mapped) ? mapped : null;
+    const memberMode = adapter.capabilities.permissionModes.includes("auto") ? "auto" : defaultPermission(harness, place);
+    const mode = place === "openshell" ? OPENSHELL_PERMISSION : permissionMode ?? configuredMode ?? mappedMode ?? (member ? memberMode : "supervised");
     if (!PERMISSION_MODES.includes(mode) || !adapter.capabilities.permissionModes.includes(mode)) fail(400, `${harness} does not support permission mode ${mode}`);
     const permission = permissionSettings(harness, mode, place);
     if (permission.error) fail(400, permission.error);
@@ -1304,22 +1306,23 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
 
   /** Changes an owned session's permission mode; reached only through the control socket, never through ntfy or MCP. */
   async function setMode(address, mode) {
+    const named = PERMISSION_MODES.includes(mode) ? mode : runnerModeOfClaude(mode) ?? mode;
     const s = find(address);
     const r = s.record;
     if (r.status === "ended") fail(409, "The owned session has ended");
-    if (r.place === "openshell" && mode !== OPENSHELL_PERMISSION) fail(400, "An OpenShell session always runs with full access");
-    if (!PERMISSION_MODES.includes(mode) || !adapterOf(r.harness).capabilities.permissionModes.includes(mode)) fail(400, `${r.harness} does not support permission mode ${mode}`);
-    const permission = permissionSettings(r.harness, mode, r.place);
+    if (r.place === "openshell" && named !== OPENSHELL_PERMISSION) fail(400, "An OpenShell session always runs with full access");
+    if (!PERMISSION_MODES.includes(named) || !adapterOf(r.harness).capabilities.permissionModes.includes(named)) fail(400, `${r.harness} does not support permission mode ${named}`);
+    const permission = permissionSettings(r.harness, named, r.place);
     if (permission.error) fail(400, permission.error);
-    if (hostFullAccess(mode, r.place, env)) fail(400, hostFullAccess(mode, r.place, env));
+    if (hostFullAccess(named, r.place, env)) fail(400, hostFullAccess(named, r.place, env));
     const handle = await liveHandle(s);
     if (!handle.setPermissionMode) fail(409, `${r.harness} cannot change its permission mode while open`);
-    await handle.setPermissionMode(mode);
+    await handle.setPermissionMode(named);
     const was = r.permissionMode;
-    r.permissionMode = mode;
+    r.permissionMode = named;
     save(s);
-    await enqueuePublish(s, () => publishEvent(s.cfg, r.harness, { type: EventType.CUSTOM, name: NOTICE, value: `permission mode ${was} → ${mode}` }));
-    return { status: "changed", permissionMode: mode };
+    await enqueuePublish(s, () => publishEvent(s.cfg, r.harness, { type: EventType.CUSTOM, name: NOTICE, value: `permission mode ${was} → ${named}` }));
+    return { status: "changed", permissionMode: named };
   }
 
   /** Answers an approval card: decision allow|deny, or answers for a choice. */

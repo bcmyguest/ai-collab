@@ -418,14 +418,22 @@ Modes: `supervised`, `accept-edits`, `auto`, `full-access`. The table is `PERMIS
 
 | Mode | Claude `permissionMode` | Codex `approvalPolicy` / `approvalsReviewer` / `sandboxPolicy` | OpenCode (auto-reply `once` to) | Cursor |
 |---|---|---|---|---|
-| `supervised` | `default` | `untrusted` / `user` / `readOnly` | nothing; every ask goes to the phone (**default**) | ACP `request_permission` goes to the phone (**default**) |
+| `supervised` | `default` (operator **default**) | `untrusted` / `user` / `readOnly` (operator **default**) | nothing; every ask goes to the phone (**default**) | ACP `request_permission` goes to the phone (**default**) |
 | `accept-edits` | `acceptEdits` | `on-request` / `user` / `workspaceWrite` | edit asks | — |
-| `auto` | `auto` (**default**) | `on-request` / `auto_review` / `workspaceWrite` (**default**) | — | — |
+| `auto` | `auto` (member **default**) | `on-request` / `auto_review` / `workspaceWrite` (member **default**) | — | — |
 | `full-access` | `bypassPermissions` | granular (only MCP elicitations ask) / `user` / `dangerFullAccess` | every ask | `acp --force`; only with `place: "openshell"` |
 
-Defaults: Claude `auto`, Codex `auto`, OpenCode `supervised`, Cursor `supervised` (`DEFAULT_PERMISSION`). With `place: "openshell"` the default is `full-access` for every harness (`defaultPermission(harness, place)`).
+Defaults (`start` in `runner/runner.mjs`):
 
-The operator changes a running session's mode with `POST /v1/sessions/:harness/:label/mode` on the control socket (0600, the operator's user only). Neither the bus nor the MCP server offers the operation, so an agent cannot raise its own mode; it can ask the operator. The runner validates the pair with `permissionSettings`, calls `handle.setPermissionMode`, updates the owned record and publishes a notice row.
+| Start | Mode when the caller names none |
+|---|---|
+| Operator start (UI, control socket) | `supervised` |
+| Member start: pattern role, continuation, `spawn_agent`, or any start with `managed: true` | `auto` where the adapter lists it (Claude, Codex), else `DEFAULT_PERMISSION` (OpenCode and Cursor: `supervised`) |
+| `place: "openshell"` | `full-access` for every harness, whatever the caller names |
+
+Order: the instance's `permissionMode`, then for Claude the `claudePermission` setting (instance, else team, else `auto` for a member, else `claudePermissionMode` in `defaults.json`), then for other harnesses a `claudePermission` that `runnerModeOfClaude` maps to a mode the adapter lists (a mode it lacks is skipped), then the default above. A team's `team.dot` `permission` attribute reaches every role start as `claudePermission`.
+
+The operator changes a running session's mode with `POST /v1/sessions/:harness/:label/mode` on the control socket (0600, the operator's user only), `/mode <mode>` in the session chat, or `ai-collab mode <peer#session> <mode>`. The mode is a runner mode or a Claude name (`default`, `acceptEdits`, `auto`, `bypassPermissions`) that `runnerModeOfClaude` maps. Neither the bus nor the MCP server offers the operation, so an agent cannot raise its own mode; it can ask the operator. The runner validates the pair with `permissionSettings`, calls `handle.setPermissionMode`, updates the owned record and publishes a notice row.
 
 Cursor's `full-access` needs OpenShell. For the other harnesses the runner refuses `full-access` outside OpenShell, at start and on a mode change, unless the runner has `AI_COLLAB_ALLOW_HOST_AGENT=1` (`lib/agent-guard.mjs`). OpenCode replies are always `once`, never `always`, because an "always" grant covers the whole project. An adapter that cannot honour a mode leaves it out of `capabilities.permissionModes`, and the runner answers 400.
 

@@ -220,7 +220,7 @@ When `spawn === true`:
 4. The start gap at line 864 skips spawns: change the guard to `!patternRun && !builder && !spawn`. The child cap bounds the rate.
 5. Force `managed = true`.
 6. Add `parent` and `spawn: { depth }` to the `startWorkflow` input (line 872).
-7. Permission mode: a spawn that names none defaults to `auto` where the adapter supports it (Claude through the scoped `claudePermission: "auto"` path, Codex), else the harness default (answer 6).
+7. Permission mode: a spawn that names none defaults to `auto` where the adapter supports it (Claude through the member `claudePermission: "auto"` path, Codex), else the harness default (answer 6). An operator start defaults to `supervised` (docs/owned-sessions-contract.md, Permission modes).
 
 ### B4. Workflow, `runner/runner.mjs` `sessionWorkflow`
 

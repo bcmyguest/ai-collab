@@ -1820,7 +1820,15 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         // /permission stores the next-start mode on the session; /team-permission asks the operator before writing team.dot.
         const setPermission = (peer, mode) => setNextPermission(cfg, { id: peer.id, label: String(peer.id).split("#")[1] ?? "", value: mode });
         const askTeamPermission = (team, mode) => { const { done, ...reply } = requestTeamPermission(cfg, team, mode, { env }); void done; return reply; };
-        return json(200, await slashCommand(session, parsed, { compact, setPermission, askTeamPermission }));
+        // /mode changes a runner-owned session's live mode; the runner applies the start checks again.
+        const setSessionMode = async (peer, mode) => {
+          if (readOwned(cfg, String(peer.id).split("#")[1] ?? "")?.address !== peer.id) throw new Error("/mode needs a runner-owned session; /permission sets a terminal Claude session's next start");
+          const result = await runner({ socket: runnerSocket(env) }).setMode(peer.id, mode).catch(() => { throw new Error("The session runner is unavailable"); });
+          if (result.status !== 200) throw new Error(result.body?.error || "The runner refused the mode change");
+          broadcast();
+          return result.body;
+        };
+        return json(200, await slashCommand(session, parsed, { compact, setPermission, setMode: setSessionMode, askTeamPermission }));
       }
       if (action === "model") {
         const harness = recipient(cfg, target, true);
