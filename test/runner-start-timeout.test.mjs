@@ -9,7 +9,7 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { wrapOpen } from "./helpers/fake-adapter-hooks.mjs";
 import { loadConfig } from "../lib/config.mjs";
 import { builderPaths } from "../lib/builder.ts";
-import { listOwned } from "../lib/sessions/registry.ts";
+import { listOwned, ownedFile } from "../lib/sessions/registry.ts";
 import { openTasks } from "../lib/tasks.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
@@ -116,6 +116,48 @@ test("a spawn whose claim lands after its 504 ends that child, so it does not co
     // It stays ended after its harness reports the run's end.
     await new Promise((resolve) => setTimeout(resolve, 300));
     assert.deepEqual(listOwned(ctx.cfg).filter((r) => r.spawn).map((r) => r.status), ["ended"]);
+    for (let i = 0; i < 4; i++) assert.equal((await runner.start(spawnInput(`child ${i}`))).status, "started");
+  } finally {
+    await runner.stop();
+  }
+});
+
+test("a late child whose release fails is still marked ended and frees its cap slot", async (t) => {
+  const fake = await startFakeNtfy();
+  t.after(() => fake.close());
+  const ctx = setup(t, fake);
+  const adapter = createFakeAdapter({ harness: "codex" });
+  const durable = openDurable(ctx.db);
+  const cancel = durable.cancel.bind(durable);
+  const held = gate();
+  let cancelling = false;
+  durable.cancel = async (id) => { cancelling = true; await held.shut; return cancel(id); };
+  const runner = createRunner({ projects: [ctx.cfg], adapters: new Map([["codex", adapter]]), durable, env: ctx.env, startGapMs: 0, watch: false, startTimeoutMs: 1000 });
+  await runner.boot();
+  try {
+    const parent = (await runner.start({ project: "demo", harness: "codex", prompt: "parent" })).session;
+    const spawnInput = (prompt) => ({ project: "demo", harness: "codex", prompt, place: "folder", managed: true, parent, spawn: true, system: false });
+    const open = adapter.open.bind(adapter);
+    const slow = gate();
+    // Its run's end arrives after the release, which then drops it; only the release meets the write failure.
+    adapter.open = async (options, context) => {
+      await slow.shut;
+      const late = (e) => (e.type === "RUN_FINISHED" ? setTimeout(() => context.emit(e), 300) : context.emit(e));
+      return open(options, { ...context, emit: late });
+    };
+    const late = runner.start(spawnInput("late child approve: ls")).catch((error) => error);
+    await until(() => cancelling, "the 504 cancel");
+    slow.open();
+    adapter.open = open;
+    const record = await until(() => listOwned(ctx.cfg).find((r) => r.spawn && r.approvals?.length), "late child waiting on an approval");
+    // Its owned record can no longer be written, so ending it throws part way.
+    const file = ownedFile(ctx.cfg, record.label);
+    rmSync(file);
+    mkdirSync(file);
+    held.open();
+    assert.equal((await late).status, 504);
+    await until(() => runner.get(record.address).status === "ended", "late child ended in memory");
+    rmSync(file, { recursive: true });
     for (let i = 0; i < 4; i++) assert.equal((await runner.start(spawnInput(`child ${i}`))).status, "started");
   } finally {
     await runner.stop();

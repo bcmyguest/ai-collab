@@ -981,8 +981,22 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   // Ends whatever session a cancelled start's workflow claimed, so it holds no cap slot and no harness.
   async function releaseCancelled(project, workflowId) {
     const late = [...sessions.values()].find(({ record }) => record.workflowId === workflowId && record.status !== "ended");
-    if (late) late.released = true;
-    if (late) return endSession(late, "start timed out").catch((error) => log(`could not end ${late.record.address}: ${error.message}`));
+    if (late) {
+      // Set first: endSession awaits after it marks the record ended, and a late RUN_FINISHED in that gap would reopen it.
+      late.released = true;
+      try {
+        await endSession(late, "start timed out");
+      } catch (error) {
+        // A part-way failure still ends it: the cap counts it until its status is ended, and its harness must stop.
+        log(`could not end ${late.record.address}: ${error.message}`);
+        late.record.status = "ended";
+        late.record.run = null;
+        await late.live?.close().catch(() => {});
+        late.live = null;
+        try { save(late); } catch (saveError) { log(`could not save ${late.record.address}: ${saveError.message}`); }
+      }
+      return;
+    }
     const cfg = configs.get(project);
     for (const record of cfg?.enabled ? listOwned(cfg) : []) {
       if (record.workflowId === workflowId && record.status !== "ended") writeOwned(sessionCfg(project, record.harness, record.label), { ...record, status: "ended" });
