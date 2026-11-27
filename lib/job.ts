@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, rmSync } from "node:fs";
 import { constants } from "node:os";
 import { join } from "node:path";
-import { assertHostAgent } from "./agent-guard.mjs";
+import { assertHostAgent, managedShellStartRefusal } from "./agent-guard.mjs";
 import { isRunning, processStart } from "./process.mjs";
 import { writeState } from "./state.mjs";
 import type { Cfg } from "./messaging.ts";
@@ -48,6 +48,8 @@ export async function job(argv: string[], { cfg, env, out, err, registered }: {
     if (!cfg.session || !registered(cfg, address)) {
       throw new Error("Set AI_COLLAB_PEER and AI_COLLAB_SESSION to your registered session");
     }
+    const managed = managedShellStartRefusal([command, ...args], env);
+    if (managed) throw new Error(managed);
     assertHostAgent([command, ...args], { env });
     const file = join(cfg.stateDir, cfg.project, "registry", address + ".job-" + randomUUID() + ".json");
     const child = spawn(command, args, { env, stdio: "inherit" });
