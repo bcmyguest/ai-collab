@@ -1261,6 +1261,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       return {
         name, source, legacy: legacy === true, removable: removable.has(name), ...(invalid ? { invalid } : {}), ...(description ? { description } : {}), roles, handoffs,
         ...(source !== "team" ? { dot: teamTextOf(entry) } : {}), ...(source === "project" ? { editable: true } : {}),
+        // A team.dot team: the only kind /team-permission can rewrite.
+        ...(entry.file ? { teamFile: true } : {}),
       };
     });
   }

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { fuzzyRank } from "@/lib/fuzzy";
-import { commandFor, matchCommands } from "@/lib/slash-commands";
+import { commandFor, matchArgs, matchCommands } from "@/lib/slash-commands";
 import { composerDestination, composerRecipients } from "@/lib/message-routing";
 import { quotedReply, usableReplyId } from "@/lib/reply-quote";
 import { patternMentionTargets } from "@/lib/mentions";
@@ -85,9 +85,17 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
   const chosen = Math.min(activeIndex, matches.length - 1);
   // "/comp" while typing a command for the selected session: its names with support from web/lib/slash-commands.js.
   const typedCommand = harness && /^\/[a-z0-9-]*$/i.test(draft) ? draft.slice(1) : null;
-  const commands = typedCommand === null ? [] : matchCommands(harness, typedCommand);
-  const commandPicking = commands.length > 0 && !picking && commandsOpen;
-  const commandChosen = Math.min(activeIndex, commands.length - 1);
+  // "/permission a": the values the argument being typed takes; teams are team.dot teams, models the harness's list.
+  const argMatch = harness && typedCommand === null ? matchArgs(harness, draft, {
+    teams: (routing.patterns || []).filter(pattern => pattern.teamFile && !pattern.invalid).map(pattern => ({ name: pattern.name, description: pattern.description })),
+    models: modelsOf(models, harness),
+  }) : null;
+  const values = argMatch?.options || [];
+  // An unsupported command keeps its disabled row while its arguments are typed.
+  const commands = typedCommand !== null ? matchCommands(harness, typedCommand) : argMatch?.command.status === "unsupported" ? [argMatch.command] : [];
+  const entries = values.length ? values : commands;
+  const commandPicking = entries.length > 0 && !picking && commandsOpen;
+  const commandChosen = Math.min(activeIndex, entries.length - 1);
   const busy = disabled || posting;
   const text = draft.trim();
   const quoted = Boolean(replying?.id && !usableReplyId(replying.id));
@@ -135,6 +143,13 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
     setActiveIndex(0);
     focus();
   }
+  // A value ending in a space leaves the next argument to pick; the last one closes the list so Enter sends.
+  function insertValue(option) {
+    setDraft(option.text);
+    setActiveIndex(0);
+    if (!option.text.endsWith(" ")) setCommandsOpen(false);
+    focus();
+  }
   // The runtime's onNew path: the console's send runs with the flags set at send time;
   // a non-true result makes the provider throw MessageNotSentError, so the runtime hands the text back.
   async function finish(raw) {
@@ -176,7 +191,16 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
       <span className="min-w-0 truncate">Replying to {short(replying.sender)}{replying.body && <span className="text-muted-foreground"> · {quoteText(replying.body)}</span>}</span>
       <Button variant="ghost" size="icon" className="size-6" aria-label="Cancel reply" onClick={cancelReply}><X/></Button>
     </div>}
-    {commandPicking && <div role="listbox" aria-label="Session commands"
+    {commandPicking && values.length > 0 && <div role="listbox" aria-label={"Values for /" + argMatch.command.name}
+      className="absolute inset-x-3 bottom-full mb-1 max-h-64 overflow-y-auto rounded-2xl border bg-popover p-1 text-popover-foreground shadow-lg">
+      {values.map((option, i) => <button type="button" role="option" aria-selected={i === commandChosen} key={option.value}
+        title={argMatch.command.reason} onMouseDown={event => event.preventDefault()} onClick={() => insertValue(option)}
+        className={cn("flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm", i === commandChosen && "bg-accent text-accent-foreground")}>
+        <span className="flex min-w-0 flex-1 flex-col"><span className="font-mono text-xs">{option.value}</span>
+          {option.summary && <span className="truncate text-xs text-muted-foreground">{option.summary}</span>}</span>
+      </button>)}
+    </div>}
+    {commandPicking && !values.length && <div role="listbox" aria-label="Session commands"
       className="absolute inset-x-3 bottom-full mb-1 max-h-64 overflow-y-auto rounded-2xl border bg-popover p-1 text-popover-foreground shadow-lg">
       {commands.map((command, i) => <button type="button" role="option" aria-selected={i === commandChosen} aria-disabled={command.status === "unsupported"} key={command.name}
         title={command.reason} onMouseDown={event => event.preventDefault()} onClick={() => command.status !== "unsupported" && insertCommand(command)}
@@ -203,9 +227,11 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
     <div onKeyDownCapture={event => {
       if (commandPicking) {
         if (event.key === "Escape") setCommandsOpen(false);
-        else if (event.key === "ArrowDown") setActiveIndex((commandChosen + 1) % commands.length);
-        else if (event.key === "ArrowUp") setActiveIndex((commandChosen + commands.length - 1) % commands.length);
-        else if (event.key === "Tab" && commands[commandChosen].status !== "unsupported") insertCommand(commands[commandChosen]);
+        else if (event.key === "ArrowDown") setActiveIndex((commandChosen + 1) % entries.length);
+        else if (event.key === "ArrowUp") setActiveIndex((commandChosen + entries.length - 1) % entries.length);
+        // A value list takes Enter too: "/permission " alone is no command to send.
+        else if (values.length && (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey))) insertValue(values[commandChosen]);
+        else if (event.key === "Tab" && !values.length && commands[commandChosen].status !== "unsupported") insertCommand(commands[commandChosen]);
         else return;
         event.preventDefault(); event.stopPropagation();
         return;

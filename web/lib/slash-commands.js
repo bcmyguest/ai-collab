@@ -2,7 +2,11 @@
 // Statuses: "supported" (verified in the harness source, binary or schema), "partial" (works for some session states only),
 // "unverified" (documented, effect not checked), "unsupported" (no channel, or refused).
 
+import { CLAUDE_CLI_MODES, CLAUDE_PERMISSION_SUMMARIES, CLAUDE_PERMISSION_VALUES, RUNNER_MODE_SUMMARIES, RUNNER_PERMISSION_MODES } from "./permission-modes.js";
+
 export const NAME = /^[a-z][a-z0-9-]{0,31}$/;
+// "/name word word partial": the words already typed after a command name, then the one being typed.
+const TYPING_ARGS = /^\/([a-z][a-z0-9-]{0,31})\s+((?:\S+\s+)*)(\S*)$/i;
 
 export const COMMANDS = [
   { name: "compact", summary: "Compact the context" },
@@ -92,4 +96,50 @@ export function matchCommands(harness, prefix) {
     .map(command => ({ ...command, ...commandSupport(harness, command.name) }));
   if (known.length || !NAME.test(typed)) return known;
   return [{ name: typed, summary: "Send /" + typed + " to the session", ...commandSupport(harness, typed) }];
+}
+
+const claudeValues = () => CLAUDE_PERMISSION_VALUES.map(value => ({ value, summary: CLAUDE_PERMISSION_SUMMARIES[value] }));
+
+// The values /mode accepts for a harness: its runner modes, and for Claude the Claude names the runner maps onto them.
+function modeValues(harness) {
+  const modes = RUNNER_PERMISSION_MODES[harness] ?? [];
+  const aliases = harness === "claude" ? Object.entries(CLAUDE_CLI_MODES).filter(([name, mode]) => name !== mode && modes.includes(mode)) : [];
+  return [...modes.map(value => ({ value, summary: RUNNER_MODE_SUMMARIES[value] })),
+    ...aliases.map(([value, mode]) => ({ value, summary: "Claude's name for " + mode }))];
+}
+
+// The values for argument index of a command: teams [{name, description?}] and models [id] come from the composer's data.
+function argValues(name, index, harness, { teams = [], models = [] }) {
+  switch (name + ":" + index) {
+    case "permission:0": return claudeValues();
+    case "mode:0": return modeValues(harness);
+    case "team-permission:0": return teams.map(team => ({ value: team.name, summary: team.description || "" }));
+    case "team-permission:1": return claudeValues();
+    case "model:0": return models.map(value => ({ value, summary: "" }));
+    default: return [];
+  }
+}
+
+/**
+ * Suggestions for the argument being typed after a known command, or null when text is not "/command " plus arguments.
+ * {command, options}: command is the entry with its support for the harness; options are {value, summary, text}, where
+ * text is the draft with the value inserted. An unsupported command, or one with every argument typed, has no options.
+ */
+export function matchArgs(harness, text, data = {}) {
+  const found = TYPING_ARGS.exec(text);
+  const known = found && COMMANDS.find(command => command.name === found[1].toLowerCase());
+  if (!known?.args) return null;
+  const command = { ...known, ...commandSupport(harness, known.name) };
+  const done = found[2].trim() ? found[2].trim().split(/\s+/) : [];
+  const slots = known.args.split(" ").length;
+  if (command.status === "unsupported" || done.length >= slots) return { command, options: [] };
+  const typed = found[3];
+  const head = text.slice(0, text.length - typed.length);
+  const tail = done.length < slots - 1 ? " " : "";
+  const options = argValues(known.name, done.length, harness, data)
+    .filter(option => option.value.toLowerCase().startsWith(typed.toLowerCase()))
+    .map(option => ({ ...option, text: head + option.value + tail }));
+  // A value typed in full needs no suggestion.
+  if (options.length === 1 && options[0].value === typed) return { command, options: [] };
+  return { command, options };
 }
