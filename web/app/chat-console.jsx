@@ -363,8 +363,20 @@ export function Console({ account }) {
   const sessionName = level === "session" ? identity || shortName(agent, currentThread?.title) || short(selected.session) : "";
   // A phone shows one screen at a time: the thread list, or the chat with its panel as a sheet.
   const listScreen = !wide && navOpen;
+  const asideRef = useRef(null);
+  const headerRef = useRef(null);
+  const shownList = useRef(listScreen);
+  // Swapping screens hides the focused control, so focus moves to the first control of the screen now shown.
+  useEffect(() => {
+    if (shownList.current === listScreen) return;
+    shownList.current = listScreen;
+    const hidden = listScreen ? headerRef.current?.closest("main") : asideRef.current;
+    const active = document.activeElement;
+    if (active && active !== document.body && !hidden?.contains(active)) return;
+    (listScreen ? asideRef : headerRef).current?.querySelector("button:not(:disabled)")?.focus();
+  }, [listScreen]);
   return <SurfaceContext.Provider value={{ surfaces, submit: payload => action("a2ui", payload, "Sent"), disabled: !ready || working }}><div className="flex h-dvh w-full overflow-hidden">
-    <aside aria-label="Projects and threads" className={cn("shrink-0 border-r bg-sidebar text-sidebar-foreground", listScreen ? "flex w-full" : "hidden w-72 md:flex")}>
+    <aside ref={asideRef} aria-label="Projects and threads" className={cn("shrink-0 border-r bg-sidebar text-sidebar-foreground", listScreen ? "flex w-full" : "hidden w-72 md:flex")}>
       <div className="min-w-0 flex-1"><ThreadSidebar {...threadProps}/></div>
     </aside>
     <Sheet open={schedulesOpen} onOpenChange={setSchedulesOpen}>
@@ -387,7 +399,7 @@ export function Console({ account }) {
       }}/>
     <main className={cn("min-w-0 flex-1 flex-col", listScreen ? "hidden" : "flex")}>
       <DeployedBanner deployed={data.deployed}/>
-      <header className="flex min-h-12 shrink-0 items-center gap-2 border-b px-3 py-1.5">
+      <header ref={headerRef} className="flex min-h-12 shrink-0 items-center gap-2 border-b px-3 py-1.5">
         {/* A phone goes back to the thread list; the list is always beside the chat from md up. */}
         <Button variant="ghost" size="icon" className="relative -ml-1 md:hidden" aria-label="Threads" onClick={() => setNavOpen(true)} title={anyWaiting ? "Sessions waiting on you" : undefined}>
           <ArrowLeft/>{anyWaiting && <span aria-hidden className="absolute right-1.5 top-1.5 size-2 rounded-full bg-primary"/>}
