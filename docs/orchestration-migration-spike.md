@@ -1,5 +1,7 @@
 # Orchestration migration spike
 
+> Historical: written before the switch to the Postgres bus and the opt-in DBOS engine; see [DBOS workflow engine](configuration.md#dbos-workflow-engine) and [ntfy removal](ntfy-removal.md).
+
 Use DBOS Transact for TypeScript as the integration target, based on the runner's [DBOS-shaped execution contract](owned-sessions-contract.md#durable-execution). Start with opt-in scheduled workflows and a PostgreSQL system database. This is a design review. SDK integration and crash behavior still need a live proof.
 
 ## Integration review

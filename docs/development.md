@@ -14,7 +14,7 @@ npm run build
 
 `npm run build:package` (`tools/build-package.mjs`) writes `dist/`, a complete package with the same paths. It copies the `files` entries, then `tsc -p tsconfig.build.json` replaces each `.ts` module's importers with `.js` and emits the `.mjs` code. Node refuses to strip types under `node_modules`, so the published tarball holds no `.ts` file. The release workflow publishes `./dist`, and `npm pack ./dist` builds the same tarball locally.
 
-Tests use an in-process fake ntfy server (`test/helpers/fake-ntfy.mjs`) and need no network or API access. The empty `HOME` keeps them away from your agent configs, as CI does.
+Tests use an in-process bus (`test/helpers/fake-ntfy.mjs`: the production `lib/bus.ts` server on the memory store, the file keeps its old name) and need no network or API access. The empty `HOME` keeps them away from your agent configs, as CI does.
 
 ### UI SDK smoke test
 
@@ -48,7 +48,7 @@ Set `CELLD_BIN` to use a specific binary. The smoke test runs the product DOT in
 
 ## Owned-session runner
 
-`runner/` holds the `ai-collab-runner` service skeleton: the adapter contract, a SQLite workflow log, the control socket and a fake adapter. Adapters code against [the owned-sessions contract](owned-sessions-contract.md). Run it with `npm run runner`; `deploy/ai-collab-runner.service` is the user-unit template.
+`runner/` holds the `ai-collab-runner` service: the adapter contract, the claude, codex, cursor, opencode and fake adapters, durable workflows through `lib/workflows.ts` (SQLite `runner.db` by default, DBOS on Postgres with `"workflowEngine": "dbos"`), message delivery (`runner/delivery.ts`), schedules and the control socket. Adapters code against [the owned-sessions contract](owned-sessions-contract.md). Run it with `npm run runner`; `deploy/ai-collab-runner.service` is the user-unit template.
 
 ### Schedules
 

@@ -16,7 +16,7 @@ The November 22, 2026 rollout enabled Claude and Codex. Cursor and OpenCode stil
 |---|---|---|
 | Process | A separate `ai-collab-runner` systemd user unit (`deploy/ai-collab-runner.service`) | operator |
 | Language | ESM JS with JSDoc and a `.d.ts` contract. TypeScript is allowed; adapters in `.ts` must use erasable syntax only, so Node runs them without a build step. Rust is a long-term option. | operator |
-| Execution | Durable workflows: a SQLite workflow/step log shaped like DBOS (see [Durable execution](#durable-execution)) | operator; this page picks the implementation |
+| Execution | Durable workflows: a SQLite workflow/step log shaped like DBOS (see [Durable execution](#durable-execution)); since 2026-11-25 also DBOS Transact on Postgres with `"workflowEngine": "dbos"` | operator; this page picks the implementation |
 | Codex | Its own `codex app-server` child per runner, launched with `-c thread_unload_delay_secs=0` | review |
 | Claude | Agent SDK `query()` with an `AsyncIterable` prompt; the adapter picks the session UUID and passes it as `options.sessionId` (sdk.d.ts L2273) | research |
 | OpenCode | The registered OpenCode service (`~/.local/state/opencode/service.json`), HTTP plus SSE; permission replies are always `once` | research, review |
@@ -62,14 +62,16 @@ The operator asked for DBOS-style durable execution: workflows and steps are che
 
 **Pick: the minimal layer.** DBOS would add a Postgres server to a single-user machine to run a single-process runner with a few concurrent sessions. The minimal layer keeps DBOS's names (`startWorkflow`, `step`, `recv`, `send`, `recover`), so if Postgres ever arrives, porting means swapping `runner/durable.mjs` for DBOS and wrapping the session workflow with `DBOS.registerWorkflow`. Costs: we own the layer's correctness (covered by `test/runner-durable.test.mjs`), and it has no queues, scheduler or workflow UI.
 
+Since then Postgres arrived for the bus store, and `lib/workflows.ts` runs the same interface on DBOS Transact (`@dbos-inc/dbos-sdk` pinned to 5.7.0) when `defaults.json` sets `"workflowEngine": "dbos"`. The SQLite log, now `lib/durable.ts` (`runner/durable.mjs` re-exports it), stays the code default. See [DBOS workflow engine](configuration.md#dbos-workflow-engine).
+
 ### Log schema (`runner.db`)
 
 | Table | Columns | Meaning |
 |---|---|---|
 | `workflows` | `id, name, input, status (PENDING, SUCCESS, ERROR, CANCELLED, SKIPPED), output, error, created_at, updated_at` | One row per session workflow; one per scheduled tick (`scheduled:<name>`) |
 | `steps` | `workflow_id, seq, name, status (started, done, error), output, error, started_at, finished_at` | A checkpoint per step and per `recv`, numbered in call order |
-| `messages` | `id, workflow_id, topic, value, dedupe UNIQUE, consumed, created_at` | Durable input to a workflow; `dedupe` holds `ntfy:<event id>` |
-| `kv` | `key, value` | `ntfy-cursor:<project>`, the last bus event the runner handled |
+| `messages` | `id, workflow_id, topic, value, dedupe UNIQUE, consumed, created_at` | Durable input to a workflow; `dedupe` holds `ntfy:<event id>` (a bus event id; the key keeps its pre-bus name) |
+| `kv` | `key, value` | `ntfy-cursor:<project>` (pre-bus name), the last bus event the runner handled |
 
 Replay rule: a step whose row is `done` returns its recorded output without running. A step whose row is `started` was cut by a stop or crash: it runs `onCut` when one is given and re-executes otherwise. A step whose name differs from the recorded one throws `NonDeterminismError`, so workflow code must call steps in a deterministic order.
 
@@ -281,7 +283,7 @@ Rules for every adapter:
 - `open` may call `options.beforeStart(nativeId)` once the adapter has chosen the native id and before the child starts; the runner writes the owned record there (status `starting`), so the child's hooks stand down.
 - A send error with `mayHaveStarted: true` means the harness may have taken the input: the runner marks it delivered and never resends it. Only a send error that certainly did not start releases the batch.
 - A send error with `retryable: true` and no `mayHaveStarted` means the harness refused the request and ran nothing: the wake send retries it a bounded number of times (see `wake.send` above). An adapter sets it from proven provenance, not from message text — the codex adapter sets it when the app-server answers with a JSON-RPC error, because an error response means `turn/start` (or `thread/resume`) was refused.
-- No real CLI runs in tests: drive the adapter against a fake transport (a stub JSON-RPC peer, a stub HTTP server) plus `test/helpers/fake-ntfy.mjs`.
+- No real CLI runs in tests: drive the adapter against a fake transport (a stub JSON-RPC peer, a stub HTTP server) plus `test/helpers/fake-ntfy.mjs` (the production bus on the memory store).
 
 ### OpenCode adapter facts (`runner/adapters/opencode.mjs`)
 
@@ -556,7 +558,7 @@ entry points, see [Live OpenShell bootstrap smoke](sandbox-smoke.md).
 |---|---|
 | `runner/types.d.ts` | Adapter interface, events, records |
 | `runner/contract.ts` | Harness, mode and event constants; `PERMISSION_TABLE`; `eventProblem` |
-| `runner/durable.mjs` | SQLite workflow/step/message log; `scheduled` ticks |
+| `runner/durable.mjs` | Re-exports `lib/durable.ts`: the SQLite workflow/step/message log and `scheduled` ticks; `lib/workflows.ts` picks it or DBOS |
 | `runner/schedules.ts` | `schedules.json` loader and the scheduled command step |
 | `lib/schedule-session.ts` | The registered session a schedule's command resumes, and the project a schedule's folder names |
 | `runner/lock.ts` | Single-instance lock (`runner.lock` beside `runner.db`) |

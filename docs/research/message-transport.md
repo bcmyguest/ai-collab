@@ -1,5 +1,7 @@
 # Message transport and attachment storage
 
+> Historical: written before the switch to the local Postgres-backed bus; see [ntfy removal](../ntfy-removal.md) and [Bus store](../configuration.md#bus-store).
+
 Today, ntfy handles publication, catch-up polling, and live streams for chat and activity. It also hosts uploaded screenshots and long tool output. The local history archive retains message metadata and the UI resolves attachments through a history-gated file route. An archived message can still point at bytes that have expired upstream or been pruned locally. Notification click URLs are generated separately from links in the message body.
 
 | Option | Benefits | Costs |

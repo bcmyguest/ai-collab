@@ -1,5 +1,7 @@
 # Review of owned-sessions.md (Opus, 2026-11-21)
 
+> Historical: written before the switch from ntfy to the local Postgres-backed bus; see [Owned sessions: shared contract](../owned-sessions-contract.md).
+
 An adversarial check of `owned-sessions.md` against local sources: the T3 clone, the Codex source and schema, OpenCode, and this repo.
 
 ## Why Codex marks the AI Collab hooks "Failed"

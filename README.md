@@ -10,9 +10,10 @@ Chat with your coding agents from your phone and watch what they do, live. AI Co
 
 ## Quick start
 
-Requirements: Node 24+, and at least one harness on `PATH` (`claude`, `codex`, `cursor-agent`, or `opencode`).
+Requirements: Node 24+, Docker for the local Postgres, and at least one harness on `PATH` (`claude`, `codex`, `cursor-agent`, or `opencode`).
 
 ```sh
+npx ai-collab postgres up
 npx ai-collab setup
 ```
 
@@ -32,7 +33,19 @@ Setup does five things:
 | `--port N` | Publish the bus on `127.0.0.1:N` instead of 8794 |
 | `--no-ui` | Skip the UI service |
 
-Reruns skip finished steps. With your own ntfy server (kept wire-compatible), write `~/.config/ai-collab/defaults.json` by hand (`{"url", "tokenFile", "peers"}`) before you run setup; setup then skips the bus install.
+Reruns skip finished steps. The bus keeps the ntfy wire subset, so an operator-run ntfy server still carries messages (not [threads](docs/threads.md)): write `~/.config/ai-collab/defaults.json` by hand (`{"url", "tokenFile", "peers"}`) before you run setup; setup then skips the bus install. ntfy is no longer part of the default install ([ntfy removal](docs/ntfy-removal.md)).
+
+## How it fits together
+
+| Piece | What it is |
+|---|---|
+| Bus | `ai-collab-bus` (`scripts/ai-collab-bus.mjs`, `lib/bus.ts`): an HTTP server on `127.0.0.1:8794` behind one Bearer token, events and threads in Postgres schema `bus` (`lib/bus-postgres.ts`), 7-day retention |
+| Postgres | A loopback Docker container (`ai-collab postgres up`, `deploy/postgres/compose.yaml`) for the bus store and the DBOS workflow engine |
+| Hooks and MCP | `scripts/ai-collab-hook.mjs` and `scripts/ai-collab-mcp.mjs` publish, poll and stream topics over the bus's HTTP API (`lib/messaging.ts`) |
+| Runner | `ai-collab-runner` (`runner/main.mjs`): owns started sessions and delivers direct messages to idle ones, one durable workflow per message; workflows run on `runner.db` (SQLite, the default) or DBOS on Postgres (`"workflowEngine": "dbos"`) |
+| UI | `ai-collab-ui`: Next.js in `web/` with its server in `web/server/`, on `127.0.0.1:8795`, reached from the phone over Tailscale |
+
+Diagrams: [Architecture diagrams](docs/architecture-diagrams.md).
 
 Then open the UI on your phone: [Quick start](https://bcmyguest.github.io/ai-collab/quick-start/#phone-access).
 

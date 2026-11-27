@@ -2,6 +2,8 @@
 
 Read AGENTS.md and follow it. The skill files it names are in `skills/`.
 
+Messaging runs on the local `ai-collab-bus` (Postgres-backed, loopback, one token), not ntfy; README "How it fits together" names each service and [ntfy removal](docs/ntfy-removal.md) records the switch.
+
 Use TypeScript for UI SDK components in `web/`. Preserve existing styles and read the installed UI SDK docs before adding or replacing components.
 
 Keep `web/tsconfig.json` extending the base config so Next.js leaves the checked-in config untouched when it creates a versioned build directory.

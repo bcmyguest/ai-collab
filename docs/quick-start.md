@@ -35,7 +35,7 @@ Reruns skip finished steps: an existing `defaults.json` with `url` and `tokenFil
 
 ## Your own ntfy server
 
-The bus speaks the ntfy wire subset, so an operator-run ntfy server still works as the transport. Write
+The bus speaks the ntfy wire subset, so an operator-run ntfy server still carries messages. [Threads](threads.md) need the bus: ntfy has no `/threads` routes, so the UI shows no thread list. Write
 `~/.config/ai-collab/defaults.json` by hand before you run setup; setup then uses that server and skips
 the bus install:
 

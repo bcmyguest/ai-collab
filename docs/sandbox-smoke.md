@@ -49,7 +49,7 @@ TMPDIR=$(mktemp -d -p /tmp) AI_COLLAB_LIVE_SANDBOX=1 \
 The matrix uses `builder start`, the runner session API, and the runner
 scheduler. Each case requires a successful turn containing a random response
 marker and checks the sandbox list after normal teardown. The timeline checks
-read the activity topic from a local ntfy test server. Standalone builders
+read the activity topic from the in-process test bus (`test/helpers/fake-ntfy.mjs`). Standalone builders
 and fresh sandboxed ticks currently expose output through the journal and tick
 history respectively. The extra Codex builder case exercises its runner-owned
 branch. The other runner-owned harnesses lack a standalone OpenShell launch.

@@ -7,8 +7,8 @@
     {
       "name": "ai-collab",
       "source": "./",
-      "description": "Peer messaging over private ntfy."
+      "description": "Peer messaging over a private local message bus."
     }
   ],
-  "description": "Local coding-agent messaging over ntfy."
+  "description": "Local coding-agent messaging over a private local message bus."
 }

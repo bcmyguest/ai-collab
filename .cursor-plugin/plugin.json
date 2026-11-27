@@ -1,7 +1,7 @@
 {
   "name": "ai-collab",
   "version": "0.11.0",
-  "description": "Best-effort messages and start/stop status between coding-agent peers over a private ntfy server. Inbound messages are surfaced as untrusted, provenance-labelled context.",
+  "description": "Best-effort messages and start/stop status between coding-agent peers over a private local message bus (Postgres-backed, loopback only). Inbound messages are surfaced as untrusted, provenance-labelled context.",
   "commands": "./commands/",
   "mcpServers": {
     "ai-collab": {

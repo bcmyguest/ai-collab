@@ -41,8 +41,8 @@ The local bus does not rate-limit. If you point `url` at an ntfy server, it rate
 ## Known limits
 
 - Peer names are self-asserted. The bus token is the only gate; keep it private.
-- Delivery is best effort with no retry; read receipts are best effort too. An offline peer only gets messages still inside the server's cache window.
+- A failed send is not retried; only `expect_reply` messages are redelivered. Read receipts are best effort too. An offline peer only gets messages still inside the bus's 7-day retention (`AI_COLLAB_BUS_RETENTION_HOURS`).
 - Codex, Cursor, and OpenCode event shapes are not verified against live sessions. `beforeSubmitPrompt` and Codex `PostToolUse` are deliberately not registered.
 - Status shows peers that have started or stopped. It is not a presence system.
-- An agent idle at its prompt with AFK mode `off` still hears a message only at its next hook.
-- A mode set more than 12 hours ago is outside the read window; new sessions then start in `off`.
+- An idle Cursor session hears a message only at its next hook; Claude, Codex and OpenCode get direct messages pushed ([Waking idle sessions](messaging.md#waking-idle-sessions)). Broadcasts without an `@mention` wake nobody.
+- A mode set more than 12 hours ago is outside the mode read window (`lib/mode.ts`); new sessions then start in `off`.

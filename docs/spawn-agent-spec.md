@@ -366,7 +366,7 @@ Run the H1-H3 checks first and record the result on the board task.
 
 ## Part C: new tests
 
-Each new test file runs without network or real harnesses, with the fake ntfy (`test/helpers/fake-ntfy.mjs`) and the fake adapter (`runner/adapters/fake.mjs`).
+Each new test file runs without network or real harnesses, with the in-process test bus (`test/helpers/fake-ntfy.mjs`) and the fake adapter (`runner/adapters/fake.mjs`).
 
 `test/subagent-guard.test.mjs`:
 
@@ -392,7 +392,7 @@ Each new test file runs without network or real harnesses, with the fake ntfy (`
 `test/runner-spawn.test.mjs` (setup copied from `test/runner.test.mjs` lines 33-62):
 
 - R1. `runner.start({..., spawn:true, parent:"claude#aaaaaaaaaaaaaaaa"})` returns at once. The owned record has `managed:true`, `parent` and `spawn:{depth:1}`. The registry entry has `parent`.
-- R2. After the fake run finishes, the fake ntfy holds one direct message from the child's address to the parent, with body `[spawn_agent] <child> finished (success):\necho: <brief>…`.
+- R2. After the fake run finishes, the test bus holds one direct message from the child's address to the parent, with body `[spawn_agent] <child> finished (success):\necho: <brief>…`.
 - R3. A second input (`runner.send(child, {text:"again"})`) produces a second report.
 - R4. A fifth live child of the same parent → 429. A child whose parent is a depth-2 spawned session → 409.
 - R5. Two spawns 0 ms apart both start (gap exempt) while `startGapMs` is 10000. A plain start right after a plain start still gets 429.
