@@ -37,6 +37,21 @@ test("a harness started under another argv[0] (exec -a) is found by its executab
   assert.equal(harnessProcess("codex", child.pid)?.pid, child.pid);
 });
 
+test("a JS-entry harness started through its bin symlink is found by the script name", { skip: !linux }, async (t) => {
+  const bin = join(tmp(t), "bin");
+  mkdirSync(bin);
+  writeFileSync(join(bin, "claude"), "setTimeout(() => {}, 30_000);\n");
+  const child = await run(t, process.execPath, [join(bin, "claude")]);
+  assert.equal(harnessProcess("claude", child.pid)?.pid, child.pid);
+});
+
+test("a non-node process with a harness name in argv[1] is not a harness", { skip: !linux }, async (t) => {
+  const dir = tmp(t);
+  writeFileSync(join(dir, "codex"), "");
+  const child = await run(t, "tail", [join(dir, "codex"), "-f"]);
+  assert.notEqual(harnessProcess("codex", child.pid)?.pid, child.pid);
+});
+
 test("a plain node process is not a harness", { skip: !linux }, async (t) => {
   const child = await run(t, process.execPath, ["-e", "setTimeout(() => {}, 30_000)"]);
   assert.notEqual(harnessProcess("claude", child.pid)?.pid, child.pid);
