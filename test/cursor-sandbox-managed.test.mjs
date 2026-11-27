@@ -2,12 +2,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import cursorAdapter, { prepareSandbox, sandboxName } from "../runner/adapters/cursor.mjs";
 import { ensureSandbox } from "../runner/sandbox.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 import { subagentDenial } from "../lib/subagent-guard.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -17,8 +17,7 @@ chmodSync(CURSOR, 0o755);
 chmodSync(OPENSHELL, 0o755);
 
 function lab(t) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-cursor-managed-"));
-  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const home = tempDir(t, "ai-collab-cursor-managed-");
   const root = path.join(home, "repo");
   const version = path.join(home, "cursor-agent", "versions", "2026.11.22-fake");
   for (const dir of [root, version]) mkdirSync(dir, { recursive: true });

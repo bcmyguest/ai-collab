@@ -2,13 +2,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../lib/config.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 
 const ID = ["-c", "user.name=Test", "-c", "user.email=test@example.invalid"];
@@ -16,8 +16,7 @@ const ID = ["-c", "user.name=Test", "-c", "user.email=test@example.invalid"];
 test("parallel worktree spawns in the same second each get their own worktree and branch", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-spawn-worktree-"));
-  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const home = tempDir(t, "ai-collab-spawn-worktree-");
   const root = path.join(home, "demo");
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
   execFileSync("git", ["init", "--quiet", "--template=", "-b", "main", root]);
