@@ -3,7 +3,7 @@
  * spawned agents). The flags, env and hook denials per harness; docs/spawn-agent-spec.md Part A.
  */
 import { randomBytes } from "node:crypto";
-import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { MANAGED_ENV, SHELL_START_DENIED } from "./agent-guard.mjs";
 import { loadConfig, stateDir } from "./config.mjs";
@@ -66,15 +66,24 @@ export function mintManagedTicket(env: Env): string {
   for (const file of readdirSync(dir)) {
     const path = join(dir, file);
     try {
-      if (file.endsWith(".bound") && !isRunning(JSON.parse(readFileSync(path, "utf8")))) {
+      // A bound ticket lives exactly as long as its harness, whatever its age; only unbound ones age out.
+      if (file.endsWith(".bound")) {
+        const owner = readOwner(path);
+        // An unreadable binding may be one being written right now, so only an old one goes.
+        if (owner === undefined ? statSync(path).mtimeMs >= cutoff : isRunning(owner)) continue;
         rmSync(path.replace(/\.bound$/, ".json"), { force: true });
         rmSync(path, { force: true });
-      } else if (statSync(path).mtimeMs < cutoff) rmSync(path, { force: true });
-    } catch { /* raced or unreadable: the age rule removes it later */ }
+      } else if (!existsSync(path.replace(/\.json$/, ".bound")) && statSync(path).mtimeMs < cutoff) rmSync(path, { force: true });
+    } catch { /* raced with another mint or a removal */ }
   }
   const ticket = randomBytes(16).toString("hex");
   writeFileSync(join(dir, `${ticket}.json`), "{}\n", { mode: 0o600, flag: "wx" });
   return ticket;
+}
+
+// The {pid, start} a .bound file names, or undefined when it cannot be read as JSON.
+function readOwner(path: string): { pid: number; start: string | null } | undefined {
+  try { return JSON.parse(readFileSync(path, "utf8")); } catch { return undefined; }
 }
 
 /**

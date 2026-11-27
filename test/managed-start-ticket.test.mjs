@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -129,4 +129,17 @@ test("minting prunes tickets whose harness process has exited and keeps those of
   mintManagedTicket(env);
   assert.deepEqual([`${gone}.json`, `${gone}.bound`].map((f) => existsSync(join(dir, f))), [false, false]);
   assert.deepEqual([`${live}.json`, `${live}.bound`].map((f) => existsSync(join(dir, f))), [true, true]);
+});
+
+test("minting keeps a ticket older than 7 days while its bound harness is running", (t) => {
+  const env = setup(t);
+  const dir = join(stateDir(env), "managed-tickets");
+  const old = mintManagedTicket(env);
+  const unused = mintManagedTicket(env);
+  writeFileSync(join(dir, `${old}.bound`), JSON.stringify({ pid: process.pid, start: processStart(process.pid) }));
+  const aged = new Date(Date.now() - 8 * 24 * 3600 * 1000);
+  for (const f of [`${old}.json`, `${old}.bound`, `${unused}.json`]) utimesSync(join(dir, f), aged, aged);
+  mintManagedTicket(env);
+  assert.deepEqual([`${old}.json`, `${old}.bound`].map((f) => existsSync(join(dir, f))), [true, true]);
+  assert.equal(existsSync(join(dir, `${unused}.json`)), false, "an unused ticket still ages out");
 });
