@@ -34,6 +34,8 @@ const TURN_END_KEYS = new Set(["stop", "stopfailure", "userpromptsubmit", "sessi
 const TERMINAL_OPEN_MAX = 20;
 const SUMMARY_MAX = 300;
 const TOOL_MAX = 128;
+// "always": allow, and let the runner answer the same tool kind for the rest of an owned session (Cursor).
+const ALWAYS = /^always$/i;
 const ALLOW = /^(allow|approve|yes|y|ok)$/i;
 const DENY = /^(deny|reject|no|n)$/i;
 const END_TIMEOUT_MS = 1500;
@@ -46,7 +48,8 @@ type ModeRead = (cfg: Cfg) => Mode | null | Promise<Mode | null>;
 type Send = typeof publish;
 type Stream = typeof streamEvents;
 export type ApprovalRequest = { tool: string; summary: string; input: Json; questions?: CleanQuestion[] };
-export type Decision = { behavior: "allow" | "deny"; answers?: Record<string, string> };
+// scope "session" allows the same tool kind for the rest of an owned session; "once" (or none) allows this call.
+export type Decision = { behavior: "allow" | "deny"; answers?: Record<string, string>; scope?: "once" | "session" };
 type HookDecision = { behavior: string; message?: string; updatedInput?: Json };
 type TerminalCard = { id: string; tool: string; summary: string; expiresAt: number };
 export type ApprovalOptions = { host?: string; key?: string; input?: Json; signal?: AbortSignal; now?: () => number; stream?: Stream; send?: Send; mode?: ModeRead };
@@ -85,12 +88,13 @@ export function approvalMessage(cfg: Cfg, host: string, req: Omit<ApprovalReques
   return fitApprovalEnvelope(kind, base, req.questions, cfg.wire);
 }
 
-/** A phone reply as a decision: {behavior:"allow"|"deny"} or {behavior:"allow", answers} for a choice; null when unusable. */
+/** A phone reply as a decision: {behavior:"allow"|"deny"}, scope "session" for "always", or {behavior:"allow", answers} for a choice; null when unusable. */
 export function replyDecision(req: { questions?: CleanQuestion[] }, answer: string): Decision | null {
   if (req.questions) {
     const answers = parseChoice(req.questions, answer);
     return answers ? { behavior: "allow", answers } : null;
   }
+  if (ALWAYS.test(answer.trim())) return { behavior: "allow", scope: "session" };
   if (ALLOW.test(answer.trim())) return { behavior: "allow" };
   if (DENY.test(answer.trim())) return { behavior: "deny" };
   return null;

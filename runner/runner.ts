@@ -1376,8 +1376,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     return { status: "changed", permissionMode: named };
   }
 
-  /** Answers an approval card: decision allow|deny, or answers for a choice. */
-  async function respond(address: string, id: Json, { decision, answers }: Json = {}) {
+  /** Answers an approval card: decision allow|deny (allow with scope "session" for the rest of the session), or answers for a choice. */
+  async function respond(address: string, id: Json, { decision, answers, scope }: Json = {}) {
     const s = find(address);
     const card = s.pending.get(id);
     if (!card) fail(404, "Unknown or closed approval");
@@ -1385,7 +1385,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       closeApproval(s, id, "cancelled");
       fail(409, "The run that asked was cut; the approval is closed");
     }
-    const value = answers ? { behavior: "allow", answers } : decision === "allow" ? { behavior: "allow" } : decision === "deny" ? { behavior: "deny" } : null;
+    const value = answers ? { behavior: "allow", answers } : decision === "allow" ? { behavior: "allow", ...(scope === "session" ? { scope } : {}) } : decision === "deny" ? { behavior: "deny" } : null;
     if (!value) fail(400, "Decision must be allow or deny");
     // Closed first: the harness may finish the run before respond() resolves.
     closeApproval(s, id, answers ? "answered" : value.behavior === "allow" ? "allowed" : "denied");
@@ -1498,7 +1498,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       for (const s of sessions.values()) {
         const card = s.pending.get(reply.id);
         const decision = card ? replyDecision(card, reply.answer) : null;
-        if (decision) await respond(s.record.address, reply.id, decision.answers ? { answers: decision.answers } : { decision: decision.behavior }).catch((error: Json) => log(`reply failed: ${error.message}`));
+        if (decision) await respond(s.record.address, reply.id, decision.answers ? { answers: decision.answers } : { decision: decision.behavior, ...(decision.scope ? { scope: decision.scope } : {}) }).catch((error: Json) => log(`reply failed: ${error.message}`));
       }
       return;
     }

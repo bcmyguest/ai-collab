@@ -19,8 +19,9 @@ export interface ContextUsage { tokens: number; window?: number }
 // What a harness compaction reported: before/after token counts when the harness names them.
 export interface CompactResult { before?: number; after?: number }
 
-// The operator's answer to an interrupt; answers carries an AskUserQuestion-style choice.
-export interface Decision { behavior: "allow" | "deny"; answers?: Record<string, string>; message?: string }
+// The operator's answer to an interrupt; answers carries an AskUserQuestion-style choice. scope "session" allows the
+// same tool kind for the rest of the session (the adapter answers later asks itself); "once" or none allows this call.
+export interface Decision { behavior: "allow" | "deny"; answers?: Record<string, string>; message?: string; scope?: "once" | "session" }
 
 type RunnerCustomEvent = CustomEvent & (
   | { name: "ai-collab.notice" | "ai-collab.error"; value: string }
@@ -60,6 +61,8 @@ export interface OpenOptions {
   env: Record<string, string>;
   // Set for a session ai-collab started (team, pattern, builder, spawn): the adapter turns native subagents off.
   managed?: boolean;
+  // MCP servers beyond the ai-collab bus server, for an adapter that passes them to its harness (Cursor ACP): an ACP McpServer array or a Cursor mcp.json `mcpServers` record.
+  mcpServers?: unknown;
 }
 
 // Projection in $AI_COLLAB_STATE_DIR/<project>/owned/<label>.json; the durable log is the source of truth.

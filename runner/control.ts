@@ -35,7 +35,7 @@ export interface ControlRunner {
   compact(target: string): Awaitable<Json>;
   setModel(target: string, model: unknown): Awaitable<Json>;
   setMode(target: string, mode: unknown): Awaitable<Json>;
-  respond(target: string, id: string, answer: { decision: unknown; answers?: unknown }): Awaitable<Json>;
+  respond(target: string, id: string, answer: { decision: unknown; answers?: unknown; scope?: "session" }): Awaitable<Json>;
 }
 type HttpError = Error & { status?: unknown };
 
@@ -125,7 +125,7 @@ export async function route(runner: ControlRunner, method: string | undefined, u
   if (action === "compact") return [200, await runner.compact(target)];
   if (action === "model") return [200, await runner.setModel(target, input.model)];
   if (action === "mode") return [200, await runner.setMode(target, input.mode)];
-  if (action === "approvals" && /^[a-f0-9]{12}$/.test(id || "")) return [200, await runner.respond(target, id, { decision: input.decision, ...(input.answers ? { answers: input.answers } : {}) })];
+  if (action === "approvals" && /^[a-f0-9]{12}$/.test(id || "")) return [200, await runner.respond(target, id, { decision: input.decision, ...(input.answers ? { answers: input.answers } : {}), ...(input.scope === "session" ? { scope: "session" } : {}) })];
   fail(404, "Not found");
 }
 
