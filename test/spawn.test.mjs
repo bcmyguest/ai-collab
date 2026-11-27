@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { REPORT_TEXT_MAX, SPAWN_NOTE, spawnAgent, spawnBriefNote, spawnReport } from "../lib/spawn.ts";
+import { childHint } from "../lib/family.ts";
 
 const cfg = { project: "demo", peer: "claude", session: "0123456789abcdef" };
 const env = { AI_COLLAB_RUNNER_SOCKET: "/run/test/runner.sock" };
@@ -66,4 +67,10 @@ test("spawnReport names the child and outcome, keeps the text's tail and fills a
 test("spawnBriefNote names the parent once", () => {
   assert.equal(spawnBriefNote("do it", "claude#0123456789abcdef"), "do it\n\n[ai-collab] You were started by claude#0123456789abcdef; your result reaches it automatically when your run ends.");
   assert.equal(spawnBriefNote("tell claude#0123456789abcdef", "claude#0123456789abcdef"), "tell claude#0123456789abcdef");
+});
+
+test("the hook hint names the ai-collab spawn_agent tool, so a harness with its own spawn_agent picks ours", () => {
+  const hint = childHint({ session: "aaaaaaaaaaaaaaaa" });
+  assert.match(hint, /call the ai-collab spawn_agent tool \(harness, model, brief\)/);
+  assert.equal(childHint({ session: "" }), "");
 });
