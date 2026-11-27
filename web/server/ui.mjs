@@ -375,6 +375,17 @@ async function runnerCompact(address, runner, env) {
   return r.status === 200 ? r.body : { status: "failed", detail: r.body.error || "The runner refused the compaction" };
 }
 
+// The status events that keep a session online: a turn started or an AFK hold, reported within ONLINE_MS.
+function statusOnline(state) {
+  return Boolean(state) && (state.event === "start" || state.event === "hold") && Date.now() - (Date.parse(state.ts) || 0) < ONLINE_MS;
+}
+
+// True when the runner holds this session (starting, running or idle-waiting); the runner delivers its messages itself.
+function runnerHeld(cfg, target) {
+  const owned = readOwned(cfg, String(target).split("#")[1]);
+  return owned?.address === target && owned.status !== "ended";
+}
+
 // A reply whose id the server cannot accept goes out as plain text quoting the original's first and last words.
 function replyQuote(replyTo, body, quote) {
   if (usableReplyId(replyTo)) return { replyTo };
@@ -652,10 +663,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
 
   function wakeAgent(project, target, session) {
     if (hosted) return { status: "unsupported", detail: "The agent will receive this on its next poll." };
-    const { wakes, cfg } = project;
+    const { wakes, cfg, statuses } = project;
     if (!session) return { status: "unsupported", detail: "This agent must register its local session before it can be woken." };
     // A running session needs no wake; receipts show when it reads the message.
-    if (session.online) return { status: "online" };
+    if (session.online || runnerHeld(cfg, target) || statusOnline(statuses.get(target))) return { status: "online" };
     if (wakes.get(target)?.status !== "waking") {
       // at lets the UI drop the banner once the session reports after the wake began (visibleWake).
       const at = Date.now();
@@ -696,7 +707,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const [peer, session] = id.split("#");
       if (!session || !allowed(peer)) continue;
       const seenAt = Date.parse(state.ts) || 0;
-      found.set(id, { id, peer, session, seenAt, online: (state.event === "start" || state.event === "hold") && Date.now() - seenAt < ONLINE_MS, ...(state.parent ? { parent: state.parent } : {}) });
+      found.set(id, { id, peer, session, seenAt, online: statusOnline(state), ...(state.parent ? { parent: state.parent } : {}) });
     }
     // Hooks refresh seenAt on every event; minute resolution keeps snapshot pushes to one per agent per minute.
     let root = "";

@@ -70,8 +70,8 @@ export function visibleWake(wake, agent) {
   if (!wake?.status) return null;
   const reported = Math.max(agent?.seenAt || 0, agent?.statusAt || 0);
   if (wake.at && reported > wake.at) return null;
-  // A finished wake whose session is back online needs no banner; a failed one keeps its Retry.
-  if (wake.status !== "waking" && wake.status !== "failed" && agent?.online) return null;
+  // A wake whose session is back online needs no banner, waking or finished; a failed one keeps its Retry.
+  if (agent?.online && wake.status !== "failed") return null;
   return wake;
 }
 
