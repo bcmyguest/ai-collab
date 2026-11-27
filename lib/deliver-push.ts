@@ -1,5 +1,5 @@
 // Pushes one message into a live, non-owned session: Claude socket, Codex queue, OpenCode HTTP.
-// Shared by the UI dispatcher (web/server/dispatch.mjs) and the runner's delivery workflows (runner/delivery.mjs).
+// Shared by the UI dispatcher (web/server/dispatch.ts) and the runner's delivery workflows (runner/delivery.mjs).
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

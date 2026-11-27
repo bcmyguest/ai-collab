@@ -99,7 +99,7 @@ The card is an [A2UI](https://a2ui.org/specification/v0.9.1-a2ui/) v0.9.1 surfac
 |---|---|
 | `lib/run-terminal.ts` | Flag, validation, request store, expiry, single claim, execution, audit log |
 | `lib/surfaces/run-terminal-ops.ts` | The two MCP tools |
-| `web/server/run-terminal.mjs` | UI server hooks: watch, snapshot, surfaces, Run and Reject |
+| `web/server/run-terminal.ts` | UI server hooks: watch, snapshot, surfaces, Run and Reject |
 | `web/lib/a2ui-run.js` | A2UI operations for the card and action parsing |
 | `web/lib/a2ui-run-catalog.js` | `Script` component schema |
 | `web/components/a2ui/script.tsx` | `Script` component |

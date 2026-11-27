@@ -1,6 +1,6 @@
 /**
  * Push delivery policy: the rules the runner's durable workflow (runner/delivery.ts) and the UI dispatcher
- * (web/server/dispatch.mjs) both follow. Pure: each engine keeps its own I/O, persistence and timers.
+ * (web/server/dispatch.ts) both follow. Pure: each engine keeps its own I/O, persistence and timers.
  */
 export const REDELIVER_MS = 10 * 60_000;
 export const MAX_ATTEMPTS = 5;

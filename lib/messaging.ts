@@ -409,7 +409,7 @@ export async function publishStatus(cfg: Cfg, { event, harness }: { event: strin
  * state (with replyTo) answers a message as working, reply, done or declined; by names the operator's GitHub login;
  * forSubagent names the subagent run (of the target session) that the message is for.
  * priority is normal, urgent (same as urgent: true) or fyi (queued, never wakes an idle session);
- * expectReply marks a direct message the dispatcher redelivers until the target answers (web/server/dispatch.mjs);
+ * expectReply marks a direct message the dispatcher redelivers until the target answers (web/server/dispatch.ts);
  * system marks text ai-collab's own machinery sends (a compaction request, a pattern-run notice) under the operator's
  * address: it reaches the operator's own reply routes, but readers show the sender as "system", not as the operator.
  * startOnly marks a project-chat post that only starts sessions, so no running session takes it.

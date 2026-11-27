@@ -5,8 +5,14 @@ import { reviewIsCurrent } from "../../lib/build-review.ts";
 // The board renders every card on each push; one branch-tip read per checkout per window is enough for a stale badge.
 const TIP_TTL_MS = 2000;
 
+// oxlint-disable-next-line typescript/no-explicit-any -- task records, agents, runs and sessions are JSON from their stores
+type Json = any;
+type ReviewContext = { root: string; project: string };
+/** The snapshot's task board; error replaces the tasks when the store is unreadable. */
+export type Board = { tasks: Json[]; outcomes?: Json; error?: string };
+
 /** The review packet a card and its review view read; `stale` and the diff link are derived, never stored. */
-function reviewOf(task, context) {
+function reviewOf(task: Json, context: ReviewContext | undefined): Json {
   const packet = task.review;
   if (!context || !packet) return undefined;
   return {
@@ -20,17 +26,20 @@ function reviewOf(task, context) {
 }
 
 /** Tasks of a project backend; an unreadable store reports its error instead of tasks. */
-export function taskBoard(backend, agents = [], runs = [], sessions = [], previousBuilder = () => null, assignment, reviewContext) {
+export function taskBoard(
+  backend: Json, agents: Json[] = [], runs: Json[] = [], sessions: Json[] = [], previousBuilder: (task: Json) => Json = () => null,
+  assignment?: (task: Json, sessions: Json[]) => Json, reviewContext?: ReviewContext,
+): Board {
   if (!backend) return { tasks: [] };
-  let list, outcomes;
+  let list: Json[], outcomes: Json;
   try {
     ({ tasks: list, outcomes } = backend.projectBoard ? backend.projectBoard() : { tasks: backend.list() });
   } catch (err) {
-    return { tasks: [], error: err.message };
+    return { tasks: [], error: (err as Error).message };
   }
   const owners = new Map(agents.map(agent => [agent.id, agent]));
   const runOf = new Map(runs.map(run => [run.id, run.sessions?.[run.active] || ""]));
-  const sessionOf = new Map();
+  const sessionOf = new Map<string, Json>();
   for (const session of sessions) {
     if (!session.taskId || session.status === "ended") continue;
     const previous = sessionOf.get(session.taskId);
