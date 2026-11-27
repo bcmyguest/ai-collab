@@ -115,9 +115,14 @@ export function createDispatcher({
 
   // Pushes reserved messages and settles the reservation. Resolves "delivered", "failed", "held" or "pending" (watched).
   async function dispatchIds(session, scfg, text, { urgent, ids, messages }) {
-    // A Stop hook that started since the ready check delivers the messages: hand them to it (read every second), then release.
+    // A Stop hook that started since the ready check delivers the messages: hand them to it (read every second) and mark
+    // them, so the inbox copy is hidden. A failed hand-off releases them for the next tick.
     if (holdRunning(session, scfg)) {
-      await handOff(scfg, messages).catch(() => {});
+      if (await handOff(scfg, messages, { via: "push" }).then(() => true, () => false)) {
+        await markDelivered(scfg, ids).catch(() => {});
+        forget(session, ids);
+        return "delivered";
+      }
       await releaseDelivery(scfg, ids).catch(() => {});
       return "held";
     }
