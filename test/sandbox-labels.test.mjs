@@ -1,15 +1,15 @@
 // OpenShell sandboxes carry ai-collab labels: creates pass them, and the cap and cleanup select by them, not by name.
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { removeCodeSandbox } from "../lib/code-run.mjs";
 import cursorAdapter from "../runner/adapters/cursor.mjs";
 import * as sandbox from "../runner/sandbox.mjs";
 import { ensureSandbox, sandboxCapRefusal, teamSandboxName } from "../runner/sandbox.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OPENSHELL = path.join(HERE, "helpers", "fake-openshell.mjs");
@@ -24,7 +24,7 @@ const managed = (project, kind, owner) => ({
 
 // A home whose fake openshell holds the given sandbox records, a git project "demo", and a cursor tree.
 function lab(records = []) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-labels-"));
+  const home = tempDir({ after }, "ai-collab-labels-");
   const root = path.join(home, "demo");
   const version = path.join(home, "cursor-agent", "versions", "2026.11.25-fake");
   for (const dir of [root, version, path.join(home, ".config", "ai-collab")]) mkdirSync(dir, { recursive: true });

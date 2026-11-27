@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { stateDir } from "../lib/config.mjs";
 import { pruneRepo } from "../lib/prune.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const NOW = Date.parse("2026-11-25T00:00:00Z");
 const WEEK = 7 * 86_400_000;
@@ -26,7 +26,7 @@ function git(cwd, args, env) {
 }
 
 test("prune archives a dirty builder clone on a host with no git identity", async (t) => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-prune-ident-"));
+  const home = tempDir(t, "ai-collab-prune-ident-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const systemctl = path.join(home, "fake-systemctl");
   writeFileSync(systemctl, "#!/bin/sh\necho inactive\n");

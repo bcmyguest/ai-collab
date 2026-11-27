@@ -2,8 +2,7 @@ import { parseWireEnvelope } from "../lib/agui.mjs";
 import { EventType } from "@ag-ui/core";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { broadcastTopic, inboxTopic, loadConfig, loadProjects, sessionLabel, statusTopic } from "../lib/config.mjs";
 import { claimInbox, publishStatus, replyToOperator, sendMessage } from "../lib/inbox.mjs";
@@ -13,6 +12,7 @@ import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8795";
 
@@ -148,8 +148,8 @@ test("UI shares one ntfy subscription across projects and fetches each topic's h
   assert.equal(ui.events(new Request(`${base}/api/events?project=missing`)).status, 400);
 });
 
-test("loadProjects reads every projects.json entry with its own settings", () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-projects-"));
+test("loadProjects reads every projects.json entry with its own settings", (t) => {
+  const home = tempDir(t, "ai-collab-projects-");
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
   writeFileSync(path.join(home, ".config", "ai-collab", "projects.json"), JSON.stringify([
     { root: "/srv/one", project: "one", url: "http://127.0.0.1:9001", peers: "claude,codex" },

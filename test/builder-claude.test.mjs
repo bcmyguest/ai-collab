@@ -1,14 +1,14 @@
 // `ai-collab builder start --harness claude`: a lean Claude Code builder in its own sandbox, against the fakes.
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCli } from "../lib/cli.mjs";
 import { builderSandbox, claudeMcpConfig, claudeSettings, harnessCommand } from "../lib/builder.ts";
 import { taskStoreFile } from "../lib/tasks.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OPENSHELL = path.join(HERE, "helpers", "fake-openshell.mjs");
@@ -22,7 +22,7 @@ const SANDBOX = builderSandbox("smoke-task");
 for (const f of [OPENSHELL, SYSTEMD, CLAUDE, ONCEBITTEN]) chmodSync(f, 0o755);
 
 function lab(extra = {}) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-builder-claude-"));
+  const home = tempDir({ after }, "ai-collab-builder-claude-");
   const root = path.join(home, "repo");
   const bin = path.join(home, "bin");
   for (const dir of [root, bin, path.join(home, ".config", "ai-collab"), path.join(home, ".claude")]) mkdirSync(dir, { recursive: true });

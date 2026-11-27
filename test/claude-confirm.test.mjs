@@ -1,9 +1,9 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { appendFileSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { appendFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { transcriptConfirms } from "../lib/claude-socket.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 // One transcript line holding a user record whose content is the given string, as JSON.
 const record = (content) => `${JSON.stringify({ type: "queue-operation", operation: "enqueue", content })}\n`;
@@ -11,7 +11,7 @@ const envelope = (name, body) => `<cross-session-message from-name="${name}">\n$
 
 // A transcript file under a new temp dir, cleaned up with the test.
 function transcript(t, text = "") {
-  const dir = mkdtempSync(join(tmpdir(), "cc-"));
+  const dir = tempDir({ after }, "cc-");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const file = join(dir, "session.jsonl");
   writeFileSync(file, text);

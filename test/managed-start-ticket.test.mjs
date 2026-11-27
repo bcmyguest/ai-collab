@@ -1,9 +1,8 @@
 // S2 backstop: a harness that inherits AI_COLLAB_MANAGED=1 through a wrapper the shell gate misses refuses to start.
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig, sessionLabel, stateDir } from "../lib/config.mjs";
@@ -12,6 +11,7 @@ import { writeOwned } from "../lib/sessions/registry.ts";
 import {
   MANAGED_ENV, MANAGED_START_REFUSED, MANAGED_TICKET_ENV, managedStartAllowed, mintManagedTicket, noSubagentEnv, shellHarnessStart,
 } from "../lib/subagent-guard.ts";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 
@@ -26,7 +26,7 @@ function runHook(args, input, env) {
 }
 
 function setup(t) {
-  const home = mkdtempSync(join(tmpdir(), "ai-collab-ticket-"));
+  const home = tempDir({ after }, "ai-collab-ticket-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   return {
     PATH: process.env.PATH, HOME: home, AI_COLLAB_URL: "http://127.0.0.1:9", AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "claude",

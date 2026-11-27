@@ -1,16 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, sendMessage } from "../lib/inbox.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 test("Cursor can send as its conversation without setting identity variables", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const root = mkdtempSync(join(tmpdir(), "ai-collab-identity-"));
+  const root = tempDir(t, "ai-collab-identity-");
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, "ai-collab"));
   writeFileSync(join(root, "ai-collab", "projects.json"), JSON.stringify([

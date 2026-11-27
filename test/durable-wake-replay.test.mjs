@@ -3,12 +3,12 @@
 // upgrade replays that row, hits NonDeterminismError, ends ERROR without onCut and never releases its
 // reservations. The recorded sequence must stay: ... wake.wait, wake.more (step), recv:wake (recv).
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
-import os from "node:os";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { openDurable } from "../lib/durable.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -52,8 +52,8 @@ async function recordOldFormatWake(file, id) {
   await first.close();
 }
 
-test("a wake log recorded in the old format resumes with the wake.more step kept", async () => {
-  const file = path.join(mkdtempSync(path.join(os.tmpdir(), "aic-wakelog-")), "durable.db");
+test("a wake log recorded in the old format resumes with the wake.more step kept", async (t) => {
+  const file = path.join(tempDir(t, "aic-wakelog-"), "durable.db");
   await recordOldFormatWake(file, "wake:demo#claude#s1:m1");
 
   const second = openDurable(file);
@@ -65,8 +65,8 @@ test("a wake log recorded in the old format resumes with the wake.more step kept
   await second.close();
 });
 
-test("dropping the wake.more step breaks the recorded log (the regression this guards)", async () => {
-  const file = path.join(mkdtempSync(path.join(os.tmpdir(), "aic-wakelog-")), "durable.db");
+test("dropping the wake.more step breaks the recorded log (the regression this guards)", async (t) => {
+  const file = path.join(tempDir(t, "aic-wakelog-"), "durable.db");
   await recordOldFormatWake(file, "wake:drop#s1:m1");
 
   const second = openDurable(file);

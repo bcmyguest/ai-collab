@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { runCli } from "../lib/cli.mjs";
@@ -8,6 +7,7 @@ import { loadProjects } from "../lib/config.mjs";
 import { addTask, answerTask, askTask, needsDecision, readStore, taskStoreFile, validateTasks, writeStore } from "../lib/tasks.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8795";
 const PM = "cursor#0123456789abcdef";
@@ -39,8 +39,8 @@ test("the store refuses a malformed question", () => {
   assert.throws(() => validateTasks(doc), /options/);
 });
 
-test("task ask puts a question with options on a task, and --clear removes it", async () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-task-ask-"));
+test("task ask puts a question with options on a task, and --clear removes it", async (t) => {
+  const home = tempDir(t, "ai-collab-task-ask-");
   mkdirSync(path.join(home, "repo"));
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
   writeFileSync(path.join(home, ".config", "ai-collab", "projects.json"), JSON.stringify([{ root: path.join(home, "repo"), project: "demo" }]));
@@ -60,7 +60,7 @@ test("task ask puts a question with options on a task, and --clear removes it", 
 test("the UI decide route stores the operator's answer on the task without starting any agent", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-ui-decide-"));
+  const home = tempDir(t, "ai-collab-ui-decide-");
   const root = path.join(home, "project");
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
   mkdirSync(root);

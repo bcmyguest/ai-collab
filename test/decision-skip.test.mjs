@@ -1,9 +1,8 @@
 // The UI's Skip action: closes an open approval, choice, question, limit card or task question without answering it.
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, unlinkSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import { broadcastTopic, loadProjects } from "../lib/config.mjs";
 import { alertLimit, cardFile, chooseLimit, readCard } from "../lib/limit-alert.ts";
@@ -11,6 +10,7 @@ import { addTask, askTask, openTasks, readStore, taskStoreFile, writeStore } fro
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8795";
 const SESSION = "aabbccddeeff0011";
@@ -24,7 +24,7 @@ const TOPIC = broadcastTopic("demo");
 async function setup(t) {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-skip-"));
+  const home = tempDir({ after }, "ai-collab-skip-");
   const root = path.join(home, "project");
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
   mkdirSync(root);

@@ -2,10 +2,9 @@
 // failed pattern run posts), not only in the small per-message note: a paused project, a refused model, a session that ends
 // on a usage limit before it replies.
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
@@ -17,6 +16,7 @@ import { limitEndNotice, readStartLog } from "../lib/start-limit.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8797";
 const ALL = "ai-collab-demo--to--all";
@@ -34,7 +34,7 @@ const CODEX_LOG = [
 async function world(t, { peers = "claude,codex,opencode" } = {}) {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-start-refusal-"));
+  const home = tempDir({ after }, "ai-collab-start-refusal-");
   const bin = path.join(home, "bin");
   mkdirSync(bin);
   const stateDir = path.join(home, "state");

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { test, after } from "node:test";
+import { chmodSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { sessionLabel } from "../lib/config.mjs";
 import { claimParentNotice, listSessions, recordSession, sessionPlace, setIdentity, worktreeGone } from "../lib/sessions.mjs";
@@ -10,6 +9,7 @@ import { interruptSession } from "../lib/sessions/control.ts";
 import { scopeLaunch, scopeSupport } from "../lib/sessions/scope.ts";
 import { defaultStartPlace, startRefusal } from "../lib/start.mjs";
 import { startSession } from "../lib/sessions/launch.ts";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const UUID = "0b1c2d3e-4f50-4617-8899-aabbccddeeff";
 const DEAD = { pid: 4_194_000, start: "1" };
@@ -19,7 +19,7 @@ const self = () => {
 };
 
 function fixture(id = UUID, peers = []) {
-  const stateDir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-sessions-"));
+  const stateDir = tempDir({ after }, "ai-collab-sessions-");
   return { stateDir, project: "proj", peer: "claude", peers, session: sessionLabel(id), auto: false };
 }
 
@@ -66,12 +66,12 @@ test("the parent notice is claimed once and only after registration", async () =
   assert.equal(await claimParentNotice(cfg), false);
 });
 
-test("harness commands: wake resumes by native id and cursor takes the binary found on PATH", () => {
+test("harness commands: wake resumes by native id and cursor takes the binary found on PATH", (t) => {
   const [file, args] = harnessCommand("wake", "claude", UUID, false, { path: "" });
   assert.equal(file, "claude");
   assert.ok(args.includes(UUID));
   assert.equal(harnessCommand("unknown", "claude", UUID, false), null);
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-bin-"));
+  const dir = tempDir(t, "ai-collab-bin-");
   writeFileSync(path.join(dir, "cursor-agent"), "#!/bin/sh\n");
   chmodSync(path.join(dir, "cursor-agent"), 0o755);
   assert.equal(harnessCommand("wake", "cursor", UUID, false, { path: dir })[0], "cursor-agent");
@@ -120,8 +120,8 @@ test("scope falls back to a plain spawn without systemd-run, a user manager, or 
   assert.deepEqual([plain.file, plain.args, plain.scoped, plain.unit], ["claude", ["-p"], false, ""]);
 });
 
-test("a session in a deleted worktree is gone; live or sandboxed ones are not", () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), "ai-collab-wt-"));
+test("a session in a deleted worktree is gone; live or sandboxed ones are not", (t) => {
+  const root = tempDir(t, "ai-collab-wt-");
   const gone = path.join(root, ".claude", "worktrees", "ai-collab-claude-1");
   assert.equal(worktreeGone({ cwd: gone, online: false }, root), true);
   assert.equal(worktreeGone({ cwd: gone, online: true }, root), false);
@@ -133,7 +133,7 @@ test("a session in a deleted worktree is gone; live or sandboxed ones are not", 
 });
 
 test("startSession with no options refuses the empty harness instead of throwing", async (t) => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-start-"));
+  const dir = tempDir(t, "ai-collab-start-");
   const root = path.join(dir, "repo");
   mkdirSync(root);
   mkdirSync(path.join(dir, "config", "ai-collab"), { recursive: true });

@@ -1,9 +1,9 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { appendFileSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { appendFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { transcriptConfirms } from "../lib/claude-socket.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 // The enqueue record Claude writes for a pushed envelope, in the shape seen in a live transcript.
 function enqueueLine(ids, { name = "ai-collab", from = "cursor#28d5ca22346d3a71" } = {}) {
@@ -16,7 +16,7 @@ function enqueueLine(ids, { name = "ai-collab", from = "cursor#28d5ca22346d3a71"
 
 // A transcript file with the given text; returns its path and the byte size before the write under test.
 function transcript(t, text = "") {
-  const dir = mkdtempSync(join(tmpdir(), "cts-"));
+  const dir = tempDir({ after }, "cts-");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const file = join(dir, "382cfeea.jsonl");
   writeFileSync(file, text);

@@ -1,19 +1,17 @@
 // A click refused for a wrong hash closes the card, and the UI must hear about it at once: its folder watch cannot see the decision.
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
 import { createRunRequest, decideRun, runStatus, sha256 } from "../lib/run-terminal.mjs";
 import { peerEnv } from "./helpers/env.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const SESSION = "0123456789abcdef";
 
 function request() {
   const env = { ...peerEnv({ url: "http://127.0.0.1:9" }, { peer: "claude" }), AI_COLLAB_RUN_IN_TERMINAL: "1" };
   const cfg = loadConfig(env, { session: SESSION });
-  const cwd = mkdtempSync(path.join(os.tmpdir(), "ai-collab-run-"));
+  const cwd = tempDir({ after }, "ai-collab-run-");
   const created = createRunRequest(cfg, { script: "echo hi\n", cwd, reason: "test" }, env);
   return { env, cfg, created };
 }

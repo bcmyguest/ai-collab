@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after as afterAll } from "node:test";
 import { attachmentOf, cacheAttachments, cachedAttachment, ensureAttachment, pruneAttachments } from "../lib/attachment-cache.ts";
 import { loadConfig } from "../lib/config.mjs";
 import { formatInbox } from "../lib/format.mjs";
@@ -11,11 +10,12 @@ import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 
 function tempPng() {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-cache-"));
+  const dir = tempDir({ after: afterAll }, "ai-collab-cache-");
   const file = path.join(dir, "shot.png");
   writeFileSync(file, PNG);
   return file;

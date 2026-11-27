@@ -1,16 +1,16 @@
 // Model-based test of the bus cursor: publish, poll, subscribe, reconnect, restart and prune against lib/bus.mjs.
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import diagnostics from "node:diagnostics_channel";
 import fc from "fast-check";
 import { pollCached, streamEvents } from "../lib/transport.mjs";
 import { openPostgresBusStore } from "../lib/bus-postgres.mjs";
 import { pgUrl } from "../lib/postgres.mjs";
 import { dbosTestDb } from "./helpers/dbos-env.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 // BUS_IMPL points the model at another bus.mjs, e.g. a scratch copy with a planted bug.
 const BUS_IMPL = process.env.BUS_IMPL ? path.resolve(process.env.BUS_IMPL) : fileURLToPath(new URL("../lib/bus.mjs", import.meta.url));
@@ -395,7 +395,7 @@ for (const kind of ["memory", "sqlite", "postgres"]) {
   const skip = kind === "postgres" && !pgUp && "Postgres not reachable";
   test(`bus cursor matches the model on the ${kind} store`, { skip }, async () => {
     await fc.assert(fc.asyncProperty(fc.commands([commandArb(kind)], { maxCommands: 14 }), async (cmds) => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bus-cursor-model-"));
+      const dir = tempDir({ after }, "bus-cursor-model-");
       const real = await openReal(kind, dir);
       try {
         await fc.asyncModelRun(() => ({ model: initialModel(kind), real }), cmds);

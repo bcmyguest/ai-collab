@@ -1,13 +1,13 @@
 // Cursor adapter against a fake cursor-agent (ACP over stdio) and a fake openshell: no real CLI, account or sandbox.
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, existsSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, mkdirSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { EventType } from "@ag-ui/core";
 import cursorAdapter, { acpArgs, execArgv, sandboxName } from "../runner/adapters/cursor.mjs";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, eventProblem } from "../runner/contract.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CURSOR = path.join(HERE, "helpers", "fake-cursor-agent.mjs");
@@ -16,7 +16,7 @@ chmodSync(CURSOR, 0o755);
 chmodSync(OPENSHELL, 0o755);
 
 function sandboxEnv(extra = {}) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-cursor-"));
+  const home = tempDir({ after }, "ai-collab-cursor-");
   const root = path.join(home, "demo");
   mkdirSync(root);
   const env = {

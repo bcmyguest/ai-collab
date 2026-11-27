@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { childHint, exportParent, parentLine } from "../lib/family.ts";
 import { job, runningJobs } from "../lib/job.ts";
 import { pattern } from "../lib/pattern-cli.ts";
 import { processStart } from "../lib/process.mjs";
 import { task } from "../lib/task-cli.ts";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const UUID = "0123abcd-0123-4abc-8def-0123456789ab";
 const OTHER = "fedcba98-0123-4abc-8def-0123456789ab";
@@ -25,7 +25,7 @@ async function call(fn, argv, ctx) {
 }
 
 function scratch(t) {
-  const dir = mkdtempSync(join(tmpdir(), "ai-collab-batch6-"));
+  const dir = tempDir({ after }, "ai-collab-batch6-");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
 }

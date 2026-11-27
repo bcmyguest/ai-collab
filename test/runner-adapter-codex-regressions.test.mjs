@@ -2,13 +2,14 @@
 // and steer/interrupt after the session's child is gone return a clear error.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { EventType } from "@ag-ui/core";
 import { permissionSettings } from "../runner/contract.mjs";
 import codexAdapter from "../runner/adapters/codex.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HELPER = fileURLToPath(new URL("./helpers/fake-codex-silent-app-server.mjs", import.meta.url));
 const command = { file: process.execPath, args: [HELPER, "app-server"], version: ["--version"] };
@@ -40,8 +41,8 @@ test("a turn/start that times out is flagged as possibly started, so the caller 
   }
 });
 
-test("shutdown kills a codex child that is still starting, so its open fails at once", async () => {
-  const log = path.join(mkdtempSync(path.join(os.tmpdir(), "codex-silent-")), "started.log");
+test("shutdown kills a codex child that is still starting, so its open fails at once", async (t) => {
+  const log = path.join(tempDir(t, "codex-silent-"), "started.log");
   const adapter = codexAdapter({ command, requestMs: 60_000 });
   const opening = adapter.open(openOptions("silent-init", { FAKE_SILENT_LOG: log }), fakeCtx());
   opening.catch(() => {});

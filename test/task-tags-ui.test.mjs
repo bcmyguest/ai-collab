@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { broadcastTopic, inboxTopic, loadConfig, sessionLabel } from "../lib/config.mjs";
 import { parseEnvelope } from "../lib/inbox.mjs";
 import { writeState } from "../lib/state.mjs";
@@ -11,6 +10,7 @@ import { createUi } from "../web/server/ui.mjs";
 import { composerDestination } from "../web/lib/message-routing.js";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const BASE = "http://127.0.0.1:8795";
 const SESSION = "task-owner";
@@ -20,7 +20,7 @@ const OWNER = `alice#${LABEL}`;
 async function fixture(t) {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = mkdtempSync(join(tmpdir(), "task-tags-ui-"));
+  const home = tempDir({ after }, "task-tags-ui-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const env = peerEnv(fake, { peer: "operator", HOME: home, stateDir: join(home, "state"), XDG_DATA_HOME: join(home, "data") });
   const cfg = loadConfig(env);

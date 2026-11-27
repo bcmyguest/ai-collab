@@ -1,8 +1,7 @@
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { test, after } from "node:test";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { broadcastTopic, loadConfig } from "../lib/config.mjs";
 import { WAIT_LABEL, alertLimit, chooseLimit } from "../lib/limit-alert.ts";
@@ -10,6 +9,7 @@ import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8795";
 const SESSION = "aabbccddeeff0011";
@@ -140,7 +140,7 @@ test("a limit leaves a timeline row, and a pick links the original and the repla
 
 test("defaults.json limitFallback is the first replacement when the role has none", async (t) => {
   const { sessionCfg, env } = await setup(t);
-  const config = mkdtempSync(path.join(tmpdir(), "ai-collab-lf-"));
+  const config = tempDir({ after }, "ai-collab-lf-");
   mkdirSync(path.join(config, "ai-collab"), { recursive: true });
   writeFileSync(path.join(config, "ai-collab", "defaults.json"), JSON.stringify({ limitFallback: "opencode:opencode/deepseek-v4.1-flash-free" }));
   const sent = await alertLimit(sessionCfg, { harness: "codex", limit: LIMIT, env: { ...env, XDG_CONFIG_HOME: config }, listed: async () => LISTED, available: () => ["claude", "opencode"], send: async () => {} });

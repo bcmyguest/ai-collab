@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { controlSession, harnessCommand, harnessEnv, runnerFromEnv } from "../lib/sessions/control.ts";
 import { childEnv, resolveStartBinary } from "../lib/start.mjs";
 import { sessionLabel } from "../lib/config.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const sessionId = "00000000-abcd-1234-9876-000000000001";
 const selfStart = (() => { const s = readFileSync("/proc/self/stat", "utf8"); return s.slice(s.lastIndexOf(")") + 2).split(" ")[19]; })();
@@ -36,8 +36,8 @@ test("wake of an exited session resumes it once and permits retry after failure"
   }
 });
 
-test("the cursor wake command uses the Cursor binary on the given PATH", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-cursor-"));
+test("the cursor wake command uses the Cursor binary on the given PATH", (t) => {
+  const dir = tempDir(t, "ai-collab-cursor-");
   writeFileSync(path.join(dir, "cursor-agent"), "#!/bin/sh\n", { mode: 0o755 });
   assert.equal(harnessCommand("wake", "cursor", sessionId, false, { path: dir })[0], "cursor-agent");
   writeFileSync(path.join(dir, "agent"), "#!/bin/sh\n", { mode: 0o755 });
@@ -45,7 +45,7 @@ test("the cursor wake command uses the Cursor binary on the given PATH", () => {
 });
 
 test("start and wake run the Cursor binary cursorBinary finds on their own PATH", (t) => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-cursor-"));
+  const home = tempDir(t, "ai-collab-cursor-");
   const dir = path.join(home, "bin");
   mkdirSync(dir);
   writeFileSync(path.join(dir, "agent"), "#!/bin/sh\n", { mode: 0o755 });

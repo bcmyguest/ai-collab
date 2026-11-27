@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { sandboxRun } from "../runner/sandbox-run.mjs";
 import { parseSandboxList, runTool } from "../runner/sandbox.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const matrix = ["claude", "codex", "cursor-agent", "opencode"];
 
@@ -23,7 +23,7 @@ test("live OpenShell schedule bootstrap matrix", {
   // Run serially so the matrix only uses one slot under the host's sandbox cap.
   for (const command of matrix) {
     await t.test(command, async () => {
-      const cwd = mkdtempSync(join(tmpdir(), "sandbox-bootstrap-"));
+      const cwd = tempDir({ after }, "sandbox-bootstrap-");
       try {
         const git = (...args) => execFileSync("git", args, { cwd, stdio: "pipe" });
         git("init", "--quiet", "--template=");

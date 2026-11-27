@@ -1,13 +1,13 @@
 // The UI start route takes the composer's codeMode and passes it to the Codex argv; a fake codex records it.
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { loadProjects } from "../lib/config.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8795";
 const ID = "66666666-2222-4333-8444-555555555555";
@@ -19,7 +19,7 @@ console.log(JSON.stringify({ type: "thread.started", thread_id: "${ID}" }));
 async function setup(t, defaults, runner) {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-code-mode-ui-"));
+  const home = tempDir({ after }, "ai-collab-code-mode-ui-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const [bin, root, record, conf] = ["bin", "project", "record", ".config/ai-collab"].map((dir) => path.join(home, dir));
   for (const dir of [bin, root, record, conf]) mkdirSync(dir, { recursive: true });

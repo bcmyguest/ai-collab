@@ -1,11 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { createDispatcher } from "../web/server/dispatch.mjs";
 import { listenControl } from "../runner/control.mjs";
 import { runnerUp } from "../runner/client.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 // A dispatcher tick runs one OpenCode probe before any project; a counted probe shows whether a tick ran.
 function probeCounter(skip) {
@@ -18,8 +17,8 @@ function probeCounter(skip) {
   return { dispatcher, probes: () => probes };
 }
 
-test("the dispatcher stands down while the runner answers its control socket and runs when it is down", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-gate-"));
+test("the dispatcher stands down while the runner answers its control socket and runs when it is down", async (t) => {
+  const dir = tempDir(t, "ai-collab-gate-");
   const socket = path.join(dir, "runner.sock");
   const fakeRunner = { harnesses: async () => [] };
   const up = () => runnerUp({ socket });

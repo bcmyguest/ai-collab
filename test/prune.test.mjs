@@ -1,13 +1,13 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { appendFileSync, chmodSync, existsSync, lstatSync, lutimesSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { appendFileSync, chmodSync, existsSync, lstatSync, lutimesSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { stateDir } from "../lib/config.mjs";
 import {
   builderDecision, isProtectedCheckout, parseAge, parsePruneArgs, parseWorktreeList, pruneRepo, readLiveCwds, treeBytes, worktreeDecision,
 } from "../lib/prune.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const NOW = Date.parse("2026-11-25T00:00:00Z");
 const WEEK = 7 * 86_400_000;
@@ -156,7 +156,7 @@ function makeBuilder(env, repo, id, opts = {}) {
 }
 
 function fixture(t) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-prune-"));
+  const home = tempDir({ after }, "ai-collab-prune-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const env = fixtureEnv(home);
   const repo = makeRepo(home);
@@ -305,7 +305,7 @@ test("builderDecision archives any clone before removal, state.json aside", () =
 });
 
 test("treeBytes counts disk blocks and each inode once", (t) => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-prune-bytes-"));
+  const dir = tempDir(t, "ai-collab-prune-bytes-");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   writeFileSync(path.join(dir, "a.bin"), Buffer.alloc(MB, 1));
   const one = treeBytes(dir);
@@ -316,7 +316,7 @@ test("treeBytes counts disk blocks and each inode once", (t) => {
 });
 
 test("readLiveCwds reports the cwd of a running child process", (t) => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-prune-cwd-"));
+  const dir = tempDir(t, "ai-collab-prune-cwd-");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const child = spawn("sleep", ["60"], { cwd: dir, stdio: "ignore" });
   t.after(() => child.kill());
@@ -324,7 +324,7 @@ test("readLiveCwds reports the cwd of a running child process", (t) => {
 });
 
 test("a node_modules symlink alone is removable and its target survives", async (t) => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-prune-nm-"));
+  const home = tempDir(t, "ai-collab-prune-nm-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const env = fixtureEnv(home);
   const repo = makeRepo(home);

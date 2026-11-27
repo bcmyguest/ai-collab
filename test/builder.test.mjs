@@ -1,8 +1,8 @@
 // `ai-collab builder`: a sandboxed builder end to end against fake openshell, systemd-run, agent and oncebitten.
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { createServer } from "node:http";
 import path from "node:path";
@@ -28,6 +28,7 @@ import codexAdapter from "../runner/adapters/codex.mjs";
 import { startTaskWakes } from "../runner/task-wake.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { firstUpdate } from "./helpers/ui-stream.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OPENSHELL = path.join(HERE, "helpers", "fake-openshell.mjs");
@@ -40,7 +41,7 @@ for (const f of [OPENSHELL, SYSTEMD, AGENT, ONCEBITTEN]) chmodSync(f, 0o755);
 
 // A git repo registered as project "demo", one task, fakes on PATH, and a Cursor install tree.
 function lab(extra = {}) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-builder-"));
+  const home = tempDir({ after }, "ai-collab-builder-");
   const root = path.join(home, "repo");
   const bin = path.join(home, "bin");
   const tree = path.join(home, "cursor-agent", "versions", "2026.11.22-fake");
@@ -382,7 +383,7 @@ test("harness argv, policy, hooks and recorded calls", () => {
   assert.ok(policy.network_policies.codex.endpoints.some((e) => e.host === "chatgpt.com"));
   assert.deepEqual(policy.network_policies.ai_collab.binaries.map((b) => b.path), ["/sandbox/codex/r/bin/codex", "/sandbox/tools/node/bin/node"]);
   assert.deepEqual(captureHooks("codex", ["UserPromptSubmit"]), { hooks: { UserPromptSubmit: [{ hooks: [{ type: "command", command: "/sandbox/tools/bin/ob-capture codex" }] }] } });
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-builder-hooks-"));
+  const dir = tempDir({ after }, "ai-collab-builder-hooks-");
   const file = path.join(dir, "hooks.json");
   writeFileSync(file, JSON.stringify({ hooks: { stop: [{ command: "x" }], postToolUse: [{ command: "'/h/.cargo/bin/oncebitten' capture --host cursor" }], preToolUse: [{ command: "oncebitten steer --host cursor" }] } }));
   assert.deepEqual(hostCaptureEvents("cursor", file), ["postToolUse"]);
@@ -411,7 +412,7 @@ test("sharedLibs lists a binary's libraries without glibc's own", async () => {
 });
 
 test("sandbox staging discovers oncebitten in Cargo's bin directory when the service PATH omits it", (t) => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-oncebitten-home-"));
+  const home = tempDir(t, "ai-collab-oncebitten-home-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const state = { harness: "codex", root: home };
   const env = { HOME: home, PATH: "/usr/bin:/bin" };
@@ -425,12 +426,12 @@ test("sandbox staging discovers oncebitten in Cargo's bin directory when the ser
   assert.equal(toolSources(state, { ...env, AI_COLLAB_BUILDER_ONCEBITTEN: "none" }).oncebitten, "");
 });
 
-test("a CODEX_HOME with no login falls back to the user's ~/.codex login", async () => {
+test("a CODEX_HOME with no login falls back to the user's ~/.codex login", async (t) => {
   const { toolSources } = await import("../lib/builder.ts");
   const { homedir } = await import("node:os");
-  const { existsSync, mkdtempSync } = await import("node:fs");
+  const { existsSync } = await import("node:fs");
   const { join } = await import("node:path");
-  const empty = mkdtempSync(join((await import("node:os")).tmpdir(), "ai-collab-codex-home-"));
+  const empty = tempDir(t, "ai-collab-codex-home-");
   const src = toolSources({ harness: "codex", root: empty }, { PATH: "", HOME: empty, CODEX_HOME: empty });
   const own = join(homedir(), ".codex", "auth.json");
   assert.equal(src.codexAuth, existsSync(own) ? own : "");

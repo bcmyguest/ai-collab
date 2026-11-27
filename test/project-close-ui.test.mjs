@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
@@ -8,14 +7,15 @@ import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8795";
 
 test("close hides a project from the state, reopen shows it, delete drops its registry entry", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const root = mkdtempSync(path.join(os.tmpdir(), "ai-collab-close-ui-"));
-  const xdg = mkdtempSync(path.join(os.tmpdir(), "ai-collab-xdg-"));
+  const root = tempDir(t, "ai-collab-close-ui-");
+  const xdg = tempDir(t, "ai-collab-xdg-");
   const env = { ...peerEnv(fake, { peer: "alice" }), XDG_CONFIG_HOME: xdg };
   mkdirSync(path.join(xdg, "ai-collab"), { recursive: true });
   const registry = path.join(xdg, "ai-collab", "projects.json");

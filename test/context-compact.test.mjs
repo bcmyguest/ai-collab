@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { readContext, recordInstructions, reportContext } from "../lib/usage.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
-const dir = mkdtempSync(join(process.env.TMPDIR || tmpdir(), "ai-collab-compact-"));
+const dir = tempDir({ after }, "ai-collab-compact-");
 const cfg = (session) => ({ enabled: true, stateDir: join(dir, "state"), project: "demo", peer: "alice", session });
 const stateFile = (session) => join(dir, "state", "demo", "sessions", "alice", `${session}.context.json`);
 

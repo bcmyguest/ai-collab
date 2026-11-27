@@ -1,8 +1,7 @@
 // A runner wake of a managed session keeps native subagents off, whatever the owned record file says.
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
@@ -12,9 +11,10 @@ import { MANAGED_ENV } from "../lib/subagent-guard.ts";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner, WAKE } from "../runner/runner.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 function setup(t, fake) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-wake-managed-"));
+  const home = tempDir({ after }, "ai-collab-wake-managed-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const root = path.join(home, "demo");
   mkdirSync(root);

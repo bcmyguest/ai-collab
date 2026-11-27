@@ -1,11 +1,11 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { refreshPmWorkspace } from "../lib/pm-workspace.mjs";
 import { loadSchedules, tickFn } from "../runner/schedules.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 // The user's global push.pushOption makes pushes to the local test remote fail.
 process.env.GIT_CONFIG_GLOBAL = "/dev/null";
@@ -20,7 +20,7 @@ function git(cwd, ...args) {
 }
 
 function originAndSource() {
-  const root = mkdtempSync(path.join(os.tmpdir(), "ai-collab-pm-src-"));
+  const root = tempDir({ after }, "ai-collab-pm-src-");
   const bare = path.join(root, "bare.git");
   const seed = path.join(root, "seed");
   const source = path.join(root, "source");
@@ -38,8 +38,8 @@ function originAndSource() {
   return { bare, seed, source };
 }
 
-test("a pm tick with workspace runs there and appends that directory's mission, not the host project's", async () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-pm-tick-"));
+test("a pm tick with workspace runs there and appends that directory's mission, not the host project's", async (t) => {
+  const home = tempDir(t, "ai-collab-pm-tick-");
   const host = path.join(home, "host");
   const workspace = path.join(home, "workspace");
   mkdirSync(host);
@@ -116,8 +116,8 @@ test("a dirty PM clone is not overwritten", () => {
   assert.deepEqual(calls.filter((args) => args.includes(source)).map((args) => args.slice(0, 3)), [["-C", source, "remote"]]);
 });
 
-test("loadSchedules accepts the workspace key", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-pm-sched-"));
+test("loadSchedules accepts the workspace key", (t) => {
+  const dir = tempDir(t, "ai-collab-pm-sched-");
   const file = path.join(dir, "schedules.json");
   const workspace = path.join(dir, "not-created-yet");
   writeFileSync(file, JSON.stringify([{

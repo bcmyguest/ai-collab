@@ -1,8 +1,7 @@
 // A session whose worktree folder was deleted has nothing to resume, so its card leaves Home and Sessions.
 // The fold for dead cards is covered in session-prune-view.test.mjs.
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { loadConfig, loadProjects, sessionLabel } from "../lib/config.mjs";
@@ -10,11 +9,12 @@ import { recordSession, worktreeGone, worktreeRoot } from "../lib/sessions.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { firstUpdate } from "./helpers/ui-stream.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8795";
 
 test("a worktree session's folder is checked, not the parent project", (t) => {
-  const root = mkdtempSync(path.join(os.tmpdir(), "ai-collab-prune-root-"));
+  const root = tempDir(t, "ai-collab-prune-root-");
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const tree = path.join(root, ".claude", "worktrees", "gone");
   assert.equal(worktreeRoot(`${tree}/src/deep`, root), tree, "a subfolder names its worktree");
@@ -33,7 +33,7 @@ test("a worktree session's folder is checked, not the parent project", (t) => {
 test("session cards drop a session whose worktree is gone, and keep the rest", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-prune-home-"));
+  const home = tempDir(t, "ai-collab-prune-home-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const root = path.join(home, "project");
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });

@@ -1,12 +1,11 @@
 // A finished compaction drops the on-demand instruction files, so the next compaction counts only files loaded since.
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { dropOnDemandFiles, readContext, recordInstructions } from "../lib/usage.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
-const dir = mkdtempSync(join(process.env.TMPDIR || tmpdir(), "ai-collab-dropped-"));
+const dir = tempDir({ after }, "ai-collab-dropped-");
 const cfg = { enabled: true, stateDir: join(dir, "state"), project: "demo", peer: "alice", session: "aabbccddeeff0011" };
 
 test("dropOnDemandFiles removes nested and glob loads and keeps the session files", async () => {

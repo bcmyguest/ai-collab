@@ -1,9 +1,8 @@
 // Managed sessions in each adapter: native subagents off, set per session, against fakes only (no CLI, no tokens).
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createClaudeAdapter } from "../runner/adapters/claude.mjs";
@@ -12,6 +11,7 @@ import { createOpenCodeAdapter } from "../runner/adapters/opencode.mjs";
 import { permissionSettings } from "../runner/contract.mjs";
 import { CODEX_NO_SUBAGENT_ARGS, OPENCODE_NO_SUBAGENTS } from "../lib/subagent-guard.ts";
 import { fakeClaudeQuery } from "./helpers/fake-claude-query.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const FAKE_CODEX = fileURLToPath(new URL("./helpers/fake-codex-app-server.mjs", import.meta.url));
 const PASSWORD = "test-password";
@@ -22,7 +22,7 @@ const lines = (file) => (existsSync(file) ? readFileSync(file, "utf8").trim().sp
 
 // A loopback OpenCode service that records every call and answers the session routes the adapter uses.
 async function opencodeService(t) {
-  const state = mkdtempSync(path.join(os.tmpdir(), "ai-collab-opencode-managed-"));
+  const state = tempDir({ after }, "ai-collab-opencode-managed-");
   const calls = [];
   const server = http.createServer(async (req, res) => {
     const chunks = [];
@@ -55,7 +55,7 @@ test("a managed Claude session disallows Agent and Task at open and on resume; a
 });
 
 test("managed Codex sessions run on a second app-server with subagents off; unmanaged ones keep the first", async (t) => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "codex-managed-"));
+  const dir = tempDir(t, "codex-managed-");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const log = path.join(dir, "fake.log");
   const adapter = codexAdapter({ command: { file: process.execPath, args: [FAKE_CODEX, ...APP_SERVER_ARGS], version: [FAKE_CODEX, "--version"] } });

@@ -1,14 +1,14 @@
 // A "sandbox": true schedule runs its agent through runner/sandbox-run.mjs against the fake openshell.
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { openTasks } from "../lib/tasks.mjs";
 import { loadSchedules, sandboxRunCommand, SANDBOX_RUN, tickFn } from "../runner/schedules.mjs";
 import { parseArgs, runSandboxName, sandboxCommand, sandboxRun } from "../runner/sandbox-run.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OPENSHELL = path.join(HERE, "helpers", "fake-openshell.mjs");
@@ -27,7 +27,7 @@ exit 0
 `;
 
 function lab({ defaults } = {}) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-sched-sbx-"));
+  const home = tempDir({ after }, "ai-collab-sched-sbx-");
   const repo = path.join(home, "repo");
   const tree = path.join(home, "cursor-agent", "versions", "2026.11.22-fake");
   for (const dir of [repo, tree, path.join(home, ".config", "ai-collab")]) mkdirSync(dir, { recursive: true });

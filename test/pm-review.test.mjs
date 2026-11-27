@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { RULES_MAX } from "../lib/mission.ts";
 import { REVIEW_HEADING, REVIEW_MAX_LINES, reviewBlock, withReview } from "../lib/pm-review.ts";
 import { tickFn } from "../runner/schedules.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 function project() {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-review-"));
+  const home = tempDir({ after }, "ai-collab-review-");
   const root = path.join(home, "repo");
   mkdirSync(root);
   // A registered project, so withMission resolves MISSION.md the way the runner does.

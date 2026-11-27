@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync, readFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
 import { writeGlobalTeams } from "../lib/teams.mjs";
 import { BUILT_IN_PATTERNS, createPattern, deletePattern, legacyPattern, listPatterns, validatePattern } from "../lib/patterns.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 function setup(extraProjects = {}) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-patterns-"));
+  const home = tempDir({ after }, "ai-collab-patterns-");
   const root = path.join(home, "repo");
   mkdirSync(root);
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });

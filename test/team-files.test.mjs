@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
 import { parseDot } from "../lib/catalog/dot.ts";
 import { createPattern, listPatterns, saveTeamText } from "../lib/patterns.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const MODELS = { claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] };
 
 function setup() {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-team-files-"));
+  const home = tempDir({ after }, "ai-collab-team-files-");
   const root = path.join(home, "repo");
   mkdirSync(root);
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });

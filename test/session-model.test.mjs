@@ -1,13 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import test from "node:test";
 import { sessionLabel } from "../lib/config.mjs";
 import { listSessions, recordSession } from "../lib/sessions.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
-test("a session keeps the model its hooks report until a later hook reports another", async () => {
-  const dir = mkdtempSync(path.join(tmpdir(), "session-model-"));
+test("a session keeps the model its hooks report until a later hook reports another", async (t) => {
+  const dir = tempDir(t, "session-model-");
   const id = "11111111-2222-3333-4444-555555555555";
   const cfg = { stateDir: dir, project: "demo", peer: "cursor", session: sessionLabel(id), peers: [] };
   await recordSession(cfg, { id, cwd: dir, harness: "cursor", event: "start", model: "composer-2.5" });

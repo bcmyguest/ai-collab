@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { startCommand, startSession } from "../lib/start.mjs";
 import { loadConfig } from "../lib/config.mjs";
 import { runCli } from "../lib/cli.mjs";
 import { teamStart } from "../lib/teams.mjs";
 import { CLAUDE_NO_SUBAGENT_SETTINGS, MANAGED_ENV } from "../lib/subagent-guard.ts";
+import { tempDir } from "./helpers/tmp.mjs";
 
 function fixture(t) {
-  const home = mkdtempSync(join(tmpdir(), "managed-start-"));
+  const home = tempDir({ after }, "managed-start-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const root = join(home, "demo");
   const bin = join(home, "bin");

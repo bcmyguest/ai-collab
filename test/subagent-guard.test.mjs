@@ -1,12 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 import { managedShellStartRefusal, SHELL_START_DENIED } from "../lib/agent-guard.mjs";
 import {
   MANAGED_ENV, MANAGED_TICKET_ENV, SUBAGENT_DENIED, managedEnv, nativeSubagentCall, noSubagentArgs, noSubagentEnv, shellHarnessStart, subagentDenial,
 } from "../lib/subagent-guard.ts";
+import { tempDir } from "./helpers/tmp.mjs";
 
 test("noSubagentArgs: Claude settings deny, Codex -c pairs, nothing for opencode and cursor", () => {
   assert.deepEqual(noSubagentArgs("claude"), ["--settings", '{"permissions":{"deny":["Agent","Task"]}}']);
@@ -17,7 +16,7 @@ test("noSubagentArgs: Claude settings deny, Codex -c pairs, nothing for opencode
 
 test("noSubagentEnv: marks the start managed and merges the OpenCode deny into existing config", (t) => {
   // The start ticket goes under the state dir; managed-start-ticket.test.mjs covers it.
-  const dir = mkdtempSync(join(tmpdir(), "ai-collab-guard-"));
+  const dir = tempDir(t, "ai-collab-guard-");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const base = { AI_COLLAB_STATE_DIR: dir };
   const strip = ({ [MANAGED_TICKET_ENV]: _ticket, ...rest }) => rest;

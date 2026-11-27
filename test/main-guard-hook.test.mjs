@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync } from "node:fs";
 import { dirname, join } from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const INSTALL = join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "install-git-hooks.sh");
 
 function sandbox(t) {
-  const root = mkdtempSync(join(tmpdir(), "main-guard-"));
+  const root = tempDir({ after }, "main-guard-");
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const env = {
     PATH: process.env.PATH, HOME: root, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: join(root, "gitconfig"),

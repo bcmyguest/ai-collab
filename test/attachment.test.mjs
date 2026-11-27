@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { test, after } from "node:test";
+import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { readAttachment } from "../lib/attachment.mjs";
 import { loadConfig } from "../lib/config.mjs";
@@ -10,9 +9,10 @@ import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
-const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-attach-"));
+const dir = tempDir({ after }, "ai-collab-attach-");
 const png = path.join(dir, "shot.png");
 writeFileSync(png, PNG);
 

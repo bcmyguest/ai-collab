@@ -1,7 +1,6 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { COMPACT_REQUEST, controlSession } from "../lib/sessions/control.ts";
 import { codexLiveCompact } from "../lib/codex-compact.mjs";
@@ -9,6 +8,7 @@ import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, parseEnvelope } from "../lib/inbox.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const sessionId = "00000000-abcd-1234-9876-000000000002";
 const selfStart = (() => { const s = readFileSync("/proc/self/stat", "utf8"); return s.slice(s.lastIndexOf(")") + 2).split(" ")[19]; })();
@@ -37,7 +37,7 @@ require("node:readline").createInterface({ input: process.stdin }).on("line", (l
 `;
 
 function fakeProxy(loaded, status) {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-proxy-"));
+  const dir = tempDir({ after }, "ai-collab-proxy-");
   const script = path.join(dir, "proxy.cjs");
   const log = path.join(dir, "log");
   writeFileSync(script, FAKE_PROXY);

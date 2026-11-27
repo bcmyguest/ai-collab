@@ -1,16 +1,16 @@
 // Postgres deployment for the DBOS engine: password file, compose file, and the setup command.
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { ensurePgPassword, pgReachable, pgUrl, postgresCommand } from "../lib/postgres.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const COMPOSE = path.join(HERE, "..", "deploy", "postgres", "compose.yaml");
 
-const tmp = () => mkdtempSync(path.join(tmpdir(), "aic-pg-"));
+const tmp = () => tempDir({ after }, "aic-pg-");
 
 test("setup creates the password file once, mode 0600", () => {
   const home = tmp();

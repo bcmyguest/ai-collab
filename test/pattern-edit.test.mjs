@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
 import { BUILT_IN_PATTERNS, copyPattern, createPattern, listPatterns, removableNames, removePattern, savePattern, validatePattern } from "../lib/patterns.mjs";
 import { createTeam, listTeams } from "../lib/teams.mjs";
 import { mentionedTeams } from "../web/lib/message-routing.js";
 import { patternMentionTargets } from "../web/lib/mentions.js";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const MODELS = { claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] };
 
 function setup() {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-pattern-edit-"));
+  const home = tempDir({ after }, "ai-collab-pattern-edit-");
   const root = path.join(home, "repo");
   mkdirSync(root);
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
@@ -93,8 +93,8 @@ test("saving a team's name as a pattern converts the team and removes it", async
   assert.deepEqual(crew.roles.map((role) => role.id), ["lead"]);
 });
 
-test("a project team can be copied into a second project and then appears as a mention target there", async () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-pattern-copy-"));
+test("a project team can be copied into a second project and then appears as a mention target there", async (t) => {
+  const home = tempDir(t, "ai-collab-pattern-copy-");
   const alpha = path.join(home, "alpha");
   const beta = path.join(home, "beta");
   mkdirSync(alpha);

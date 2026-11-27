@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { alertPriority, buzzes, readAlertLevel, writeAlertLevel } from "../lib/alerts.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const KINDS = ["question", "direct", "other"];
 
@@ -46,14 +46,14 @@ test("a silenced publish goes out with ntfy priority 1 and a buzzing one keeps i
   assert.equal(bodies[0].message, "status");
 });
 
-test("the stored level defaults to all, reads a valid level, and rejects an unknown one", () => {
-  const env = { XDG_CONFIG_HOME: mkdtempSync(path.join(os.tmpdir(), "alerts-xdg-")) };
+test("the stored level defaults to all, reads a valid level, and rejects an unknown one", (t) => {
+  const env = { XDG_CONFIG_HOME: tempDir(t, "alerts-xdg-") };
   assert.equal(readAlertLevel(env), "all");
   writeAlertLevel(env, "questions");
   assert.equal(readAlertLevel(env), "questions");
   assert.throws(() => writeAlertLevel(env, "loud"), { status: 400 });
   assert.equal(readAlertLevel(env), "questions");
-  const bad = mkdtempSync(path.join(os.tmpdir(), "alerts-bad-"));
+  const bad = tempDir(t, "alerts-bad-");
   mkdirSync(path.join(bad, "ai-collab"), { recursive: true });
   writeFileSync(path.join(bad, "ai-collab", "alerts.json"), JSON.stringify({ level: "loud" }));
   assert.equal(readAlertLevel({ XDG_CONFIG_HOME: bad }), "all");

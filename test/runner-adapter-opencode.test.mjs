@@ -1,12 +1,13 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { EventType } from "@ag-ui/core";
 import { eventProblem } from "../runner/contract.mjs";
 import { createOpenCodeAdapter, modelRef, sseData } from "../runner/adapters/opencode.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const PASSWORD = "test-password";
 const AUTH = `Basic ${Buffer.from(`opencode:${PASSWORD}`).toString("base64")}`;
@@ -25,7 +26,7 @@ async function until(check, what, ms = 4000) {
 
 // A loopback OpenCode service: scripted REST answers, a recorded call log, and an SSE stream the test writes to.
 async function fakeService() {
-  const state = mkdtempSync(path.join(os.tmpdir(), "ai-collab-opencode-svc-"));
+  const state = tempDir({ after }, "ai-collab-opencode-svc-");
   const calls = [];
   const streams = [];
   const permissions = new Map();

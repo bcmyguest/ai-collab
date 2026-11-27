@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { START_PLACE, loadConfig, startPlaceSetting } from "../lib/config.mjs";
@@ -9,11 +8,12 @@ import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { fileEnd, tempDir } from "./helpers/tmp.mjs";
 
 const PLACES = { places: ["folder", "worktree", "openshell"] };
 
 function home(defaults) {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-place-"));
+  const dir = tempDir(fileEnd, "ai-collab-place-");
   mkdirSync(path.join(dir, ".config", "ai-collab"), { recursive: true });
   if (defaults) writeFileSync(path.join(dir, ".config", "ai-collab", "defaults.json"), JSON.stringify(defaults));
   return dir;

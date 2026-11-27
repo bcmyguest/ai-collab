@@ -2,12 +2,12 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import fc from "fast-check";
+import { tempDir } from "./helpers/tmp.mjs";
 
 // STORE_IMPL points the model at another store.ts, e.g. a scratch copy of an older commit.
 const IMPL = process.env.STORE_IMPL ? path.resolve(process.env.STORE_IMPL) : fileURLToPath(new URL("../lib/store.ts", import.meta.url));
@@ -266,7 +266,7 @@ const commandArb = fc.oneof(
 
 test("store lock matches the model under random command sequences", async () => {
   await fc.assert(fc.asyncProperty(fc.commands([commandArb], { maxCommands: 12 }), async (cmds) => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "store-lock-model-"));
+    const dir = tempDir({ after }, "store-lock-model-");
     const real = makeReal(dir);
     try {
       await fc.asyncModelRun(() => ({ model: initialModel(), real }), cmds);

@@ -1,12 +1,12 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { encodeTraceRequest } from "../lib/analyze-otlp.mjs";
 import { DEFAULT_OTLP_ENDPOINT, TRACE_ENV, exportSpans, hookTrace, otlpEndpoint, runRecorder, streamTrace } from "../lib/cursor-trace.ts";
 import { sessionLabel } from "../lib/config.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const SESSION = "34b83f3e-25a5-4cdd-9cf8-f03ccb1c7f34";
 // Lines a real `cursor-agent -p --output-format stream-json` run printed (2026.11.22-e9042b2), trimmed.
@@ -23,7 +23,7 @@ const STREAM = [
 const byKind = (spans, kind) => spans.filter((s) => s.attrs["openinference.span.kind"] === kind);
 
 function configEnv(defaults) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "cursor-trace-"));
+  const home = tempDir({ after }, "cursor-trace-");
   if (defaults) {
     mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
     writeFileSync(path.join(home, ".config", "ai-collab", "defaults.json"), JSON.stringify(defaults));

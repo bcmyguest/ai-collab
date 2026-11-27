@@ -1,13 +1,13 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { loadProjects, sessionLabel } from "../lib/config.mjs";
 import { checkPrompt, outputId, startCommand } from "../lib/start.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8795";
 const IDS = {
@@ -29,7 +29,7 @@ console.log(out["${harness}"]);
 async function setup(t, { harnesses = ["claude", "codex", "cursor"] } = {}) {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-start-"));
+  const home = tempDir({ after }, "ai-collab-start-");
   const bin = path.join(home, "bin");
   const root = path.join(home, "project");
   const record = path.join(home, "record");

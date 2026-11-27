@@ -1,13 +1,13 @@
 // A Codex builder's usage-limit retry chain is the operator's configured chain (lib/limits.ts fallbackChain).
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { fallbackAttempts } from "../lib/builder.ts";
+import { tempDir } from "./helpers/tmp.mjs";
 
 function configDir(limitFallback) {
-  const home = mkdtempSync(path.join(tmpdir(), "ai-collab-builder-chain-"));
+  const home = tempDir({ after }, "ai-collab-builder-chain-");
   mkdirSync(path.join(home, "ai-collab"), { recursive: true });
   writeFileSync(path.join(home, "ai-collab", "defaults.json"), JSON.stringify({ limitFallback }));
   return { XDG_CONFIG_HOME: home };

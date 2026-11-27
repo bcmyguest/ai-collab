@@ -2,8 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "../lib/config.mjs";
@@ -15,6 +14,7 @@ import { createFakeAdapter } from "../runner/adapters/fake.mjs";
 import { DEFAULT_MAX_SANDBOXES, countedSandboxes, maxSandboxes, sandboxCapRefusal } from "../runner/sandbox.mjs";
 import { sandboxRun } from "../runner/sandbox-run.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { fileEnd, tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OPENSHELL = path.join(HERE, "helpers", "fake-openshell.mjs");
@@ -23,7 +23,7 @@ const ID = ["-c", "user.name=Test", "-c", "user.email=test@example.invalid"];
 
 // A home with a git project "demo", a fake openshell whose list holds the given sandboxes, and defaults.json.
 function lab(sandboxes, defaults) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-cap-"));
+  const home = tempDir(fileEnd, "ai-collab-cap-");
   const root = path.join(home, "demo");
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
   execFileSync("git", ["init", "--quiet", "--template=", "-b", "main", root]);

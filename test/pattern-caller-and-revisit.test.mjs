@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 import { test } from "node:test";
 import { compileTrace } from "../lib/pattern-compiler.ts";
 import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, launchPatternRun, runStatus } from "../lib/pattern-runs.mjs";
 import { seedPatternRun } from "../lib/pattern-workflow.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const parallel = {
   name: "parallel",
@@ -65,7 +64,7 @@ test("a trace refuses additional events after the run finishes", () => {
 });
 
 test("recovery refuses to assume a reused session received a revisited role brief", async (t) => {
-  const stateDir = mkdtempSync(join(tmpdir(), "aic-dot-revisit-"));
+  const stateDir = tempDir(t, "aic-dot-revisit-");
   t.after(() => rmSync(stateDir, { recursive: true, force: true }));
   const cfg = { project: "demo", stateDir };
   const id = "trace42";

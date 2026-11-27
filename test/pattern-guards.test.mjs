@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "../lib/config.mjs";
 import { createPattern, getPattern, listPatterns } from "../lib/patterns.mjs";
@@ -12,11 +11,12 @@ import { createTeam } from "../lib/teams.mjs";
 import { startRun } from "../lib/pattern-runs.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const MODELS = { claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] };
 
 function project(extra = {}) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-pattern-guards-"));
+  const home = tempDir({ after }, "ai-collab-pattern-guards-");
   const root = path.join(home, "repo");
   mkdirSync(root);
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });

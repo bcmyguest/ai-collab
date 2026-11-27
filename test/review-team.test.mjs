@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import { loadConfig } from "../lib/config.mjs";
 import { alertLimit, CURSOR_FALLBACK } from "../lib/limit-alert.ts";
@@ -10,6 +9,7 @@ import { checkTeamText } from "../lib/patterns.mjs";
 import { teamStart } from "../lib/teams.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const LIMIT = { window: "five_hour", windowName: "5-hour", resetsAt: null, wording: true, verified: true, source: "test" };
 const FALLBACK = `${CURSOR_FALLBACK.harness}:${CURSOR_FALLBACK.model}`;
@@ -29,7 +29,7 @@ function approvals(messages) {
 async function fixture(t) {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-review-team-"));
+  const home = tempDir({ after }, "ai-collab-review-team-");
   const root = path.join(home, "repo");
   const stateDir = path.join(home, "state");
   mkdirSync(root);

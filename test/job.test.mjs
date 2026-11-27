@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -12,11 +11,12 @@ import { sessionIdleState } from "../lib/idle.mjs";
 import { listSessions, recordSession } from "../lib/sessions.mjs";
 import { sessionState } from "../web/lib/session-state.js";
 import { taskBoard } from "../web/server/task-board.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const cli = fileURLToPath(new URL("../scripts/ai-collab.mjs", import.meta.url));
 
 test("job run reports the child until exit and preserves its exit code", async t => {
-  const home = mkdtempSync(join(tmpdir(), "ai-collab-job-"));
+  const home = tempDir(t, "ai-collab-job-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const id = "job-test";
   const env = {

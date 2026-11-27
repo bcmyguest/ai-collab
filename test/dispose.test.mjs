@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { test, after } from "node:test";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { sessionLabel } from "../lib/config.mjs";
 import { disposeSession, sessionPlace } from "../lib/sessions.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const self = () => {
   const text = readFileSync("/proc/self/stat", "utf8");
@@ -13,7 +14,7 @@ const self = () => {
 
 // A registry with one entry per session id; running ones record this process.
 function setup(t, sessions) {
-  const stateDir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-dispose-"));
+  const stateDir = tempDir({ after }, "ai-collab-dispose-");
   t.after(() => rmSync(stateDir, { recursive: true, force: true }));
   const cfg = { stateDir, project: "demo", peers: [] };
   mkdirSync(path.join(stateDir, "demo", "registry"), { recursive: true });

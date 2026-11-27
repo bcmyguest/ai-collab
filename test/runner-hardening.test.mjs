@@ -1,9 +1,8 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { execFile, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import net from "node:net";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { openDurable } from "../runner/durable.mjs";
@@ -11,8 +10,9 @@ import { createRunner } from "../runner/runner.mjs";
 import { listenControl, route } from "../runner/control.mjs";
 import { loadSchedules, registerSchedules, runCommand } from "../runner/schedules.mjs";
 import { acquireLock } from "../runner/lock.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
-const tmp = () => mkdtempSync(path.join(os.tmpdir(), "ai-collab-harden-"));
+const tmp = () => tempDir({ after }, "ai-collab-harden-");
 const dbFile = () => path.join(tmp(), "runner.db");
 const iso = (ms) => new Date(ms).toISOString();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

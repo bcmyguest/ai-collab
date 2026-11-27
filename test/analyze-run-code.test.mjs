@@ -1,15 +1,15 @@
-import test from "node:test";
+import test, { after as afterAll } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { sessionLabel } from "../lib/config.mjs";
 import { classifyCall, isRefusal, isRunCodeFailure, claudeSource, codexSource, opencodeSource, cursorSource, journalSource } from "../lib/analyze-sources.ts";
 import { aggregate, classifyRole, parseSelectors, matchesSelectors, periodOf, priceTurn, isoWeek, renderReport, analyze } from "../lib/analyze-run-code.ts";
 import { encodeTraceRequest } from "../lib/analyze-otlp.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
-const home = () => mkdtempSync(join(tmpdir(), "arc-"));
+const home = () => tempDir({ after: afterAll }, "arc-");
 const put = (path, text) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, text); };
 const jl = (...rows) => rows.map((r) => JSON.stringify(r)).join("\n") + "\n";
 const MCP = "mcp__plugin_ai-collab_ai-collab__";

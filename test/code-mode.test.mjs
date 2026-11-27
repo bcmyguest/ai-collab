@@ -1,8 +1,7 @@
 // Native code mode setting (lib/code-mode.mjs): default on, defaults.json, per start, team.dot roles, and what each harness gets.
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CODEX_CODE_MODE_KEY, claudeCodeModeSettings, codeModeDefault, codexCodeModeArgs, parseCodeMode, resolveCodeMode } from "../lib/code-mode.mjs";
@@ -23,12 +22,13 @@ import { wrapOpen } from "./helpers/fake-adapter-hooks.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { makeRunner, setup } from "./helpers/runner-ctx.mjs";
 import { sessionLabel } from "../lib/config.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const FAKE_CODEX = fileURLToPath(new URL("./helpers/fake-codex-app-server.mjs", import.meta.url));
 const MODELS = { claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] };
 
 function configHome(t, defaults) {
-  const home = mkdtempSync(join(tmpdir(), "ai-collab-code-mode-"));
+  const home = tempDir({ after }, "ai-collab-code-mode-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   mkdirSync(join(home, ".config", "ai-collab"), { recursive: true });
   if (defaults) writeFileSync(join(home, ".config", "ai-collab", "defaults.json"), JSON.stringify(defaults));
@@ -87,7 +87,7 @@ test("the Claude adapter passes code mode as SDK flag settings on open and resum
 });
 
 test("the Codex adapter sends features.code_mode in thread/start and thread/resume config", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "ai-collab-code-mode-codex-"));
+  const dir = tempDir(t, "ai-collab-code-mode-codex-");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const logFile = join(dir, "fake.log");
   const adapter = codexAdapter({ command: { file: process.execPath, args: [FAKE_CODEX, ...APP_SERVER_ARGS], version: [FAKE_CODEX, "--version"] } });

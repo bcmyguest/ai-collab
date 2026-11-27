@@ -1,21 +1,21 @@
 // runner/sandbox.mjs against the fake openshell: naming, argv shapes, phase handling, and the sync fallbacks.
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   destroySandbox, downloadArgv, downloadTree, ensureSandbox, execArgv, ownedSandboxNames, parseSandboxList,
   sandboxName, sandboxPhase, stateCommand, uploadArgv, uploadFile, uploadTree,
 } from "../runner/sandbox.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OPENSHELL = path.join(HERE, "helpers", "fake-openshell.mjs");
 chmodSync(OPENSHELL, 0o755);
 
 function env() {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-sandbox-"));
+  const home = tempDir({ after }, "ai-collab-sandbox-");
   const root = path.join(home, "work");
   mkdirSync(root);
   writeFileSync(path.join(root, "a.txt"), "one\n");

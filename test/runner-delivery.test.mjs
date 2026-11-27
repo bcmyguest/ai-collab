@@ -1,12 +1,11 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { openDurable } from "../runner/durable.mjs";
 import { deliveryWorkflow } from "../runner/delivery.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
-const dbFile = () => path.join(mkdtempSync(path.join(os.tmpdir(), "ai-collab-delivery-")), "runner.db");
+const dbFile = () => path.join(tempDir({ after }, "ai-collab-delivery-"), "runner.db");
 const SESSION = { id: "codex#abc", harness: "codex", sessionId: "t1", online: true, peer: "codex", session: "abc" };
 const message = (over = {}) => ({ id: "m1", from: "operator", body: "hi", ...over });
 

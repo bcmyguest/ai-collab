@@ -1,12 +1,12 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { resetScopeProbe, scopeAvailable, scopeLaunch, scopeSupport, scopeUnitName, scopeWrap, systemdRunOnPath } from "../lib/sessions/scope.ts";
+import { tempDir } from "./helpers/tmp.mjs";
 
-const tmp = () => mkdtempSync(path.join(os.tmpdir(), "ai-collab-scope-"));
+const tmp = () => tempDir({ after }, "ai-collab-scope-");
 const UNIT = /^ai-collab-[a-z]+(-[a-z0-9-]+)*-\d{8}T\d{6}Z-[0-9a-f]{6}$/;
 
 // Records its argv as JSON, then execs the command after `--` so the caller sees the real exit code and stdio.

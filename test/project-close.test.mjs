@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readdirSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { closedProjectNames, readProjectsFile, removeProject, setProjectClosed, writeProjectsFile } from "../lib/teams.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 function setup(entries) {
-  const home = mkdtempSync(path.join(tmpdir(), "ai-collab-close-"));
+  const home = tempDir({ after }, "ai-collab-close-");
   const env = { HOME: home, XDG_CONFIG_HOME: path.join(home, ".config") };
   mkdirSync(path.join(env.XDG_CONFIG_HOME, "ai-collab"), { recursive: true });
   writeFileSync(path.join(env.XDG_CONFIG_HOME, "ai-collab", "projects.json"), JSON.stringify(entries));

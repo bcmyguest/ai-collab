@@ -1,13 +1,13 @@
 import { parseWireEnvelope } from "../lib/agui.mjs";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { MESSAGE_MAX_BYTES, loadConfig } from "../lib/config.mjs";
 import { LIMIT_TOOL, WAIT_LABEL, alertLimit, handoffPrompt, limitLine, replacementOptions, resetClock, roleFallback } from "../lib/limit-alert.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const ALL = "ai-collab-demo--to--all";
 const SESSION = "aabbccddeeff0011";
@@ -80,7 +80,7 @@ test("alertLimit publishes a second card after the known reset passes", async (t
 
 test("a limit alert never spawns a harness CLI to list models", async (t) => {
   const { fake, env, cfg } = await setup(t);
-  const bin = mkdtempSync(join(tmpdir(), "limit-bin-"));
+  const bin = tempDir({ after }, "limit-bin-");
   const marker = join(bin, "spawned.txt");
   // Fake executables that only record that they ran; no real CLI is started.
   for (const name of ["opencode", "cursor-agent"]) writeFileSync(join(bin, name), `#!/bin/sh\necho ${name} >> "${marker}"\n`, { mode: 0o755 });

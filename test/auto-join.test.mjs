@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { test, after } from "node:test";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { gitRoot, listProjects, loadConfig, loadProjects, projectName, sessionLabel } from "../lib/config.mjs";
 import { recordSession } from "../lib/sessions.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const SESSION_ID = "0123456789abcdef-session";
 
 function home({ defaults = true } = {}) {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-auto-"));
+  const dir = tempDir({ after }, "ai-collab-auto-");
   const token = path.join(dir, "token");
   writeFileSync(token, "tk_test");
   mkdirSync(path.join(dir, ".config", "ai-collab"), { recursive: true });

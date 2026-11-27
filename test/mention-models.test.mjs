@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { recordSession } from "../lib/sessions.mjs";
 import { createUi, mentionedNames } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8796";
 
@@ -19,7 +19,7 @@ test("mentionedNames reads @harness:model and drops a trailing full stop", () =>
 test("an @harness:model post starts a session with that model, after checking the model list", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-mention-model-"));
+  const home = tempDir(t, "ai-collab-mention-model-");
   const bin = path.join(home, "bin");
   mkdirSync(bin);
   writeFileSync(path.join(bin, "codex"), "#!/bin/sh\n");

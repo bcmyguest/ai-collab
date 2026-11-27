@@ -1,13 +1,13 @@
 // run_code can run a saved program: `file` instead of inline `code`, with an optional `input` value.
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { test, after } from "node:test";
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { CODE_MAX_CHARS, programSource } from "../lib/code-run.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 function dirs() {
-  const root = mkdtempSync(path.join(tmpdir(), "rc-file-"));
+  const root = tempDir({ after }, "rc-file-");
   const cwd = path.join(root, "project");
   mkdirSync(path.join(cwd, "programs"), { recursive: true });
   return { root, cwd };

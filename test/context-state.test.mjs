@@ -1,12 +1,12 @@
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { contextUsage, readContext, recordInstructions, reportContext } from "../lib/usage.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
-const dir = mkdtempSync(join(process.env.TMPDIR || tmpdir(), "ai-collab-context-"));
+const dir = tempDir({ after }, "ai-collab-context-");
 const cfg = { enabled: true, stateDir: join(dir, "state"), project: "demo", peer: "alice", session: "aabbccddeeff0123" };
 const stateFile = join(cfg.stateDir, "demo", "sessions", "alice", "aabbccddeeff0123.context.json");
 const claudeFile = (name) => join(dir, name);

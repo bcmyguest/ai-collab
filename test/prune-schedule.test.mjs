@@ -1,13 +1,13 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, existsSync, mkdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import path, { delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { childEnv } from "../lib/start.mjs";
 import { summaryLine } from "../lib/prune.mjs";
 import { loadSchedules, runCommand } from "../runner/schedules.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const CLI = fileURLToPath(new URL("../scripts/ai-collab.mjs", import.meta.url));
 const OLD = Date.parse("2026-01-01T00:00:00Z") / 1000;
@@ -20,7 +20,7 @@ function gitEnv() {
 
 // A temp HOME with a registered project, one settled builder with a staged tree, and a fake systemctl on PATH.
 function fixture(t) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-prune-sched-"));
+  const home = tempDir({ after }, "ai-collab-prune-sched-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const bin = path.join(home, "bin");
   mkdirSync(bin);

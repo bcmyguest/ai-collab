@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, cutPatternEntry, cutPatternLeave, launchPatternRun, runStatus } from "../lib/pattern-runs.mjs";
 import { patternWorkflowId, runPatternWorkflow, seedPatternRun } from "../lib/pattern-workflow.mjs";
 import { openDurable } from "../runner/durable.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const definition = {
   name: "handoff",
@@ -20,7 +19,7 @@ const definition = {
 };
 
 function fixture() {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-pattern-workflow-"));
+  const home = tempDir({ after }, "ai-collab-pattern-workflow-");
   const cfg = { project: "demo", peer: "operator", session: "", stateDir: path.join(home, "state"), peers: [] };
   const launches = [];
   const start = async (_cfg, options) => {

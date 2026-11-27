@@ -1,15 +1,15 @@
 // The bus store contract on SQLite and Postgres, plus Postgres-only checks: NOTIFY wakeups and ids under two publishers.
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
-import os from "node:os";
+import { rmSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { createBusServer, openBusStore, resolveBusStoreKind } from "../lib/bus.mjs";
 import { openPostgresBusStore } from "../lib/bus-postgres.mjs";
 import { pgUrl } from "../lib/postgres.mjs";
 import { pollCached, publish, streamEvents } from "../lib/transport.mjs";
 import { dbosTestDb } from "./helpers/dbos-env.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const TOKEN = "tk_bus_store";
 const PNG = Buffer.from("89504e470d0a1a0a", "hex");
@@ -28,7 +28,7 @@ async function dropSchema(schema) {
 
 /** Runs fn with a fresh store of `kind` behind a bus server; closes everything and drops the test schema after. */
 async function withBus(kind, fn, storeOpts = {}) {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-bus-store-"));
+  const dir = tempDir({ after }, "ai-collab-bus-store-");
   const schema = `bus_t_${randomBytes(4).toString("hex")}`;
   const filesDir = path.join(dir, "files");
   const open = () => (kind === "sqlite"

@@ -1,11 +1,11 @@
 // The Cursor adapter sends session/set_model with the ACP params; the fake agent does not serve it, so the call fails here.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import cursorAdapter from "../runner/adapters/cursor.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CURSOR = path.join(HERE, "helpers", "fake-cursor-agent.mjs");
@@ -13,8 +13,8 @@ const OPENSHELL = path.join(HERE, "helpers", "fake-openshell.mjs");
 chmodSync(CURSOR, 0o755);
 chmodSync(OPENSHELL, 0o755);
 
-test("setModel sends session/set_model with the session id and modelId", async () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-cursor-model-"));
+test("setModel sends session/set_model with the session id and modelId", async (t) => {
+  const home = tempDir(t, "ai-collab-cursor-model-");
   const root = path.join(home, "demo");
   mkdirSync(root);
   const log = path.join(home, "cursor.log");

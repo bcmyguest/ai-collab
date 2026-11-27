@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { test, after } from "node:test";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { PLUGIN_COPY_MAX_BYTES, packPluginCopy, setup } from "../lib/setup.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 function harness(bins) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-setup-"));
+  const home = tempDir({ after }, "ai-collab-setup-");
   const calls = [];
   const run = (cmd, args) => {
     calls.push([cmd, ...args].join(" "));
@@ -86,9 +86,9 @@ test("setup adds a clean plugin copy as the Claude and Codex marketplace, never 
   assert.ok(!h.calls.some(c => c.endsWith(`marketplace add ${root}`)), "the checkout, with its worktrees, is never the marketplace");
 });
 
-test("packPluginCopy copies only the package files list: no node_modules, worktrees or build output", () => {
+test("packPluginCopy copies only the package files list: no node_modules, worktrees or build output", (t) => {
   const root = path.resolve(new URL("..", import.meta.url).pathname);
-  const dest = path.join(mkdtempSync(path.join(os.tmpdir(), "ai-collab-pack-")), "claude-plugin");
+  const dest = path.join(tempDir(t, "ai-collab-pack-"), "claude-plugin");
   const { bytes } = packPluginCopy(root, dest);
   for (const file of [".claude-plugin/plugin.json", ".mcp.json", "package.json", "scripts/ai-collab-code-mcp.mjs", "hooks/hooks.json"]) {
     assert.ok(existsSync(path.join(dest, file)), file);

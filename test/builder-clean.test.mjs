@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { builderLiveRefusal, buildersToRemove, cleanBuilders, worktreeIsProtected } from "../lib/builder-clean.ts";
 import { stateDir } from "../lib/config.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 test("buildersToRemove keeps running and staging and drops oldest finished, then failed, then stopped", () => {
   const rows = [
@@ -40,8 +40,8 @@ test("worktreeIsProtected refuses the main checkout and the serving checkout", (
   assert.equal(worktreeIsProtected("/home/b/ai-collab-wt-finished-one", "/home/b/ai-collab"), false);
 });
 
-test("cleanBuilders removes the selected state dir and its worktree without touching a protected checkout", async () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-builder-clean-"));
+test("cleanBuilders removes the selected state dir and its worktree without touching a protected checkout", async (t) => {
+  const home = tempDir(t, "ai-collab-builder-clean-");
   const repo = path.join(home, "repo");
   const env = {
     ...process.env,
@@ -97,8 +97,8 @@ test("cleanBuilders removes the selected state dir and its worktree without touc
   rmSync(home, { recursive: true, force: true });
 });
 
-test("builderLiveRefusal allows one live builder and refuses a third", () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-builder-live-"));
+test("builderLiveRefusal allows one live builder and refuses a third", (t) => {
+  const home = tempDir(t, "ai-collab-builder-live-");
   const env = { ...process.env, HOME: home, AI_COLLAB_STATE_DIR: path.join(home, "state") };
   const stamp = (id, phase) => {
     const dir = path.join(stateDir(env), "builders", id);

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -11,6 +10,7 @@ import { controlSession } from "../lib/sessions/control.ts";
 import { listSessions, recordSession, sessionDirectory } from "../lib/sessions.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const BASE = "http://127.0.0.1:8795";
 const ID = "11111111-2222-4333-8444-555555555555";
@@ -20,7 +20,7 @@ const MCP = fileURLToPath(new URL("../scripts/ai-collab-mcp.mjs", import.meta.ur
 for (const tag of ["@codex:gpt-6.2-sol", "@codex"]) {
   test(`${tag} launches with required code reads even when the machine setting is off`, async (t) => {
     const fake = await startFakeNtfy();
-    const home = mkdtempSync(join(tmpdir(), "ai-collab-tagged-code-"));
+    const home = tempDir(t, "ai-collab-tagged-code-");
     const config = join(home, "config", "ai-collab");
     const bin = join(home, "bin");
     mkdirSync(config, { recursive: true });
@@ -71,7 +71,7 @@ console.log(JSON.stringify({ type: "thread.started", thread_id: "${ID}" }));
 }
 
 test("waking a registered tag-launched session keeps reads routed through run_code", async (t) => {
-  const stateDir = mkdtempSync(join(tmpdir(), "ai-collab-tagged-wake-"));
+  const stateDir = tempDir(t, "ai-collab-tagged-wake-");
   t.after(() => rmSync(stateDir, { force: true, recursive: true }));
   const cfg = { stateDir, project: "demo", peer: "codex", peers: ["codex"], session: sessionLabel(ID) };
   const record = { id: ID, cwd: stateDir, harness: "codex", proc: { pid: -1, start: "1" } };

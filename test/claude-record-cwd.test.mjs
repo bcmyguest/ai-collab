@@ -1,18 +1,18 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { claudeTarget } from "../lib/claude-socket.mjs";
 import { processStart } from "../lib/process.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const SESSION_ID = "382cfeea-e0fb-45b2-b729-6b13b118f48f";
 const PID = process.pid;
 
 // A Claude home whose record carries recCwd as the launch cwd, and a live socket path.
 async function fakeClaude(t, { recCwd, socketDir }) {
-  const home = mkdtempSync(join(tmpdir(), "rc-home-"));
+  const home = tempDir({ after }, "rc-home-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   mkdirSync(join(home, "sessions"), { recursive: true });
   writeFileSync(join(home, "settings.json"), JSON.stringify({ crossSessionInbound: "accept" }));
@@ -26,7 +26,7 @@ async function fakeClaude(t, { recCwd, socketDir }) {
 }
 
 test("the transcript and project gate follow the record cwd, not the registry cwd", async (t) => {
-  const sockDir = mkdtempSync(join(tmpdir(), "rc-sock-"));
+  const sockDir = tempDir({ after }, "rc-sock-");
   t.after(() => rmSync(sockDir, { recursive: true, force: true }));
   const recCwd = "/home/b/ai-collab";
   const home = await fakeClaude(t, { recCwd, socketDir: sockDir });
@@ -36,7 +36,7 @@ test("the transcript and project gate follow the record cwd, not the registry cw
 });
 
 test("a transcript that is not under the record cwd project is found by its session id", async (t) => {
-  const sockDir = mkdtempSync(join(tmpdir(), "rc-sock-"));
+  const sockDir = tempDir({ after }, "rc-sock-");
   t.after(() => rmSync(sockDir, { recursive: true, force: true }));
   const home = await fakeClaude(t, { recCwd: "/home/b/ai-collab", socketDir: sockDir });
   const elsewhere = join(home, "projects", "-somewhere-else");

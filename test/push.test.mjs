@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { createECDH, createPublicKey, randomBytes, verify } from "node:crypto";
-import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
-import os from "node:os";
 import path from "node:path";
 import { broadcastTopic, inboxTopic, loadConfig } from "../lib/config.mjs";
 import { approvalMessage, approvalRequest } from "../lib/approvals.mjs";
@@ -13,6 +12,7 @@ import { createPush, notice } from "../web/server/push.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 // http_ece is web-push's own decryption counterpart; resolve it through web-push rather than as a direct dependency.
 const ece = createRequire(createRequire(import.meta.url).resolve("web-push"))("http_ece");
@@ -67,7 +67,7 @@ async function until(check, ms = 5000) {
   }
 }
 
-const tmp = () => mkdtempSync(path.join(os.tmpdir(), "ai-collab-push-"));
+const tmp = () => tempDir({ after }, "ai-collab-push-");
 
 test("push sender encrypts with VAPID, keeps keys 0600, dedupes across restarts, and drops gone subscriptions", async (t) => {
   const fake = await startFakePush();

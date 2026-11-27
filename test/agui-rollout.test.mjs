@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { EventSchema } from "@ag-ui/core/schemas";
@@ -18,6 +17,7 @@ import { createUi } from "../web/server/ui.mjs";
 import { parseEnvelope, parseMode, parseQuestionText } from "./fixtures/legacy-wire.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const SESSION = "aabbccddeeff0011";
 
@@ -54,7 +54,7 @@ for (const wire of [undefined, "legacy"]) {
 }
 
 test("wire follows the project config and env and keeps distinct tool-result IDs", async t => {
-  const dir = mkdtempSync(join(tmpdir(), "ai-collab-wire-"));
+  const dir = tempDir(t, "ai-collab-wire-");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   mkdirSync(join(dir, "ai-collab"));
   writeFileSync(join(dir, "ai-collab", "projects.json"), JSON.stringify([{ root: dir, project: "demo", wire: "legacy" }]));

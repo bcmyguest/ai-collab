@@ -1,7 +1,6 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { sessionLabel } from "../lib/config.mjs";
@@ -12,6 +11,7 @@ import { packageRoot } from "../lib/install-cursor.mjs";
 import { WAKE_PROMPT } from "../lib/mode.mjs";
 import { sessionDirectory } from "../lib/sessions.mjs";
 import { START_HARNESSES, outputId, startCommand } from "../lib/start.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const SRC = packageRoot(import.meta.url);
 const ID = "ses_0123456789abcdefABCDEFghij";
@@ -20,7 +20,7 @@ const peer = { sessionId: ID, cwd: "/tmp", id: "opencode#" + sessionLabel(ID), h
 const host = { runner: { kind: "host" } };
 
 function tempHome() {
-  return mkdtempSync(path.join(os.tmpdir(), "ai-collab-opencode-home-"));
+  return tempDir({ after }, "ai-collab-opencode-home-");
 }
 
 test("opencode start: fixed run argv with --format json, provider/model names, session id from the JSON events", () => {
@@ -35,10 +35,10 @@ test("opencode start: fixed run argv with --format json, provider/model names, s
   assert.equal(outputId("opencode", '{"type":"text","session_id":"x"}'), "");
 });
 
-test("opencode models: provider/model lines from `opencode models`, cached a day, stale cache on failure", async () => {
+test("opencode models: provider/model lines from `opencode models`, cached a day, stale cache on failure", async (t) => {
   assert.deepEqual(parseOpenCodeModels("anthropic/claude-sonnet-4-5\nopenai/gpt-6 (default)\n\nnot a model\n-x/y\nanthropic/claude-sonnet-4-5\n"),
     ["anthropic/claude-sonnet-4-5", "openai/gpt-6"]);
-  const stateDir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-opencode-models-"));
+  const stateDir = tempDir(t, "ai-collab-opencode-models-");
   const bin = path.join(stateDir, "bin");
   mkdirSync(bin);
   writeFileSync(path.join(bin, "opencode"), "", { mode: 0o755 });
@@ -71,8 +71,8 @@ test("opencode wake resumes with `opencode run --session`; compact goes through 
   assert.equal(seen.length, 2);
 });
 
-test("opencode session directory lists the resume command", () => {
-  const stateDir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-opencode-sessions-"));
+test("opencode session directory lists the resume command", (t) => {
+  const stateDir = tempDir(t, "ai-collab-opencode-sessions-");
   const cfg = { stateDir, project: "demo", peers: [] };
   const dir = path.join(stateDir, "demo", "registry");
   mkdirSync(dir, { recursive: true });

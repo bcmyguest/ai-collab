@@ -1,7 +1,6 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { loadProjects, sessionLabel } from "../lib/config.mjs";
@@ -9,6 +8,7 @@ import { startCommand, worktreeNames } from "../lib/start.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { firstUpdate } from "./helpers/ui-stream.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8795";
 const ID = "44444444-2222-4333-8444-555555555555";
@@ -24,7 +24,7 @@ console.log(argv.includes("exec") && argv.includes("--json") ? JSON.stringify({ 
 async function setup(t, { sandbox = "dev-box", git = true, gitExit = 0 } = {}) {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-places-"));
+  const home = tempDir({ after }, "ai-collab-places-");
   const bin = path.join(home, "bin");
   const root = path.join(home, "project");
   const record = path.join(home, "record");

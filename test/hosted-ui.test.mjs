@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 import { test } from "node:test";
 import { broadcastTopic, statusTopic } from "../lib/config.mjs";
 import { publishStatus } from "../lib/inbox.mjs";
@@ -9,6 +7,7 @@ import { createHostedUi } from "../web/server/hosted.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { firstUpdate } from "./helpers/ui-stream.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const origin = "https://hosted.example.test";
 const auth = {
@@ -25,7 +24,7 @@ function request(path, login, body) {
 test("hosted UI scopes default and explicit project routes, archives, attachments and broadcast", async t => {
   const broker = await startFakeNtfy();
   t.after(() => broker.close());
-  const stateDir = mkdtempSync(join(tmpdir(), "ai-collab-hosted-"));
+  const stateDir = tempDir(t, "ai-collab-hosted-");
   const projects = ["alice", "bob"].map(owner => ({
     owner, project: owner + "-repo", token: owner + "-token",
     enabled: true, peers: ["codex"], url: broker.url, timeoutMs: 2000, stateDir,

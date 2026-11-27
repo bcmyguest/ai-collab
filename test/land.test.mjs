@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { hostname, tmpdir } from "node:os";
+import { hostname } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { HOST_CHECKOUT } from "../lib/merge-cli.mjs";
@@ -9,6 +9,7 @@ import { LandRefused, autoDeployEntry, checkState, deployHost, listOpenPrs, merg
 import { deploy, land } from "../lib/land-cli.ts";
 import { autoDeployEnabled } from "../lib/config.mjs";
 import { runCli } from "../lib/cli.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const SHA = "a".repeat(40);
 const OTHER = "b".repeat(40);
@@ -210,7 +211,7 @@ test("the auto-deploy schedule runs deploy --if-moved every 5 minutes", () => {
 });
 
 test("autoDeploy is off unless the env or defaults.json turns it on", (t) => {
-  const xdg = mkdtempSync(join(tmpdir(), "land-config-"));
+  const xdg = tempDir(t, "land-config-");
   t.after(() => rmSync(xdg, { recursive: true, force: true }));
   const env = { XDG_CONFIG_HOME: xdg, HOME: xdg };
   assert.equal(autoDeployEnabled(env), false);
@@ -241,7 +242,7 @@ test("land request CLI prints the PR URL", async () => {
 });
 
 test("deploy CLI publishes the line, records it, then restarts", async (t) => {
-  const stateDir = mkdtempSync(join(tmpdir(), "land-state-"));
+  const stateDir = tempDir(t, "land-state-");
   t.after(() => rmSync(stateDir, { recursive: true, force: true }));
   const run = hostRun();
   const published = [];
@@ -262,7 +263,7 @@ test("deploy CLI publishes the line, records it, then restarts", async (t) => {
 });
 
 test("deploy CLI refuses to run beside another deploy", async (t) => {
-  const stateDir = mkdtempSync(join(tmpdir(), "land-state-"));
+  const stateDir = tempDir(t, "land-state-");
   t.after(() => rmSync(stateDir, { recursive: true, force: true }));
   mkdirSync(join(stateDir, "deploy.lock"));
   const run = hostRun();
@@ -277,7 +278,7 @@ test("deploy CLI refuses to run beside another deploy", async (t) => {
 });
 
 test("a deploy lock owned by a live pid still blocks", async (t) => {
-  const stateDir = mkdtempSync(join(tmpdir(), "land-state-"));
+  const stateDir = tempDir(t, "land-state-");
   t.after(() => rmSync(stateDir, { recursive: true, force: true }));
   const lock = join(stateDir, "deploy.lock");
   mkdirSync(lock);
@@ -293,7 +294,7 @@ test("a deploy lock owned by a live pid still blocks", async (t) => {
 });
 
 test("a deploy lock left by a dead pid is taken over", async (t) => {
-  const stateDir = mkdtempSync(join(tmpdir(), "land-state-"));
+  const stateDir = tempDir(t, "land-state-");
   t.after(() => rmSync(stateDir, { recursive: true, force: true }));
   // A child that has exited: its pid is gone.
   const dead = spawnSync(process.execPath, ["-e", ""]).pid;
@@ -312,7 +313,7 @@ test("a deploy lock left by a dead pid is taken over", async (t) => {
 });
 
 test("deploy publishes a skipped line only when its reason changes", async (t) => {
-  const stateDir = mkdtempSync(join(tmpdir(), "land-state-"));
+  const stateDir = tempDir(t, "land-state-");
   t.after(() => rmSync(stateDir, { recursive: true, force: true }));
   const published = [];
   const common = {

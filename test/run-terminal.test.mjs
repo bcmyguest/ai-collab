@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { approvalMessage } from "../lib/approvals.mjs";
 import { broadcastTopic, loadConfig } from "../lib/config.mjs";
 import { createRunRequest, decideRun, runStatus, sha256, waitForRun } from "../lib/run-terminal.mjs";
@@ -17,6 +16,7 @@ import { ScriptApi } from "../web/lib/a2ui-run-catalog.js";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8795";
 const SESSION = "0123456789abcdef";
@@ -26,7 +26,7 @@ const ON = { AI_COLLAB_RUN_IN_TERMINAL: "1" };
 function setup(extra = {}) {
   const env = { ...peerEnv({ url: "http://127.0.0.1:9" }, { peer: "claude" }), ...ON, ...extra };
   const cfg = loadConfig(env, { session: SESSION });
-  const cwd = mkdtempSync(path.join(os.tmpdir(), "ai-collab-run-"));
+  const cwd = tempDir({ after }, "ai-collab-run-");
   const marker = path.join(cwd, "ran.txt");
   const script = `echo ran >> ${marker}\necho out\necho err >&2\n`;
   return { env, cfg, cwd, marker, script };
@@ -120,7 +120,7 @@ test("bus replies and approval answers cannot run a request", async (t) => {
   t.after(() => fake.close());
   const env = { ...peerEnv(fake, { peer: "claude" }), ...ON };
   const cfg = loadConfig(env, { session: SESSION });
-  const cwd = mkdtempSync(path.join(os.tmpdir(), "ai-collab-run-"));
+  const cwd = tempDir(t, "ai-collab-run-");
   const { id } = createRunRequest(cfg, { script: "touch ran", cwd, reason: "land" }, env);
   const ui = createUi({ cfg, env });
   t.after(() => ui.close());
@@ -141,7 +141,7 @@ test("end to end: the agent requests, the UI shows the script and hash, a click 
   t.after(() => fake.close());
   const env = { ...peerEnv(fake, { peer: "claude" }), ...ON };
   const cfg = loadConfig(env);
-  const cwd = mkdtempSync(path.join(os.tmpdir(), "ai-collab-run-"));
+  const cwd = tempDir(t, "ai-collab-run-");
   const client = toolClient({ env, host: "claude" });
   const script = "printf 'landed %s\\n' \"$(basename \"$PWD\")\"\nexit 3\n";
   const created = await client.callTool("run_in_terminal", { script, cwd, reason: "Land the branch", session: SESSION });

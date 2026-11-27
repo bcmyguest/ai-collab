@@ -1,11 +1,11 @@
 // The ai-collab-code MCP server (run_code) is registered for all four harnesses beside the ai-collab server.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CODE_MCP_NAME, installOpenCode, mcpEntry, mergeMcp } from "../lib/install-opencode.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p) => JSON.parse(readFileSync(path.join(ROOT, p), "utf8"));
@@ -22,10 +22,10 @@ test("Claude, Codex and Cursor manifests start scripts/ai-collab-code-mcp.mjs wi
   assert.ok(existsSync(path.join(ROOT, "scripts", "ai-collab-code-mcp.mjs")));
 });
 
-test("the OpenCode installer writes both servers and mergeMcp takes a server name", () => {
+test("the OpenCode installer writes both servers and mergeMcp takes a server name", (t) => {
   assert.deepEqual(mergeMcp({}, { type: "local" }, "x").mcp, { servers: { x: { type: "local" } } });
   assert.deepEqual(mcpEntry("/src", "ai-collab-code-mcp.mjs").command, ["node", "/src/scripts/ai-collab-code-mcp.mjs", "opencode"]);
-  const home = mkdtempSync(path.join(tmpdir(), "ai-collab-code-opencode-"));
+  const home = tempDir(t, "ai-collab-code-opencode-");
   try {
     const result = installOpenCode({ home, importMetaUrl: import.meta.url });
     assert.equal(result.ok, true, result.message);

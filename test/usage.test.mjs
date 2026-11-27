@@ -1,16 +1,16 @@
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig } from "../lib/config.mjs";
 import { claimInbox } from "../lib/inbox.mjs";
 import { contextTokens, reportContext } from "../lib/usage.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
-const dir = mkdtempSync(join(tmpdir(), "ai-collab-usage-"));
+const dir = tempDir({ after }, "ai-collab-usage-");
 function transcript(name, entries) {
   const file = join(dir, name + ".jsonl");
   writeFileSync(file, entries.map(e => JSON.stringify(e)).join("\n") + "\n");

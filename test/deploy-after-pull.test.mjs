@@ -1,11 +1,11 @@
 // Deploy compares against the commit it last shipped, so a manual `git pull` before `ai-collab deploy` still deploys.
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { deployHost } from "../lib/land.mjs";
 import { deploy } from "../lib/land-cli.ts";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const OLD = "1".repeat(40);
 const NEW = "2".repeat(40);
@@ -58,7 +58,7 @@ test("auto deploy stays quiet when origin/main is the last shipped commit", asyn
 });
 
 test("the deploy CLI records the shipped commit and keeps it through a later skip", async (t) => {
-  const stateDir = mkdtempSync(join(tmpdir(), "deploy-after-pull-"));
+  const stateDir = tempDir(t, "deploy-after-pull-");
   t.after(() => rmSync(stateDir, { recursive: true, force: true }));
   const io = { env: { AI_COLLAB_STATE_DIR: stateDir }, hostCheckout: "/host", npm: ["npm"], out: { write: () => {} }, err: { write: () => {} }, publish: async () => {} };
   const last = () => JSON.parse(readFileSync(join(stateDir, "deploy-last.json"), "utf8"));

@@ -1,19 +1,20 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { sessionLabel } from "../lib/config.mjs";
 import { harnessCommand } from "../lib/sessions/control.ts";
 import { nextPermission, readOwned, setNextPermission, writeOwned } from "../lib/sessions/registry.ts";
 import { slashCommand } from "../lib/slash.mjs";
 import { requestTeamPermission } from "../lib/team-permission.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const UUID = "6f1d2c3a-4b5e-4f60-8a7b-9c0d1e2f3a4b";
 const ID = `claude#${sessionLabel(UUID)}`;
 
 function project() {
-  const stateDir = mkdtempSync(path.join(os.tmpdir(), "perm-cmd-"));
+  const stateDir = tempDir({ after }, "perm-cmd-");
   const cfg = { project: "demo", stateDir, peer: "claude", peers: [] };
   mkdirSync(path.join(stateDir, "demo", "registry"), { recursive: true });
   return cfg;
@@ -110,8 +111,8 @@ function teamFile(dir) {
   return file;
 }
 
-test("/team-permission writes the attribute only when the operator taps Apply", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "perm-team-"));
+test("/team-permission writes the attribute only when the operator taps Apply", async (t) => {
+  const dir = tempDir(t, "perm-team-");
   const file = teamFile(dir);
   const pattern = () => ({ name: "build", file });
   const saved = [];
@@ -126,8 +127,8 @@ test("/team-permission writes the attribute only when the operator taps Apply", 
   assert.match(saved[0][1], /graph \[permission="dontAsk"\];/);
 });
 
-test("/team-permission leaves team.dot alone on Cancel", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "perm-team-"));
+test("/team-permission leaves team.dot alone on Cancel", async (t) => {
+  const dir = tempDir(t, "perm-team-");
   const file = teamFile(dir);
   const before = readFileSync(file, "utf8");
   const saved = [];

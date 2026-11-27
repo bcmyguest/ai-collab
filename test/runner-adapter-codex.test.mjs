@@ -1,19 +1,19 @@
 // Codex adapter against a fake `codex app-server` (test/helpers/fake-codex-app-server.mjs): no real CLI, no tokens.
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EventType } from "@ag-ui/core";
 import { sessionLabel } from "../lib/config.mjs";
 import codexAdapter, { APP_SERVER_ARGS } from "../runner/adapters/codex.mjs";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, NOTICE, eventProblem, permissionSettings } from "../runner/contract.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const FAKE = fileURLToPath(new URL("./helpers/fake-codex-app-server.mjs", import.meta.url));
 
 function setup() {
-  const logFile = join(mkdtempSync(join(tmpdir(), "codex-adapter-")), "fake.log");
+  const logFile = join(tempDir({ after }, "codex-adapter-"), "fake.log");
   const events = [];
   const ctx = { emit: (event) => events.push(event), log: () => {}, signal: new AbortController().signal };
   const adapter = codexAdapter({ command: { file: process.execPath, args: [FAKE, ...APP_SERVER_ARGS], version: [FAKE, "--version"] } });

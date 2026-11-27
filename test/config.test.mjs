@@ -1,14 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { loadConfig, isValidName, statusTopic, inboxTopic, broadcastTopic } from "../lib/config.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = { AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "alice" };
 
-test("disabled by default: missing project or peer names the variables", () => {
-  const HOME = mkdtempSync(join(tmpdir(), "ai-collab-home-")); // no projects.json from the real home
+test("disabled by default: missing project or peer names the variables", (t) => {
+  const HOME = tempDir(t, "ai-collab-home-"); // no projects.json from the real home
   const cfg = loadConfig({ HOME });
   assert.equal(cfg.enabled, false);
   assert.match(cfg.reason, /AI_COLLAB_PROJECT and AI_COLLAB_PEER/);

@@ -1,8 +1,7 @@
 // Every start and wake the runner makes of a managed session passes the hook's SessionStart check; a grandchild does not.
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
@@ -13,10 +12,11 @@ import { managedStartAllowed } from "../lib/subagent-guard.ts";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner, WAKE } from "../runner/runner.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 // The state dir is the default one under HOME, so the child's env (which drops AI_COLLAB_*) finds the same records.
 function setup(t, fake) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-managed-start-"));
+  const home = tempDir({ after }, "ai-collab-managed-start-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const root = path.join(home, "demo");
   mkdirSync(root);

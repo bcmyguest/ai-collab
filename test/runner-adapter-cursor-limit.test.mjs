@@ -1,22 +1,22 @@
 // The Cursor adapter keeps an ACP error's code and data and the child's stderr tail, and lib/limits.ts classifies them.
 // A fake cursor-agent speaks ACP; no real CLI, account or sandbox runs.
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { EventType } from "@ag-ui/core";
 import cursorAdapter, { errorText } from "../runner/adapters/cursor.mjs";
 import { limitFromRunError } from "../lib/limits.ts";
 import { eventProblem } from "../runner/contract.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FAKE = path.join(HERE, "helpers", "fake-cursor-agent-fail.mjs");
 chmodSync(FAKE, 0o755);
 
 function sandboxEnv(fail, extra = {}) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-cursor-fail-"));
+  const home = tempDir({ after }, "ai-collab-cursor-fail-");
   const root = path.join(home, "demo");
   mkdirSync(root);
   return {

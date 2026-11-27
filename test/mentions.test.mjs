@@ -1,8 +1,7 @@
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { claimInbox } from "../lib/inbox.mjs";
@@ -10,6 +9,7 @@ import { recordSession } from "../lib/sessions.mjs";
 import { createUi, mentionedNames, startOnlyMentions } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8795";
 
@@ -36,7 +36,7 @@ test("startOnlyMentions is true only for a post whose every tag starts a session
 test("an @harness post reaches its running session, or starts one with the post as prompt", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-mention-"));
+  const home = tempDir(t, "ai-collab-mention-");
   const bin = path.join(home, "bin");
   mkdirSync(bin);
   writeFileSync(path.join(bin, "codex"), "#!/bin/sh\n");
@@ -73,7 +73,7 @@ test("an @harness post reaches its running session, or starts one with the post 
 test("a post that only @harness:model-starts a session starts it and stays out of every running session's inbox", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-mention-start-only-"));
+  const home = tempDir(t, "ai-collab-mention-start-only-");
   const bin = path.join(home, "bin");
   mkdirSync(bin);
   writeFileSync(path.join(bin, "codex"), "#!/bin/sh\n");
@@ -112,7 +112,7 @@ test("a post that only @harness:model-starts a session starts it and stays out o
 test("a post that tags a running agent as well as starting one still reaches that agent", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-mention-mixed-"));
+  const home = tempDir(t, "ai-collab-mention-mixed-");
   const bin = path.join(home, "bin");
   mkdirSync(bin);
   writeFileSync(path.join(bin, "codex"), "#!/bin/sh\n");

@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { installCursorPlugin, cursorPluginDest } from "../lib/install-cursor.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
-test("cursor install copies the plugin into a (temporary) home's local plugin dir", () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ai-collab-home-"));
+test("cursor install copies the plugin into a (temporary) home's local plugin dir", (t) => {
+  const home = tempDir(t, "ai-collab-home-");
   const r = installCursorPlugin({ home, importMetaUrl: import.meta.url, copy: true });
   assert.equal(r.ok, true, r.message);
   assert.equal(r.dest, cursorPluginDest(home));
@@ -16,8 +16,8 @@ test("cursor install copies the plugin into a (temporary) home's local plugin di
   fs.rmSync(home, { recursive: true, force: true });
 });
 
-test("cursor install symlinks by default and replaces an existing install", () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ai-collab-home-"));
+test("cursor install symlinks by default and replaces an existing install", (t) => {
+  const home = tempDir(t, "ai-collab-home-");
   const first = installCursorPlugin({ home, importMetaUrl: import.meta.url });
   assert.equal(first.ok, true, first.message);
   const second = installCursorPlugin({ home, importMetaUrl: import.meta.url });
@@ -26,8 +26,8 @@ test("cursor install symlinks by default and replaces an existing install", () =
   fs.rmSync(home, { recursive: true, force: true });
 });
 
-test("cursor install writes our hooks into ~/.cursor/hooks.json, keeps other tools' hooks, and stays idempotent", () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ai-collab-home-"));
+test("cursor install writes our hooks into ~/.cursor/hooks.json, keeps other tools' hooks, and stays idempotent", (t) => {
+  const home = tempDir(t, "ai-collab-home-");
   const file = path.join(home, ".cursor", "hooks.json");
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify({ version: 1, hooks: { postToolUse: [{ command: "other-tool capture" }], preToolUse: [{ command: "rtk hook cursor" }] } }));
@@ -45,8 +45,8 @@ test("cursor install writes our hooks into ~/.cursor/hooks.json, keeps other too
   fs.rmSync(home, { recursive: true, force: true });
 });
 
-test("cursor install copies only the package files: no node_modules, test or web build output", () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ai-collab-home-"));
+test("cursor install copies only the package files: no node_modules, test or web build output", (t) => {
+  const home = tempDir(t, "ai-collab-home-");
   const r = installCursorPlugin({ home, importMetaUrl: import.meta.url, copy: true });
   assert.equal(r.ok, true, r.message);
   for (const gone of ["node_modules", "test", "web/.next", "web/node_modules"]) assert.equal(fs.existsSync(path.join(r.dest, gone)), false, `${gone} is not copied`);

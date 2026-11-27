@@ -2,8 +2,7 @@ import { parseWireEnvelope } from "../lib/agui.mjs";
 import { test } from "node:test";
 import { PassThrough } from "node:stream";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
@@ -11,6 +10,7 @@ import { loadConfig } from "../lib/config.mjs";
 import { claimInbox, sendMessage } from "../lib/inbox.mjs";
 import { currentMode, currentModeKnown, latestMode, operatorConfigs, parseMode, projectMode, publishMode, storedMode, takeModeNote } from "../lib/mode.mjs";
 import { runCli } from "../lib/cli.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const ALL = "ai-collab-demo--to--all";
 const mode = (m, ts, extra = {}) => JSON.stringify({ v: 1, kind: "mode", from: "operator", mode: m, ts, ...extra });
@@ -62,7 +62,7 @@ test("a new session learns the current mode at start from the cached broadcast h
 test("a failed read is unknown, not off; the project's last good read stands in for it", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const stateDir = mkdtempSync(join(tmpdir(), "ai-collab-mode-"));
+  const stateDir = tempDir(t, "ai-collab-mode-");
   t.after(() => rmSync(stateDir, { recursive: true, force: true }));
   const state = (session) => loadConfig(peerEnv(fake, { peer: "alice", AI_COLLAB_SESSION: session, stateDir }));
   const first = state("aabbccddeeff0123");
@@ -109,7 +109,7 @@ test("the mode note is announced once per change, and always when forced", async
 
 test("publishMode and `ai-collab afk` reach every project in projects.json", async (t) => {
   const fake = await startFakeNtfy({ token: "fixture-only" });
-  const root = mkdtempSync(join(tmpdir(), "ai-collab-mode-"));
+  const root = tempDir(t, "ai-collab-mode-");
   t.after(() => { rmSync(root, { recursive: true, force: true }); return fake.close(); });
   mkdirSync(join(root, "ai-collab"));
   const tokenFile = join(root, "token");
@@ -143,7 +143,7 @@ test("publishMode and `ai-collab afk` reach every project in projects.json", asy
   // A read this machine cannot make says so; printing off would claim the operator is at the terminal.
   fake.state.limitNext = 2;
   out = "";
-  assert.equal(await runCli(["afk"], { ...io, env: { ...env, XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "ai-collab-mode-empty-")) } }), 0, err);
+  assert.equal(await runCli(["afk"], { ...io, env: { ...env, XDG_STATE_HOME: tempDir(t, "ai-collab-mode-empty-") } }), 0, err);
   assert.equal(out, "one\tunknown\ntwo\tunknown\n");
 });
 

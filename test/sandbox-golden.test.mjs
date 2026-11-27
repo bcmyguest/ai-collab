@@ -1,13 +1,14 @@
 // Golden record of the sandbox staging and upload per harness, for `ai-collab builder` and runner/sandbox-run.mjs.
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCli } from "../lib/cli.mjs";
 import { sandboxRun } from "../runner/sandbox-run.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GOLDEN = path.join(HERE, "golden", "sandbox-staging.json");
@@ -32,7 +33,7 @@ const readJsonLines = (file) => (existsSync(file) ? readFileSync(file, "utf8").t
 
 // One host: a repo registered as project "demo", a ntfy token, fake openshell, systemd and node, and the harness's install.
 function lab(harness) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-golden-"));
+  const home = tempDir({ after }, "ai-collab-golden-");
   const root = path.join(home, "repo");
   const bin = path.join(home, "bin");
   const cfg = path.join(home, ".config", "ai-collab");

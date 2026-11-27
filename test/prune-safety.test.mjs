@@ -1,10 +1,11 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { appendFileSync, chmodSync, existsSync, lstatSync, lutimesSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";import os from "node:os";
+import { appendFileSync, chmodSync, existsSync, lstatSync, lutimesSync, mkdirSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { stateDir } from "../lib/config.mjs";
 import { parsePruneArgs, pruneRepo } from "../lib/prune.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const NOW = Date.parse("2026-11-25T00:00:00Z");
 const WEEK = 7 * 86_400_000;
@@ -63,7 +64,7 @@ function fixtureEnv(home) {
 
 // A repo whose common info/exclude ignores the paths the safety tests write into worktrees.
 function scene(t) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-prune-safe-"));
+  const home = tempDir({ after }, "ai-collab-prune-safe-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const env = fixtureEnv(home);
   const repo = path.join(home, "repo");

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { loadConfig, loadProjects, sessionLabel } from "../lib/config.mjs";
@@ -10,13 +9,14 @@ import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8795";
 
 test("two worktrees with the same origin publish one project in the UI snapshot", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-origin-"));
+  const dir = tempDir(t, "ai-collab-origin-");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const env = { HOME: dir, AI_COLLAB_STATE_DIR: path.join(dir, "state") };
   const config = path.join(dir, ".config", "ai-collab");
@@ -53,8 +53,8 @@ test("two worktrees with the same origin publish one project in the UI snapshot"
 test("a project with no projects.json entry is listed under autoProjects; a registered one is not", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const root = mkdtempSync(path.join(os.tmpdir(), "ai-collab-auto-root-"));
-  const xdg = mkdtempSync(path.join(os.tmpdir(), "ai-collab-auto-xdg-"));
+  const root = tempDir(t, "ai-collab-auto-root-");
+  const xdg = tempDir(t, "ai-collab-auto-xdg-");
   const env = { ...peerEnv(fake, { peer: "alice" }), XDG_CONFIG_HOME: xdg };
   mkdirSync(path.join(xdg, "ai-collab"), { recursive: true });
   const ui = createUi({ cfg: loadConfig(env), env });

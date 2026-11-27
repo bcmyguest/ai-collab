@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { chmodSync } from "node:fs";
 import { loadConfig } from "../lib/config.mjs";
 import { listPatterns } from "../lib/patterns.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8796";
 
@@ -39,7 +39,7 @@ function fakeAuthor(home, { answer = `\`\`\`dot\n${DOT}\`\`\``, fail = false, na
 }
 
 function setup({ answer, fail, name, peers = "claude,codex,cursor" } = {}) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-team-author-ui-"));
+  const home = tempDir({ after }, "ai-collab-team-author-ui-");
   const root = path.join(home, "repo");
   mkdirSync(root);
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });

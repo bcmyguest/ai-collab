@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
 import { advanceRun, runStatus, startRun } from "../lib/pattern-runs.mjs";
 import { listPatterns } from "../lib/patterns.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const MODELS = { claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] };
 
@@ -52,7 +52,7 @@ function clock() {
 async function fixture(t, teams) {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-team-runs-"));
+  const home = tempDir({ after }, "ai-collab-team-runs-");
   const root = path.join(home, "repo");
   const stateDir = path.join(home, "state");
   mkdirSync(root);

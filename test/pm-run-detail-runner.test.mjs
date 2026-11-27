@@ -1,15 +1,14 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
+import { test, after } from "node:test";
 import path from "node:path";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
 import { sessionLabel } from "../lib/config.mjs";
 import { parseSelection } from "../web/lib/selection.js";
 import { runLink } from "../web/lib/scheduled.js";
+import { tempDir } from "./helpers/tmp.mjs";
 
-const tmp = () => mkdtempSync(path.join(os.tmpdir(), "ai-collab-run-detail-"));
+const tmp = () => tempDir({ after }, "ai-collab-run-detail-");
 const CONVERSATION = "36329f36-ceda-4ac6-ae5f-4b36e16c8e95";
 
 // A runner over a durable log with one schedule entry; the default command prints a line, so the run finishes at once.

@@ -2,15 +2,15 @@
 // original ids, so cursors and history survive the cutover. Each test gets its own schema, dropped after.
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
-import os from "node:os";
+import { rmSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { openBusStore } from "../lib/bus.mjs";
 import { openPostgresBusStore } from "../lib/bus-postgres.mjs";
 import { migrateBusToPostgres } from "../lib/bus-migrate.mjs";
 import { pgUrl } from "../lib/postgres.mjs";
 import { dbosTestDb } from "./helpers/dbos-env.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const pgUp = await dbosTestDb();
 const skip = !pgUp && "Postgres not reachable";
@@ -32,7 +32,7 @@ async function dropSchema(schema) {
 
 /** Runs fn with a temp SQLite bus dir and a fresh target schema; drops both after. */
 async function withStores(fn) {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "bus-migrate-"));
+  const dir = tempDir({ after }, "bus-migrate-");
   const schema = `bus_m_${randomBytes(4).toString("hex")}`;
   const sqlite = openBusStore({ file: path.join(dir, "bus.db"), filesDir: path.join(dir, "files") });
   try {

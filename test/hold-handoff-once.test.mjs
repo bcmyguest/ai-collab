@@ -1,9 +1,8 @@
 // A message a push hands to a Stop hook hold counts as delivered: no later push or waiter shows it again.
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
@@ -19,6 +18,7 @@ import { runWaiter } from "../lib/waiter.ts";
 import { openDurable } from "../runner/durable.mjs";
 import { deliveryWorkflow } from "../runner/delivery.mjs";
 import { createDispatcher } from "../web/server/dispatch.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const CLAUDE_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5e";
 const LABEL = sessionLabel(CLAUDE_ID);
@@ -42,7 +42,7 @@ async function setup(t) {
     id: ADDRESS, sessionId: CLAUDE_ID, cwd: "/tmp", harness: "claude", event: "Stop", seenAt: Date.now(), pid: process.pid, pidStart: processStart(process.pid),
   });
   const frames = [];
-  const socketPath = join(mkdtempSync(join(tmpdir(), "hho-sock-")), "s.sock");
+  const socketPath = join(tempDir({ after }, "hho-sock-"), "s.sock");
   const server = createServer((conn) => conn.on("data", (chunk) => {
     for (const line of chunk.toString("utf8").split("\n").filter(Boolean)) frames.push(JSON.parse(line));
   }));
@@ -65,7 +65,7 @@ const handoffExists = (cfg) => existsSync(statePath(cfg).replace(/\.json$/, ".ha
 
 // The runner's delivery workflow on the live inbox functions; push records instead of writing to a socket.
 function runnerWorkflow(t, target, pushes, overrides = {}) {
-  const dir = mkdtempSync(join(tmpdir(), "hho-db-"));
+  const dir = tempDir({ after }, "hho-db-");
   const durable = openDurable(join(dir, "runner.db"));
   t.after(async () => { await durable.close(); rmSync(dir, { recursive: true, force: true }); });
   durable.register("delivery", deliveryWorkflow({

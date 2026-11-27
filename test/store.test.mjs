@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import fs, { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import fs, { existsSync, mkdirSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { runStress } from "./helpers/lock-stress.mjs";
 import { runStuck } from "./helpers/lock-stuck.mjs";
+import { tempDir as trackedTempDir } from "./helpers/tmp.mjs";
 
 // STORE_IMPL points the suite at another store.ts, e.g. a scratch copy of an older commit.
 const IMPL = process.env.STORE_IMPL ? path.resolve(process.env.STORE_IMPL) : fileURLToPath(new URL("../lib/store.ts", import.meta.url));
@@ -14,7 +15,7 @@ const OLD_LOCK = fileURLToPath(new URL("./helpers/old-state.mjs", import.meta.ur
 const { readJson, updateJson, withLock, withLockSync, writeJson } = await import(pathToFileURL(IMPL).href);
 
 function tempDir() {
-  return mkdtempSync(path.join(os.tmpdir(), "ai-collab-store-"));
+  return trackedTempDir({ after }, "ai-collab-store-");
 }
 
 test("writeJson writes a 0600 file with a trailing newline and no temp left behind", () => {

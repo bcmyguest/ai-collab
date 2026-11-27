@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { cpSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { tempDir } from "./helpers/tmp.mjs";
 
 test("every plugin script and library imports from a copy without node_modules", t => {
-  const dir = mkdtempSync(join(tmpdir(), "ai-collab-plugin-"));
+  const dir = tempDir(t, "ai-collab-plugin-");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const home = join(dir, "home");
   const copy = join(dir, "plugin");

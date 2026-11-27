@@ -1,6 +1,6 @@
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
@@ -11,15 +11,15 @@ import { lastOperatorPromptAt, recordSession } from "../lib/sessions.mjs";
 import { decideStop } from "../lib/stop.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
-import { appendFileSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { appendFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { queuedByOperator, watchQueue } from "../lib/transcript.mjs";
+import { fileEnd, tempDir } from "./helpers/tmp.mjs";
 
 const enqueue = (content) => JSON.stringify({ type: "queue-operation", operation: "enqueue", timestamp: new Date().toISOString(), sessionId: "s", content }) + "\n";
 
 test("a Claude transcript watch sees only prompts the operator queued after the wait began", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-transcript-"));
+  const dir = tempDir({ after }, "ai-collab-transcript-");
   const file = path.join(dir, "t.jsonl");
   writeFileSync(file, enqueue("queued before the wait") + "{\"type\":\"user\"}\n");
   assert.equal(watchQueue("cursor", { transcript_path: file }), null, "no signal for Cursor");
@@ -41,7 +41,7 @@ test("a Claude transcript watch sees only prompts the operator queued after the 
 test("a Codex AFK Stop wait ends when history.jsonl records a prompt for that session after the wait began", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const codexHome = mkdtempSync(path.join(os.tmpdir(), "ai-collab-codex-home-"));
+  const codexHome = tempDir(fileEnd, "ai-collab-codex-home-");
   const history = path.join(codexHome, "history.jsonl");
   const line = (session_id, ts, text) => JSON.stringify({ session_id, ts, text }) + "\n";
   const nowS = () => Math.floor(Date.now() / 1000);
@@ -75,7 +75,7 @@ test("an AFK Stop wait ends as soon as the operator queues a prompt in that Clau
   const cfg = loadConfig(env);
   setMode(fake, "on");
   await claimInbox(cfg);
-  const file = path.join(mkdtempSync(path.join(os.tmpdir(), "ai-collab-transcript-")), "t.jsonl");
+  const file = path.join(tempDir(fileEnd, "ai-collab-transcript-"), "t.jsonl");
   writeFileSync(file, "");
   const started = Date.now();
   setTimeout(() => appendFileSync(file, enqueue("<task-notification>done</task-notification>")), 200);

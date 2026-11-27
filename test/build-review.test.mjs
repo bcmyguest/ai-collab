@@ -1,15 +1,15 @@
 // A completed build's review packet: what the builder submits, the board card that shows it, and the operator's verdict.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { readStore, reviewPacket, taskStoreFile, writeStore } from "../lib/tasks.mjs";
 import { loadProjects } from "../lib/config.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { forgetBranchTips } from "../lib/build-review.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const baseUrl = "http://127.0.0.1:8795";
 
@@ -35,7 +35,7 @@ function checkout(home) {
 async function lab(t) {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-build-review-"));
+  const home = tempDir({ after }, "ai-collab-build-review-");
   const { root, base, commit, git } = checkout(home);
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
   writeFileSync(path.join(home, ".config", "ai-collab", "projects.json"), JSON.stringify([{ root, project: "demo", url: fake.url, peers: "claude" }]));

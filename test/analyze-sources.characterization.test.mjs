@@ -1,11 +1,11 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { READ_PATHS, classifyCall, codexSource, isRefusal, isRunCodeFailure, journalSource, taskStoreSource } from "../lib/analyze-sources.ts";
+import { tempDir } from "./helpers/tmp.mjs";
 
-const home = () => mkdtempSync(join(tmpdir(), "as-"));
+const home = () => tempDir({ after }, "as-");
 const put = (path, text) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, text); };
 
 test("READ_PATHS lists the four read paths in order", () => {

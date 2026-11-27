@@ -1,14 +1,14 @@
 // Claude and Codex logins reach runner OpenShell sessions and sandboxed ticks as builders copy them: 0600, never in argv or logs.
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import cursorAdapter, { sandboxName } from "../runner/adapters/cursor.mjs";
 import { harnessLogins } from "../runner/sandbox.mjs";
 import { sandboxRun } from "../runner/sandbox-run.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CURSOR = path.join(HERE, "helpers", "fake-cursor-agent.mjs");
@@ -19,7 +19,7 @@ const CLAUDE_SECRET = '{"claudeAiOauth":"claude-never-print-me"}';
 const CODEX_SECRET = '{"tokens":"codex-never-print-me"}';
 
 function lab() {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-logins-"));
+  const home = tempDir({ after }, "ai-collab-logins-");
   const repo = path.join(home, "repo");
   const tree = path.join(home, "cursor-agent", "versions", "2026.11.22-fake");
   for (const dir of [repo, tree, path.join(home, ".claude"), path.join(home, ".codex"), path.join(home, ".config", "ai-collab")]) mkdirSync(dir, { recursive: true });

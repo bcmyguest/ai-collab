@@ -1,13 +1,13 @@
 // Model-based test of the delivery workflow: redelivery, busy waits, acks, TTL and durable restarts, on a fake clock.
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { mock, test } from "node:test";
+import { mock, test, after } from "node:test";
 import fc from "fast-check";
 import { MAX_ATTEMPTS, nextAction, REDELIVER_MS, TTL_MS } from "../lib/delivery.ts";
 import { openDurable } from "../runner/durable.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 // DELIVERY_IMPL points the model at another delivery.mjs, e.g. a scratch copy with a planted bug.
 const DELIVERY_IMPL = process.env.DELIVERY_IMPL ? path.resolve(process.env.DELIVERY_IMPL) : fileURLToPath(new URL("../runner/delivery.mjs", import.meta.url));
@@ -265,7 +265,7 @@ const commandArb = fc.oneof(
 
 // Runs one command sequence from a fresh log on the fake clock; the model and invariants check every step.
 async function runSequence(cmds) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "delivery-model-"));
+  const dir = tempDir({ after }, "delivery-model-");
   const r = openReal(dir);
   await openRunner(r);
   try {

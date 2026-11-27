@@ -1,15 +1,17 @@
 // Stuck-release scenario: a dead owner's lock, then a holder that releases but stays alive, then a late caller.
+import { after } from "node:test";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { tempDir } from "./tmp.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Returns the most holders seen at once, whether each caller locked, and leftover files. */
 export async function runStuck(impl) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lockstuck-"));
+  const dir = tempDir({ after }, "lockstuck-");
   const file = path.join(dir, "x.json");
   fs.mkdirSync(`${file}.lock`);
   fs.writeFileSync(`${file}.lock/owner.json`, JSON.stringify({ pid: 999999, host: os.hostname(), token: "dead" }));

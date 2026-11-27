@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readdirSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 import swc from "next/dist/build/swc/index.js";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -15,10 +14,11 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
 import { merge } from "../lib/merge-cli.mjs";
 import { findExecutable } from "../lib/start.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 // Real git against a temp bare origin; only npm is stubbed.
 function sandbox(t) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "merge-start-")));
+  const root = realpathSync(tempDir({ after }, "merge-start-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const env = {
     PATH: process.env.PATH, HOME: root, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: join(root, "gitconfig"),

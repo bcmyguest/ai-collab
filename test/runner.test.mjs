@@ -1,11 +1,11 @@
 import { parseWireEnvelope } from "../lib/agui.mjs";
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { once } from "node:events";
 import { cursorBinary } from "../lib/start.mjs";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +25,7 @@ import { wrapOpen } from "./helpers/fake-adapter-hooks.mjs";
 import { listenControl } from "../runner/control.mjs";
 import { runnerClient } from "../runner/client.mjs";
 import { loadAdapters } from "../runner/main.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const ACTIVITY = "ai-collab-demo--activity";
@@ -32,7 +33,7 @@ const BROADCAST = "ai-collab-demo--to--all";
 
 // A throwaway HOME with projects.json, a state dir, a durable log file and a project config on the fake ntfy.
 function setup(fake) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-runner-"));
+  const home = tempDir({ after }, "ai-collab-runner-");
   const root = path.join(home, "demo");
   mkdirSync(root);
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
@@ -504,13 +505,13 @@ test("starting a Cursor session in OpenShell defaults to full-access and complet
   }
 });
 
-test("cursor full-access is refused outside openshell, and missing adapter modules are skipped", async () => {
+test("cursor full-access is refused outside openshell, and missing adapter modules are skipped", async (t) => {
   const fake = await startFakeNtfy();
   const ctx = setup(fake);
   const runner = makeRunner(ctx, createFakeAdapter({ harness: "cursor" }));
   try {
     await assert.rejects(runner.start({ project: "demo", harness: "cursor", prompt: "x", permissionMode: "full-access" }), /runs only in openshell/);
-    const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-adapters-"));
+    const dir = tempDir(t, "ai-collab-adapters-");
     writeFileSync(path.join(dir, "codex.mjs"), "export default () => ({ harness: 'codex' });\n");
     const skipped = [];
     const loaded = await loadAdapters(["codex", "claude"], { dir, log: (m) => skipped.push(m) });
@@ -522,11 +523,11 @@ test("cursor full-access is refused outside openshell, and missing adapter modul
   }
 });
 
-test("main serves the control socket with no adapters and exits on SIGTERM", async () => {
+test("main serves the control socket with no adapters and exits on SIGTERM", async (t) => {
   const fake = await startFakeNtfy();
   const ctx = setup(fake);
   const socket = path.join(ctx.home, "run", "runner.sock");
-  const emptyAdapters = mkdtempSync(path.join(os.tmpdir(), "no-adapters-"));
+  const emptyAdapters = tempDir(t, "no-adapters-");
   const child = spawn(process.execPath, [path.join(ROOT, "runner", "main.mjs")], { env: { ...ctx.env, AI_COLLAB_RUNNER_SOCKET: socket, AI_COLLAB_RUNNER_DB: ctx.db, AI_COLLAB_RUNNER_ADAPTER_DIR: emptyAdapters } });
   let stderr = "";
   child.stderr.on("data", (c) => { stderr += c; });

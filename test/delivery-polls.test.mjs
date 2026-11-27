@@ -1,8 +1,7 @@
 // Live-probe discipline of the two push engines: no ack or readiness polls where the policy cannot use them, replay without
 // probes, and the dispatcher's TTL for messages whose pushes keep failing.
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { join } from "node:path";
 import { mock, test } from "node:test";
@@ -15,6 +14,7 @@ import { writeState } from "../lib/state.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { DELIVERY, deliveryWorkflow } from "../runner/delivery.mjs";
 import { REDELIVER_MS, TTL_MS, createDispatcher } from "../web/server/dispatch.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const T0 = Date.UTC(2026, 10, 25);
 const CODEX_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
@@ -62,8 +62,8 @@ function runnerDeps(state, pushes) {
 
 const newState = () => ({ ready: false, busy: false, ackedCalls: 0, busyCalls: 0 });
 
-test("a runner message waiting for its first push polls no acks", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "delivery-polls-"));
+test("a runner message waiting for its first push polls no acks", async (t) => {
+  const dir = tempDir(t, "delivery-polls-");
   const state = newState();
   const pushes = [];
   const durable = openDurable(path.join(dir, "runner.db"));
@@ -80,8 +80,8 @@ test("a runner message waiting for its first push polls no acks", async () => {
   }
 });
 
-test("a restart replays recorded redelivery steps without probing a busy target", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "delivery-replay-"));
+test("a restart replays recorded redelivery steps without probing a busy target", async (t) => {
+  const dir = tempDir(t, "delivery-replay-");
   const file = path.join(dir, "runner.db");
   const state = newState();
   const pushes = [];

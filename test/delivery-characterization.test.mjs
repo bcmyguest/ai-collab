@@ -1,11 +1,10 @@
 // Characterizes the two push engines on the same scripted scenarios: the runner's durable workflow (runner/delivery.mjs)
 // and the UI dispatcher (web/server/dispatch.mjs). Both run on one clock; the expected pushes and close times are shared.
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { join } from "node:path";
-import { mock, test } from "node:test";
+import { mock, test, after } from "node:test";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
@@ -16,6 +15,7 @@ import { writeState } from "../lib/state.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { DELIVERY, deliveryWorkflow } from "../runner/delivery.mjs";
 import { MAX_ATTEMPTS, REDELIVER_MS, TTL_MS, createDispatcher } from "../web/server/dispatch.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const T0 = Date.UTC(2026, 10, 25);
 const OPENCODE_ID = "ses_0123456789abcdefghijABCDEFGH";
@@ -43,7 +43,7 @@ const flushed = async () => {
 
 // Runner engine: the durable workflow on mock timers, the same deps as runner/runner.mjs wires for an opencode session.
 async function runnerEngine(s, state, pushes) {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "delivery-char-"));
+  const dir = tempDir({ after }, "delivery-char-");
   const file = path.join(dir, "runner.db");
   mock.timers.reset();
   mock.timers.enable({ apis: ["setTimeout", "Date"], now: T0 });

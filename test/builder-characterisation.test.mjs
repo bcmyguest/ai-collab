@@ -1,10 +1,9 @@
 // Characterisation: pins today's behaviour of the builder's public functions — argv built, files written,
 // results — so the TypeScript port can change no observable output. Pure and hermetic: temp state dirs only.
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import {
   BUILDER_HARNESSES, builder, builderAssignment, builderId, builderPaths, builderPolicy, builderResumePrompt,
   builderSandbox, briefNotes, captureHooks, claudeMcpConfig, claudeSettings, harnessCommand, hostCaptureEvents,
@@ -13,11 +12,12 @@ import {
 import { FINAL_PHASES, builderExited, readState, updateState, writeState } from "../lib/builder/state.ts";
 import { BUILDER_DIR_CAP, builderLiveRefusal, buildersToRemove, cleanBuilders, worktreeIsProtected } from "../lib/builder-clean.ts";
 import { PROMPT_MAX_CHARS } from "../lib/start.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const DEAD_PID = 0x7fffffef; // no process here can hold this pid; process.kill(pid, 0) says ESRCH
 
 function tempEnv(t) {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "builder-char-"));
+  const dir = tempDir({ after }, "builder-char-");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   return { dir, env: { HOME: dir, AI_COLLAB_STATE_DIR: path.join(dir, "state") } };
 }

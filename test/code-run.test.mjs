@@ -1,9 +1,8 @@
 // run_code (lib/code-run.mjs, scripts/ai-collab-code-mcp.mjs) against fakes: a fake openshell, no real sandbox or CLI.
-import test from "node:test";
+import test, { after as afterAll } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -13,6 +12,7 @@ import {
 } from "../lib/code-run.mjs";
 import { toolClient } from "../lib/tool-api.mjs";
 import { addTask, taskStoreFile, writeStore } from "../lib/tasks.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const SERVER = fileURLToPath(new URL("../scripts/ai-collab-code-mcp.mjs", import.meta.url));
 const FAKE_OPENSHELL = fileURLToPath(new URL("./helpers/fake-openshell.mjs", import.meta.url));
@@ -21,7 +21,7 @@ const SESSION = "aabbccddeeff0123";
 const LOCAL = [process.execPath, "-e", BOOTSTRAP];
 
 const temp = (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "ai-collab-code-run-"));
+  const dir = tempDir({ after: afterAll }, "ai-collab-code-run-");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
 };

@@ -1,15 +1,15 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { PROJECT_PAUSED, setProjectPaused } from "../lib/project-pause.ts";
 import { openDurable } from "../runner/durable.mjs";
 import { listenControl, route } from "../runner/control.mjs";
 import { runnerRequest, runnerClient } from "../runner/client.mjs";
 import { loadSchedules, registerSchedules, runCommand, schedulesPath, tickFn } from "../runner/schedules.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
-const tmp = () => mkdtempSync(path.join(os.tmpdir(), "ai-collab-sched-"));
+const tmp = () => tempDir({ after }, "ai-collab-sched-");
 const dbFile = () => path.join(tmp(), "runner.db");
 const iso = (ms) => new Date(ms).toISOString();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

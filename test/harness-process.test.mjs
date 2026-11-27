@@ -1,16 +1,16 @@
 // harnessProcess finds a harness by its script or executable, not only argv[0], so a nested harness is a new process.
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { copyFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { copyFileSync, chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { harnessProcess } from "../lib/process.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const linux = existsSync("/proc/self/stat");
 
 function tmp(t) {
-  const dir = mkdtempSync(join(tmpdir(), "ai-collab-harness-proc-"));
+  const dir = tempDir({ after }, "ai-collab-harness-proc-");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
 }

@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { START_DEFAULT, startDefaultSetting } from "../lib/config.mjs";
 import { startDefaultDraft } from "../web/lib/start-default.js";
+import { tempDir } from "./helpers/tmp.mjs";
 
 function envWithDefaults(value) {
-  const xdg = mkdtempSync(path.join(os.tmpdir(), "start-default-xdg-"));
+  const xdg = tempDir({ after }, "start-default-xdg-");
   mkdirSync(path.join(xdg, "ai-collab"), { recursive: true });
   if (value !== undefined) writeFileSync(path.join(xdg, "ai-collab", "defaults.json"), JSON.stringify({ startDefault: value }));
   return { XDG_CONFIG_HOME: xdg };

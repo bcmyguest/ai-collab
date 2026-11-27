@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
 import { getPattern, listPatterns, savePattern } from "../lib/patterns.mjs";
 import { writeGlobalTeams } from "../lib/teams.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 function setup({ teams = {}, globalTeams = {} } = {}) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-catalog-patterns-"));
+  const home = tempDir({ after }, "ai-collab-catalog-patterns-");
   const root = path.join(home, "repo");
   mkdirSync(root);
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });

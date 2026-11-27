@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
 import { createPattern, deletePattern, saveTeamText } from "../lib/patterns.mjs";
 import { createTeam, deleteTeam, setProjectClosed } from "../lib/teams.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const WRITER = fileURLToPath(new URL("./helpers/team-writer.mjs", import.meta.url));
 
 function setup() {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-catalog-projects-"));
+  const home = tempDir({ after }, "ai-collab-catalog-projects-");
   const root = path.join(home, "repo");
   mkdirSync(root);
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });

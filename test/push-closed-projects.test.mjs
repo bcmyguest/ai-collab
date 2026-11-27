@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { askQuestion } from "../lib/questions.mjs";
@@ -8,6 +7,7 @@ import { loadConfig } from "../lib/config.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8795";
 
@@ -22,8 +22,8 @@ async function until(check, ms = 5000) {
 test("a closed or deleted project sends no push for its new questions", async (t) => {
   const ntfy = await startFakeNtfy();
   t.after(() => ntfy.close());
-  const root = mkdtempSync(path.join(os.tmpdir(), "ai-collab-silent-root-"));
-  const xdg = mkdtempSync(path.join(os.tmpdir(), "ai-collab-silent-xdg-"));
+  const root = tempDir(t, "ai-collab-silent-root-");
+  const xdg = tempDir(t, "ai-collab-silent-xdg-");
   mkdirSync(path.join(xdg, "ai-collab"), { recursive: true });
   writeFileSync(path.join(xdg, "ai-collab", "projects.json"), JSON.stringify([{ project: "demo", root }]));
   const env = { ...peerEnv(ntfy, { peer: "alice" }), XDG_CONFIG_HOME: xdg };

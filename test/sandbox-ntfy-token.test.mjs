@@ -1,15 +1,15 @@
 // A Cursor OpenShell session and every builder sandbox must carry the ntfy token. Claude already did.
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCli } from "../lib/cli.mjs";
 import { builderSandbox } from "../lib/builder.ts";
 import { prepareSandbox, sandboxName } from "../runner/adapters/cursor.mjs";
 import { ensureSandbox } from "../runner/sandbox.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OPENSHELL = path.join(HERE, "helpers", "fake-openshell.mjs");
@@ -44,8 +44,8 @@ function assertToken(box, logFiles) {
   for (const file of logFiles) assert.ok(!readFileSync(file, "utf8").includes(NTFY), file);
 }
 
-test("a Cursor sandbox stage includes the ntfy token file and a Claude one still does", async () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-ntfy-stage-"));
+test("a Cursor sandbox stage includes the ntfy token file and a Claude one still does", async (t) => {
+  const home = tempDir(t, "ai-collab-ntfy-stage-");
   const work = path.join(home, "team-mwu2yt0obe8df3");
   const version = path.join(home, "cursor-agent", "versions", "2026.11.22-fake");
   mkdirSync(version, { recursive: true });
@@ -97,7 +97,7 @@ test("a Cursor sandbox stage includes the ntfy token file and a Claude one still
 });
 
 function builderLab(harness) {
-  const home = mkdtempSync(path.join(os.tmpdir(), `ai-collab-ntfy-${harness}-`));
+  const home = tempDir({ after }, `ai-collab-ntfy-${harness}-`);
   const bin = path.join(home, "bin");
   mkdirSync(bin, { recursive: true });
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });

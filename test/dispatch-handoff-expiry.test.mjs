@@ -1,9 +1,8 @@
 // A message the dispatcher handed to a hold stays delivered after its reservation would have expired.
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
@@ -14,6 +13,7 @@ import { markStopRunning } from "../lib/stop.mjs";
 import { processStart } from "../lib/process.mjs";
 import { writeState } from "../lib/state.mjs";
 import { createDispatcher } from "../web/server/dispatch.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const CLAUDE_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c";
 const LABEL = sessionLabel(CLAUDE_ID);
@@ -35,7 +35,7 @@ async function setup(t) {
     id: ADDRESS, sessionId: CLAUDE_ID, cwd: "/tmp", harness: "claude", event: "Stop", seenAt: Date.now(), pid: process.pid, pidStart: processStart(process.pid),
   });
   const frames = [];
-  const socketPath = join(mkdtempSync(join(tmpdir(), "dhe-sock-")), "s.sock");
+  const socketPath = join(tempDir({ after }, "dhe-sock-"), "s.sock");
   t.after(() => rmSync(socketPath, { force: true }));
   const server = createServer((conn) => conn.on("data", (chunk) => {
     for (const line of chunk.toString("utf8").split("\n").filter(Boolean)) frames.push(JSON.parse(line));

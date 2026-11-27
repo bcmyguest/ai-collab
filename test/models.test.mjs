@@ -1,7 +1,6 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { loadProjects } from "../lib/config.mjs";
@@ -9,6 +8,7 @@ import { codexModels, cursorModels, parseCursorModels } from "../lib/models.mjs"
 import { startCommand } from "../lib/start.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8795";
 const CURSOR_LIST = "Available models\n\nauto - Auto (default)\ngpt-5.3-codex - Codex 5.3\nclaude-opus-5-thinking-high - Claude Opus 5 1M Thinking\n--yolo - bad\n";
@@ -24,7 +24,7 @@ console.log("Started background session 11111111-2222-4333-8444-555555555555");
 `;
 
 function home() {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-models-"));
+  const dir = tempDir({ after }, "ai-collab-models-");
   const bin = path.join(dir, "bin");
   const record = path.join(dir, "record");
   const codex = path.join(dir, ".codex");

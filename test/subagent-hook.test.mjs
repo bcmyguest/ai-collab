@@ -1,7 +1,7 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,7 @@ import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { writeOwned } from "../lib/sessions/registry.ts";
 import { MANAGED_ENV, SHELL_START_DENIED, SUBAGENT_DENIED } from "../lib/subagent-guard.ts";
 import { job } from "../lib/job.ts";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 
@@ -23,7 +24,7 @@ function runHook(args, input, env) {
 }
 
 function setup(t) {
-  const home = mkdtempSync(join(tmpdir(), "ai-collab-subagent-hook-"));
+  const home = tempDir({ after }, "ai-collab-subagent-hook-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const env = {
     PATH: process.env.PATH, HOME: home, AI_COLLAB_URL: "http://127.0.0.1:9", AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "cursor",

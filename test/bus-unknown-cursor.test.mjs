@@ -5,13 +5,13 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { createBusServer, openBusStore } from "../lib/bus.mjs";
 import { openPostgresBusStore } from "../lib/bus-postgres.mjs";
 import { pgUrl } from "../lib/postgres.mjs";
 import { dbosTestDb } from "./helpers/dbos-env.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const TOKEN = "tk_unknown_cursor";
 const RETENTION_MS = 3_600_000;
@@ -30,7 +30,7 @@ async function dropSchema(schema) {
 }
 
 async function openBusTmp(kind) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bus-unknown-cursor-"));
+  const dir = tempDir({ after }, "bus-unknown-cursor-");
   const filesDir = path.join(dir, "files");
   const schema = `bus_uc_${randomBytes(4).toString("hex")}`;
   const store = kind === "sqlite"

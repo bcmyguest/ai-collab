@@ -1,10 +1,9 @@
 import { parseWireEnvelope } from "../lib/agui.mjs";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { createInterface } from "node:readline";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig, ownEnv, sessionLabel } from "../lib/config.mjs";
@@ -12,6 +11,7 @@ import { claimInbox } from "../lib/inbox.mjs";
 import { runCli } from "../lib/cli.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 const MCP = fileURLToPath(new URL("../scripts/ai-collab-mcp.mjs", import.meta.url));
@@ -59,7 +59,7 @@ test("a child never takes its parent's identity from the inherited environment",
 
 test("parent exports its address, the child greets it once, and both can message each other", async (t) => {
   const { fake, env } = await setup(t);
-  const envFile = path.join(mkdtempSync(path.join(os.tmpdir(), "ai-collab-envfile-")), "env.sh");
+  const envFile = path.join(tempDir({ after }, "ai-collab-envfile-"), "env.sh");
   const parent = await runHook(["--host", "claude"], { hook_event_name: "SessionStart", session_id: PARENT_ID, cwd: "/tmp/proj" }, { ...env, CLAUDE_ENV_FILE: envFile });
   assert.equal(readFileSync(envFile, "utf8"), `export AI_COLLAB_PARENT=${PARENT}\n`);
   assert.match(context(parent), /call the ai-collab spawn_agent tool/);

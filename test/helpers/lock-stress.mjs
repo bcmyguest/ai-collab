@@ -1,9 +1,10 @@
 // Multi-process lock stress: runs workers against one lock file and totals their overlaps, deaths and leftovers.
+import { after } from "node:test";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { tempDir } from "./tmp.mjs";
 
 const WORKER = fileURLToPath(new URL("./lock-worker.mjs", import.meta.url));
 
@@ -20,7 +21,7 @@ function runWorker(impl, file, iters, crashEvery) {
 
 /** Runs workers for implA (nA of them) and implB (nB), then reports overlaps, deaths and leftover files. */
 export async function runStress({ implA, nA, implB, nB, iters, crashEvery }) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lockstress-"));
+  const dir = tempDir({ after }, "lockstress-");
   const file = path.join(dir, "x.json");
   const impls = [...Array(nA).fill(implA), ...Array(nB).fill(implB)];
   const totals = { violations: 0, busy: 0, done: 0, crashed: 0, deaths: 0, firstError: "" };

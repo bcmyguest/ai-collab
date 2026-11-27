@@ -2,12 +2,12 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { copyFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, chmodSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import { builderPaths } from "../lib/builder.ts";
 import { activityTopic } from "../lib/config.mjs";
@@ -16,6 +16,7 @@ import { openTasks } from "../lib/tasks.mjs";
 import { runnerClient, runnerRequest } from "../runner/client.mjs";
 import { destroySandbox, parseSandboxList, runTool, sandboxName } from "../runner/sandbox.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const cli = join(repo, "scripts", "ai-collab.mjs");
@@ -77,7 +78,7 @@ async function runCase(launch, harness) {
   const openshell = findExecutable("openshell", path);
   assert.ok(openshell, "Install OpenShell on the smoke host");
 
-  const home = mkdtempSync(join(tmpdir(), "aic-live-"));
+  const home = tempDir({ after }, "aic-live-");
   const root = join(home, "project");
   const config = join(home, ".config", "ai-collab");
   const id = randomBytes(4).toString("hex");

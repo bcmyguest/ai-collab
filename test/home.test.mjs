@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { test, after as afterAll } from "node:test";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { broadcastTopic, loadConfig, sessionLabel } from "../lib/config.mjs";
 import { publishActivity } from "../lib/activity.ts";
@@ -13,6 +12,7 @@ import { fallbackName, isOpenGroup, listedGroups, sessionCounts, sessionState, s
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8795";
 const NOW = 1_800_000_000_000;
@@ -68,7 +68,7 @@ test("names fall back to folder and first prompt words; harness names are cleane
   assert.equal(cleanName("Fix\nlogin‮ bug "), "Fix login bug");
   assert.equal(sessionName("claude", { session_title: "Refactor home view" }), "Refactor home view");
   assert.equal(sessionName("cursor", { session_title: "x" }), "");
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-names-"));
+  const home = tempDir({ after: afterAll }, "ai-collab-names-");
   writeFileSync(path.join(home, "session_index.jsonl"), [
     { id: "t-1", thread_name: "add codex to mise", updated_at: "1" }, { id: "t-2", thread_name: "Other", updated_at: "2" },
     { id: "t-1", thread_name: "Add Codex to mise config", updated_at: "3" },
@@ -108,9 +108,9 @@ test("an idle online session is not in an open group", () => {
 test("home stream covers every project: names, states, subagents, parents, pending cards answered from home", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const stateDir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-home-"));
+  const stateDir = tempDir(t, "ai-collab-home-");
   const env = (project, peer) => peerEnv(fake, { peer, stateDir, AI_COLLAB_PROJECT: project, AI_COLLAB_PEERS: "claude,codex" });
-  const root = mkdtempSync(path.join(os.tmpdir(), "ai-collab-home-root-"));
+  const root = tempDir(t, "ai-collab-home-root-");
   const folder = path.join(root, "webapp");
   mkdirSync(folder);
   const ids = { parent: "11111111-0000-4000-8000-000000000001", child: "11111111-0000-4000-8000-000000000002", other: "11111111-0000-4000-8000-000000000003" };
@@ -189,7 +189,7 @@ test("home stream covers every project: names, states, subagents, parents, pendi
 test("a direct message to an online session carries no wake note; urgent envelopes show as urgent", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const stateDir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-urgent-"));
+  const stateDir = tempDir(t, "ai-collab-urgent-");
   const id = "33333333-0000-4000-8000-000000000001";
   const claude = { ...loadConfig(peerEnv(fake, { peer: "claude", stateDir, AI_COLLAB_PEERS: "claude" })), session: sessionLabel(id) };
   await recordSession(claude, { id, cwd: stateDir, harness: "claude", event: "SessionStart", proc: self() });
@@ -208,7 +208,7 @@ test("a direct message to an online session carries no wake note; urgent envelop
 test("AFK hold: a turn end whose row lands after its stop status is not a hold", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const stateDir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-afk-race-"));
+  const stateDir = tempDir(t, "ai-collab-afk-race-");
   const id = "22222222-0000-4000-8000-000000000002";
   const claude = { ...loadConfig(peerEnv(fake, { peer: "claude", stateDir, AI_COLLAB_PEERS: "claude" })), session: sessionLabel(id) };
   await recordSession(claude, { id, cwd: stateDir, harness: "claude", event: "Stop", proc: self() });
@@ -226,7 +226,7 @@ test("AFK hold: a turn end whose row lands after its stop status is not a hold",
 test("AFK hold: the Stop hook published hold, the turn ended, and AFK mode is on", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const stateDir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-afk-"));
+  const stateDir = tempDir(t, "ai-collab-afk-");
   const id = "22222222-0000-4000-8000-000000000001";
   const claude = { ...loadConfig(peerEnv(fake, { peer: "claude", stateDir, AI_COLLAB_PEERS: "claude" })), session: sessionLabel(id) };
   await recordSession(claude, { id, cwd: stateDir, harness: "claude", event: "Stop", proc: self() });

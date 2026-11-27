@@ -1,13 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { shippedTasks } from "../web/server/shipped.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 test("a reviewed task can ship after it was marked done", t => {
-  const root = mkdtempSync(join(tmpdir(), "shipped-"));
+  const root = tempDir(t, "shipped-");
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
   const commit = title => {

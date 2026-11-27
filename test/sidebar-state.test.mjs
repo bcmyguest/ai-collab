@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { recordSession, setIdentity } from "../lib/sessions.mjs";
@@ -9,6 +7,7 @@ import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { firstUpdate } from "./helpers/ui-stream.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8795";
 const self = () => {
@@ -19,7 +18,7 @@ const self = () => {
 test("the sidebar's agents carry the set_identity name, apart from a harness title", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const stateDir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-named-"));
+  const stateDir = tempDir(t, "ai-collab-named-");
   const pmId = "named-pm-session";
   const plainId = "named-plain-session";
   const env = peerEnv(fake, { peer: "operator", stateDir });

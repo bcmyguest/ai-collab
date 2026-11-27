@@ -1,9 +1,8 @@
 // A push that finds a Stop hook hold hands the message to it through the hand-off file, and it is delivered once.
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
@@ -18,6 +17,7 @@ import { runWaiter } from "../lib/waiter.ts";
 import { openDurable } from "../runner/durable.mjs";
 import { deliveryWorkflow } from "../runner/delivery.mjs";
 import { createDispatcher } from "../web/server/dispatch.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const CLAUDE_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5d";
 const LABEL = sessionLabel(CLAUDE_ID);
@@ -41,7 +41,7 @@ async function setup(t) {
     id: ADDRESS, sessionId: CLAUDE_ID, cwd: "/tmp", harness: "claude", event: "Stop", seenAt: Date.now(), pid: process.pid, pidStart: processStart(process.pid),
   });
   const frames = [];
-  const socketPath = join(mkdtempSync(join(tmpdir(), "hlh-sock-")), "s.sock");
+  const socketPath = join(tempDir({ after }, "hlh-sock-"), "s.sock");
   const server = createServer((conn) => conn.on("data", (chunk) => {
     for (const line of chunk.toString("utf8").split("\n").filter(Boolean)) frames.push(JSON.parse(line));
   }));
@@ -71,7 +71,7 @@ test("a reserved message reaches a hold with a 10 s slice within 2 s when the pu
   let hold = null;
   let holdAt = 0;
   const pushes = [];
-  const dir = mkdtempSync(join(tmpdir(), "hlh-db-"));
+  const dir = tempDir({ after }, "hlh-db-");
   const durable = openDurable(join(dir, "runner.db"));
   t.after(async () => { await durable.close(); rmSync(dir, { recursive: true, force: true }); });
   durable.register("delivery", deliveryWorkflow({

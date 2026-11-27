@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HOOK = new URL("../scripts/ai-collab-hook.mjs", import.meta.url).pathname;
 
 // A home folder that is itself a git repo, holding defaults.json and a workspace repo.
 function home(url) {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-cursor-ws-"));
+  const dir = tempDir({ after }, "ai-collab-cursor-ws-");
   mkdirSync(path.join(dir, ".git"));
   mkdirSync(path.join(dir, ".config", "ai-collab"), { recursive: true });
   writeFileSync(path.join(dir, "token"), "tk_test");

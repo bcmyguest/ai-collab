@@ -1,15 +1,15 @@
 import { parseWireEnvelope } from "../lib/agui.mjs";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig } from "../lib/config.mjs";
 import { sendMessage } from "../lib/inbox.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 
@@ -130,7 +130,7 @@ test("codex SessionStart and UserPromptSubmit use the codex host label", async (
 test("disabled (no project/peer): prints {} and makes no requests", async (t) => {
   const { fake } = await setup(t);
   const before = fake.state.requests;
-  const r = await runHook(["--host", "claude"], { hook_event_name: "SessionStart" }, { PATH: process.env.PATH, HOME: mkdtempSync(join(tmpdir(), "ai-collab-home-")), AI_COLLAB_URL: fake.url });
+  const r = await runHook(["--host", "claude"], { hook_event_name: "SessionStart" }, { PATH: process.env.PATH, HOME: tempDir({ after }, "ai-collab-home-"), AI_COLLAB_URL: fake.url });
   assert.equal(r.out.trim(), "{}");
   assert.equal(r.code, 0);
   assert.equal(fake.state.requests, before);
@@ -156,7 +156,7 @@ test("malformed stdin, unknown events, and PreToolUse all return {}; only PreToo
 
 test("configured hooks deliver phone posts to each session and identify outbound messages", async (t) => {
   const fake = await startFakeNtfy({ token: "fixture-only" });
-  const root = mkdtempSync(join(tmpdir(), "ai-collab-hooks-"));
+  const root = tempDir(t, "ai-collab-hooks-");
   t.after(() => { rmSync(root, { recursive: true, force: true }); return fake.close(); });
   const config = join(root, "ai-collab");
   const cwd = join(root, "source");

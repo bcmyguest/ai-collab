@@ -2,20 +2,20 @@
 // and replaying must be true while a recovered run replays its recorded steps.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { dbosTestDb } from "./helpers/dbos-env.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CHILD = path.join(HERE, "helpers", "dbos-oncut-child.mjs");
 const pgUp = await dbosTestDb();
 
-test("a step cut by a kill runs its onCut at recovery and never re-executes", { skip: pgUp ? false : "no Postgres on 127.0.0.1:5432", timeout: 120_000 }, () => {
+test("a step cut by a kill runs its onCut at recovery and never re-executes", { skip: pgUp ? false : "no Postgres on 127.0.0.1:5432", timeout: 120_000 }, (t) => {
   const id = `oncut-${Date.now()}`;
-  const markFile = path.join(mkdtempSync(path.join(tmpdir(), "aic-oc-")), "marks.txt");
+  const markFile = path.join(tempDir(t, "aic-oc-"), "marks.txt");
   const env = { ...process.env, SRC: path.join(HERE, ".."), AIC_DBOS_APP_VERSION: `aic-oncut-${Date.now()}` };
   const first = spawnSync(process.execPath, [CHILD, "start", id, markFile], { encoding: "utf8", timeout: 30_000, env });
   assert.equal(first.signal, "SIGKILL", "the start child must die by SIGKILL mid-step");

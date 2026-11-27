@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { loadProjects } from "../lib/config.mjs";
@@ -8,6 +7,7 @@ import { addTask, ownTask, readStore, taskStoreFile, writeStore } from "../lib/t
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { firstUpdate } from "./helpers/ui-stream.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8795";
 const OWNER = "claude#0123456789abcdef";
@@ -15,7 +15,7 @@ const OWNER = "claude#0123456789abcdef";
 test("the UI state snapshot carries the task board and persists operator status moves", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-ui-tasks-"));
+  const home = tempDir(t, "ai-collab-ui-tasks-");
   const root = path.join(home, "project");
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
   mkdirSync(root);

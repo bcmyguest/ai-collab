@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   PROGRESS_MAX, TABLE_END, TABLE_START, addTask, clipProgress, createFileBackend, importFeatureRequests,
   readStore, renderFeatureRequests, importReport, slugify, taskStoreFile, validateTasks, writeStore,
 } from "../lib/tasks.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const NOW = Date.parse("2026-11-22T00:00:00Z");
 const ADDRESS = "claude#0123456789abcdef";
@@ -36,7 +36,7 @@ function task(fields) {
 }
 
 function tempFile(name = "tasks.json") {
-  return join(mkdtempSync(join(tmpdir(), "tasks-")), name);
+  return join(tempDir({ after }, "tasks-"), name);
 }
 
 test("validateTasks accepts a well-formed document with blockers, owner and run", () => {

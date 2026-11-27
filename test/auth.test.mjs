@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { test, after } from "node:test";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../lib/config.mjs";
 import { claimInbox } from "../lib/inbox.mjs";
@@ -11,17 +10,18 @@ import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { firstUpdate } from "./helpers/ui-stream.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const ORIGIN = "https://ai-collab-ui.example.test";
 const SECRET = Buffer.alloc(32, 7);
 
 // A config dir with github.json and a client secret file, plus an empty state dir.
 function setup(users = ["Octocat"]) {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-auth-"));
+  const dir = tempDir({ after }, "ai-collab-auth-");
   const secretFile = path.join(dir, "client-secret");
   writeFileSync(secretFile, "shh-client-secret\n");
   writeFileSync(path.join(dir, "github.json"), JSON.stringify({ clientId: "Iv1.test", clientSecretFile: secretFile, users }));
-  return { dir, stateDir: mkdtempSync(path.join(os.tmpdir(), "ai-collab-auth-state-")) };
+  return { dir, stateDir: tempDir({ after }, "ai-collab-auth-state-") };
 }
 
 // Stands in for GitHub: records each call and answers the token and user endpoints.
@@ -64,8 +64,8 @@ test("session cookies verify, and reject tampering, another key and expiry", () 
   assert.equal(verifySession(SECRET, signSession(SECRET, { login: "-bad-", exp }), now), null);
 });
 
-test("sign-in is off without github.json and needs the UI origin with it", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-auth-"));
+test("sign-in is off without github.json and needs the UI origin with it", (t) => {
+  const dir = tempDir(t, "ai-collab-auth-");
   assert.equal(createAuth({ dir, stateDir: dir, origin: ORIGIN }), null);
   const { dir: configured, stateDir } = setup();
   assert.throws(() => createAuth({ dir: configured, stateDir, origin: "" }), /AI_COLLAB_UI_ORIGIN/);

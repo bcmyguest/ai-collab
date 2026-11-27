@@ -1,13 +1,14 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sessionLabel } from "../lib/config.mjs";
 import { sessionIdleState } from "../lib/idle.mjs";
 import { codexLiveInterrupt, interruptSession } from "../lib/sessions/control.ts";
 import { activeOpencodeSessions, opencodeRequest } from "../lib/opencode-api.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const CODEX_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
 const OPENCODE_ID = "ses_0123456789abcdefghijABCDEFGH";
@@ -25,7 +26,7 @@ async function fakeOpencode(t, handler) {
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => server.close());
-  const state = mkdtempSync(join(tmpdir(), "oc-state-"));
+  const state = tempDir({ after }, "oc-state-");
   mkdirSync(join(state, "opencode"));
   writeFileSync(join(state, "opencode", "service.json"), JSON.stringify({ url: `http://127.0.0.1:${server.address().port}`, password: "pw" }));
   return { env: { XDG_STATE_HOME: state, HOME: state }, requests };
@@ -35,13 +36,13 @@ test("opencodeRequest reads the service endpoint, sends basic auth, and reports 
   const { env, requests } = await fakeOpencode(t, () => [200, { data: { [OPENCODE_ID]: {} } }]);
   assert.deepEqual([...await activeOpencodeSessions({ env })], [OPENCODE_ID]);
   assert.equal(requests[0].auth, `Basic ${Buffer.from("opencode:pw").toString("base64")}`);
-  const none = await opencodeRequest("GET", "/api/session/active", { env: { HOME: tmpdir(), XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "none-")) } });
+  const none = await opencodeRequest("GET", "/api/session/active", { env: { HOME: tmpdir(), XDG_STATE_HOME: tempDir({ after }, "none-") } });
   assert.equal(none.ok, false);
-  assert.equal(await activeOpencodeSessions({ env: { XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "none-")) } }), null);
+  assert.equal(await activeOpencodeSessions({ env: { XDG_STATE_HOME: tempDir({ after }, "none-") } }), null);
 });
 
-test("opencodeRequest refuses a non-loopback service URL", async () => {
-  const state = mkdtempSync(join(tmpdir(), "oc-remote-"));
+test("opencodeRequest refuses a non-loopback service URL", async (t) => {
+  const state = tempDir(t, "oc-remote-");
   mkdirSync(join(state, "opencode"));
   writeFileSync(join(state, "opencode", "service.json"), JSON.stringify({ url: "http://example.com:4096" }));
   const r = await opencodeRequest("GET", "/api/session/active", { env: { XDG_STATE_HOME: state }, fetchFn: () => assert.fail("no request") });
@@ -49,7 +50,7 @@ test("opencodeRequest refuses a non-loopback service URL", async () => {
 });
 
 test("sessionIdleState: Claude reads its session file, OpenCode the active API, Codex and Cursor the last hook event", async (t) => {
-  const home = mkdtempSync(join(tmpdir(), "home-"));
+  const home = tempDir({ after }, "home-");
   mkdirSync(join(home, ".claude", "sessions"), { recursive: true });
   const claude = { harness: "claude", pid: 4242, sessionId: "abc-session" };
   const write = (status, sessionId = "abc-session") => writeFileSync(join(home, ".claude", "sessions", "4242.json"), JSON.stringify({ pid: 4242, sessionId, status }));
@@ -64,7 +65,7 @@ test("sessionIdleState: Claude reads its session file, OpenCode the active API, 
   const { env } = await fakeOpencode(t, () => [200, { data: { [OPENCODE_ID]: {} } }]);
   assert.equal(await sessionIdleState({ harness: "opencode", sessionId: OPENCODE_ID }, { env }), "busy");
   assert.equal(await sessionIdleState({ harness: "opencode", sessionId: "ses_other0123456789abcdefghij" }, { env }), "idle");
-  assert.equal(await sessionIdleState({ harness: "opencode", sessionId: OPENCODE_ID }, { env: { XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "none-")) } }), "unknown");
+  assert.equal(await sessionIdleState({ harness: "opencode", sessionId: OPENCODE_ID }, { env: { XDG_STATE_HOME: tempDir({ after }, "none-") } }), "unknown");
 
   assert.equal(await sessionIdleState({ harness: "codex", event: "Stop" }), "idle");
   assert.equal(await sessionIdleState({ harness: "codex", event: "pretooluse" }), "busy");

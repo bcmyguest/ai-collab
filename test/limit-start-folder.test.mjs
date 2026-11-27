@@ -1,27 +1,27 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { alertLimit, chooseLimit } from "../lib/limit-alert.ts";
 import { recordSession } from "../lib/sessions.mjs";
 import { startFolder, startSession } from "../lib/start.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const UUID = "5f0e3c2a-9b1d-4e7a-8c6b-2d1f0a9e8b7c";
 const LIMIT = { window: "five_hour", windowName: "5-hour", resetsAt: null, wording: true, verified: true, source: "test" };
 
 function projectHome(root) {
-  const home = mkdtempSync(join(tmpdir(), "limit-folder-"));
+  const home = tempDir({ after }, "limit-folder-");
   mkdirSync(join(home, ".config", "ai-collab"), { recursive: true });
   writeFileSync(join(home, ".config", "ai-collab", "projects.json"), JSON.stringify([{ root, project: "demo", url: "http://127.0.0.1:9", peers: "claude,codex" }]));
   return { HOME: home, PATH: process.env.PATH, AI_COLLAB_STATE_DIR: join(home, "state") };
 }
 
-test("startFolder runs in the root, in an existing folder inside the root, and refuses the rest", () => {
-  const root = mkdtempSync(join(tmpdir(), "limit-root-"));
+test("startFolder runs in the root, in an existing folder inside the root, and refuses the rest", (t) => {
+  const root = tempDir(t, "limit-root-");
   const worktree = join(root, ".claude", "worktrees", "w1");
   mkdirSync(worktree, { recursive: true });
   assert.deepEqual(startFolder(root, ""), { cwd: root });
@@ -30,8 +30,8 @@ test("startFolder runs in the root, in an existing folder inside the root, and r
   assert.match(startFolder(root, "/").error, /outside the project/);
 });
 
-test("startSession refuses a gone origin folder before it starts anything", async () => {
-  const root = mkdtempSync(join(tmpdir(), "limit-root-"));
+test("startSession refuses a gone origin folder before it starts anything", async (t) => {
+  const root = tempDir(t, "limit-root-");
   const env = projectHome(root);
   let spawned = false;
   const run = () => { spawned = true; throw new Error("must not spawn"); };

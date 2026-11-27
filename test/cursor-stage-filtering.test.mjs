@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { prepareSandbox } from "../runner/adapters/cursor.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const openshell = fileURLToPath(new URL("./helpers/fake-openshell.mjs", import.meta.url));
 
 test("Cursor uploads generated launcher and credentials without Git discovery", async (t) => {
-  const home = mkdtempSync(join(tmpdir(), "aic-cursor-stage-"));
+  const home = tempDir(t, "aic-cursor-stage-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const cwd = join(home, "work");
   const cursorTree = join(home, "cursor-fixture");

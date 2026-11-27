@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
 import { readAlertLevel } from "../lib/alerts.mjs";
 import { isAlertLevel, readRememberedAlertLevel, rememberAlertLevel, shownAlertLevel, subscriptionUsesKey } from "../web/lib/alert-level.js";
@@ -10,9 +8,10 @@ import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8795";
-const tmp = () => mkdtempSync(path.join(os.tmpdir(), "ai-collab-alert-"));
+const tmp = () => tempDir({ after }, "ai-collab-alert-");
 
 // The next state frame, or a plain failure: a level that is never pushed should fail the test, not hang it.
 async function nextState(stream, ms = 3000) {

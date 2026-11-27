@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { DotError, parseDot, serializeDot } from "../lib/catalog/dot.ts";
 import { claudePermissionFor } from "../lib/start.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const TEAM = `digraph "duo" {
   "lead" [agent="codex", prompt="Scope it.", code_mode="off"];
@@ -13,7 +11,7 @@ const TEAM = `digraph "duo" {
   "doer" -> "done" [on="finished"];
 }`;
 const withPermission = (value) => TEAM.replace("digraph \"duo\" {", `digraph "duo" {\n  graph [permission="${value}"];`);
-const cfg = { project: "demo", stateDir: mkdtempSync(path.join(os.tmpdir(), "team-perm-")) };
+const cfg = { project: "demo", stateDir: tempDir({ after }, "team-perm-") };
 
 test("the team.dot permission attribute parses and round-trips through serializeDot", () => {
   const team = parseDot(withPermission("dontAsk"));

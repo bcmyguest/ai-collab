@@ -3,8 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawn } from "node:child_process";
 import http from "node:http";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ACTIVITY_MAX_BYTES, activityEvents, buildActivity, publishActivity } from "../lib/activity.ts";
@@ -19,6 +18,7 @@ import { peerEnv } from "./helpers/env.mjs";
 delete process.env.AI_COLLAB_WAKE;
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { sse } from "./helpers/ui-stream.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 const base = "http://127.0.0.1:8795";
@@ -149,7 +149,7 @@ test("AI_COLLAB_ACTIVITY=off or projects.json activity off publishes nothing", a
   assert.deepEqual(activity(fake), []);
   assert.equal(loadConfig(peerEnv(fake)).activity, true, "on by default");
 
-  const root = mkdtempSync(path.join(os.tmpdir(), "ai-collab-activity-"));
+  const root = tempDir(t, "ai-collab-activity-");
   mkdirSync(path.join(root, "ai-collab"));
   writeFileSync(path.join(root, "ai-collab", "projects.json"), JSON.stringify([{ root: "/srv/p", project: "p", url: fake.url, activity: "off" }]));
   assert.equal(loadConfig({ XDG_CONFIG_HOME: root }, { cwd: "/srv/p", host: "claude" }).activity, false);

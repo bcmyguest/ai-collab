@@ -1,21 +1,21 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
 import { checkTeamText, createPattern, listPatterns, saveTeamText, teamTemplates, teamTextOf } from "../lib/patterns.mjs";
 import { projectTeamsDir, teamFilePath } from "../lib/catalog/team-files.ts";
 import { renameTeam, sourceLine } from "../web/lib/team-editor.js";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const MODELS = { claude: ["claude-haiku-5-5"], codex: ["gpt-5"], cursor: ["deepseek-v41-flash-1017-high"] };
 const execFileAsync = promisify(execFile);
 
 function setup() {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-team-editor-"));
+  const home = tempDir({ after }, "ai-collab-team-editor-");
   const root = path.join(home, "repo");
   mkdirSync(root);
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });

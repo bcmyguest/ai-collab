@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { runCli } from "../lib/cli.mjs";
 import {
@@ -14,6 +13,7 @@ import {
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { COLUMNS, columnsOf, statusLabel } from "../web/lib/task-board.js";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const NOW = Date.parse("2026-11-22T00:00:00Z");
 const LABEL = "aabbccddeeff0123";
@@ -23,7 +23,7 @@ function task(fields) {
 }
 
 function project() {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-task-priority-"));
+  const home = tempDir({ after }, "ai-collab-task-priority-");
   const root = path.join(home, "repo");
   mkdirSync(root);
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
@@ -105,7 +105,7 @@ test("task CLI adds with --priority, sets priority, and lists sorted with the pr
 
 test("the MCP task_update takes priority and task_list sorts by it", { timeout: 15000 }, async (t) => {
   const fake = await startFakeNtfy();
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-mcp-priority-"));
+  const home = tempDir(t, "ai-collab-mcp-priority-");
   const root = path.join(home, "repo");
   mkdirSync(root);
   mkdirSync(path.join(home, "config", "ai-collab"), { recursive: true });

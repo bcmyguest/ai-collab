@@ -1,9 +1,8 @@
 // A continuation or spawn whose start timed out (504) leaves no session behind, even when its claim lands late.
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { wrapOpen } from "./helpers/fake-adapter-hooks.mjs";
@@ -14,9 +13,10 @@ import { openTasks } from "../lib/tasks.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 function setup(t, fake) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-start-timeout-"));
+  const home = tempDir({ after }, "ai-collab-start-timeout-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const root = path.join(home, "demo");
   mkdirSync(root);

@@ -1,9 +1,8 @@
 // A pushed message waits while the target Claude session's Stop hook holds: the hold delivers it through the inbox.
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
@@ -14,6 +13,7 @@ import { markStopRunning, takeHandoff } from "../lib/stop.mjs";
 import { processStart } from "../lib/process.mjs";
 import { writeState } from "../lib/state.mjs";
 import { createDispatcher } from "../web/server/dispatch.mjs";
+import { fileEnd, tempDir } from "./helpers/tmp.mjs";
 
 const CLAUDE_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
 const LABEL = sessionLabel(CLAUDE_ID);
@@ -23,7 +23,7 @@ const ADDRESS = `claude#${LABEL}`;
 async function setup(t) {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const env = peerEnv(fake, { peer: "operator", AI_COLLAB_PEERS: "bob,claude" });
+  const env = peerEnv(fake, { peer: "operator", AI_COLLAB_PEERS: "bob,claude", stateDir: tempDir(fileEnd, "ai-collab-state-") });
   const cfg = loadConfig(env);
   const registry = join(cfg.stateDir, cfg.project, "registry");
   mkdirSync(registry, { recursive: true });
@@ -35,7 +35,7 @@ async function setup(t) {
     id: ADDRESS, sessionId: CLAUDE_ID, cwd: "/tmp", harness: "claude", event: "Stop", seenAt: Date.now(), pid: process.pid, pidStart: processStart(process.pid),
   });
   const frames = [];
-  const socketPath = join(mkdtempSync(join(tmpdir(), "iwd-sock-")), "s.sock");
+  const socketPath = join(tempDir({ after }, "iwd-sock-"), "s.sock");
   t.after(() => rmSync(socketPath, { force: true }));
   const server = createServer((conn) => conn.on("data", (chunk) => {
     for (const line of chunk.toString("utf8").split("\n").filter(Boolean)) frames.push(JSON.parse(line));

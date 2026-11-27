@@ -2,12 +2,12 @@
 import { EventType } from "@ag-ui/core";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, eventProblem } from "../runner/contract.mjs";
 import { createClaudeAdapter } from "../runner/adapters/claude.mjs";
 import { sessionLabel } from "../lib/config.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 // A push-based async iterable standing in for the SDK's message stream.
 function pushStream() {
@@ -309,8 +309,8 @@ test("steer queues an urgent message on the running query", async () => {
   await handle.close();
 });
 
-test("images are sent as base64 blocks before the text", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "claude-adapter-"));
+test("images are sent as base64 blocks before the text", async (t) => {
+  const dir = tempDir(t, "claude-adapter-");
   const path = join(dir, "pic.png");
   writeFileSync(path, Buffer.from("PNGDATA"));
   const { adapter, sdk, ctx } = harness();
@@ -433,9 +433,9 @@ test("listModels and listCommands read initialization and close the probe query"
   assert.equal(sdk.queries[1].options.cwd, "/tmp/demo");
 });
 
-test("available reports the claude binary on PATH without running it", async () => {
+test("available reports the claude binary on PATH without running it", async (t) => {
   const { adapter } = harness();
-  const dir = mkdtempSync(join(tmpdir(), "claude-bin-"));
+  const dir = tempDir(t, "claude-bin-");
   writeFileSync(join(dir, "claude"), "#!/bin/sh\nexit 99\n");
   chmodSync(join(dir, "claude"), 0o755);
   // childEnv appends the Node bin dir, which may hold a real claude; the PATH entry given here comes first.

@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
@@ -9,6 +8,7 @@ import { recordSession } from "../lib/sessions.mjs";
 import { createUi, mentionedNames, mentionedTeams } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8797";
 
@@ -20,7 +20,7 @@ test("mentionedTeams finds @team tags without treating them as harness peers", (
 test("@team from project chat starts a claude orchestrator with roster instructions", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-team-mention-"));
+  const home = tempDir(t, "ai-collab-team-mention-");
   const bin = path.join(home, "bin");
   mkdirSync(bin);
   writeFileSync(path.join(bin, "claude"), "#!/bin/sh\n");
@@ -58,7 +58,7 @@ test("@team from project chat starts a claude orchestrator with roster instructi
 test("@team in a session chat messages that session as orchestrator", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-team-direct-"));
+  const home = tempDir(t, "ai-collab-team-direct-");
   const root = path.join(home, "repo");
   const stateDir = path.join(home, "state");
   mkdirSync(root);

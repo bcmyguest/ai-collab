@@ -2,11 +2,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MANAGED_ENV, SHELL_START_DENIED, shellHarnessStart } from "../lib/subagent-guard.ts";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 
@@ -28,7 +28,7 @@ test("shellHarnessStart reads the Codex shell tool", () => {
 });
 
 test("a managed Codex session's activity hook denies a shell harness start; an operator session's does not", async (t) => {
-  const home = mkdtempSync(join(tmpdir(), "ai-collab-codex-gate-"));
+  const home = tempDir(t, "ai-collab-codex-gate-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const env = { PATH: process.env.PATH, HOME: home, AI_COLLAB_URL: "http://127.0.0.1:9", AI_COLLAB_PROJECT: "demo", AI_COLLAB_STATE_DIR: join(home, "state"), AI_COLLAB_TIMEOUT_MS: "500", AI_COLLAB_ACTIVITY: "off" };
   const denied = await runHook(["--activity", "--host", "codex"], shell("nohup codex exec 'go'"), { ...env, [MANAGED_ENV]: "1" });

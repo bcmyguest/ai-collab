@@ -1,8 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { recordSession } from "../lib/sessions.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, publishStatus, releaseDelivery, reserveDelivery, reservedMessage, sendMessage, urgentSince } from "../lib/inbox.mjs";
@@ -11,6 +8,7 @@ import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 
 import { sse } from "./helpers/ui-stream.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8795";
 
@@ -18,7 +16,7 @@ test("Send now on a queued message marks it urgent for that session's next hook"
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
   // Peers on one machine share a state dir; the marker lives there.
-  const stateDir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-state-"));
+  const stateDir = tempDir(t, "ai-collab-state-");
   const cfg = loadConfig(peerEnv(fake, { peer: "alice", stateDir }));
   const bob = { ...loadConfig(peerEnv(fake, { peer: "bob", stateDir })), session: "0000000000000001" };
   await publishStatus(bob, { event: "start", harness: "codex" });
@@ -38,7 +36,7 @@ test("Send now on a queued message marks it urgent for that session's next hook"
 test("queue actions change one pending message and respect delivery reservations", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
-  const stateDir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-state-"));
+  const stateDir = tempDir(t, "ai-collab-state-");
   const cfg = loadConfig(peerEnv(fake, { peer: "alice", stateDir }));
   const operator = { ...cfg, peer: "operator" };
   const bob = { ...cfg, peer: "bob", session: sessionLabel("test-session") };

@@ -1,14 +1,14 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { resetScopeProbe, scopeAvailable, systemdRunOnPath } from "../lib/sessions/scope.ts";
 import { runCommand } from "../runner/schedules.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
-const tmp = () => mkdtempSync(path.join(os.tmpdir(), "ai-collab-sched-scope-"));
+const tmp = () => tempDir({ after }, "ai-collab-sched-scope-");
 
 // The stand-in for systemd-run: records its argv, then runs the command after `--` with the caller's stdio and exit
 // code, which is what the real one does in a scope. It also reports the PID it saw, which an exec keeps.

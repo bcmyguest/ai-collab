@@ -1,20 +1,20 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { claudeEnvelope, claudeFrames, claudeTarget, deliverToClaude } from "../lib/claude-socket.mjs";
 import { processStart } from "../lib/process.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const SESSION_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
 // The start-tick check needs a live process, so the fake record uses this test's own pid.
 const PID = process.pid;
-const CWD = mkdtempSync(join(tmpdir(), "cs-cwd-"));
+const CWD = tempDir({ after }, "cs-cwd-");
 
 // A fake Claude home: sessions/<pid>.json, an optional peer token, and settings.json.
 function fakeHome(t, { accept = "accept", socket = null, sessionId = SESSION_ID, token = "tok-123" } = {}) {
-  const home = mkdtempSync(join(tmpdir(), "cs-home-"));
+  const home = tempDir({ after }, "cs-home-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   mkdirSync(join(home, "sessions"), { recursive: true });
   writeFileSync(join(home, "settings.json"), JSON.stringify(accept === null ? {} : { crossSessionInbound: accept }));
@@ -27,7 +27,7 @@ function fakeHome(t, { accept = "accept", socket = null, sessionId = SESSION_ID,
 
 // A unix socket server that records every newline-delimited frame it receives.
 async function fakeSocket(t) {
-  const dir = mkdtempSync(join(tmpdir(), "cs-sock-"));
+  const dir = tempDir({ after }, "cs-sock-");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, "s.sock");
   const frames = [];
@@ -69,7 +69,7 @@ test("no target when the record has no socket, a different sessionId, or a path 
   const sock = await fakeSocket(t);
   assert.equal(claudeTarget(session, { env: { CLAUDE_CONFIG_DIR: fakeHome(t) } }), null);
   assert.equal(claudeTarget(session, { env: { CLAUDE_CONFIG_DIR: fakeHome(t, { socket: sock.path, sessionId: "0198a1b2-0000-7e5f-8a9b-0c1d2e3f4a5b" }) } }), null);
-  const plain = join(mkdtempSync(join(tmpdir(), "cs-file-")), "f.sock");
+  const plain = join(tempDir({ after }, "cs-file-"), "f.sock");
   writeFileSync(plain, "");
   assert.equal(claudeTarget(session, { env: { CLAUDE_CONFIG_DIR: fakeHome(t, { socket: plain }) } }), null);
 });
@@ -110,7 +110,7 @@ test("deliverToClaude writes the frames, and reports unconfirmed when the transc
 });
 
 test("deliverToClaude reports unsent when no socket is listening", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "cs-dead-"));
+  const dir = tempDir({ after }, "cs-dead-");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const home = fakeHome(t, { socket: join(dir, "dead.sock") });
   const r = await deliverToClaude(session, { text: "x", ids: ["m00000001"] }, { env: { CLAUDE_CONFIG_DIR: home } });

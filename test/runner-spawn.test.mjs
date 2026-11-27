@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import { loadConfig } from "../lib/config.mjs";
@@ -15,13 +14,14 @@ import { createRunner } from "../runner/runner.mjs";
 import { route } from "../runner/control.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { fileEnd, tempDir } from "./helpers/tmp.mjs";
 
 // The parent is a live owned session the runner started, so its address is known only at run time.
 const TO_CODEX = "ai-collab-demo--to--codex";
 
 // A throwaway HOME with projects.json, a state dir and a durable log, as test/runner.test.mjs sets up.
 function setup(t, fake) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-runner-spawn-"));
+  const home = tempDir(fileEnd, "ai-collab-runner-spawn-");
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const root = path.join(home, "demo");
   mkdirSync(root);

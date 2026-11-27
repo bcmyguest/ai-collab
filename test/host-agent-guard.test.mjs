@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -12,9 +11,10 @@ import { createRunner } from "../runner/runner.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
 import { tickFn } from "../runner/schedules.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { fileEnd, tempDir } from "./helpers/tmp.mjs";
 
 const cli = fileURLToPath(new URL("../scripts/ai-collab.mjs", import.meta.url));
-const tmp = () => mkdtempSync(path.join(os.tmpdir(), "ai-collab-guard-"));
+const tmp = () => tempDir(fileEnd, "ai-collab-guard-");
 
 // A fake cursor-agent that would print "ran" if it were ever started.
 function fakeCursor(dir) {

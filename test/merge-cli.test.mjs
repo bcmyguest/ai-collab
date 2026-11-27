@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, realpathSync, rmSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import test from "node:test";
 import { merge } from "../lib/merge-cli.mjs";
 import { runCli } from "../lib/cli.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 test("the CLI exposes the host-only merge gate", async () => {
   let output = "";
@@ -18,7 +18,7 @@ test("the CLI exposes the host-only merge gate", async () => {
 
 for (const failure of [null, "checkout", "merge", "ci", "test", "changed HEAD", "push"]) {
   test(`guarded merge with ${failure ?? "a green gate"}`, (t) => {
-    const root = mkdtempSync(join(tmpdir(), "merge-cli-test-"));
+    const root = tempDir(t, "merge-cli-test-");
     t.after(() => rmSync(root, { recursive: true, force: true }));
     const hostCheckout = join(root, "ai-collab");
     mkdirSync(hostCheckout);

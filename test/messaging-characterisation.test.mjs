@@ -1,15 +1,14 @@
 // Pins the behaviour of the messaging functions before they move to lib/messaging.ts: inputs, bus requests, outputs.
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
 import os from "node:os";
-import path from "node:path";
 import { createBusServer, openMemoryStore } from "../lib/bus.mjs";
 import { loadConfig } from "../lib/config.mjs";
 import { claimInbox, parseEnvelope, sendMessage } from "../lib/inbox.mjs";
 import { settleReceipts } from "../lib/receipts.mjs";
 import { readInbox, waitUntil } from "../lib/messaging.ts";
 import { pollCached, publish, querySafe, streamEvents } from "../lib/transport.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const PROJECT = "demo";
 const INBOX_BOB = `ai-collab-${PROJECT}--to--bob`;
@@ -40,7 +39,7 @@ function peer(url, name) {
     AI_COLLAB_PROJECT: PROJECT,
     AI_COLLAB_PEER: name,
     AI_COLLAB_PEERS: "alice,bob",
-    AI_COLLAB_STATE_DIR: mkdtempSync(path.join(os.tmpdir(), "ai-collab-msg-")),
+    AI_COLLAB_STATE_DIR: tempDir({ after }, "ai-collab-msg-"),
     AI_COLLAB_TIMEOUT_MS: "2000",
   });
 }

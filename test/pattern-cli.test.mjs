@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
 import { runCli } from "../lib/cli.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8797";
 
 function project() {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-pattern-cli-"));
+  const home = tempDir({ after }, "ai-collab-pattern-cli-");
   const bin = path.join(home, "bin");
   mkdirSync(bin);
   for (const name of ["claude", "codex"]) {

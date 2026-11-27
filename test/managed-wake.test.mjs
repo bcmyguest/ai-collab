@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import os from "node:os";
+import { readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { controlSession, harnessCommand } from "../lib/sessions/control.ts";
 import { recordSession } from "../lib/sessions/registry.ts";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { CLAUDE_NO_SUBAGENT_SETTINGS, CODEX_NO_SUBAGENT_ARGS, MANAGED_ENV } from "../lib/subagent-guard.ts";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const sessionId = "00000000-abcd-1234-9876-0000000000aa";
 const exited = { pid: 4_194_000, pidStart: "1" };
@@ -14,7 +14,7 @@ const host = { runner: { kind: "host" } };
 
 test("a managed wake keeps native subagents off in argv and env; an unmanaged wake does not", async (t) => {
   // The wake env comes from process.env, so its start ticket lands under this temp state home.
-  const state = mkdtempSync(path.join(os.tmpdir(), "ai-collab-wake-state-"));
+  const state = tempDir(t, "ai-collab-wake-state-");
   const saved = process.env.XDG_STATE_HOME;
   process.env.XDG_STATE_HOME = state;
   t.after(() => { if (saved === undefined) delete process.env.XDG_STATE_HOME; else process.env.XDG_STATE_HOME = saved; rmSync(state, { recursive: true, force: true }); });
@@ -35,7 +35,7 @@ test("a managed wake keeps native subagents off in argv and env; an unmanaged wa
 });
 
 test("the registry keeps managed across later hook writes", async (t) => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "managed-registry-"));
+  const dir = tempDir(t, "managed-registry-");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const label = sessionLabel(sessionId);
   const cfg = loadConfig({ AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "claude", AI_COLLAB_URL: "http://127.0.0.1:9", AI_COLLAB_STATE_DIR: dir, HOME: dir }, { session: label });

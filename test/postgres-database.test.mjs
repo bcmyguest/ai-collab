@@ -2,14 +2,14 @@
 // AI_COLLAB_PG_DATABASE so tests (and the children they spawn) point at ai_collab_test, and
 // ensureDatabase must create that database when it is missing.
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { ensureDatabase, pgReachable, pgUrl } from "../lib/postgres.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
-test("pgUrl honours AI_COLLAB_PG_DATABASE and defaults to ai_collab", () => {
-  const pw = path.join(mkdtempSync(path.join(os.tmpdir(), "aic-pgurl-")), "pg-password");
+test("pgUrl honours AI_COLLAB_PG_DATABASE and defaults to ai_collab", (t) => {
+  const pw = path.join(tempDir(t, "aic-pgurl-"), "pg-password");
   writeFileSync(pw, "test-password");
   assert.match(pgUrl({ AI_COLLAB_PG_PASSWORD_FILE: pw }), /\/ai_collab$/);
   assert.match(

@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { claudePermissionSetting } from "../lib/config.mjs";
 import { claudePermissionFor, startSession } from "../lib/start.mjs";
 import { runnerModeOfClaude } from "../runner/contract.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 // A config dir holding defaults.json (when given) and projects.json for one project rooted at a real folder.
 function fixture(defaults) {
-  const xdg = mkdtempSync(path.join(os.tmpdir(), "perm-xdg-"));
-  const root = mkdtempSync(path.join(os.tmpdir(), "perm-root-"));
-  const stateDir = mkdtempSync(path.join(os.tmpdir(), "perm-state-"));
+  const xdg = tempDir({ after }, "perm-xdg-");
+  const root = tempDir({ after }, "perm-root-");
+  const stateDir = tempDir({ after }, "perm-state-");
   mkdirSync(path.join(xdg, "ai-collab"), { recursive: true });
   writeFileSync(path.join(xdg, "ai-collab", "projects.json"), JSON.stringify([{ root, project: "demo" }]));
   if (defaults !== undefined) writeFileSync(path.join(xdg, "ai-collab", "defaults.json"), JSON.stringify(defaults));

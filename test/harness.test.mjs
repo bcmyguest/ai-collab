@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { agentHarness } from "../lib/agent-guard.mjs";
 import { limitFallback } from "../lib/builder.ts";
 import { loadConfig, START_DEFAULT, startDefaultSetting } from "../lib/config.mjs";
@@ -11,9 +10,10 @@ import { FALLBACK_MODEL, formatHarnessModel, harnessOfBinary, parseHarnessModel 
 import { getPattern, listPatterns } from "../lib/patterns.mjs";
 import { harnessOfCommand } from "../lib/schedule-session.mjs";
 import { parseMember } from "../lib/teams.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 function withDefaults(value) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-harness-"));
+  const home = tempDir({ after }, "ai-collab-harness-");
   mkdirSync(path.join(home, "ai-collab"), { recursive: true });
   writeFileSync(path.join(home, "ai-collab", "defaults.json"), JSON.stringify(value));
   return { home, env: { XDG_CONFIG_HOME: home, HOME: home } };
@@ -68,8 +68,8 @@ test("the fallback model is one constant that every built-in default reuses", ()
   assert.deepEqual(CURSOR_FALLBACK, { harness: "cursor", model: FALLBACK_MODEL });
 });
 
-test("a stale team with an unparseable member is marked invalid and breaks no other pattern", () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-stale-team-"));
+test("a stale team with an unparseable member is marked invalid and breaks no other pattern", (t) => {
+  const home = tempDir(t, "ai-collab-stale-team-");
   const env = { HOME: home, XDG_CONFIG_HOME: path.join(home, ".config") };
   const root = path.join(home, "repo");
   mkdirSync(root);

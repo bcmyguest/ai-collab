@@ -1,17 +1,17 @@
 // defaults.json "readsThroughRunCode": CLI read commands from an agent session exit 3 with the run_code program to run.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { runCli } from "../lib/cli.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const CLI = fileURLToPath(new URL("../scripts/ai-collab.mjs", import.meta.url));
 
 function setupEnv({ setting = true, openshell = true, extra = {} } = {}) {
-  const home = mkdtempSync(path.join(tmpdir(), "ai-collab-crcf-"));
+  const home = tempDir({ after }, "ai-collab-crcf-");
   const config = path.join(home, ".config");
   mkdirSync(path.join(config, "ai-collab"), { recursive: true });
   writeFileSync(path.join(config, "ai-collab", "defaults.json"), JSON.stringify(setting === null ? {} : { readsThroughRunCode: setting }));

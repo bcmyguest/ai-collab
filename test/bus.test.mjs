@@ -1,11 +1,11 @@
 // The local message bus: SQLite durability, retention, since-semantics, attachments, auth, streams.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
-import os from "node:os";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { createBusServer, openBusStore, openMemoryStore, parseSince } from "../lib/bus.mjs";
 import { pollCached, publish, streamEvents } from "../lib/transport.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const TOKEN = "tk_bus_test";
 
@@ -31,7 +31,7 @@ test("parseSince reads the four forms clients send", () => {
 });
 
 test("sqlite events survive a store restart and prune at retention", async (t) => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-bus-"));
+  const dir = tempDir(t, "ai-collab-bus-");
   const file = path.join(dir, "bus.db");
   const first = await bus({ file, filesDir: path.join(dir, "files") });
   t.after(() => first.close());
@@ -57,7 +57,7 @@ test("since selects: all, id, unknown id, and unix time", async (t) => {
 });
 
 test("attachments round-trip: PUT stores the file, GET serves it, the event carries the url", async (t) => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-bus-"));
+  const dir = tempDir(t, "ai-collab-bus-");
   const b = await bus({ file: path.join(dir, "bus.db"), filesDir: path.join(dir, "files") });
   t.after(() => b.close());
   const png = Buffer.from("89504e470d0a1a0a", "hex");

@@ -1,13 +1,13 @@
 // The Cursor adapter's OpenShell staging against the fake openshell: worktree, CLI tree, auth, and the round trip on close.
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, statSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readlinkSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { EventType } from "@ag-ui/core";
 import cursorAdapter, { prepareSandbox, sandboxName } from "../runner/adapters/cursor.mjs";
 import { ensureSandbox } from "../runner/sandbox.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CURSOR = path.join(HERE, "helpers", "fake-cursor-agent.mjs");
@@ -17,7 +17,7 @@ chmodSync(OPENSHELL, 0o755);
 
 // A host install tree shaped like the real one: <home>/cursor-agent/versions/<v>/{cursor-agent,node}.
 function lab({ auth = true } = {}) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-cursor-sandbox-"));
+  const home = tempDir({ after }, "ai-collab-cursor-sandbox-");
   const root = path.join(home, "repo");
   const version = path.join(home, "cursor-agent", "versions", "2026.11.22-fake");
   for (const dir of [root, version]) mkdirSync(dir, { recursive: true });

@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
 import { checkTeamText, listPatterns } from "../lib/patterns.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 function setup() {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-dot-prompt-"));
+  const home = tempDir({ after }, "ai-collab-dot-prompt-");
   const root = path.join(home, "repo");
   mkdirSync(root);
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });

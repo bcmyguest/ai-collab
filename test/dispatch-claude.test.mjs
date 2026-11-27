@@ -1,8 +1,7 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
@@ -12,6 +11,7 @@ import { claimInbox, sendMessage } from "../lib/inbox.mjs";
 import { processStart } from "../lib/process.mjs";
 import { writeState } from "../lib/state.mjs";
 import { createDispatcher } from "../web/server/dispatch.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const CLAUDE_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
 
@@ -33,7 +33,7 @@ async function setup(t, { gate = "accept", listen = true } = {}) {
     id: address, sessionId: CLAUDE_ID, cwd: "/tmp", harness: "claude", event: "PreToolUse", seenAt: Date.now(), pid: process.pid, pidStart: processStart(process.pid),
   });
   const frames = [];
-  const socketPath = join(mkdtempSync(join(tmpdir(), "dc-sock-")), "s.sock");
+  const socketPath = join(tempDir({ after }, "dc-sock-"), "s.sock");
   t.after(() => rmSync(socketPath, { force: true }));
   // The registry cwd is /tmp; Claude's transcript for it is projects/-tmp/<session>.jsonl under this home.
   const transcript = transcriptPath(home, "/tmp", CLAUDE_ID);

@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { productionDistDir } from "../lib/ui-build-output.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 test("UI builds publish only successful releases and retain previous output", (t) => {
-  const root = mkdtempSync(path.join(os.tmpdir(), "ai-collab-ui-build-"));
+  const root = tempDir(t, "ai-collab-ui-build-");
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const web = path.join(root, "web");
   const builds = path.join(web, ".next-builds");

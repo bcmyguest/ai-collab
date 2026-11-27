@@ -1,9 +1,8 @@
 // A team's OpenShell sandbox is released when its sessions end: after a runner restart, and when the run reaches done.
-import { test } from "node:test";
+import { test, after as afterAll } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import cursorAdapter, { sandboxName } from "../runner/adapters/cursor.mjs";
@@ -13,6 +12,7 @@ import { runStatus } from "../lib/pattern-runs.mjs";
 import { saveTeamText } from "../lib/patterns.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { makeRunner, setup, until } from "./helpers/runner-ctx.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CURSOR = path.join(HERE, "helpers", "fake-cursor-agent.mjs");
@@ -23,7 +23,7 @@ const ID = ["-c", "user.name=Test", "-c", "user.email=test@example.invalid"];
 const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...ID, ...args], { encoding: "utf8" }).trim();
 
 function lab() {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-team-release-"));
+  const home = tempDir({ after: afterAll }, "ai-collab-team-release-");
   const root = path.join(home, "repo");
   const version = path.join(home, "cursor-agent", "versions", "2026.11.22-fake");
   for (const dir of [root, version]) mkdirSync(dir, { recursive: true });
@@ -134,7 +134,12 @@ async function cursorRunner(fake) {
   return t;
 }
 
-test("closing a session the runner restored after a restart releases its sandbox", async () => {
+test("closing a session the runner restored after a restart releases its sandbox", async (testCtx) => {
+  // The first runner still lives here, so its close races the second's landing and may keep a sandbox-back dir.
+  const tmp = tempDir(testCtx, "ai-collab-team-tmp-");
+  const savedTmp = process.env.TMPDIR;
+  process.env.TMPDIR = tmp;
+  testCtx.after(() => { process.env.TMPDIR = savedTmp; });
   const fake = await startFakeNtfy();
   const t = await cursorRunner(fake);
   const first = makeRunner(t, [cursorAdapter({ env: t.env })]);

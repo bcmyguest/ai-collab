@@ -1,13 +1,12 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { openDurable } from "../runner/durable.mjs";
 import { listenControl, route } from "../runner/control.mjs";
 import { readScheduleRuns, readSchedules } from "../web/server/schedules.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
-const tmp = () => mkdtempSync(path.join(os.tmpdir(), "ai-collab-runs-"));
+const tmp = () => tempDir({ after }, "ai-collab-runs-");
 
 test("the durable store lists a schedule's ticks and refuses an unknown schedule with 404", async () => {
   const durable = openDurable(path.join(tmp(), "runner.db"), { now: () => 600_000 });

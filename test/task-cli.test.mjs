@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { runCli } from "../lib/cli.mjs";
 import { readStore, taskStoreFile } from "../lib/tasks.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const SESSION = "0123456789abcdef";
 
 function project({ session } = {}) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-task-cli-"));
+  const home = tempDir({ after }, "ai-collab-task-cli-");
   const root = path.join(home, "repo");
   mkdirSync(root);
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });

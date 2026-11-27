@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { writeFileSync } from "node:fs";
 import path from "node:path";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { addProgress, addTask, createFileBackend, ownTask, writeStore } from "../lib/tasks.mjs";
 import { taskBoard } from "../web/server/task-board.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const NOW = Date.parse("2026-11-22T00:00:00Z");
 const OWNER = "claude#0123456789abcdef";
 
 function backendWith(build) {
-  const file = path.join(mkdtempSync(path.join(os.tmpdir(), "task-board-")), "demo.json");
+  const file = path.join(tempDir({ after }, "task-board-"), "demo.json");
   const doc = { v: 1, tasks: [] };
   build(doc);
   writeStore(file, doc);
@@ -47,7 +47,7 @@ test("taskBoard names the active session of a task's team run", () => {
   assert.equal(taskBoard(backend, [], []).tasks[0].runSession, undefined);
 });
 
-test("taskBoard marks an owner not seen as offline and reports an invalid store", () => {
+test("taskBoard marks an owner not seen as offline and reports an invalid store", (t) => {
   const backend = backendWith((doc) => {
     addTask(doc, { id: "one", title: "One" }, NOW);
     ownTask(doc, "one", OWNER, NOW);
@@ -55,7 +55,7 @@ test("taskBoard marks an owner not seen as offline and reports an invalid store"
   assert.equal(taskBoard(backend, []).tasks[0].ownerOnline, false);
   assert.deepEqual(taskBoard(null), { tasks: [] });
 
-  const broken = path.join(mkdtempSync(path.join(os.tmpdir(), "task-board-")), "demo.json");
+  const broken = path.join(tempDir(t, "task-board-"), "demo.json");
   writeFileSync(broken, "{");
   assert.match(taskBoard(createFileBackend(broken)).error, /invalid JSON/);
   assert.deepEqual(taskBoard(createFileBackend(broken)).tasks, []);

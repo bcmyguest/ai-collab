@@ -1,21 +1,21 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { test } from "node:test";
+import { test, after as afterAll } from "node:test";
 import { fileURLToPath } from "node:url";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { addTask, ownTask, readStore, taskStoreFile, writeStore } from "../lib/tasks.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const LABEL = "aabbccddeeff0123";
 const OTHER = "1122334455667788";
 
 test("a progress post from the owner session lands on its building task only", { timeout: 15000 }, async (t) => {
   const fake = await startFakeNtfy();
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-task-progress-"));
+  const home = tempDir({ after: afterAll }, "ai-collab-task-progress-");
   const root = path.join(home, "repo");
   mkdirSync(root);
   mkdirSync(path.join(home, "config", "ai-collab"), { recursive: true });
@@ -79,7 +79,7 @@ async function waitFor(check, ms = 5000) {
 
 test("a corrupt task store does not fail or repeat a progress post", { timeout: 15000 }, async (t) => {
   const fake = await startFakeNtfy();
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-task-broken-"));
+  const home = tempDir(t, "ai-collab-task-broken-");
   const root = path.join(home, "repo");
   mkdirSync(root);
   mkdirSync(path.join(home, "config", "ai-collab"), { recursive: true });

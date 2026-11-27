@@ -1,13 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync } from "node:fs";
-import os from "node:os";
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { openDurable } from "../runner/durable.mjs";
 import { deliveryWorkflow } from "../runner/delivery.mjs";
 import { handedOff, handOff } from "../lib/stop.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SESSION = { id: "claude#abc", harness: "claude", sessionId: "t1", online: true, peer: "claude", session: "abc" };
@@ -61,8 +61,8 @@ function depsWith(log, scfg) {
   };
 }
 
-test("a runner killed after the hand-off but before the push checkpoint marks the message instead of releasing it", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-cut-handoff-"));
+test("a runner killed after the hand-off but before the push checkpoint marks the message instead of releasing it", async (t) => {
+  const dir = tempDir(t, "ai-collab-cut-handoff-");
   const scfg = { stateDir: dir, project: "demo", peer: "claude", session: "abc" };
   mkdirSync(path.join(dir, "demo", "sessions", "claude"), { recursive: true });
   const file = path.join(dir, "runner.db");

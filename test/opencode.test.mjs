@@ -1,8 +1,7 @@
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { setImmediate as tick } from "node:timers/promises";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
@@ -14,6 +13,7 @@ import { approvalOutput, approvalRequest } from "../lib/approvals.mjs";
 import { contextTokens } from "../lib/usage.mjs";
 import { sessionName } from "../lib/sessions/registry.ts";
 import { appendContent, createPlugin, permissionInput, resultOutput, runHook, stepTokens } from "../lib/opencode-plugin.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const DIR = "/work/verify-opencode";
 const ROOT = "ses_0123456789abcdefABCDEFghij";
@@ -260,7 +260,7 @@ test("opencode runHook against the real hook: SessionStart publishes status and 
   t.after(() => fake.close());
   const env = peerEnv(fake, { peer: "opencode", AI_COLLAB_PEERS: "opencode,bob" });
   await sendMessage(loadConfig({ ...env, AI_COLLAB_PEER: "bob" }), "opencode", "ping from bob");
-  const cwd = mkdtempSync(join(tmpdir(), "verify-opencode-"));
+  const cwd = tempDir(t, "verify-opencode-");
   const out = await runHook({ hook_event_name: "SessionStart", session_id: ROOT, cwd, source: "startup" }, { env, node: process.execPath, timeoutMs: 15_000 });
   assert.match(out.hookSpecificOutput.additionalContext, /body="ping from bob"/);
   assert.match(out.hookSpecificOutput.additionalContext, /Your sender identity is opencode#/);
@@ -272,7 +272,7 @@ test("opencode runHook: Stop with a waiting message blocks with it; a missing no
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
   const env = peerEnv(fake, { peer: "opencode", AI_COLLAB_PEERS: "opencode,bob" });
-  const cwd = mkdtempSync(join(tmpdir(), "verify-opencode-"));
+  const cwd = tempDir(t, "verify-opencode-");
   mkdirSync(cwd, { recursive: true });
   await sendMessage(loadConfig({ ...env, AI_COLLAB_PEER: "bob" }), "opencode", "late news");
   const out = await runHook({ hook_event_name: "Stop", session_id: ROOT, cwd, stop_hook_active: false }, { env, node: process.execPath, timeoutMs: 15_000 });

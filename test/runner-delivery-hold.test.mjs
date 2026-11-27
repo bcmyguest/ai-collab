@@ -1,9 +1,8 @@
 // The runner's delivery workflow leaves a message for a Claude session's Stop hook hold: no push while the hold runs.
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
@@ -15,6 +14,7 @@ import { writeState } from "../lib/state.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { deliveryWorkflow } from "../runner/delivery.mjs";
 import { createRunner } from "../runner/runner.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const CLAUDE_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c";
 const LABEL = sessionLabel(CLAUDE_ID);
@@ -46,7 +46,7 @@ function deps(log, overrides = {}) {
 }
 
 function durableIn(t) {
-  const dir = mkdtempSync(join(tmpdir(), "ai-collab-hold-"));
+  const dir = tempDir({ after }, "ai-collab-hold-");
   const durable = openDurable(join(dir, "runner.db"));
   t.after(async () => { await durable.close(); rmSync(dir, { recursive: true, force: true }); });
   return durable;
@@ -66,7 +66,7 @@ async function claudeSession(t) {
   writeState(join(registry, `${ADDRESS}.json`), {
     id: ADDRESS, sessionId: CLAUDE_ID, cwd: "/tmp", harness: "claude", event: "Stop", seenAt: Date.now(), pid: process.pid, pidStart: processStart(process.pid),
   });
-  const socketPath = join(mkdtempSync(join(tmpdir(), "rdh-sock-")), "s.sock");
+  const socketPath = join(tempDir({ after }, "rdh-sock-"), "s.sock");
   const server = createServer(() => {});
   await new Promise((resolve) => server.listen(socketPath, resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));

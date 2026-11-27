@@ -1,22 +1,22 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
-import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { runCli } from "../lib/cli.mjs";
 import { OPS } from "../lib/surfaces/ops.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const LABEL = "aabbccddeeff0123";
 
 // A runner stand-in on a unix socket that records each request and answers one reply.
 async function fakeRunner(t, reply = { status: 201, body: { status: "started", session: "codex#0011223344556677", cwd: "/repo" } }) {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "spawn-runner-"));
+  const dir = tempDir({ after }, "spawn-runner-");
   const socket = path.join(dir, "runner.sock");
   const seen = [];
   const server = http.createServer((req, res) => {

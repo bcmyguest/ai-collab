@@ -1,14 +1,14 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { loadProjects, sessionLabel } from "../lib/config.mjs";
 import { resetScopeProbe, scopeAvailable, systemdRunOnPath } from "../lib/sessions/scope.ts";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const base = "http://127.0.0.1:8795";
 const ID = "77777777-2222-4333-8444-555555555555";
@@ -50,7 +50,7 @@ function unitEnv(files) {
 
 // A directory layout for one test: a bin with an optional systemd-run and a fake claude, a root, and a record file.
 function setupFiles({ systemdRun = true } = {}) {
-  const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-scope-ui-"));
+  const home = tempDir({ after }, "ai-collab-scope-ui-");
   const bin = path.join(home, "bin");
   const root = path.join(home, "project");
   const record = path.join(home, "record.jsonl");

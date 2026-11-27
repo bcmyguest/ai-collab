@@ -1,10 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { openDurable } from "../runner/durable.mjs";
 import { deliveryWorkflow } from "../runner/delivery.mjs";
+import { tempDir } from "./helpers/tmp.mjs";
 
 const SESSION = { id: "opencode#abc", harness: "opencode", sessionId: "ses_1", online: true, peer: "opencode", session: "abc" };
 const message = { id: "m1", from: "claude#def", body: "hi", expectReply: true };
@@ -33,12 +32,12 @@ function deps(pushes, busy) {
   };
 }
 
-test("a busy target is not sent another copy of an unanswered expect_reply message", async () => {
+test("a busy target is not sent another copy of an unanswered expect_reply message", async (t) => {
   const pushes = [];
   const freeAt = Date.now() + 300;
   // The target works on the first copy for 300 ms, 15 redeliver periods.
   const busy = async () => Date.now() < freeAt;
-  const durable = openDurable(path.join(mkdtempSync(path.join(os.tmpdir(), "ai-collab-busy-")), "runner.db"));
+  const durable = openDurable(path.join(tempDir(t, "ai-collab-busy-"), "runner.db"));
   durable.register("delivery", deliveryWorkflow(deps(pushes, busy)));
   const output = await durable.startWorkflowOnce("delivery", "delivery:opencode#abc:m1", { project: "demo", address: SESSION.id, message });
   await durable.close();
@@ -48,7 +47,7 @@ test("a busy target is not sent another copy of an unanswered expect_reply messa
   assert.ok(pushes[1].at >= freeAt, "second copy went out while the target was busy");
 });
 
-test("each target poll probes the live set once and passes it to ready and busy", async () => {
+test("each target poll probes the live set once and passes it to ready and busy", async (t) => {
   const pushes = [];
   const start = Date.now();
   const probes = [];
@@ -66,7 +65,7 @@ test("each target poll probes the live set once and passes it to ready and busy"
     busy: async (session, active) => { busyArgs.push(active); return Date.now() < start + 200; },
     acked: async () => false,
   };
-  const durable = openDurable(path.join(mkdtempSync(path.join(os.tmpdir(), "ai-collab-busy-")), "runner.db"));
+  const durable = openDurable(path.join(tempDir(t, "ai-collab-busy-"), "runner.db"));
   durable.register("delivery", deliveryWorkflow(deps2));
   await durable.startWorkflowOnce("delivery", "delivery:opencode#abc:m1", { project: "demo", address: SESSION.id, message });
   await durable.close();
@@ -75,12 +74,12 @@ test("each target poll probes the live set once and passes it to ready and busy"
   assert.ok(busyArgs.every((active, i) => active === readyArgs[i + 1]), "busy got a different probe than ready");
 });
 
-test("an answer during the busy wait ends redelivery with no further copy", async () => {
+test("an answer during the busy wait ends redelivery with no further copy", async (t) => {
   const pushes = [];
   const start = Date.now();
   const busy = async () => Date.now() < start + 300;
   const answerAt = start + 100;
-  const durable = openDurable(path.join(mkdtempSync(path.join(os.tmpdir(), "ai-collab-busy-")), "runner.db"));
+  const durable = openDurable(path.join(tempDir(t, "ai-collab-busy-"), "runner.db"));
   durable.register("delivery", deliveryWorkflow({ ...deps(pushes, busy), acked: async () => Date.now() >= answerAt }));
   const output = await durable.startWorkflowOnce("delivery", "delivery:opencode#abc:m1", { project: "demo", address: SESSION.id, message });
   await durable.close();
