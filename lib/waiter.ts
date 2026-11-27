@@ -106,7 +106,7 @@ export async function runWaiter(cfg: Cfg, {
       if (!messages.length) return undefined;
       // A Stop hook that started as this waiter claimed holds the session now, and Claude queues a rewake until it ends.
       if (settleMs > 0) await delay(settleMs, undefined, { signal }).catch(() => {});
-      if (!held() && !signal?.aborted) return messages;
+      if (!held()) return messages;
       const kept = await handOff(cfg, messages).then(() => true, () => false);
       return kept ? undefined : messages;
     },
