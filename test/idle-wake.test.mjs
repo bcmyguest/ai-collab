@@ -218,7 +218,28 @@ test("a message that lands as the Stop hook starts reaches the hold, not the wai
   assert.doesNotMatch(end.err, /landed at stop/);
 });
 
-test("the Stop hook is marked as running before it records the session", { timeout: 30000 }, async (t) => {
+for (const offset of [0, 100, 200]) {
+  test(`a message ${offset} ms after Stop reaches the hold while the waiter started at Stop replaces the prompt's waiter`, { timeout: 40000 }, async (t) => {
+    const { env, cfg, operator } = await setup(t);
+    await requestWait(cfg);
+    const waiterEnv = { ...env, AI_COLLAB_WAITER_MAX_S: "30" };
+    const old = startRewake(t, waiterEnv, { hook_event_name: "UserPromptSubmit", session_id: SESSION_ID, cwd: "/tmp" });
+    await delay(1500);
+    const hook = runHook(env, ["--host", "claude"], { hook_event_name: "Stop", session_id: SESSION_ID, cwd: "/tmp", stop_hook_active: false });
+    const fresh = startRewake(t, waiterEnv, { hook_event_name: "Stop", session_id: SESSION_ID, cwd: "/tmp" });
+    await delay(offset);
+    await sendMessage(operator, `claude#${LABEL}`, `raced at ${offset}`, { operatorThread: true });
+    const r = await hook;
+    assert.match(r.out, new RegExp(`raced at ${offset}`), "the hold delivers the message");
+    const replaced = await old.done;
+    assert.notEqual(replaced.code, 2, "the replaced waiter did not wake the session");
+    assert.equal(fresh.exited, null, "the waiter started at Stop did not wake the session");
+    const end = await fresh.kill();
+    assert.doesNotMatch(end.err + replaced.err, new RegExp(`raced at ${offset}`));
+  });
+}
+
+test("the Stop hook is marked as running before it records the session",{ timeout: 30000 }, async (t) => {
   const { env, cfg } = await setup(t);
   await requestWait(cfg);
   const record = join(cfg.stateDir, cfg.project, "registry", `claude#${LABEL}.json`);

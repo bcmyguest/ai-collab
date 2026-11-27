@@ -66,6 +66,17 @@ async function released(held: () => boolean, ms: number, signal?: AbortSignal): 
   return signal?.aborted ? "aborted" : "event";
 }
 
+// Resolves true once held() turns true within ms; it ignores the abort signal.
+async function holdStarts(held: () => boolean, ms: number): Promise<boolean> {
+  const end = Date.now() + ms;
+  while (!held()) {
+    const left = end - Date.now();
+    if (left <= 0) return false;
+    await delay(Math.min(100, left));
+  }
+  return true;
+}
+
 function wakeText(cfg: Cfg, messages: InboxMessage[]): string {
   return [
     formatInbox(messages, { session: cfg.session, peer: cfg.peer }),
@@ -105,8 +116,11 @@ export async function runWaiter(cfg: Cfg, {
       const messages = await readInbox(cfg, { limit: 4, strict: false, claim }).catch(() => []);
       if (!messages.length) return undefined;
       // A Stop hook that started as this waiter claimed holds the session now, and Claude queues a rewake until it ends.
+      const settled = Date.now() + settleMs;
       if (settleMs > 0) await delay(settleMs, undefined, { signal }).catch(() => {});
-      if (!held()) return messages;
+      // A waiter started at Stop aborts this one mid-settle, before that Stop hook has marked itself: keep watching.
+      const holding = held() || (signal?.aborted === true && await holdStarts(held, Math.max(settled - Date.now(), STOP_GRACE_MS)));
+      if (!holding) return messages;
       const kept = await handOff(cfg, messages).then(() => true, () => false);
       return kept ? undefined : messages;
     },
