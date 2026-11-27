@@ -126,7 +126,12 @@ export async function exportSpans(spans: Span[], { endpoint, timeoutMs = EXPORT_
 }
 
 // The tool name of a stream-json tool_call: its one key without "ToolCall" (shellToolCall -> shell), or an MCP tool's own name.
-function streamTool(toolCall: Record<string, unknown>): { name: string; body: unknown } {
+interface ToolCallParts { name: string; body: unknown }
+interface RunRecorder { address?: string; model?: string; usage: Usage | null; status: string; toolStart(id: string, name: string, input?: unknown): void; toolEnd(id: string, info?: { name?: string; input?: unknown; failed?: boolean }): void; spans(options?: { status?: string }): Span[] }
+interface StreamTrace { line(text: string): void; spans(options?: { exitStatus?: string }): Span[] }
+interface TraceStreamHandle { finish(options?: { exitStatus?: string }): Promise<boolean> }
+
+function streamTool(toolCall: Record<string, unknown>): ToolCallParts {
   const key = Object.keys(toolCall ?? {})[0] ?? "tool";
   const body = toolCall?.[key] ?? {};
   const args = (body as Record<string, unknown>)?.args as Record<string, unknown> | undefined;
@@ -143,15 +148,7 @@ export function runRecorder({ address, role, model, now = Date.now }: {
   role?: string;
   model?: string;
   now?: () => number;
-} = {}): {
-  address?: string;
-  model?: string;
-  usage: Usage | null;
-  status: string;
-  toolStart(id: string, name: string, input?: unknown): void;
-  toolEnd(id: string, info?: { name?: string; input?: unknown; failed?: boolean }): void;
-  spans(options?: { status?: string }): Span[];
-} {
+} = {}): RunRecorder {
   const startMs = now();
   const open = new Map<string, { name: string; startMs: number; input?: unknown }>();
   const tools: ToolCall[] = [];
@@ -181,10 +178,7 @@ export function streamTrace({ address, role, model, now = Date.now }: {
   role?: string;
   model?: string;
   now?: () => number;
-} = {}): {
-  line(text: string): void;
-  spans(options?: { exitStatus?: string }): Span[];
-} {
+} = {}): StreamTrace {
   const rec = runRecorder({ address, role, model, now });
   let sessionId = "";
   let shownModel = "";
@@ -193,13 +187,13 @@ export function streamTrace({ address, role, model, now = Date.now }: {
       let event: Record<string, unknown>;
       try { event = JSON.parse(text); } catch { return; }
       if (!event || typeof event !== "object") return;
-      if (typeof event.session_id === "string") sessionId ||= event.session_id as string;
-      if (event.type === "system" && typeof event.model === "string") shownModel = event.model as string;
+      if (typeof event.session_id === "string") sessionId ||= event.session_id;
+      if (event.type === "system" && typeof event.model === "string") shownModel = event.model;
       if (event.type === "tool_call" && typeof event.call_id === "string") {
         const { name, body } = streamTool(event.tool_call as Record<string, unknown>);
         const bodyArgs = body as Record<string, unknown>;
         if (event.subtype === "started") rec.toolStart(event.call_id, name, bodyArgs.args);
-        if (event.subtype === "completed") rec.toolEnd(event.call_id, { name, input: bodyArgs.args, failed: Boolean(bodyArgs.result) && !Boolean((bodyArgs.result as Record<string, unknown>)?.success) });
+        if (event.subtype === "completed") rec.toolEnd(event.call_id, { name, input: bodyArgs.args, failed: Boolean(bodyArgs.result) && !(bodyArgs.result as Record<string, unknown>)?.success });
       }
       if (event.type === "result") {
         rec.status = event.is_error ? "error" : "ok";
@@ -219,9 +213,7 @@ export function streamTrace({ address, role, model, now = Date.now }: {
 export function traceStream(stream: Readable, { env = process.env, out, ...options }: {
   env?: NodeJS.ProcessEnv;
   out?: { write(chunk: string): void };
-} & Parameters<typeof streamTrace>[0]): {
-  finish(options?: { exitStatus?: string }): Promise<boolean>;
-} {
+} & Parameters<typeof streamTrace>[0]): TraceStreamHandle {
   const trace = streamTrace(options);
   let rest = "";
   stream.setEncoding("utf8");

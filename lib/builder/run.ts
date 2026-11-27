@@ -2,6 +2,7 @@
 import * as S from "../sandbox.ts";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
+import type { Readable } from "node:stream";
 import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -145,7 +146,7 @@ export async function runSandboxAgent(state: BuilderState, paths: BuilderPaths, 
   const stop = () => child.kill("SIGTERM");
   signal?.addEventListener("abort", stop, { once: true });
   // A Cursor builder's stream-json passes through to the log and becomes its OTLP trace (model, tokens, tool calls).
-  const trace = cursor ? traceStream(child.stdout!, { env, out: process.stdout, role: "builder", model: state.model }) : null;
+  const trace = cursor ? traceStream(child.stdout as Readable, { env, out: process.stdout, role: "builder", model: state.model }) : null;
   let errorTail = "";
   let cursorLimit: string | undefined;
   let usageLimit = false;

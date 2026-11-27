@@ -34,14 +34,14 @@ export const USAGE = `usage: ai-collab analyze run-code [--since ISO] [--until I
 
 // Official list prices in USD per million tokens (docs/research/api-cost-estimate-2026-11-22.md).
 // Claude: [input, 5-minute cache write, 1-hour cache write, cache read, output].
-const CLAUDE: Record<string, number[]> = {
+const CLAUDE = {
   "claude-opus-5-5": [4, 5, 8, 0.2, 20], "claude-sonnet-5-5": [2, 2.5, 4, 0.1, 10],
   "claude-fable-5-2": [8, 10, 16, 0.2, 40], "claude-fable-5-1": [10, 12.5, 20, 0.25, 50],
 };
 const HAIKU_LOW = [0.1, 0.125, 0.2, 0.01, 0.5];
 const HAIKU_HIGH = [0.5, 0.625, 1, 0.05, 2.5];
 // OpenAI: [short, long (> 272K input)] each [input, cached input, output].
-const OPENAI: Record<string, number[][]> = {
+const OPENAI = {
   "gpt-6-astra": [[10, 1, 50], [20, 2, 75]], "gpt-6-sol": [[2, 0.2, 10], [4, 0.4, 15]], "gpt-6-luna": [[0.1, 0.01, 0.5], [0.2, 0.02, 0.75]],
   "gpt-6.1-sol": [[2, 0.1, 10], [4, 0.2, 15]], "gpt-6.1-terra": [[1, 0.05, 5], [2, 0.1, 7.5]], "gpt-6.2-astra": [[8, 0.4, 40], [16, 0.8, 60]],
   "gpt-6.2-sol": [[2, 0.1, 10], [4, 0.2, 15]], "gpt-5.6-sol": [[4, 0.4, 20], [8, 0.8, 30]], "gpt-5.6-terra": [[2, 0.2, 12], [4, 0.4, 18]],
@@ -75,7 +75,7 @@ interface Flags {
   help?: boolean; agents: string[]; since?: string; until?: string; cutover?: string; partial?: string;
   out?: string; jsonl?: string; tz?: string; "otlp-export"?: string; "phoenix-project"?: string; schedules?: string;
 }
-interface Writer { write(chunk: string): unknown }
+interface Writer { write(chunk: string): void }
 export interface AnalyzeIo {
   env?: NodeJS.ProcessEnv; stdout?: Writer; stderr?: Writer;
   journal?: (win: SourceWindow) => string; sources?: Source[];
@@ -91,11 +91,11 @@ export function priceTurn(harness: string, model: string, tok: TokenCounts | nul
   if (!tok) return null;
   const { input, cw5, cw1, cacheRead, output } = tok;
   if (harness === "claude") {
-    const p = model === "claude-haiku-5-5" ? (input + cw5 + cw1 + cacheRead > 100000 ? HAIKU_HIGH : HAIKU_LOW) : CLAUDE[model];
+    const p = model === "claude-haiku-5-5" ? (input + cw5 + cw1 + cacheRead > 100000 ? HAIKU_HIGH : HAIKU_LOW) : CLAUDE[model as keyof typeof CLAUDE];
     return p ? (input * p[0] + cw5 * p[1] + cw1 * p[2] + cacheRead * p[3] + output * p[4]) / 1e6 : null;
   }
-  if (harness === "codex" && OPENAI[model]) {
-    const [short, long] = OPENAI[model];
+  if (harness === "codex" && OPENAI[model as keyof typeof OPENAI]) {
+    const [short, long] = OPENAI[model as keyof typeof OPENAI];
     const p = input + cacheRead > 272000 ? long : short;
     return (input * p[0] + cacheRead * p[1] + output * p[2]) / 1e6;
   }
@@ -114,7 +114,7 @@ export function isoWeek(ts: number, tz: string): string {
   const d = new Date(Date.UTC(+parts.year, +parts.month - 1, +parts.day));
   const day = d.getUTCDay() || 7;
   d.setUTCDate(d.getUTCDate() + 4 - day);
-  const week = Math.ceil((((d as unknown as number) - Date.UTC(d.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7);
+  const week = Math.ceil(((d.getTime() - Date.UTC(d.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7);
   return `${d.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
 }
 
@@ -137,7 +137,7 @@ export function parseSelectors(values: string[]): Selector[] {
 
 /** Selectors of one kind are alternatives; every kind present must match. */
 export function matchesSelectors(row: { agent: string; harness: string; role: string }, selectors: Selector[]): boolean {
-  const field: Record<string, string> = { address: row.agent, harness: row.harness, role: row.role };
+  const field = { address: row.agent, harness: row.harness, role: row.role };
   for (const type of new Set(selectors.map((s) => s.type))) {
     if (!selectors.some((s) => s.type === type && s.value === field[type])) return false;
   }
@@ -277,7 +277,9 @@ export function renderReport(rows: Row[], { cut, tz, since, until, scheduleRuns 
     const g = new Map<string, ScheduleRun[]>();
     for (const r of scheduleRuns) {
       const k = `${r.name}|${periodOf(r.ts, cut)}`;
-      (g.get(k) || g.set(k, []).get(k) as ScheduleRun[]).push(r);
+      const list = g.get(k) ?? [];
+      g.set(k, list);
+      list.push(r);
     }
     out.push(table(["Schedule", "Period", "Runs", "Failed", "Median", "p90", "Mean"],
       [...g.entries()].map(([k, rs]) => [...k.split("|"), rs] as [string, string, ScheduleRun[]]).sort((a, b) => a[0].localeCompare(b[0]) || order(a[1], b[1])).map(([name, period, rs]) => {
@@ -308,9 +310,9 @@ export function renderReport(rows: Row[], { cut, tz, since, until, scheduleRuns 
   return out.join("\n") + "\n";
 }
 
-function spanOf(t: Annotated): { traceId: string; spanId: string; name: string; startMs: number; endMs: number; attrs: Record<string, string | number> } {
+function spanOf(t: Annotated) {
   const id = createHash("sha256").update(`${t.agent}|${t.ts}|${t.model}`).digest("hex");
-  const attrs: Record<string, string | number> = {
+  const attrs = {
     "openinference.span.kind": "LLM", "llm.model_name": t.model, "session.id": t.agent, "ai_collab.agent": t.agent, "ai_collab.harness": t.harness, "ai_collab.role": t.role,
     "ai_collab.period": t.period, "ai_collab.tool_calls": t.calls.length,
     "ai_collab.read_calls": t.calls.filter((c) => READ_PATHS.includes(c.path as string)).length, "ai_collab.bypass_reads": t.calls.filter((c) => c.path === "bypass_read").length,
@@ -364,7 +366,8 @@ export async function analyze(args: string[], io: AnalyzeIo = {}): Promise<numbe
   let o: Flags;
   let selectors: Selector[];
   let cut: Cut;
-  let win: { since: number | null; until: number | null };
+  interface TimeWindow { since: number | null; until: number | null }
+let win: TimeWindow;
   try {
     o = parseFlags(args);
     if (o.help) { out.write(`${USAGE}\n`); return 0; }
