@@ -56,8 +56,10 @@ export interface OpenOptions {
   // The harness settings for permissionMode, from PERMISSION_TABLE in runner/contract.mjs.
   permission: Record<string, unknown>;
   place: Place;
-  // Child environment: lib/sessions/launch.ts childEnv plus AI_COLLAB_OWNED=<harness>.
+  // Child environment: lib/sessions/launch.ts childEnv plus AI_COLLAB_OWNED=<harness> (and AI_COLLAB_MANAGED=1 for a managed Claude or Codex session).
   env: Record<string, string>;
+  // Set for a session ai-collab started (team, pattern, builder, spawn): the adapter turns native subagents off.
+  managed?: boolean;
 }
 
 // Projection in $AI_COLLAB_STATE_DIR/<project>/owned/<label>.json; the durable log is the source of truth.
@@ -74,6 +76,11 @@ export interface OwnedRecord {
   place: Place;
   patternRun?: string;
   model?: string;
+  // A session ai-collab started; native subagents stay off on resume.
+  managed?: boolean;
+  // The address that spawned this session (spawn_agent), and its depth below the first parent.
+  parent?: string;
+  spawn?: { depth: number };
   permissionMode: PermissionMode;
   status: SessionStatus;
   run: { id: string; startedAt: number } | null;
