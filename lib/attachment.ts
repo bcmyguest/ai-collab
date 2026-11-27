@@ -2,10 +2,16 @@
 import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import { basename, extname, isAbsolute } from "node:path";
 
+export interface Attachment {
+  filename: string;
+  data: Buffer;
+}
+
 export const ATTACHMENT_MAX_BYTES = 15 * 1024 * 1024;
 export const TEXT_ATTACHMENT_MAX_BYTES = 1024 * 1024;
 export const IMAGE_ATTACHMENT_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp"];
-const SIGNATURES = {
+// oxlint-disable-next-line quality/no-known-value-widening -- looked up by a runtime file extension
+const SIGNATURES: Record<string, number[][]> = {
   ".png": [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
   ".jpg": [[0xff, 0xd8, 0xff]],
   ".jpeg": [[0xff, 0xd8, 0xff]],
@@ -13,7 +19,7 @@ const SIGNATURES = {
   ".webp": [[0x52, 0x49, 0x46, 0x46]],
 };
 
-export function imageAttachment(filename, data) {
+export function imageAttachment(filename: string, data: Buffer): Attachment {
   const name = basename(filename);
   const ext = extname(name).toLowerCase();
   if (!IMAGE_ATTACHMENT_EXTENSIONS.includes(ext)) throw new Error("attachment must be a .png, .jpg, .jpeg, .gif or .webp image");
@@ -26,11 +32,11 @@ export function imageAttachment(filename, data) {
 }
 
 /** Reads an image for upload; throws with a reason the agent can act on. */
-export function readAttachment(path) {
+export function readAttachment(path: unknown): Attachment {
   if (typeof path !== "string" || !isAbsolute(path)) throw new Error("attachment must be an absolute file path");
   const ext = extname(path).toLowerCase();
   if (!IMAGE_ATTACHMENT_EXTENSIONS.includes(ext)) throw new Error("attachment must be a .png, .jpg, .jpeg, .gif or .webp image");
-  let fd;
+  let fd: number;
   try { fd = openSync(path, "r"); } catch { throw new Error("attachment file is unreadable"); }
   try {
     const stat = fstatSync(fd);
@@ -45,7 +51,7 @@ export function readAttachment(path) {
 }
 
 /** Hook-generated text (a large tool result) as a .txt upload; reads no file, so the image-only rule above still holds. */
-export function textAttachment(text, filename = "output.txt") {
+export function textAttachment(text: unknown, filename = "output.txt"): Attachment {
   const data = Buffer.from(String(text), "utf8");
   if (data.length <= TEXT_ATTACHMENT_MAX_BYTES) return { filename, data };
   const marker = `\n…[truncated ${data.length - TEXT_ATTACHMENT_MAX_BYTES} bytes]`;

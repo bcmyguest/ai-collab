@@ -1,7 +1,11 @@
 /** `ai-collab mission ...`: read and edit MISSION.md, the PM's mission file in git, read at every scheduled tick. */
 import { MISSION_FILE, editMission, missionPath, readMission, renderMission } from "./mission.ts";
+import type { Cfg } from "./messaging.ts";
 
-const USAGE = {
+type Writer = { write: (chunk: string) => void };
+
+// oxlint-disable-next-line quality/no-known-value-widening -- looked up by the runtime subcommand
+const USAGE: Record<string, string> = {
   show: "usage: mission show",
   check: "usage: mission check",
   "add-goal": 'usage: mission add-goal "<text>"',
@@ -13,7 +17,7 @@ const USAGE = {
 };
 
 // The 0-based index of a 1-based position in a list, as the argv names it; NaN for anything else.
-function position(arg, length) {
+function position(arg: string, length: number): number {
   const n = Number(arg);
   return Number.isInteger(n) && n >= 1 && n <= length ? n - 1 : NaN;
 }
@@ -21,8 +25,8 @@ function position(arg, length) {
 const HELP_FLAGS = ["--help", "-h"];
 const helpText = () => ["usage: ai-collab mission <command>", ...Object.values(USAGE)].join("\n");
 
-export async function mission([sub = "show", ...rest], { env, cfg, out, err }) {
-  const fail = (key) => { err.write(`ai-collab: ${USAGE[key] ?? helpText()}\n`); return 1; };
+export async function mission([sub = "show", ...rest]: string[], { env, cfg, out, err }: { env: NodeJS.ProcessEnv; cfg: Cfg; out: Writer; err: Writer }): Promise<number> {
+  const fail = (key: string): number => { err.write(`ai-collab: ${USAGE[key] ?? helpText()}\n`); return 1; };
   // `mission --help` and `mission <command> --help` print usage instead of adding "--help" to a goal.
   if (sub === "help" || HELP_FLAGS.includes(sub)) { out.write(`${helpText()}\n`); return 0; }
   if (rest.some((a) => HELP_FLAGS.includes(a))) {
@@ -80,7 +84,7 @@ export async function mission([sub = "show", ...rest], { env, cfg, out, err }) {
       return 0;
     }
   } catch (error) {
-    err.write(`ai-collab: mission ${sub}: ${error.message}\n`);
+    err.write(`ai-collab: mission ${sub}: ${(error as Error).message}\n`);
     return 1;
   }
   return fail(sub);

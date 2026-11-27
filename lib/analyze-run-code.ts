@@ -11,7 +11,7 @@ import { sessionLabel } from "./config.mjs";
 import { sessionOfCommand } from "./schedule-session.mjs";
 import { READ_PATHS, claudeSource, codexSource, cursorSource, journalSource, opencodeSource, taskStoreSource } from "./analyze-sources.ts";
 import type { Source, SourceResult, SourceWindow, ScheduleRun, TaskItem, TokenCounts, Turn } from "./analyze-sources.ts";
-import { encodeTraceRequest } from "./analyze-otlp.mjs";
+import { encodeTraceRequest } from "./analyze-otlp.ts";
 
 export const DEFAULT_CUTOVER = "2026-11-23T03:15:00Z";
 export const DEFAULT_PARTIAL = "2026-11-23T02:30:00Z";

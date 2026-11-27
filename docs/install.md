@@ -8,7 +8,7 @@ Each harness also needs a server to talk to: write `defaults.json` or `projects.
 
 ## Claude Code
 
-`setup` copies only the package files (`package.json` `files`, at most 50 MB; `lib/plugin-copy.mjs`) to `~/.local/share/ai-collab/claude-plugin` and adds that folder as the marketplace. Never add the checkout itself: Claude copies the whole marketplace folder into `~/.claude/plugins/cache`, and a checkout with agent worktrees once made a 42 GB cache.
+`setup` copies only the package files (`package.json` `files`, at most 50 MB; `lib/plugin-copy.ts`) to `~/.local/share/ai-collab/claude-plugin` and adds that folder as the marketplace. Never add the checkout itself: Claude copies the whole marketplace folder into `~/.claude/plugins/cache`, and a checkout with agent worktrees once made a 42 GB cache.
 
 ```sh
 claude plugin marketplace add ~/.local/share/ai-collab/claude-plugin
@@ -18,7 +18,7 @@ claude plugin install ai-collab@ai-collab
 To ship a change from the checkout, refresh the copy; new sessions and `/reload-plugins` read it:
 
 ```sh
-node -e 'import("./lib/plugin-copy.mjs").then(m => m.packPluginCopy(process.cwd(), process.env.HOME + "/.local/share/ai-collab/claude-plugin"))'
+node -e 'import("./lib/plugin-copy.ts").then(m => m.packPluginCopy(process.cwd(), process.env.HOME + "/.local/share/ai-collab/claude-plugin"))'
 ```
 
 Or load the directory as a plugin, for example during development:

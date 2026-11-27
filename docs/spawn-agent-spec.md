@@ -79,7 +79,7 @@ export function noSubagentArgs(harness: Harness): string[];
 export function noSubagentEnv(harness: Harness, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv;
 /** Whether a hook call starts a native subagent: Claude PreToolUse Agent/Task, Cursor subagentStart, OpenCode task. */
 export function nativeSubagentCall(host: string, key: string, msg: Record<string, unknown>): boolean;
-/** The deny output for that host, in the shape storeReadDenial uses (lib/store-read.mjs). */
+/** The deny output for that host, in the shape storeReadDenial uses (lib/store-read.ts). */
 export function subagentDenial(host: string): Record<string, unknown>;
 ```
 
@@ -359,7 +359,7 @@ Fix:
 
 1. `spawn_agent` registers every child itself: the runner writes `registry/<harness>#<label>.json` with `event: "owned"` and `parent` (B4 step 2), whatever the plugin does. Nothing in this path relies on the OpenCode hook.
 2. `childHint` stops recommending shell starts (B10).
-3. Shell starts from a managed session are refused: in `lib/agent-guard.mjs`, add `export function managedShellStartRefusal(argv, env)`. It returns `SUBAGENT_DENIED` when `agentHarness(argv)` is non-empty and `env.AI_COLLAB_MANAGED === "1"`, else `""`. Call it wherever `assertHostAgent` runs (`lib/job.ts`) and in the Claude and Cursor shell gates beside the existing harness-flag check. Operator sessions are untouched.
+3. Shell starts from a managed session are refused: in `lib/agent-guard.ts`, add `export function managedShellStartRefusal(argv, env)`. It returns `SUBAGENT_DENIED` when `agentHarness(argv)` is non-empty and `env.AI_COLLAB_MANAGED === "1"`, else `""`. Call it wherever `assertHostAgent` runs (`lib/job.ts`) and in the Claude and Cursor shell gates beside the existing harness-flag check. Operator sessions are untouched.
 4. If H1 holds, also make `listSessions` keep a peer that is a harness name (`claude`, `codex`, `cursor`, `opencode`) even when `cfg.peers` omits it. This change touches `test/sessions*.test.mjs`; list it in the patch.
 
 Run the H1-H3 checks first and record the result on the board task.

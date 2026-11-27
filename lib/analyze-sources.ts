@@ -10,7 +10,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { READ_TOOLS } from "./code-run.mjs";
-import { commandSegments, isStoreBypass } from "./store-read.mjs";
+import { commandSegments, isStoreBypass } from "./store-read.ts";
 
 export const READ_PATHS = ["mcp_read", "cli_read", "run_code", "run_read_code"];
 

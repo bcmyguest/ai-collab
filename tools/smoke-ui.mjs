@@ -44,7 +44,7 @@ export async function phoneFixture({ homeSessions = false, inactive = false, kan
   fake.inject(broadcastTopic(names[0]), `Question from claude\n\nIMPORTANT, the agent waits for this answer: Use the new layout for #decision-first?\n\nReply in this topic: reply ${ids[0]} YOUR ANSWER`);
   fake.inject(broadcastTopic(names[1]), JSON.stringify({ v: 1, kind: "approval", from: "claude", harness: "claude",
     id: ids[1], tool: "Review", summary: "Publish the draft for #decision-second", expiresAt: Date.now() + 120_000 }));
-  const { writeState } = await import("../lib/state.mjs");
+  const { writeState } = await import("../lib/state.ts");
   const { claimInbox, parseEnvelope, replyToOperator } = await import("../lib/inbox.mjs");
   const cfg = projects.find(item => item.project === names[0]);
   const sessionId = "composer-fixture";
@@ -54,7 +54,7 @@ export async function phoneFixture({ homeSessions = false, inactive = false, kan
     id: address, sessionId, cwd: projectsConfig[0].root, harness: "claude", seenAt: Date.now(),
   });
   const sessions = [];
-  const { processStart } = await import("../lib/process.mjs");
+  const { processStart } = await import("../lib/process.ts");
   if (homeSessions) {
     for (const [index, name] of ["Trace reconnect", "", "Review notes"].entries()) {
       const sessionId = "jev-debugger-fixture-" + index;

@@ -11,12 +11,12 @@ const NEVER = /(^|\/)(node_modules|\.git|\.next[^/]*)(\/|$)/;
  * Copies only package.json's "files" list (plus the manifest, README and LICENSE) from root into dest, replacing dest.
  * Entries are paths or "dir/*.ext" globs, as npm pack reads them. Throws, leaving dest untouched, past PLUGIN_COPY_MAX_BYTES.
  */
-export function packPluginCopy(root, dest) {
-  const files = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).files ?? [];
+export function packPluginCopy(root: string, dest: string) {
+  const files: string[] = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).files ?? [];
   const tmp = `${dest}.tmp-${process.pid}`;
   fs.rmSync(tmp, { recursive: true, force: true });
   let bytes = 0;
-  const copy = (rel) => {
+  const copy = (rel: string): void => {
     const from = path.join(root, rel);
     if (!fs.existsSync(from)) return;
     fs.cpSync(from, path.join(tmp, rel), { recursive: true, filter: (src) => !NEVER.test(path.relative(root, src)) });
@@ -30,7 +30,7 @@ export function packPluginCopy(root, dest) {
         if (re.test(name) && fs.statSync(path.join(root, dir, name)).isFile()) copy(path.join(dir, name));
       }
     }
-    const walk = (dir) => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const p = path.join(dir, e.name); if (e.isDirectory()) walk(p); else bytes += fs.statSync(p).size; } };
+    const walk = (dir: string): void => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const p = path.join(dir, e.name); if (e.isDirectory()) walk(p); else bytes += fs.statSync(p).size; } };
     walk(tmp);
     if (bytes > PLUGIN_COPY_MAX_BYTES) throw new Error(`plugin copy is ${Math.round(bytes / 1048576)} MB, over the ${PLUGIN_COPY_MAX_BYTES / 1048576} MB limit; check package.json "files"`);
     fs.rmSync(dest, { recursive: true, force: true });

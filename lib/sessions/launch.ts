@@ -2,7 +2,7 @@
 import { execFile, spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync } from "node:fs";
 import { basename, delimiter, isAbsolute, join, resolve, sep } from "node:path";
-import { ALLOW_HOST_AGENT_ENV, hostAgentRefusal } from "../agent-guard.mjs";
+import { ALLOW_HOST_AGENT_ENV, hostAgentRefusal } from "../agent-guard.ts";
 import { claudePermissionSetting, listProjects, sessionLabel, startPlaceSetting } from "../config.mjs";
 import { REQUIRE_RUN_CODE_ENV, resolveCodeMode } from "../code-mode.mjs";
 import { SYSTEM_PROMPT_ENV } from "../machine-prompt.mjs";

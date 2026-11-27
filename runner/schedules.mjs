@@ -5,7 +5,7 @@ import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { configDir, listProjects, stateDir } from "../lib/config.mjs";
 import { MISSION_FILE, withMission } from "../lib/mission.ts";
-import { refreshPmWorkspace } from "../lib/pm-workspace.mjs";
+import { refreshPmWorkspace } from "../lib/pm-workspace.ts";
 import { withReview } from "../lib/pm-review.ts";
 import { isProjectPaused, PROJECT_PAUSED } from "../lib/project-pause.ts";
 import { harnessOfCommand, projectOfFolder, sessionOfCommand } from "../lib/schedule-session.mjs";
@@ -13,7 +13,7 @@ import { childEnv } from "../lib/start.mjs";
 import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.mjs";
 import { ROLE_ENV } from "../lib/cursor-trace.ts";
 import { scopeLaunch } from "../lib/sessions/scope.ts";
-import { agentHarness, hostAgentRefusal } from "../lib/agent-guard.mjs";
+import { agentHarness, hostAgentRefusal } from "../lib/agent-guard.ts";
 
 export const DEFAULT_TIMEOUT_SEC = 900;
 export const TAIL_CHARS = 2000;

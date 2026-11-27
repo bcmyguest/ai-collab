@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { MESSAGE_MAX_BYTES, autoDefaults, broadcastTopic } from "./config.mjs";
 import { fitApprovalEnvelope } from "./approval-card.mjs";
 import { approvalEnd } from "./operator.ts";
-import { deepLink } from "./deep-link.mjs";
+import { deepLink } from "./deep-link.ts";
 import { alertPriority, readAlertLevel } from "./alerts.mjs";
 import { publish } from "./messaging.ts";
 import { listModels } from "./models.mjs";
@@ -16,7 +16,7 @@ import { parseHarnessModel } from "./harness.ts";
 import { CURSOR_FALLBACK, OPENCODE_FALLBACK, REPLACEMENT_MAX, fallbackChain, replacementOptions, who } from "./limits.ts";
 import { listSessions } from "./sessions.mjs";
 import { listRuns } from "./pattern-runs.mjs";
-import { statePath, withLock, writeState } from "./state.mjs";
+import { statePath, withLock, writeState } from "./state.ts";
 import { readJson as readStoreJson, writeJson } from "./store.ts";
 import type { Cfg } from "./messaging.ts";
 

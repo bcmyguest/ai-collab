@@ -5,21 +5,45 @@
  * never reset: a clean one is fast-forwarded, a dirty one is left as it is.
  * The source repo is only read for its origin URL.
  */
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncOptionsWithStringEncoding } from "node:child_process";
 import { existsSync } from "node:fs";
 
-function gitEnv(base = process.env) {
-  const env = { ...base, GIT_TERMINAL_PROMPT: "0" };
+/** spawnSync-shaped runner; tests pass a fake to watch the argv. */
+export type GitRunner = (command: string, args: string[], options: SpawnSyncOptionsWithStringEncoding) =>
+  { status?: number | null; stdout?: string; stderr?: string; error?: Error } | null | undefined;
+
+interface GitResult {
+  status: number;
+  stdout: string;
+  stderr: string;
+}
+
+export interface PmWorkspaceResult {
+  ok: boolean;
+  dirty?: boolean;
+  cloned?: boolean;
+  detail: string;
+}
+
+export interface PmWorkspaceOptions {
+  source?: string;
+  run?: GitRunner;
+  log?: (detail: string) => void;
+  env?: NodeJS.ProcessEnv;
+}
+
+function gitEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...base, GIT_TERMINAL_PROMPT: "0" };
   for (const key of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX"]) delete env[key];
   return env;
 }
 
-function git(run, args, env) {
+function git(run: GitRunner, args: string[], env: NodeJS.ProcessEnv): GitResult {
   let result;
   try {
     result = run("git", args, { encoding: "utf8", env });
   } catch (error) {
-    return { status: 1, stdout: "", stderr: error.message };
+    return { status: 1, stdout: "", stderr: (error as Error).message };
   }
   if (!result || result.error) {
     return { status: result?.status ?? 1, stdout: result?.stdout || "", stderr: result?.error?.message || result?.stderr || "git failed" };
@@ -27,7 +51,7 @@ function git(run, args, env) {
   return { status: result.status ?? 1, stdout: result.stdout || "", stderr: result.stderr || "" };
 }
 
-function lastLine(result) {
+function lastLine(result: GitResult): string | undefined {
   return (result.stderr || result.stdout || `exit ${result.status}`).trim().split("\n").pop();
 }
 
@@ -36,7 +60,7 @@ function lastLine(result) {
  * Logs the reason when the clone is missing, dirty, or cannot fast-forward.
  * `run` is spawnSync-shaped so tests can watch the argv.
  */
-export function refreshPmWorkspace(dir, { source, run = spawnSync, log = () => {}, env = process.env } = {}) {
+export function refreshPmWorkspace(dir: string | undefined, { source, run = spawnSync, log = () => {}, env = process.env }: PmWorkspaceOptions = {}): PmWorkspaceResult {
   if (!dir || !source) {
     const detail = "pm workspace: no directory; left it";
     log(detail);

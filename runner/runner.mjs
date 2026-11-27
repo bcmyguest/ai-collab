@@ -11,7 +11,7 @@ import { DOT_EVENT_MAX } from "../lib/catalog/dot.ts";
 import { getPattern } from "../lib/patterns.mjs";
 import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, cutPatternEntry, cutPatternLeave, cutPatternRun, launchPatternRun, NOTE_MAX, preparePatternRun, RUN_ID, runStatus, sessionsOfRun } from "../lib/pattern-runs.mjs";
 import { patternWorkflowId, runIdOfPatternWorkflow, runPatternWorkflow, seedPatternRun } from "../lib/pattern-workflow.mjs";
-import { statePath } from "../lib/state.mjs";
+import { statePath } from "../lib/state.ts";
 import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, parentAddress, receiptsTopic, sessionLabel, startPlaceSetting } from "../lib/config.mjs";
 import { RESERVE_MS, ATTACHMENT_BUDGET_MS, claimInbox, markDelivered, mentionsAgent, parseEnvelope, releaseOwned, reserveOwned, reservedMessage, sendMessage } from "../lib/messaging.ts";
 import { parsePhoneReply, parseQuestionText } from "../lib/questions.mjs";
@@ -37,7 +37,7 @@ import { isBlockingLimit, limitFromRunError } from "../lib/limits.ts";
 import { alertLimit } from "../lib/limit-alert.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, LIMIT, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, OPENSHELL_PERMISSION, permissionSettings, runnerModeOfClaude } from "./contract.mjs";
 import { sessionOfCommand } from "../lib/schedule-session.mjs";
-import { ALLOW_HOST_AGENT_ENV } from "../lib/agent-guard.mjs";
+import { ALLOW_HOST_AGENT_ENV } from "../lib/agent-guard.ts";
 import { noSubagentEnv } from "../lib/subagent-guard.ts";
 import { SPAWN_MAX_CHILDREN, SPAWN_MAX_DEPTH, spawnBriefNote, spawnReport, spawnSelfNote } from "../lib/spawn.ts";
 import { sandboxCapRefusal, sandboxName, teamSandboxName } from "./sandbox.mjs";
@@ -80,11 +80,11 @@ const SPAWN_IN_OPENSHELL = new Set(["cursor"]);
 const WORKTREE_ATTEMPTS = 4;
 
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
-// Approvals off outside OpenShell is an unguarded agent on the host (lib/agent-guard.mjs); only the operator's env lifts it.
+// Approvals off outside OpenShell is an unguarded agent on the host (lib/agent-guard.ts); only the operator's env lifts it.
 const hostFullAccess = (mode, place, env) => mode === "full-access" && place !== "openshell" && env[ALLOW_HOST_AGENT_ENV] !== "1"
   ? `full-access runs only in openshell; set ${ALLOW_HOST_AGENT_ENV}=1 on the runner to allow it on the host` : "";
 
-// This process as {pid, start}, the shape lib/process.mjs isRunning checks.
+// This process as {pid, start}, the shape lib/process.ts isRunning checks.
 function selfProcess() {
   try {
     const text = readFileSync("/proc/self/stat", "utf8");

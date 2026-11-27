@@ -1,6 +1,6 @@
 // The task board for the UI snapshot: each task with its owner's presence, its last progress line and its review packet.
 
-import { reviewIsCurrent } from "../../lib/build-review.mjs";
+import { reviewIsCurrent } from "../../lib/build-review.ts";
 
 // The board renders every card on each push; one branch-tip read per checkout per window is enough for a stale badge.
 const TIP_TTL_MS = 2000;

@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { agentHarness } from "../lib/agent-guard.mjs";
+import { agentHarness } from "../lib/agent-guard.ts";
 import { listProjects, stateDir } from "../lib/config.mjs";
 import { builderPolicy, replayable, parseRecordedCall, sharedLibs, toolSources } from "../lib/builder.ts";
 import { projectOfFolder } from "../lib/schedule-session.mjs";
