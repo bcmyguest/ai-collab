@@ -513,7 +513,8 @@ export async function replyToOperator(cfg: Cfg, id: string, body: string, { atta
     throw new Error("Enter 1–4000 characters");
   }
   const topic = inboxTopic(cfg.project, cfg.peer);
-  const history = await pollCached(cfg, topic, "all");
+  // The newest end: a long inbox exceeds one bounded poll, and the reply target is recent.
+  const history = await pollCached(cfg, topic, "all", undefined, { tailBytes: POLL_MAX_BYTES });
   const original = parseEnvelope(history.find((event) => event.id === id)?.message);
   if (original?.kind !== "msg" || original.from !== "operator" || original.operatorThread !== true ||
       original.to !== cfg.peer || original.toSession !== cfg.session) {
