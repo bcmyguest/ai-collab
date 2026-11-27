@@ -36,7 +36,8 @@ import { isBlockingLimit, limitFromRunError } from "../lib/limits.ts";
 import { alertLimit } from "../lib/limit-alert.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, LIMIT, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, OPENSHELL_PERMISSION, permissionSettings, runnerModeOfClaude } from "./contract.mjs";
 import { sessionOfCommand } from "../lib/schedule-session.mjs";
-import { ALLOW_HOST_AGENT_ENV, MANAGED_ENV } from "../lib/agent-guard.mjs";
+import { ALLOW_HOST_AGENT_ENV } from "../lib/agent-guard.mjs";
+import { noSubagentEnv } from "../lib/subagent-guard.ts";
 import { SPAWN_MAX_CHILDREN, SPAWN_MAX_DEPTH, spawnBriefNote, spawnReport, spawnSelfNote } from "../lib/spawn.ts";
 import { sandboxCapRefusal, sandboxName, teamSandboxName } from "./sandbox.mjs";
 import { DELIVERY, deliveryWorkflow } from "./delivery.mjs";
@@ -174,7 +175,10 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   const adapterOf = (harness) => adapters.get(harness) || fail(400, `No ${harness} adapter is loaded`);
   // Spawns per parent between the child-cap check and the claim.
   const spawning = new Map();
-  const ownedEnv = (managed, harness) => ({ ...childEnv(env), ...(managed && MANAGED_ENV_HARNESSES.has(harness) ? { [MANAGED_ENV]: "1" } : {}) });
+  const ownedEnv = (managed, harness) => {
+    const base = childEnv(env);
+    return managed && MANAGED_ENV_HARNESSES.has(harness) ? { ...base, ...noSubagentEnv(harness, base) } : base;
+  };
   const find = (address) => sessions.get(address) || fail(404, "Unknown owned session");
 
   function save(s) {

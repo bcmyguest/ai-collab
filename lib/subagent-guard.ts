@@ -2,12 +2,14 @@
  * Native subagents and shell harness starts are off in sessions ai-collab starts (team and pattern members, builders,
  * spawned agents). The flags, env and hook denials per harness; docs/spawn-agent-spec.md Part A.
  */
-import { basename } from "node:path";
+import { randomBytes } from "node:crypto";
+import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import { MANAGED_ENV, SHELL_START_DENIED } from "./agent-guard.mjs";
-import { loadConfig } from "./config.mjs";
+import { loadConfig, stateDir } from "./config.mjs";
 import { harnessOfBinary, type Harness } from "./harness.ts";
 import { readOwned } from "./sessions/registry.ts";
-import { commandSegments, hookReadCall } from "./store-read.mjs";
+import { hookReadCall } from "./store-read.mjs";
 
 export { MANAGED_ENV, SHELL_START_DENIED };
 // Claude Code built-in subagent tool; "Task" is its legacy alias (SDK 0.3.330 BUILTIN_TOOL_NAMES).
@@ -22,10 +24,23 @@ export const OPENCODE_NO_SUBAGENTS = [{ action: "subagent", resource: "*", effec
 export const OPENCODE_NO_SUBAGENT_CONFIG = JSON.stringify({ permission: { subagent: "deny" } });
 export const SUBAGENT_DENIED = "Native subagents are off in sessions ai-collab starts. Use the ai-collab spawn_agent tool "
   + "(or `ai-collab spawn`); the child reports back to you by message.";
+// A managed start's single-use ticket: the first harness process to start a session with it owns it.
+export const MANAGED_TICKET_ENV = "AI_COLLAB_MANAGED_TICKET";
+export const MANAGED_START_REFUSED = "This harness inherited an ai-collab managed session's environment without a start ticket, "
+  + "so it was started from a managed session's shell. Use the ai-collab spawn_agent tool instead.";
+const TICKET = /^[0-9a-f]{32}$/;
+const TICKET_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 // Programs that run the next word as the command.
 const WRAPPERS = new Set(["env", "nohup", "exec", "command", "time", "setsid", "nice"]);
 // A harness run with only these arguments starts no session.
 const INFO_ARGS = new Set(["--version", "-v", "--help", "-h"]);
+// Subcommands that start no agent session, from each CLI's --help.
+const NO_SESSION_COMMANDS = new Map<string, Set<string>>([
+  ["claude", new Set(["mcp", "doctor", "config", "update", "install", "plugin", "setup-token", "auth", "migrate-installer"])],
+  ["codex", new Set(["login", "logout", "mcp", "completion", "features", "apply"])],
+  ["opencode", new Set(["models", "auth", "mcp", "upgrade", "stats", "export", "agent", "providers", "debug"])],
+  ["cursor", new Set(["login", "logout", "status", "mcp", "models", "update", "about"])],
+]);
 
 type Env = NodeJS.ProcessEnv;
 type HookMsg = Record<string, unknown>;
@@ -42,10 +57,46 @@ export function noSubagentArgs(harness: Harness): string[] {
   return [];
 }
 
-/** The extra env for a detached managed start: MANAGED_ENV=1, plus OPENCODE_CONFIG_CONTENT for opencode. */
+/** A new start ticket under the state dir that env names; old unused tickets are pruned. */
+export function mintManagedTicket(env: Env): string {
+  const dir = join(stateDir(env), "managed-tickets");
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const cutoff = Date.now() - TICKET_MAX_AGE_MS;
+  for (const file of readdirSync(dir)) {
+    try { if (statSync(join(dir, file)).mtimeMs < cutoff) rmSync(join(dir, file), { force: true }); } catch { /* raced */ }
+  }
+  const ticket = randomBytes(16).toString("hex");
+  writeFileSync(join(dir, `${ticket}.json`), "{}\n", { mode: 0o600, flag: "wx" });
+  return ticket;
+}
+
+/** Whether a SessionStart may proceed: unmanaged, a live owned record, or a ticket this harness process owns. */
+export function managedStartAllowed(env: Env, where: { cwd: string; host: string; session: string }, proc: { pid: number; start: string | null }): boolean {
+  if (!managedEnv(env)) return true;
+  const cfg = loadConfig(env, where);
+  if (cfg.enabled && "stateDir" in cfg) {
+    const record = readOwned(cfg, where.session) as { status?: unknown } | null;
+    if (record && record.status !== "ended") return true;
+  }
+  const ticket = env[MANAGED_TICKET_ENV] ?? "";
+  if (!TICKET.test(ticket)) return false;
+  const dir = join(stateDir(env), "managed-tickets");
+  try { readFileSync(join(dir, `${ticket}.json`)); } catch { return false; }
+  const owner = JSON.stringify({ pid: proc.pid, start: proc.start });
+  const bound = join(dir, `${ticket}.bound`);
+  try {
+    writeFileSync(bound, owner, { mode: 0o600, flag: "wx" });
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") return false;
+  }
+  try { return readFileSync(bound, "utf8") === owner; } catch { return false; }
+}
+
+/** The extra env for a managed start: MANAGED_ENV=1, a start ticket, plus OPENCODE_CONFIG_CONTENT for opencode. env is the child's. */
 export function noSubagentEnv(harness: Harness, env: Env): Env {
   const out: Env = { [MANAGED_ENV]: "1" };
-  if (harness !== "opencode") return out;
+  if (harness !== "opencode") return { ...out, [MANAGED_TICKET_ENV]: mintManagedTicket(env) };
   const current = env.OPENCODE_CONFIG_CONTENT;
   let config: Record<string, unknown> = {};
   if (current) {
@@ -54,7 +105,7 @@ export function noSubagentEnv(harness: Harness, env: Env): Env {
   }
   const permission = config.permission && typeof config.permission === "object" && !Array.isArray(config.permission) ? config.permission : {};
   out.OPENCODE_CONFIG_CONTENT = JSON.stringify({ ...config, permission: { ...permission, subagent: "deny" } });
-  return out;
+  return { ...out, [MANAGED_TICKET_ENV]: mintManagedTicket(env) };
 }
 
 /** Whether a hook call starts a native subagent: Claude PreToolUse Agent/Task, Cursor subagentStart, OpenCode task. */
@@ -66,6 +117,33 @@ export function nativeSubagentCall(host: string, key: string, msg: HookMsg): boo
   return false;
 }
 
+// A shell command's simple commands, split on ; & | and newlines outside quotes, env assignments stripped.
+export function shellSegments(command: string): string[] {
+  const out: string[] = [];
+  let current = "";
+  let quote = "";
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i];
+    if (quote) {
+      if (c === "\\" && quote === '"' && i + 1 < command.length) { current += c + command[++i]; continue; }
+      if (c === quote) quote = "";
+      current += c;
+    } else if (c === "\\" && i + 1 < command.length) {
+      current += c + command[++i];
+    } else if (c === '"' || c === "'") {
+      quote = c;
+      current += c;
+    } else if (";&|\n".includes(c)) {
+      out.push(current);
+      current = "";
+    } else {
+      current += c;
+    }
+  }
+  out.push(current);
+  return out.map((s) => s.trim().replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)+/, "")).filter(Boolean);
+}
+
 // The harness a shell segment runs, past env assignments and wrappers like nohup; "" for any other program.
 function segmentHarness(segment: string): string {
   const words = segment.split(/\s+/).map((w) => w.replace(/^["']|["']$/g, "")).filter(Boolean);
@@ -73,6 +151,7 @@ function segmentHarness(segment: string): string {
   if (words[0] === "timeout" && words.length > 2) words.splice(0, 2);
   const harness = words.length ? harnessOfBinary(basename(words[0])) : undefined;
   if (!harness) return "";
+  if (words.length > 1 && NO_SESSION_COMMANDS.get(harness)?.has(words[1])) return "";
   return words.length > 1 && words.slice(1).every((w) => INFO_ARGS.has(w)) ? "" : harness;
 }
 
@@ -83,7 +162,7 @@ export function shellHarnessStart(host: string, key: string, msg: HookMsg): bool
   if (!shell) return false;
   const call = hookReadCall(key, msg) as { input?: { command?: unknown } } | null;
   const command = typeof call?.input?.command === "string" ? call.input.command : "";
-  return commandSegments(command).some((segment: string) => segmentHarness(segment) !== "");
+  return shellSegments(command).some((segment) => segmentHarness(segment) !== "");
 }
 
 /** The deny output for that host, in the shape storeReadDenial uses (lib/store-read.mjs). */

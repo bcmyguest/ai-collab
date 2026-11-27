@@ -12,7 +12,12 @@ const sessionId = "00000000-abcd-1234-9876-0000000000aa";
 const exited = { pid: 4_194_000, pidStart: "1" };
 const host = { runner: { kind: "host" } };
 
-test("a managed wake keeps native subagents off in argv and env; an unmanaged wake does not", async () => {
+test("a managed wake keeps native subagents off in argv and env; an unmanaged wake does not", async (t) => {
+  // The wake env comes from process.env, so its start ticket lands under this temp state home.
+  const state = mkdtempSync(path.join(os.tmpdir(), "ai-collab-wake-state-"));
+  const saved = process.env.XDG_STATE_HOME;
+  process.env.XDG_STATE_HOME = state;
+  t.after(() => { if (saved === undefined) delete process.env.XDG_STATE_HOME; else process.env.XDG_STATE_HOME = saved; rmSync(state, { recursive: true, force: true }); });
   const claude = harnessCommand("wake", "claude", sessionId, false, { managed: true });
   assert.deepEqual(claude[1].slice(-3, -1), ["--settings", CLAUDE_NO_SUBAGENT_SETTINGS]);
   const codex = harnessCommand("wake", "codex", sessionId, false, { managed: true });

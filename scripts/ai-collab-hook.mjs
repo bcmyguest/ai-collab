@@ -34,8 +34,8 @@ import { REQUIRE_RUN_CODE_ENV } from "../lib/code-mode.mjs";
 import { readsThroughRunCode } from "../lib/code-run.mjs";
 import { storeReadDenial } from "../lib/store-read.mjs";
 import { recordSession, sessionName, standsDown } from "../lib/sessions/registry.ts";
-import { MANAGED_ENV, managedDenial } from "../lib/subagent-guard.ts";
-import { harnessProcess, isRunning } from "../lib/process.mjs";
+import { MANAGED_ENV, MANAGED_START_REFUSED, managedDenial, managedStartAllowed } from "../lib/subagent-guard.ts";
+import { harnessProcess, isRunning, processStart } from "../lib/process.mjs";
 import { CLAIM_SETTLE_MS, STOP_GRACE_MS, WAITER_MAX_S, runWaiter, takeWaiterSlot } from "../lib/waiter.ts";
 import { ON_DEMAND_LOADS, contextUsage, dropOnDemandFiles, readContext, recordInstructions, reportContext } from "../lib/usage.mjs";
 import { activityEvents, publishActivity } from "../lib/activity.ts";
@@ -239,6 +239,11 @@ async function main() {
     if (denied) return emit(denied);
   }
   if (argv.includes("--read-gate")) return emit({});
+  // Backstop for a shell start the command check misses (bash -c, npx): a managed env without a ticket stops the harness.
+  if ((key === "sessionstart" || key === "startup") && !argv.includes("--rewake")
+      && !managedStartAllowed(env, { cwd, host, session }, harnessProcess(host) ?? { pid: process.ppid, start: processStart(process.ppid) })) {
+    return emit({ continue: false, stopReason: MANAGED_START_REFUSED });
+  }
   // Every Cursor run, joined project or not, records its turn for the OTLP trace (lib/cursor-trace.ts); never awaited before output.
   traced = host === "cursor" ? hookTrace(msg, { env }).catch(() => null) : null;
   const cfg = loadConfig(env, { cwd, host, session });

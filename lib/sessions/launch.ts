@@ -229,7 +229,7 @@ export async function startSession(cfg: SessionCfg, { harness = "", prompt = "",
   if (requireRunCode) childVars[REQUIRE_RUN_CODE_ENV] = "1";
   // A session ai-collab starts (a team member) runs with native subagents off (lib/subagent-guard.ts).
   if (managed && START_HARNESSES.includes(harness as Harness)) {
-    try { Object.assign(childVars, noSubagentEnv(harness as Harness, env)); } catch (error) { return { status: "failed", detail: (error as Error).message }; }
+    try { Object.assign(childVars, noSubagentEnv(harness as Harness, childVars)); } catch (error) { return { status: "failed", detail: (error as Error).message }; }
   }
   const tree = place === "worktree" ? worktreeNames(harness, now()) : null;
   const folder = startFolder(root, origin);
