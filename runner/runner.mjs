@@ -12,8 +12,8 @@ import { getPattern } from "../lib/patterns.mjs";
 import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, cutPatternEntry, cutPatternLeave, cutPatternRun, launchPatternRun, NOTE_MAX, preparePatternRun, RUN_ID, runStatus, sessionsOfRun } from "../lib/pattern-runs.mjs";
 import { patternWorkflowId, runIdOfPatternWorkflow, runPatternWorkflow, seedPatternRun } from "../lib/pattern-workflow.mjs";
 import { statePath } from "../lib/state.mjs";
-import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, receiptsTopic, sessionLabel, startPlaceSetting } from "../lib/config.mjs";
-import { RESERVE_MS, ATTACHMENT_BUDGET_MS, claimInbox, markDelivered, mentionsAgent, parseEnvelope, releaseOwned, reserveOwned, reservedMessage } from "../lib/messaging.ts";
+import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, parentAddress, receiptsTopic, sessionLabel, startPlaceSetting } from "../lib/config.mjs";
+import { RESERVE_MS, ATTACHMENT_BUDGET_MS, claimInbox, markDelivered, mentionsAgent, parseEnvelope, releaseOwned, reserveOwned, reservedMessage, sendMessage } from "../lib/messaging.ts";
 import { parsePhoneReply, parseQuestionText } from "../lib/questions.mjs";
 import { replyDecision, APPROVAL_ID } from "../lib/approvals.mjs";
 import { formatInbox } from "../lib/format.mjs";
@@ -35,7 +35,8 @@ import { isBlockingLimit, limitFromRunError } from "../lib/limits.ts";
 import { alertLimit } from "../lib/limit-alert.mjs";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, LIMIT, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, OPENSHELL_PERMISSION, permissionSettings, runnerModeOfClaude } from "./contract.mjs";
 import { sessionOfCommand } from "../lib/schedule-session.mjs";
-import { ALLOW_HOST_AGENT_ENV } from "../lib/agent-guard.mjs";
+import { ALLOW_HOST_AGENT_ENV, MANAGED_ENV } from "../lib/agent-guard.mjs";
+import { SPAWN_MAX_CHILDREN, SPAWN_MAX_DEPTH, spawnBriefNote, spawnReport } from "../lib/spawn.ts";
 import { sandboxCapRefusal, sandboxName, teamSandboxName } from "./sandbox.mjs";
 import { DELIVERY, deliveryWorkflow } from "./delivery.mjs";
 import { publishApproval, publishApprovalEnd, publishEnded, publishEvent, publishReceipts } from "./publish.mjs";
@@ -67,6 +68,9 @@ const PUMP_BACKOFF_MAX_TICKS = 6;
 const STREAM_RETRY_MAX_MS = 30_000;
 const TEXT_MAX = 4000;
 const MODEL = /^[a-zA-Z0-9][a-zA-Z0-9._:/[\]-]{0,119}$/;
+// Harnesses whose adapter runs a child per managed session, so the managed env marks only that session.
+// OpenCode and Cursor share one process; their hooks read the owned record instead.
+const MANAGED_ENV_HARNESSES = new Set(["claude", "codex"]);
 
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
 // Approvals off outside OpenShell is an unguarded agent on the host (lib/agent-guard.mjs); only the operator's env lifts it.
@@ -167,7 +171,9 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
 
   const sessionCfg = (project, harness, label) => ({ ...configs.get(project), peer: harness, session: label });
   const adapterOf = (harness) => adapters.get(harness) || fail(400, `No ${harness} adapter is loaded`);
-  const ownedEnv = () => childEnv(env);
+  // Spawns per parent between the child-cap check and the claim.
+  const spawning = new Map();
+  const ownedEnv = (managed, harness) => ({ ...childEnv(env), ...(managed && MANAGED_ENV_HARNESSES.has(harness) ? { [MANAGED_ENV]: "1" } : {}) });
   const find = (address) => sessions.get(address) || fail(404, "Unknown owned session");
 
   function save(s) {
@@ -192,14 +198,14 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       case EventType.RUN_STARTED:
         r.status = "running";
         r.run = { id: e.runId, startedAt: now() };
-        s.patternReply = undefined;
+        s.lastReply = undefined;
         delete r.cut;
         save(s);
         break;
       case EventType.TEXT_MESSAGE_CHUNK:
-        if (r.patternRun && e.role === "assistant") {
-          const previous = s.patternReply?.id === e.messageId ? s.patternReply.text : "";
-          s.patternReply = { id: e.messageId, text: (previous + (e.delta ?? "")).slice(-4096) };
+        if ((r.patternRun || r.spawn) && e.role === "assistant") {
+          const previous = s.lastReply?.id === e.messageId ? s.lastReply.text : "";
+          s.lastReply = { id: e.messageId, text: (previous + (e.delta ?? "")).slice(-4096) };
         }
         break;
       case EventType.RUN_FINISHED:
@@ -211,7 +217,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
         if (e.type === EventType.RUN_ERROR) s.finished.set(e.metadata.aiCollab.runId, { outcome: "error", message: e.message, ...(r.builder && isBlockingLimit(limit) ? { usageLimit: true } : {}) });
         else {
           const outcome = e.outcome?.type ?? "success";
-          const handoff = outcome === "success" ? patternHandoff(s.patternReply?.text) : undefined;
+          const handoff = outcome === "success" ? patternHandoff(s.lastReply?.text) : undefined;
           s.finished.set(e.runId, { outcome, ...(handoff ? { handoff } : {}) });
         }
         s.wake();
@@ -277,7 +283,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     sessions.set(record.address, s);
     // A session restored after a restart has no handle: its adapter rebuilds the sandbox claim the restart lost.
     if (!holder.live && record.status !== "ended") {
-      try { adapters.get(record.harness)?.restore?.(record, contextFor(holder, record.harness, wf.signal), ownedEnv()); } catch (error) { log(`${record.harness}: could not restore ${record.address}: ${error.message}`); }
+      try { adapters.get(record.harness)?.restore?.(record, contextFor(holder, record.harness, wf.signal), ownedEnv(record.managed, record.harness)); } catch (error) { log(`${record.harness}: could not restore ${record.address}: ${error.message}`); }
     }
     return s;
   }
@@ -293,7 +299,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       // The owned record's /permission value first, else the registry entry's (setNextPermission), for this resume only.
       const cfg = configs.get(s.record.project);
       const claudePermission = s.record.claudePermission ?? (cfg ? nextPermission(cfg, { id: `${s.record.harness}#${s.record.label}`, label: s.record.label }) : undefined);
-      s.live = await adapter.resume({ ...s.record, ...(claudePermission ? { claudePermission } : {}) }, contextFor({ s }, s.record.harness, s.signal), ownedEnv(), staged);
+      s.live = await adapter.resume({ ...s.record, ...(claudePermission ? { claudePermission } : {}) }, contextFor({ s }, s.record.harness, s.signal), ownedEnv(s.record.managed, s.record.harness), staged);
       save(s);
       return s.live;
     })().finally(() => { s.resuming = null; });
@@ -337,6 +343,13 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     return { ended: reason };
   }
 
+  // A spawned child's run ended: its parent gets the result as a direct message from the child (lib/spawn.ts spawnReport).
+  async function reportToParent(s, finished) {
+    const text = finished?.outcome === "success" ? s.lastReply?.text ?? "" : finished?.message ?? "";
+    await sendMessage(s.cfg, s.record.parent, spawnReport(s.record.address, finished?.outcome ?? "unknown", text))
+      .catch((error) => log(`spawn report failed: ${error.message}`));
+  }
+
   // The folder a session runs in: the project root, a fresh worktree, or (OpenShell) a worktree the sandbox syncs.
   async function placeCwd(project, harness, place, patternRun) {
     let root;
@@ -377,7 +390,9 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
 
   // The durable session workflow: place → open → claim, then one run.send/run.wait pair per input until closed.
   async function sessionWorkflow(wf, input) {
-    const { project, harness, place, permissionMode, model, codeMode, taskId, patternRun, builder, continuation } = input;
+    const { project, harness, place, permissionMode, model, codeMode, taskId, patternRun, builder, continuation, managed, parent, spawn } = input;
+    // Fields a managed or spawned session adds to its owned record; none for an operator start.
+    const family = { ...(managed ? { managed: true } : {}), ...(parent ? { parent } : {}), ...(spawn ? { spawn } : {}) };
     checkOpenShellLaunch(harness, place, builder);
     const adapter = adapterOf(harness);
     const holder = { s: null, live: null };
@@ -401,10 +416,10 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
         openingLabel = childLabel;
         writeOwned(sessionCfg(project, harness, childLabel), {
           v: 1, label: childLabel, address: `${harness}#${childLabel}`, workflowId: wf.id, harness, nativeId, project, cwd, place, permissionMode,
-          ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode), ...(taskId ? { taskId } : {}), status: "starting", run: null, approvals: [], createdAt: now(),
+          ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode), ...(taskId ? { taskId } : {}), ...family, status: "starting", run: null, approvals: [], createdAt: now(),
         });
       };
-      const options = { project, cwd, place, permissionMode, permission: permissionSettings(harness, permissionMode, place).settings, env: ownedEnv(), beforeStart, ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode) };
+      const options = { project, cwd, place, permissionMode, permission: permissionSettings(harness, permissionMode, place).settings, env: ownedEnv(managed, harness), beforeStart, ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode), ...(managed ? { managed: true } : {}) };
       try {
         holder.live = await adapter.open(staged ? { ...options, cwd: staged.workdir, sandboxArgv: staged.argv } : options, contextFor(holder, harness, wf.signal));
       } catch (error) {
@@ -427,7 +442,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     const claim = await wf.step("claim", async () => {
       const record = {
         v: 1, label, address: `${harness}#${label}`, workflowId: wf.id, harness, nativeId: opened.nativeId, project, cwd, place, permissionMode,
-        ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode), ...(taskId ? { taskId } : {}), status: "idle", run: null, approvals: [], createdAt: now(),
+        ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode), ...(taskId ? { taskId } : {}), ...family, status: "idle", run: null, approvals: [], createdAt: now(),
       };
       try {
         if (continuation) wf.signal.throwIfAborted();
@@ -450,7 +465,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       return { ended: claim.failed };
     }
     const s = runtime(wf, readOwned(cfg, label) || fail(500, "owned record missing"), holder);
-    await recordSession(cfg, { id: opened.nativeId, cwd, harness, event: "owned", proc }).catch(() => {});
+    await recordSession(cfg, { id: opened.nativeId, cwd, harness, event: "owned", proc, ...(parent ? { parent } : {}) }).catch(() => {});
     if (!wf.replaying) await enqueuePublish(s, () => publishEvent(cfg, harness, { type: EventType.CUSTOM, name: NOTICE, value: `owned session started (${permissionMode})` }));
     claims.set(wf.id, s);
     const finishBuilder = (finished) => wf.step("builder.finish", async () => {
@@ -493,8 +508,17 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       }, { onCut: () => cut(null, "runner restarted before the harness accepted the input") });
       if (!sent.runId && !builder) continue;
       const interrupted = () => cut(sent.runId, "runner restarted");
-      const finished = sent.runId && await wf.step("run.wait",
-        () => builder && !s.live ? interrupted() : waitRun(s, sent.runId), { onCut: interrupted });
+      // A spawned child reports each finished run inside run.wait, so the step sequence (the DBOS golden) is unchanged.
+      const reports = Boolean(s.record.spawn && s.record.parent);
+      const finished = sent.runId && await wf.step("run.wait", async () => {
+        const done = builder && !s.live ? await interrupted() : await waitRun(s, sent.runId);
+        if (reports) await reportToParent(s, done);
+        return done;
+      }, { onCut: async () => {
+        const done = await interrupted();
+        if (reports) await reportToParent(s, { outcome: "interrupted" });
+        return done;
+      } });
       if (sent.resumeBuilder || finished?.resumeBuilder) {
         next = { text: builderResumePrompt(input.prompt), messageIds: [], system: true };
         continue;
@@ -822,8 +846,10 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   durable.register("session", sessionWorkflow);
 
   /** Starts an owned session; resolves {status:"started", session, nativeId, workflowId, detail}. */
-  async function start({ project, harness, prompt, model, place: named, permissionMode, claudePermission, codeMode, taskId, builder: builderId, system = true } = {}, patternRun, continuation) {
+  async function start({ project, harness, prompt, model, place: named, permissionMode, claudePermission, codeMode, taskId, builder: builderId, system = true, managed: managedInput, parent, spawn } = {}, patternRun, continuation) {
     if (!configs.has(project)) fail(400, "Unknown project");
+    const spawned = spawn === true;
+    const depth = spawned ? spawnDepth(parent) : 0;
     if (isProjectPaused(configs.get(project))) fail(409, PROJECT_PAUSED);
     const adapter = adapterOf(harness);
     const place = named ?? defaultPlace(harness);
@@ -831,17 +857,19 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     // OpenShell is the boundary: every harness there runs with approvals off, whatever mode the caller named.
     // An unnamed Claude start takes the configured claudePermissionMode when it names a runner mode.
     // Team, pattern and continuation starts default to auto; an instance setting replaces the team or configured one.
-    const scoped = Boolean(patternRun || continuation);
+    // A spawned child is a team member too: auto by default (docs/spawn-agent-spec.md, answer 6).
+    const scoped = Boolean(patternRun || continuation || spawned);
     const claude = harness === "claude" && place !== "openshell" && permissionMode === undefined ? claudePermissionFor(harness, configs.get(project), env, { setting: claudePermission ?? (scoped ? "auto" : undefined) }) : {};
     if (claude.error) fail(400, claude.error);
     if (claude.flag && !runnerModeOfClaude(claude.flag)) fail(400, `claudePermissionMode ${claude.flag} has no runner mode; use default, acceptEdits, auto or bypassPermissions`);
     const configuredMode = claude.flag ? runnerModeOfClaude(claude.flag) : null;
-    const mode = place === "openshell" ? OPENSHELL_PERMISSION : permissionMode ?? configuredMode ?? defaultPermission(harness, place);
+    const spawnMode = spawned && adapter.capabilities.permissionModes.includes("auto") ? "auto" : null;
+    const mode = place === "openshell" ? OPENSHELL_PERMISSION : permissionMode ?? configuredMode ?? spawnMode ?? defaultPermission(harness, place);
     if (!PERMISSION_MODES.includes(mode) || !adapter.capabilities.permissionModes.includes(mode)) fail(400, `${harness} does not support permission mode ${mode}`);
     const permission = permissionSettings(harness, mode, place);
     if (permission.error) fail(400, permission.error);
     if (hostFullAccess(mode, place, env)) fail(400, hostFullAccess(mode, place, env));
-    const checked = checkPrompt(prompt);
+    const checked = checkPrompt(spawned && typeof prompt === "string" ? spawnBriefNote(prompt, parent) : prompt);
     if (checked.error) fail(400, checked.error);
     if (model !== undefined && (typeof model !== "string" || !MODEL.test(model))) fail(400, "Invalid model name");
     if (codeMode !== undefined && parseCodeMode(codeMode) === undefined) fail(400, "codeMode must be on or off");
@@ -861,14 +889,20 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       const capped = await sandboxCapRefusal({ openshell: env.AI_COLLAB_OPENSHELL_BIN || "openshell", env, name: patternRun ? teamSandboxName(project, patternRun) : sandboxName(project) });
       if (capped) fail(409, capped);
     }
-    if (!patternRun && !builder && now() - lastStartAt < startGapMs) fail(429, "Wait 10 seconds between starts");
-    if (!patternRun && !builder) lastStartAt = now();
+    // Spawns skip the gap; the per-parent child cap bounds their rate.
+    if (!patternRun && !builder && !spawned && now() - lastStartAt < startGapMs) fail(429, "Wait 10 seconds between starts");
+    if (!patternRun && !builder && !spawned) lastStartAt = now();
+    if (spawned) {
+      if (liveChildren(parent) >= SPAWN_MAX_CHILDREN) fail(429, `this session already has ${SPAWN_MAX_CHILDREN} live spawned agents`);
+      spawning.set(parent, (spawning.get(parent) ?? 0) + 1);
+    }
+    const managed = Boolean(builder || patternRun || continuation || spawned || managedInput === true);
     const workflowId = `session-${randomUUID()}`;
     const claimed = claims.take(workflowId);
     const timer = new AbortController();
     const timeout = builder ? BUILDER_START_TIMEOUT_MS : START_TIMEOUT_MS;
     try {
-      const run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, system: Boolean(builder || patternRun) || system !== false, ...(continuation ? { continuation } : {}), ...(builder ? { builder } : {}), ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), codeMode: resolveCodeMode(codeMode, env) });
+      const run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, system: Boolean(builder || patternRun) || system !== false, ...(continuation ? { continuation } : {}), ...(builder ? { builder } : {}), ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), codeMode: resolveCodeMode(codeMode, env), ...(managed ? { managed: true } : {}), ...(spawned ? { parent, spawn: { depth } } : {}) });
       if (builder) watchBuilderFailure(workflowId, run);
       const ended = run.then((out) => fail(502, `${harness} session ended at once: ${out?.ended || "no reason"}`));
       ended.catch(() => {});
@@ -877,7 +911,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
         ended,
         delay(timeout, null, { signal: timer.signal }).then(() => fail(504, `${harness} did not open within ${timeout / 1000} s`)),
       ]);
-      return { status: "started", session: s.record.address, nativeId: s.record.nativeId, workflowId, ...(taskId ? { taskId } : {}), detail: `${harness} owned session started` };
+      return { status: "started", session: s.record.address, nativeId: s.record.nativeId, workflowId, ...(taskId ? { taskId } : {}), ...(spawned ? { cwd: s.record.cwd } : {}), detail: `${harness} owned session started` };
     } catch (error) {
       if (continuation && error.status === 504) await durable.cancel(workflowId);
       if (error.status) throw error;
@@ -885,7 +919,22 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     } finally {
       timer.abort();
       claims.drop(workflowId);
+      if (spawned) spawning.set(parent, spawning.get(parent) - 1);
     }
+  }
+
+  // A spawn's depth below its parent, refusing a bad parent and a chain past SPAWN_MAX_DEPTH.
+  function spawnDepth(parent) {
+    if (typeof parent !== "string" || parentAddress({ AI_COLLAB_PARENT: parent }) !== parent) fail(400, "Invalid parent address");
+    const depth = (sessions.get(parent)?.record.spawn?.depth ?? 0) + 1;
+    if (depth > SPAWN_MAX_DEPTH) fail(409, "spawn depth limit reached");
+    return depth;
+  }
+
+  // Spawned children of a parent that are live or still opening.
+  function liveChildren(parent) {
+    const live = [...sessions.values()].filter(({ record }) => record.parent === parent && record.spawn && record.status !== "ended").length;
+    return live + (spawning.get(parent) ?? 0);
   }
 
   async function continueBuilder({ project, taskId, harness }) {
