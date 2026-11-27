@@ -33,7 +33,7 @@ import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } 
 import { START_HARNESSES, availableHarnesses, availablePlaces, claudePermissionFor, defaultStartPlace, findExecutable, openshellHarnesses, openshellRunner, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
 import { codeModeDefault } from "../../lib/code-mode.mjs";
 import { cleanName } from "../../lib/sessions/registry.ts";
-import { REF_NAME_MAX, gitRunner, listBranches, listWorktrees, pickedWorktree, prHead } from "../../lib/sessions/git-refs.ts";
+import { REF_NAME_MAX, gitRunner, listBranches, listWorktrees, parseWorktreeList, pickedWorktree, prHead, refInputError } from "../../lib/sessions/git-refs.ts";
 import { listModels } from "../../lib/models.mjs";
 import { LIMIT_TOOL, chooseLimit, limitEndMessage, skipLimit } from "../../lib/limit-alert.ts";
 import { limitEndNotice } from "../../lib/start-limit.mjs";
@@ -79,6 +79,8 @@ const HOSTED_ACTIONS = new Set(["history", "messages", "send", "reply", "afk", "
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
 const PARENT = /^[a-z0-9-]{1,24}#[a-f0-9]{16}$/;
+// Bases tried in order when a thread names none, or its own no longer resolves.
+const THREAD_BASES = ["origin/HEAD", "main"];
 const STARTABLE_CACHE_MS = 60_000;
 const ANSWER_MAX_CHARS = 2000;
 const MODES = ["on", "off", "quiet"];
@@ -1501,6 +1503,47 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     }
   }
 
+  /**
+   * A thread's changes as plain text: its worktree against the merge-base with its base ref, uncommitted edits included.
+   * The worktree must be one git lists for the project checkout, so a stored path cannot point the diff elsewhere.
+   */
+  async function threadDiff(request) {
+    try {
+      caller(request);
+      if (hosted) reject(403, "Thread diffs are unavailable in hosted mode");
+      const query = new URL(request.url).searchParams;
+      const project = projectFor(query.get("project"));
+      const id = query.get("thread") ?? "";
+      if (!THREAD_ID.test(id)) reject(400, "Invalid thread id");
+      const thread = project.threads?.list().find(item => item.id === id);
+      if (!thread) reject(404, "Thread unavailable");
+      const root = taskRoot(project);
+      if (!root) reject(409, "The project checkout is unavailable");
+      const gitFile = findExecutable("git", env.PATH);
+      if (!gitFile) reject(409, "git is not installed");
+      const run = gitRunner(gitFile, env);
+      const listed = parseWorktreeList((await run(["worktree", "list", "--porcelain"], root)).stdout).map(row => row.path);
+      const tree = thread.worktree || root;
+      if (!listed.includes(tree)) reject(409, "The thread's worktree is not part of the project checkout");
+      let base = "";
+      for (const ref of [thread.baseRef, ...THREAD_BASES]) {
+        if (!ref || refInputError(ref, "base")) continue;
+        const found = await run(["merge-base", "--end-of-options", ref, "HEAD"], tree);
+        if (found.code === 0 && found.stdout.trim()) { base = found.stdout.trim(); break; }
+      }
+      if (!base) reject(409, "No base ref resolves for this thread");
+      const { stdout } = await runFile(gitFile, ["diff", "--no-ext-diff", "--no-textconv", base, "--"],
+        { cwd: tree, env, timeout: 10_000, maxBuffer: DIFF_MAX_BYTES }).catch(() => reject(422, "The thread diff is unavailable or larger than 4 MiB"));
+      return new Response(stdout, { headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-store",
+      } });
+    } catch (err) {
+      return json(err.status || 400, { error: err.message });
+    }
+  }
+
   // Branches or worktrees of the project checkout for the start toolbar, filtered and capped here; "#123" adds that PR's head.
   async function refs(request) {
     try {
@@ -2048,9 +2091,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     try {
       caller(request);
       const name = new URL(request.url).searchParams.get("runs");
-      if (name === null) return json(200, await readSchedules());
+      if (name === null) return json(200, await readSchedules({ socket: runnerSocket(env) }));
       if (!SCHEDULE_NAME.test(name)) reject(400, "Invalid schedule name");
-      return json(200, await readScheduleRuns(name, { env }));
+      return json(200, await readScheduleRuns(name, { env, socket: runnerSocket(env) }));
     } catch (err) {
       return json(err.status || 400, { error: err.message });
     }
@@ -2061,6 +2104,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     events,
     schedules,
     reviewDiff,
+    threadDiff,
     refs,
     file,
     handle,

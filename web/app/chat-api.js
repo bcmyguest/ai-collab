@@ -21,10 +21,11 @@ export function streamOf(selected) {
   const session = selected.level === "session" && Boolean(selected.session);
   if (selected.project && !home) stream.set("project", selected.project);
   if (session) stream.set("session", selected.session);
-  // The project chat reads activity for its completion and live rows; a session's timeline, raw view and subagents read it too.
+  // The project chat reads activity for its completion and live rows; a session's chat and its side panels read it too.
   const watching = selected.level === "project";
   const subagents = session && selected.tab === "subagents";
-  const inline = session && selected.tab === "activity";
+  // A session always shows its chat; the tab picks the panel beside it.
+  const inline = session;
   const raw = session && selected.tab === "raw";
   // Sessions with none picked lists the project's sessions under the selector.
   const listing = selected.level === "session" && !selected.session;

@@ -2,8 +2,8 @@ import { isTaskId } from "./task-tags.js";
 
 // Location hash → console selection: the level, project, session, view tab and subagent run a URL names.
 export const LEVELS = [["project", "Project"], ["session", "Sessions"], ["tasks", "Tasks"], ["patterns", "Teams"], ["compactions", "Compactions"]];
-// Views each level accepts in the hash: a session's timeline (activity), its subagents and raw activity; nothing else.
-export const TABS = { project: [], session: ["activity", "subagents", "raw"], tasks: [], patterns: [] };
+// Views each level accepts in the hash: a session's chat alone (activity), or beside its subagents, raw activity, diff or PR panel.
+export const TABS = { project: [], session: ["activity", "subagents", "raw", "diff", "pr"], tasks: [], patterns: [] };
 
 /**
  * The hash (without "#") for a selection; the inverse of parseSelection for the keys it keeps.
