@@ -108,7 +108,7 @@ The UI server's `POST /api/thread` takes `{project, op, ...}` with `op` one of `
 
 ## Migration
 
-On the next bus restart with `busStore: postgres`:
+On the next bus restart:
 
 1. `CREATE TABLE IF NOT EXISTS` for `threads`, `thread_sessions`, `thread_prs`, and `ALTER TABLE events ADD COLUMN IF NOT EXISTS thread_id`. Existing rows keep `thread_id` NULL.
 2. The backfill reads every registered project's registry and owned records and inserts threads and memberships. It deletes nothing and edits no session file.

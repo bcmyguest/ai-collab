@@ -10,6 +10,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { productionDistDir } from "./ui-build-output.mjs";
 import { configDir } from "./config.mjs";
+import { pgReachable } from "./postgres.mjs";
 import { readJson } from "./store.ts";
 import { PLUGIN_COPY_MAX_BYTES, packPluginCopy } from "./plugin-copy.ts";
 
@@ -209,6 +210,7 @@ export async function setup(argv: string[] = [], { env = process.env, home = env
     defaults = { url: `http://127.0.0.1:${port}`, tokenFile, peers: found.map(h => h.peer).join(",") };
     writePrivate(defaultsFile, `${JSON.stringify(defaults, null, 2)}\n`);
     say(`bus: ${installBus({ root, home, run, which, env, port })}; token in ${tokenFile}`);
+    if (!(await pgReachable(env))) say("bus: stores events in Postgres, which is not running: run `ai-collab postgres up`, then `systemctl --user restart ai-collab-bus`");
   }
   say("projects: every git repo joins under its folder name; add an empty .ai-collab-off file to keep a repo out");
 
