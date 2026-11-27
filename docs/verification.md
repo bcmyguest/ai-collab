@@ -5,7 +5,7 @@ Four fast-check models run random command sequences against the real code and co
 | Check | Code under test | Invariants |
 |---|---|---|
 | `test/pattern-run.model.test.mjs` | `lib/pattern-runs.mjs`, `lib/pattern-workflow.mjs` on the durable engine | At most one live token per instance; every handoff applied once, logged with seq 1..n; visits, arrivals and suspensions match the model; at most one launch per instance; a run ends in a terminal state and its workflow ends with it; a restart resumes and never forks |
-| `test/bus-cursor.model.test.mjs` | `lib/bus.mjs`, `lib/bus-postgres.mjs` (memory, SQLite, Postgres) | Poll and stream read the slice the cursor names; an unknown cursor replays all and flags `reset` on poll and stream alike; stream ids strictly increase; attachments follow retention |
+| `test/bus-cursor.model.test.mjs` | `lib/bus.mjs`, `lib/bus-postgres.mjs` (memory, Postgres) | Poll and stream read the slice the cursor names; an unknown cursor replays all and flags `reset` on poll and stream alike; stream ids strictly increase; attachments follow retention |
 | `test/store-lock.model.test.mjs` | `lib/store.ts` lock, with real holder processes | Lock presence, owner and holders match the model; no overlap the model does not allow; no stray break or tomb entries |
 | `test/delivery-model.model.test.mjs` | `runner/delivery.mjs` on a fake clock | No push after an ack or past the TTL; no redelivery while busy; at most `MAX_ATTEMPTS` pushes; every push allowed by `nextAction`; an ended message stays ended |
 | `spec/tla/StoreLock.tla` | `lib/store.ts` takeLock, reclaimStale, releaseLock | `MutualExclusion` and `HolderOwnsLock` until a ceiling break; `DeadOwnerIsStale`: a crashed or reused-pid owner's lock is stale at once |
@@ -47,7 +47,7 @@ Earlier fixes these checks cover: `caa522cd` (a redelivery re-checks the answer 
 
 - A holder stuck for 10 x `staleMs` loses its lock at the ceiling. Its later release renames the next holder's lock away for a moment, so a third process can enter. StoreLock checks mutual exclusion only until a ceiling break.
 - A brief to a pattern member whose session ended is recorded as handed off and delivered nowhere. The reply says so (`recorded; message to X failed`), and the run waits for an operator override. A runner crash loses that reply.
-- An unknown cursor on poll and stream now behaves the same: both replay from the oldest retained event and flag `reset` (`42bb840f`, on SQLite and Postgres). The bus-cursor model asserts the flag and runs restart and prune on Postgres too.
+- An unknown cursor on poll and stream now behaves the same: both replay from the oldest retained event and flag `reset` (`42bb840f`, on SQLite and Postgres). The bus-cursor model asserts the flag and runs restart and prune on Postgres.
 
 ## Gaps
 
