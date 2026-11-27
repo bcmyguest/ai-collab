@@ -56,21 +56,21 @@ export function validateMission(doc: unknown): MissionDoc {
   const obj = doc as Record<string, unknown>;
   checkText(typeof obj.title === "string" ? obj.title : "", 0, "title");
   if ((obj.title as string).length > TITLE_MAX) throw missionError(0, `title is over ${TITLE_MAX} characters`);
-  if (typeof obj.mission !== "string" || !(obj.mission as string).trim()) throw missionError(0, "the mission prose is empty");
+  if (typeof obj.mission !== "string" || !(obj.mission).trim()) throw missionError(0, "the mission prose is empty");
   // Sections must exist and be well formed; either may be empty, and the tick points that out.
   if (!Array.isArray(obj.goals)) throw missionError(0, "goals must be a list");
   if ((obj.goals as unknown[]).length > GOALS_MAX) throw missionError(0, `at most ${GOALS_MAX} goals`);
   for (const goal of obj.goals as Array<Record<string, unknown>>) {
     if (!goal || typeof goal !== "object" || typeof goal.text !== "string" || typeof goal.done !== "boolean") throw missionError(0, "a goal is {text, done}");
-    checkText(goal.text as string, 0, "a goal");
+    checkText(goal.text, 0, "a goal");
   }
   if (!Array.isArray(obj.rules)) throw missionError(0, "rules must be a list");
   if ((obj.rules as unknown[]).length > RULES_MAX) throw missionError(0, `at most ${RULES_MAX} rules`);
   for (const rule of obj.rules as unknown[]) {
     if (typeof rule !== "string") throw missionError(0, "a rule is text");
-    checkText(rule as string, 0, "a rule");
+    checkText(rule, 0, "a rule");
   }
-  return { v: MISSION_VERSION, title: obj.title as string, mission: obj.mission as string, goals: (obj.goals as Array<Record<string, unknown>>).map(({ text, done }) => ({ text: text as string, done: done as boolean })), rules: [...(obj.rules as string[])] };
+  return { v: MISSION_VERSION, title: obj.title as string, mission: obj.mission, goals: (obj.goals as Array<Record<string, unknown>>).map(({ text, done }) => ({ text: text as string, done: done as boolean })), rules: [...(obj.rules as string[])] };
 }
 
 /**
