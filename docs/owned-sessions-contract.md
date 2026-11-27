@@ -121,7 +121,7 @@ A skipped tick is a workflow row like any other and appears in the run list, but
 
 A tick id is recorded with its first step, so a tick starts at most once while `runner.db` is intact. An operator who deletes or restores the database can start a tick twice. A skipped tick is not retried: its id stays in the log.
 
-**Run detail.** A command that resumes a harness session names it: `--resume <id>` / `-r <id>` for Cursor and Claude, `--session <id>` for OpenCode, `codex exec resume <id>` for Codex. The runner matches the id against the registered session label (`sessionLabel`, the hash the hooks publish), so each run in `GET /v1/schedules/:name/runs` carries `startedAt`, `finishedAt` and `session: {harness, session}`. The UI turns that into a link to the session's timeline cut to the run's window (the run plus 15 min either side), where the tick's prompts, tool calls and builders appear. A command that resumes nothing (a plain script, a wrapper like `npx`) lists its runs with no session and no link. Code: `lib/schedule-session.mjs`.
+**Run detail.** A command that resumes a harness session names it: `--resume <id>` / `-r <id>` for Cursor and Claude, `--session <id>` for OpenCode, `codex exec resume <id>` for Codex. The runner matches the id against the registered session label (`sessionLabel`, the hash the hooks publish), so each run in `GET /v1/schedules/:name/runs` carries `startedAt`, `finishedAt` and `session: {harness, session}`. The UI turns that into a link to the session's timeline cut to the run's window (the run plus 15 min either side), where the tick's prompts, tool calls and builders appear. A command that resumes nothing (a plain script, a wrapper like `npx`) lists its runs with no session and no link. Code: `lib/schedule-session.ts`.
 
 The command runs with `spawn` (argv, no shell) in its own process group, stdin closed, in `cwd`, with `timeoutSec` as the deadline. A timeout or abort kills the group. A clean exit leaves processes the command started in the background (agents it handed work to) running. Its result is `{ok, exitCode, signal, timedOut, durationMs, tail, scheduledTime, actualTime}`, where `tail` is the last 2000 characters of stdout and stderr. Ticks publish no bus rows: a schedule has no session to publish under.
 
@@ -409,7 +409,7 @@ The runner streams, per project, `ai-collab-<project>--to--all` plus `ai-collab-
 
 - A `msg` envelope with `to: <harness>` and `toSession: <label>` of an owned session (a direct message or an @mention) becomes a durable `input` message for that session.
 - A `msg` envelope with `to: "all"` on the broadcast topic, and raw operator text there that is neither a phone reply nor a question, becomes an `input` message only for an owned session the body `@mentions` (`@harness#label` or `@harness`). Other project-chat posts stay on the channel and do not start a turn. A session's own broadcast is skipped. A delivered post to an idle owned session starts a turn. A direct message still always wakes that session.
-- Every input is deduplicated by `ntfy:<event id>:<label>`. The text is `lib/format.mjs` `formatInbox([message])`, the same block hooks inject, so agents answer with `reply_to_operator` or `send_to_all` as they do today. `urgent: true` steers when the adapter can steer; otherwise it queues.
+- Every input is deduplicated by `ntfy:<event id>:<label>`. The text is `lib/format.ts` `formatInbox([message])`, the same block hooks inject, so agents answer with `reply_to_operator` or `send_to_all` as they do today. `urgent: true` steers when the adapter can steer; otherwise it queues.
 - `reply <id> <answer>` on the broadcast topic answers the owned approval with that id (`lib/approvals.mjs` `replyDecision`). Anyone who can post to the project topic may answer.
 
 ## Permission modes
@@ -558,8 +558,8 @@ entry points, see [Live OpenShell bootstrap smoke](sandbox-smoke.md).
 | `runner/contract.mjs` | Harness, mode and event constants; `PERMISSION_TABLE`; `eventProblem` |
 | `runner/durable.mjs` | SQLite workflow/step/message log; `scheduled` ticks |
 | `runner/schedules.mjs` | `schedules.json` loader and the scheduled command step |
-| `lib/schedule-session.mjs` | The registered session a schedule's command resumes, and the project a schedule's folder names |
-| `runner/lock.mjs` | Single-instance lock (`runner.lock` beside `runner.db`) |
+| `lib/schedule-session.ts` | The registered session a schedule's command resumes, and the project a schedule's folder names |
+| `runner/lock.ts` | Single-instance lock (`runner.lock` beside `runner.db`) |
 | `runner/runner.mjs` | Session workflow, control operations, bus input |
 | `runner/publish.mjs` | Event → envelope mapping |
 | `runner/control.mjs`, `runner/client.mjs` | Control socket server and client |

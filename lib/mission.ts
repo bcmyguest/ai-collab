@@ -5,7 +5,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { harnessOfCommand } from "./schedule-session.mjs";
+import { harnessOfCommand } from "./schedule-session.ts";
 import { projectRoot } from "./start.mjs";
 import { withLock } from "./state.ts";
 

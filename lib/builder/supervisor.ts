@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync
 import { basename, join } from "node:path";
 import { autoDefaults } from "../config.mjs";
 import { projectRoot, PROMPT_MAX_CHARS, modelShape } from "../start.mjs";
-import { runnerRequest, runnerSocket } from "../runner-request.mjs";
+import { runnerRequest, runnerSocket } from "../runner-request.ts";
 import { RUN_ID } from "../pattern-runs.mjs";
 import { openTasks } from "../tasks.mjs";
 import { BUILDER_DIR_CAP, builderLiveRefusal, cleanBuilders } from "../builder-clean.ts";
@@ -142,7 +142,7 @@ export async function runBuilder(id: string, { env, out, err }: { env: Env; cfg?
     child?.kill("SIGTERM");
   };
   const { openDurable } = await import("../durable.mjs");
-  const { acquireLock } = await import("../../runner/lock.mjs");
+  const { acquireLock } = await import("../../runner/lock.ts");
   const release = acquireLock(join(paths.dir, "workflow.lock"));
   let durable: ReturnType<typeof openDurable> | undefined;
   process.once("SIGTERM", onTerm);

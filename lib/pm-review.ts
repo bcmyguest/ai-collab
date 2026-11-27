@@ -4,7 +4,7 @@
  * next run follows). Pure text, appended to the prompt like the mission file; a plain script is left alone.
  */
 import { RULES_MAX } from "./mission.ts";
-import { harnessOfCommand } from "./schedule-session.mjs";
+import { harnessOfCommand } from "./schedule-session.ts";
 
 // The review is the operator's summary of a run, not a report: three lines at most.
 export const REVIEW_MAX_LINES = 3;

@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { agentHarness } from "../lib/agent-guard.ts";
 import { listProjects, stateDir } from "../lib/config.mjs";
 import { builderPolicy, replayable, parseRecordedCall, sharedLibs, toolSources } from "../lib/builder.ts";
-import { projectOfFolder } from "../lib/schedule-session.mjs";
+import { projectOfFolder } from "../lib/schedule-session.ts";
 import { destroyOwnedSandboxes, execArgv, executables, gitIn, HOME_IN, hostTokenFile, labelArgs, landBranch, must, NTFY_TOKEN_IN, OUT, runTool, sandboxCapRefusal, sandboxLabels, SANDBOX, stageAndUpload, TOOLS, UPLOAD_TIMEOUT_MS, WORK } from "../lib/sandbox.ts";
 
 const APP_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));

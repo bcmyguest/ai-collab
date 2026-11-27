@@ -6,7 +6,7 @@
  */
 import { activityTopic } from "./config.mjs";
 import { publish, querySafe, type Cfg } from "./messaging.ts";
-import { stripControl } from "./format.mjs";
+import { stripControl } from "./format.ts";
 import { textAttachment } from "./attachment.ts";
 import { MESSAGE_MAX_BYTES } from "./messaging.ts";
 import { machinePrompt } from "./mode.mjs";

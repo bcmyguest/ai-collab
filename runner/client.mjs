@@ -1,6 +1,6 @@
 // Client for the runner control socket, for the UI server and the CLI.
-import { runnerRequest } from "../lib/runner-request.mjs";
-export { CLIENT_TIMEOUT_MS, runnerRequest } from "../lib/runner-request.mjs";
+import { runnerRequest } from "../lib/runner-request.ts";
+export { CLIENT_TIMEOUT_MS, runnerRequest } from "../lib/runner-request.ts";
 
 const sessionPath = (address) => {
   const [harness, label] = String(address).split("#");

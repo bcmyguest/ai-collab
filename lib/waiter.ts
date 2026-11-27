@@ -7,7 +7,7 @@
  */
 import { readFileSync, rmSync } from "node:fs";
 import { claimInbox } from "./messaging.ts";
-import { formatInbox } from "./format.mjs";
+import { formatInbox } from "./format.ts";
 import { isRunning, processStart } from "./process.ts";
 import { readInbox, streamWaiter, waitUntil } from "./messaging.ts";
 import type { Cfg, InboxMessage, Outcome, Step } from "./messaging.ts";

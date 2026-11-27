@@ -26,7 +26,7 @@ import path from "node:path";
 import { loadConfig, ownEnv, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, publishStatus } from "../lib/messaging.ts";
 import { childHint, exportParent, greetParent, parentLine } from "../lib/family.ts";
-import { formatInbox, hookOutput, identityLine, stopOutput } from "../lib/format.mjs";
+import { formatInbox, hookOutput, identityLine, stopOutput } from "../lib/format.ts";
 import { currentMode, operatorPrompt, takeModeNote } from "../lib/mode.mjs";
 import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.mjs";
 import { decideStop, markStopRunning, noteHeld, takeHeld } from "../lib/stop.mjs";

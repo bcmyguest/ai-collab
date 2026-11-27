@@ -7,7 +7,7 @@ import { MESSAGE_MAX_BYTES, autoDefaults, broadcastTopic } from "./config.mjs";
 import { fitApprovalEnvelope } from "./approval-card.mjs";
 import { approvalEnd } from "./operator.ts";
 import { deepLink } from "./deep-link.ts";
-import { alertPriority, readAlertLevel } from "./alerts.mjs";
+import { alertPriority, readAlertLevel } from "./alerts.ts";
 import { publish } from "./messaging.ts";
 import { listModels } from "./models.mjs";
 import { publishActivity } from "./activity.ts";

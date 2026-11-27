@@ -9,7 +9,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { MAX_BODY_CHARS, MESSAGE_MAX_BYTES, SESSION_LABEL, isGithubLogin, isValidName, statusTopic, inboxTopic, broadcastTopic, type loadConfig } from "./config.mjs";
 import { deepLink } from "./deep-link.ts";
-import { alertPriority, readAlertLevel } from "./alerts.mjs";
+import { alertPriority, readAlertLevel } from "./alerts.ts";
 import { parsePhoneReply, parseQuestionText } from "./questions.mjs";
 import { readState, writeState, statePath, withLock } from "./state.ts";
 import { parseMode, recordMode } from "./mode.mjs";

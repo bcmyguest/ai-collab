@@ -15,7 +15,7 @@ Both causes are hook or packaging bugs. Neither needs owned sessions.
 **B. An extra key breaks the context hooks.**
 - Codex hook output structs use `#[serde(deny_unknown_fields)]` (`hooks/src/schema.rs:88-100, 129-141, 386-394, 428-440`), so a top-level `additional_context` makes the output invalid (`output_parser.rs:347-358`, `session_start.rs:288-297`, `user_prompt_submit.rs:212-216`).
 - Codex never injected inbox messages, but the hook had already claimed them and sent read receipts: the messages were silently lost.
-- Fixed: `hookOutput` in `lib/format.mjs` gives Codex `hookSpecificOutput` only.
+- Fixed: `hookOutput` in `lib/format.ts` gives Codex `hookSpecificOutput` only.
 
 **C. A headless run never runs the hooks at all.** Found 2026-11-22, measured on codex-cli 0.171.0.
 - Codex runs a plugin's hooks only when their trust is persisted under `[hooks.state."<plugin>:<manifest>:<event>:<i>:<j>"]` in `config.toml`. Only the interactive `/hooks` review writes that (`plugin_trust.rs`, `hook trust verification timed out`, `codex/config/batchWrite failed while updating hook trust in TUI`).
