@@ -123,7 +123,7 @@ export async function listModels(stateDir: string, env: NodeJS.ProcessEnv = proc
   const { peers = [], ...rest } = options;
   const wanted = (h: string): boolean => !peers.length || peers.includes(h);
   return {
-    claude: [...CLAUDE_MODELS], codex: codexModels(env), cursor: await cursorModels(stateDir, env, rest),
+    claude: [...CLAUDE_MODELS], codex: codexModels(env), cursor: wanted("cursor") ? await cursorModels(stateDir, env, rest) : [],
     opencode: wanted("opencode") ? await opencodeModels(stateDir, env, rest) : [],
   };
 }
