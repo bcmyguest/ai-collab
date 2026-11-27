@@ -236,7 +236,7 @@ export function codexSource({ home = homedir() }: { home?: string } = {}): Sourc
 }
 
 const parseArgs = (value: unknown): unknown => { if (typeof value !== "string") return value; try { return JSON.parse(value); } catch { return value; } };
-const outputText = (out: unknown): string => Array.isArray(out) ? out.map((o) => (o as JsonObj).text ?? "").join("\n") : text(out);
+const outputText = (out: unknown): string => Array.isArray(out) ? out.map((o) => (o as JsonObj | null)?.text ?? "").join("\n") : text(out);
 
 const dbReadOnly = (file: string): DatabaseSync => new DatabaseSync(file, { readOnly: true });
 
