@@ -21,6 +21,8 @@ export type Session = Identity & {
   seenAt?: number;
   model?: string;
   requireRunCode?: boolean;
+  // A session ai-collab started; a wake keeps its native subagents off.
+  managed?: boolean;
   claudePermission?: string;
   pid?: number;
   pidStart?: string;
@@ -91,8 +93,8 @@ function cleanIdentity({ name, activity, tags }: Identity): Identity {
 }
 
 /** Records the session; operatorPromptAt (ms) marks a typed operator prompt and is kept across later writes. */
-export async function recordSession(cfg: SessionCfg, { id, cwd, harness, event, proc, operatorPromptAt, parent, name, model, requireRunCode }: {
-  id: string; cwd: string; harness: string; event: string; proc?: Proc; operatorPromptAt?: number; parent?: string; name?: string; model?: unknown; requireRunCode?: boolean;
+export async function recordSession(cfg: SessionCfg, { id, cwd, harness, event, proc, operatorPromptAt, parent, name, model, requireRunCode, managed }: {
+  id: string; cwd: string; harness: string; event: string; proc?: Proc; operatorPromptAt?: number; parent?: string; name?: string; model?: unknown; requireRunCode?: boolean; managed?: boolean;
 }): Promise<void> {
   if (!cfg.session || cfg.session !== sessionLabel(id) || id.length > 256 || !isAbsolute(cwd)) return;
   const address = `${cfg.peer}#${cfg.session}`;
@@ -109,6 +111,7 @@ export async function recordSession(cfg: SessionCfg, { id, cwd, harness, event, 
       id: address, sessionId: id, cwd, harness, event, seenAt: Date.now(),
       ...(modelName ? { model: modelName } : {}),
       ...(requireRunCode === true || own.requireRunCode === true ? { requireRunCode: true } : {}),
+      ...(managed === true || own.managed === true ? { managed: true } : {}),
       // The /permission value a later wake takes survives every hook write.
       ...(typeof own.claudePermission === "string" ? { claudePermission: own.claudePermission } : {}),
       ...(proc ? { pid: proc.pid, pidStart: proc.start } : {}),
