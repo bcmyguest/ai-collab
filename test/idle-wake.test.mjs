@@ -11,6 +11,9 @@ import { claimInbox, readStatuses, sendMessage } from "../lib/messaging.ts";
 import { decideStop, noteHeld } from "../lib/stop.mjs";
 import { requestWait } from "../lib/questions.mjs";
 import { runWaiter } from "../lib/waiter.ts";
+import { processStart } from "../lib/process.mjs";
+import { statePath, writeState } from "../lib/state.mjs";
+import { rmSync } from "node:fs";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 const SESSION_ID = "99999999-2222-3333-4444-555555555555";
@@ -40,6 +43,30 @@ function runHook(env, args, input) {
 
 async function lastStatus(cfg) {
   return (await readStatuses(cfg)).get(`claude#${LABEL}`)?.event;
+}
+
+// The marker a running Stop hook writes for its own pid (lib/stop.mjs).
+function markerFile(cfg, pid) {
+  return statePath(cfg).replace(/\.json$/, `.stop-running.${pid}.json`);
+}
+
+function writeMarker(cfg, pid, start = processStart(pid) || "") {
+  const file = markerFile(cfg, pid);
+  writeState(file, { pid, start });
+  return file;
+}
+
+// A live process to stand in for a second Stop hook; stop() kills it.
+function liveProcess(t) {
+  const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { stdio: "ignore" });
+  t.after(() => child.kill());
+  return { pid: child.pid, stop: () => new Promise((resolve) => { child.once("exit", resolve); child.kill(); }) };
+}
+
+async function deadPid() {
+  const child = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
+  await new Promise((resolve) => child.once("exit", resolve));
+  return child.pid;
 }
 
 test("an untagged message in the session's own chat during a Stop hold reaches the Stop hook, not the rewake waiter", { timeout: 20000 }, async (t) => {
@@ -91,4 +118,41 @@ test("the hold status gives way to start on the session's next tool call", { tim
   await publishStatus(cfg, { event: "hold", harness: "claude" });
   await runHook(env, ["--activity", "--host", "claude"], { hook_event_name: "PreToolUse", session_id: SESSION_ID, cwd: "/tmp", agent_id: "a1", tool_name: "Bash", tool_input: {} });
   assert.equal(await lastStatus(cfg), "hold");
+});
+
+test("the waiter yields while any of two Stop hooks runs, and wakes once both have ended", { timeout: 20000 }, async (t) => {
+  const { cfg, operator } = await setup(t);
+  const other = liveProcess(t);
+  await delay(100);
+  const own = writeMarker(cfg, process.pid);
+  writeMarker(cfg, other.pid);
+  await sendMessage(operator, `claude#${LABEL}`, "two hooks", { operatorThread: true });
+  let woke = null;
+  const waiting = runWaiter(cfg, { maxMs: 8000 }).then((r) => { woke = r; return r; });
+  await delay(800);
+  rmSync(own, { force: true });
+  await delay(1200);
+  assert.equal(woke, null, "the second Stop hook still runs, so the waiter claims nothing");
+  await other.stop();
+  const r = await waiting;
+  assert.equal(r.code, 2);
+  assert.match(r.text, /two hooks/);
+});
+
+test("a marker left by a dead Stop hook does not hold the waiter", { timeout: 15000 }, async (t) => {
+  const { cfg, operator } = await setup(t);
+  writeMarker(cfg, await deadPid(), "12345");
+  await sendMessage(operator, `claude#${LABEL}`, "dead hook", { operatorThread: true });
+  const r = await runWaiter(cfg, { maxMs: 3000 });
+  assert.equal(r.code, 2);
+  assert.match(r.text, /dead hook/);
+});
+
+test("a marker whose pid now belongs to another process (wrong start tick) does not hold the waiter", { timeout: 15000 }, async (t) => {
+  const { cfg, operator } = await setup(t);
+  writeMarker(cfg, process.pid, "1");
+  await sendMessage(operator, `claude#${LABEL}`, "reused pid", { operatorThread: true });
+  const r = await runWaiter(cfg, { maxMs: 3000 });
+  assert.equal(r.code, 2);
+  assert.match(r.text, /reused pid/);
 });
