@@ -6,7 +6,8 @@ import path from "node:path";
 let runDir;
 
 export async function globalSetup() {
-  runDir = mkdtempSync(path.join(os.tmpdir(), "ai-collab-test-run-"));
+  // A short prefix keeps Unix socket paths under the run dir within the 107-byte limit.
+  runDir = mkdtempSync(path.join(os.tmpdir(), "aic-"));
   process.env.TMPDIR = runDir;
 }
 
