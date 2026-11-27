@@ -89,6 +89,82 @@ Callers:
 - A UI start creates a thread titled from the first prompt and attaches the new session, or attaches it to the `thread` the request names. A start in a thread runs in the thread's worktree as a folder start.
 - An operator message sent with `thread` carries `threadId` in its envelope and `thread_id` on its event row.
 
+## Thread channels
+
+A thread is also a channel, like a Discord channel: a post to `thread:<id>` reaches every session listening in the thread. The operator's composer posts there whenever a thread is open; an agent posts with `send` to `thread:<id>`. `lib/thread-channels.ts` resolves the recipients and `lib/thread-listening.ts` holds the rule.
+
+### Who receives a post
+
+A **subagent** is a session with a `parent` in its registry entry or owned record (spawn_agent children, native child sessions). A **cooperative** session has no parent. A **member** has the thread's `thread_sessions` row. The **setting** is the session's `thread_listeners` row for the thread: on, off, or none (the role default).
+
+| Role | Member | Setting | @mentioned | Delivered |
+|---|---|---|---|---|
+| cooperative | yes | none | no | yes |
+| cooperative | yes | none | yes | yes |
+| cooperative | yes | off | no | no |
+| cooperative | yes | off | yes | yes |
+| cooperative | no | none | no | no |
+| cooperative | no | none | yes | yes |
+| subagent | yes | none | no | no |
+| subagent | yes | none | yes | yes |
+| subagent | no | none | no | no |
+| subagent | no | none | yes | yes |
+| any | any | on | any | yes |
+| the sender | | | | never |
+
+- A mention is `@peer#label`, or `@peer` for a member or a session with a setting row. A non-member is reached by its full address only.
+- A recipient must be a session in the project registry. A thread lists ended sessions too; an address the registry no longer has gets nothing.
+- Muted means not delivered: no inbox entry, so nothing wakes the session. It can still read the thread with `thread_messages`.
+
+### Delivery
+
+```mermaid
+sequenceDiagram
+  participant S as Sender (operator UI or agent)
+  participant B as Bus
+  participant R as Each recipient's inbox
+  S->>B: GET /threads/<id>/channel (members and settings)
+  Note over S: thread-listening rule, registry roles, mentions
+  S->>B: publish the post on ai-collab-<project>--th-<hex>, thread_id set
+  S->>R: one direct copy per recipient: threadId, channel = post id
+  Note over R: the existing inbox, hook, wait and dispatcher paths deliver it
+```
+
+The post itself lives once on the thread topic with `events.thread_id` set; nothing reads that topic for delivery. Each copy is an ordinary direct message to `peer#label`, so delivery, wakes and receipts need no new path. A copy carries `threadId` and `channel` in its envelope and leaves `events.thread_id` NULL, so the thread's history holds each post once. An operator copy is an `operatorThread` message, so the agent can answer with `reply_to_operator`. An agent reading a copy sees `thread: <id>` on the message.
+
+In the UI the composer of an open thread reads "Everyone listening in <thread title>". A post there goes to the channel, not to the selected session; `@name` still sends one direct copy to that agent, and a bare `@peer` reaches that peer's running sessions as a project-chat mention does. A post that tags a task (`#task`) keeps going to the task's owner. The UI wakes the selected session when it is a recipient, as a direct send does; other recipients get their copy through the dispatcher and their hooks.
+
+### Listening toggle
+
+- MCP `thread_listen {thread, on}` and CLI `ai-collab thread listen <id> on|off` set the caller's own setting.
+- The sidebar's session rows under a thread carry a bell button (bell: listening, bell-off: muted) that sets that session's setting.
+- MCP `thread_messages {thread, since?, limit?}` and CLI `ai-collab thread messages <id> [--since ISO|ID] [--limit N]` read the thread's posts, oldest first: with `since`, the first `limit` posts after that message id or from that time; without it, the newest `limit`. `limit` defaults to 30, maximum 100. `more` is true when posts remain past the page. It returns channel posts and the operator's direct messages sent in the thread (the rows with `events.thread_id`).
+
+### Storage
+
+One additive table, created by `migrateThreadChannels` (`lib/thread-channel-store.ts`) under the same schema advisory lock:
+
+```sql
+CREATE TABLE IF NOT EXISTS thread_listeners (
+  thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+  session TEXT NOT NULL,        -- address peer#label
+  listening BOOLEAN NOT NULL,
+  updated_at BIGINT NOT NULL,   -- ms
+  PRIMARY KEY (thread_id, session)
+)
+```
+
+No row means the role default. A table instead of a column on `thread_sessions`: that table's key `(project, session)` gives a session one thread, so a non-member who opts in to another thread has no row there. A non-member who turns listening on gets a `thread_listeners` row with `listening = true` and stays a non-member. A member who moves to another thread keeps its old row, which then counts as a non-member setting for the old thread. Deleting a thread deletes its rows. To reverse: `DROP TABLE bus.thread_listeners`.
+
+| Route | Effect |
+|---|---|
+| `GET /threads/<id>/channel` | `{thread: {id, project, title, leadSession}, sessions: [{session, member, listening}]}`; `listening` is true, false or null |
+| `PUT /threads/<id>/listening` | `{session, on}`: `on` true or false stores the setting; null deletes it |
+| `GET /threads/<id>/messages?since=&limit=` | `{events, more}`: raw events with `thread_id` set |
+| `GET /threads/listeners?project=P` | `{listeners: [{thread, session, listening}]}` for every thread of P |
+
+The UI server's `POST /api/thread` takes `op: "listen"` with `{thread, session, on}`. The snapshot's threads carry `listeners`, the stored settings, and the sidebar applies the rule.
+
 ## Bus routes
 
 All JSON, behind the bus token.
