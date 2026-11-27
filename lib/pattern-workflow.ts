@@ -1,18 +1,42 @@
 // One pattern run on the durable log: enter a role, wait for its event, leave through decide.
 // The workflow id is pattern-<run id>. The input is the team snapshot the run started with.
 
-export function patternWorkflowId(runId) {
+// oxlint-disable-next-line typescript/no-explicit-any -- run replies, leave outcomes and messages are pattern-run JSON
+type Json = any;
+type Role = { id: string; count?: number };
+
+/** The durable workflow context a pattern run uses (lib/durable). */
+interface PatternWf {
+  id: string;
+  signal: AbortSignal;
+  step<T>(name: string, fn: () => Promise<T>, opts?: { onCut?: () => T | Promise<T> }): Promise<T>;
+  recv(topic: string, opts: { name: string }): Promise<Json>;
+}
+
+export interface PatternDeps {
+  enterEntry(input: Json, runId: string): Promise<Json>;
+  cutEntry(input: Json, runId: string): Json;
+  reply?(request: Json, body: { reply?: Json; error?: Json }): void;
+  leave(runId: string, message: Json): Promise<Json>;
+  cutLeave(runId: string, message: Json): Json;
+  between?(wf: PatternWf, left: Json): Promise<void> | void;
+  enterNext(runId: string, left: Json): Promise<Json>;
+  afterEnter?(wf: PatternWf, next: Json): Promise<void> | void;
+  cutEnter(runId: string, left: Json): Json;
+}
+
+export function patternWorkflowId(runId: string): string {
   return `pattern-${runId}`;
 }
 
-export function runIdOfPatternWorkflow(workflowId) {
+export function runIdOfPatternWorkflow(workflowId: string | null | undefined): string {
   const prefix = "pattern-";
   if (!workflowId?.startsWith(prefix)) throw new Error(`not a pattern workflow: ${workflowId}`);
   return workflowId.slice(prefix.length);
 }
 
 /** The run launchPatternRun writes. project stays on the workflow input so recovery can find the run file. */
-export function seedPatternRun({ name, task, definition }, runId, now = Date.now) {
+export function seedPatternRun({ name, task, definition }: { name: string; task: string; definition: { roles: Role[] } & Record<string, unknown> }, runId: string, now: number | (() => number) = Date.now) {
   const entry = definition.roles[0];
   const count = entry.count ?? 1;
   return {
@@ -28,7 +52,7 @@ export function seedPatternRun({ name, task, definition }, runId, now = Date.now
  * A step left started uses onCut and does not call the harness again.
  * deps.between runs after leave is durable and before the next enter, so a test can stop there.
  */
-export async function runPatternWorkflow(wf, input, deps) {
+export async function runPatternWorkflow(wf: PatternWf, input: Json, deps: PatternDeps): Promise<Json> {
   const runId = runIdOfPatternWorkflow(wf.id);
   const entry = await wf.step("enter", async () => {
     const started = await deps.enterEntry(input, runId);

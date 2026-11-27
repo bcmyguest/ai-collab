@@ -7,7 +7,7 @@ import { loadProjects, stateDir, autoDefaults, autoDeployEnabled } from "../lib/
 import { autoDeployEntry } from "../lib/land.mjs";
 import { HARNESSES } from "./contract.mjs";
 import { openWorkflows } from "../lib/workflows.ts";
-import { pgUrl } from "../lib/postgres.mjs";
+import { pgUrl } from "../lib/postgres.ts";
 import { createRunner } from "./runner.mjs";
 import { listenControl, runnerSocket } from "./control.mjs";
 import { loadSchedules, registerSchedules } from "./schedules.mjs";

@@ -4,12 +4,12 @@ Four fast-check models run random command sequences against the real code and co
 
 | Check | Code under test | Invariants |
 |---|---|---|
-| `test/pattern-run.model.test.mjs` | `lib/pattern-runs.mjs`, `lib/pattern-workflow.mjs` on the durable engine | At most one live token per instance; every handoff applied once, logged with seq 1..n; visits, arrivals and suspensions match the model; at most one launch per instance; a run ends in a terminal state and its workflow ends with it; a restart resumes and never forks |
-| `test/bus-cursor.model.test.mjs` | `lib/bus.mjs`, `lib/bus-postgres.mjs` (memory, Postgres) | Poll and stream read the slice the cursor names; an unknown cursor replays all and flags `reset` on poll and stream alike; stream ids strictly increase; attachments follow retention |
+| `test/pattern-run.model.test.mjs` | `lib/pattern-runs.mjs`, `lib/pattern-workflow.ts` on the durable engine | At most one live token per instance; every handoff applied once, logged with seq 1..n; visits, arrivals and suspensions match the model; at most one launch per instance; a run ends in a terminal state and its workflow ends with it; a restart resumes and never forks |
+| `test/bus-cursor.model.test.mjs` | `lib/bus.ts`, `lib/bus-postgres.ts` (memory, Postgres) | Poll and stream read the slice the cursor names; an unknown cursor replays all and flags `reset` on poll and stream alike; stream ids strictly increase; attachments follow retention |
 | `test/store-lock.model.test.mjs` | `lib/store.ts` lock, with real holder processes | Lock presence, owner and holders match the model; no overlap the model does not allow; no stray break or tomb entries |
-| `test/delivery-model.model.test.mjs` | `runner/delivery.mjs` on a fake clock | No push after an ack or past the TTL; no redelivery while busy; at most `MAX_ATTEMPTS` pushes; every push allowed by `nextAction`; an ended message stays ended |
+| `test/delivery-model.model.test.mjs` | `runner/delivery.ts` on a fake clock | No push after an ack or past the TTL; no redelivery while busy; at most `MAX_ATTEMPTS` pushes; every push allowed by `nextAction`; an ended message stays ended |
 | `spec/tla/StoreLock.tla` | `lib/store.ts` takeLock, reclaimStale, releaseLock | `MutualExclusion` and `HolderOwnsLock` until a ceiling break; `DeadOwnerIsStale`: a crashed or reused-pid owner's lock is stale at once |
-| `spec/tla/Delivery.tla` | `runner/delivery.mjs` with `lib/delivery.ts` | `NoCopyAfterAnswer`, `NoRedeliveryWhileBusy`, `AttemptCap`, `CopiesCounted`, `Terminal`, `TerminalStable` |
+| `spec/tla/Delivery.tla` | `runner/delivery.ts` with `lib/delivery.ts` | `NoCopyAfterAnswer`, `NoRedeliveryWhileBusy`, `AttemptCap`, `CopiesCounted`, `Terminal`, `TerminalStable` |
 
 ## Run
 
@@ -39,7 +39,7 @@ Each spec has a constant that switches its fix off: `OwnerWriteExclusive = FALSE
 
 **owner.json overwrite** (StoreLock, fixed in `lib/store.ts` `takeLock`). Trace: p1 makes the lock dir and stalls past `staleMs` before writing `owner.json`; p2 breaks the ownerless dir; p3 makes a new dir and writes its owner; p1's `writeJson` overwrites p3's owner and both enter. A suspend or SIGSTOP between mkdir and the write is enough. `takeLock` now writes a temp file into the dir and links it to `owner.json`: the write fails on a broken dir and the link fails on an existing owner, so the stalled process retries. Regression: `test/store-lock-owner-race.test.mjs`.
 
-**Push after a restart skipped its checks** (Delivery, fixed in `runner/delivery.mjs`). Trace: the first copy lands and the target works on it; it goes idle; the redelivery attempt records its reserve step and the runner dies; the runner restarts and the target turns busy (or answers); replay skips `target()` and the answer re-check, and the push goes out. A push step that runs live in a resumed attempt now checks `nextAction` on live facts first: an answer, TTL or cap ends the message, and a busy target fails the attempt so it retries after backoff. The delivery model's `RestartRunner` cannot reach this split, because it restarts only between commands, while workflows wait. Regression: `test/runner-delivery-resume.test.mjs`.
+**Push after a restart skipped its checks** (Delivery, fixed in `runner/delivery.ts`). Trace: the first copy lands and the target works on it; it goes idle; the redelivery attempt records its reserve step and the runner dies; the runner restarts and the target turns busy (or answers); replay skips `target()` and the answer re-check, and the push goes out. A push step that runs live in a resumed attempt now checks `nextAction` on live facts first: an answer, TTL or cap ends the message, and a busy target fails the attempt so it retries after backoff. The delivery model's `RestartRunner` cannot reach this split, because it restarts only between commands, while workflows wait. Regression: `test/runner-delivery-resume.test.mjs`.
 
 Earlier fixes these checks cover: `caa522cd` (a redelivery re-checks the answer before reserving) and `614d0db7` (break a stale lock only when its owner is gone).
 

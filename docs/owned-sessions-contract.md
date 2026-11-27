@@ -168,7 +168,7 @@ Control socket only (operator): `GET /v1/schedules` returns `{schedules: [{name,
 
 ## Delivery and wake workflows
 
-Delivery of direct messages runs in the runner. The UI dispatcher stands down while the runner answers its control socket (`runnerUp()` in `runner/client.ts`) and resumes when it does not. Both use the same inbox reservations, so a message goes out once. Code: `runner/delivery.mjs` (`deliveryWorkflow`), `lib/deliver-push.mjs` (the live push paths shared with the dispatcher), `wakeWorkflow` and `pumpDeliveries` in `runner/runner.mjs`.
+Delivery of direct messages runs in the runner. The UI dispatcher stands down while the runner answers its control socket (`runnerUp()` in `runner/client.ts`) and resumes when it does not. Both use the same inbox reservations, so a message goes out once. Code: `runner/delivery.ts` (`deliveryWorkflow`), `lib/deliver-push.mjs` (the live push paths shared with the dispatcher), `wakeWorkflow` and `pumpDeliveries` in `runner/runner.mjs`.
 
 ### Delivery to live sessions
 
@@ -572,7 +572,7 @@ entry points, see [Live OpenShell bootstrap smoke](sandbox-smoke.md).
 | `lib/sandbox.ts` | OpenShell lifecycle shared by adapters and builders: ensure, upload, download, delete, and the argv builders (`runner/sandbox.mjs` re-exports it) |
 | `test/runner-adapter-cursor.test.mjs`, `test/helpers/fake-cursor-agent.mjs`, `test/helpers/fake-openshell.mjs` | Cursor adapter tests; fake ACP child and fake openshell |
 | `test/cursor-sandbox.test.mjs`, `test/runner-sandbox.test.mjs` | Sandbox staging (CLI tree, auth, worktree round trip, release on failure) and the sandbox module's argv and lifecycle |
-| `runner/delivery.mjs` | Delivery workflow: reserve, push, confirm, mark or release, expect-reply redelivery |
+| `runner/delivery.ts` | Delivery workflow: reserve, push, confirm, mark or release, expect-reply redelivery |
 | `lib/deliver-push.mjs` | Live push paths (socket, `codex queue`, OpenCode HTTP) and the ack tracker, shared with the UI dispatcher |
 | `lib/sessions/registry.ts` | Owned-record read/write and `standsDown` |
 | `deploy/ai-collab-runner.service` | User unit template; not installed |

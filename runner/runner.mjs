@@ -10,11 +10,11 @@ import { EventType } from "@ag-ui/core";
 import { DOT_EVENT_MAX } from "../lib/catalog/dot.ts";
 import { getPattern } from "../lib/patterns.mjs";
 import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, cutPatternEntry, cutPatternLeave, cutPatternRun, launchPatternRun, NOTE_MAX, preparePatternRun, RUN_ID, runStatus, sessionsOfRun } from "../lib/pattern-runs.mjs";
-import { patternWorkflowId, runIdOfPatternWorkflow, runPatternWorkflow, seedPatternRun } from "../lib/pattern-workflow.mjs";
+import { patternWorkflowId, runIdOfPatternWorkflow, runPatternWorkflow, seedPatternRun } from "../lib/pattern-workflow.ts";
 import { statePath } from "../lib/state.ts";
 import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, parentAddress, receiptsTopic, sessionLabel, startPlaceSetting } from "../lib/config.mjs";
 import { RESERVE_MS, ATTACHMENT_BUDGET_MS, claimInbox, markDelivered, mentionsAgent, parseEnvelope, releaseOwned, reserveOwned, reservedMessage, sendMessage } from "../lib/messaging.ts";
-import { parsePhoneReply, parseQuestionText } from "../lib/questions.mjs";
+import { parsePhoneReply, parseQuestionText } from "../lib/questions.ts";
 import { replyDecision, APPROVAL_ID } from "../lib/approvals.mjs";
 import { formatInbox } from "../lib/format.ts";
 import { attachmentOf, cacheAttachmentsWithin, localizedAttachment } from "../lib/attachment-cache.ts";
@@ -41,7 +41,7 @@ import { ALLOW_HOST_AGENT_ENV } from "../lib/agent-guard.ts";
 import { noSubagentEnv } from "../lib/subagent-guard.ts";
 import { SPAWN_MAX_CHILDREN, SPAWN_MAX_DEPTH, spawnBriefNote, spawnReport, spawnSelfNote } from "../lib/spawn.ts";
 import { sandboxCapRefusal, sandboxName, teamSandboxName } from "./sandbox.mjs";
-import { DELIVERY, deliveryWorkflow } from "./delivery.mjs";
+import { DELIVERY, deliveryWorkflow } from "./delivery.ts";
 import { publishApproval, publishApprovalEnd, publishEnded, publishEvent, publishReceipts } from "./publish.mjs";
 
 export const START_TIMEOUT_MS = 60_000;
@@ -739,7 +739,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     }
   }
 
-  // Delivery to live sessions the runner does not own: the deps of runner/delivery.mjs, each overridable through `delivery`.
+  // Delivery to live sessions the runner does not own: the deps of runner/delivery.ts, each overridable through `delivery`.
   const acks = ackTracker();
   // Claude confirmation handles of unconfirmed pushes, by message id, while this runner lives.
   const inflight = new Map();

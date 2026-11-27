@@ -142,7 +142,7 @@ The durable core is the interesting amber-blue boundary: a home-grown, DBOS-shap
 
 | Piece | Origin | Notes |
 |---|---|---|
-| Message bus | Home-grown (`lib/bus.mjs`), ntfy wire-compatible | Loopback bind, token-only; Postgres schema `bus` with 7-day retention |
+| Message bus | Home-grown (`lib/bus.ts`), ntfy wire-compatible | Loopback bind, token-only; Postgres schema `bus` with 7-day retention |
 | SQLite | Off-the-shelf engine (`node:sqlite`, WAL) | Schema and recovery logic are ours |
 | Next.js, React, ui-sdk | Off-the-shelf framework | Pages, server routes, and phone behaviour are ours |
 | Tailscale, systemd, Docker, OpenShell | Off-the-shelf plumbing | Tailscale is the only inbound path; systemd owns process lifetimes |

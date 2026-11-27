@@ -6,9 +6,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { configDir, listProjects, loadProjects, stateDir } from "../lib/config.mjs";
-import { DEFAULT_RETENTION_MS, openBus, resolveBusStoreKind } from "../lib/bus.mjs";
-import { openPostgresBusStore } from "../lib/bus-postgres.mjs";
-import { pgPasswordFile, pgReachable, pgUrl } from "../lib/postgres.mjs";
+import { DEFAULT_RETENTION_MS, openBus, resolveBusStoreKind } from "../lib/bus.ts";
+import { openPostgresBusStore } from "../lib/bus-postgres.ts";
+import { pgPasswordFile, pgReachable, pgUrl } from "../lib/postgres.ts";
 import { listOwned, listSessions } from "../lib/sessions.mjs";
 import { threadSessionsOf } from "../lib/threads.mjs";
 

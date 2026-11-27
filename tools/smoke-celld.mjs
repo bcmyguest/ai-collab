@@ -146,7 +146,7 @@ try {
   for (const file of ["wrangler.json", "worker.mjs"]) {
     copyFileSync(new URL(`./fixtures/celld/${file}`, import.meta.url), join(fixture, file));
   }
-  copyFileSync(new URL("../lib/pattern-workflow.mjs", import.meta.url), join(fixture, "pattern-workflow.mjs"));
+  copyFileSync(new URL("../lib/pattern-workflow.ts", import.meta.url), join(fixture, "pattern-workflow.mjs"));
   writeFileSync(join(fixture, ".dev.vars"), `GATEWAY=${gatewayURL}\n`);
   await start();
   assert.deepEqual(await query("/create", {runId}), {id: runId});

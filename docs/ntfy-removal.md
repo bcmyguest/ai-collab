@@ -1,6 +1,6 @@
 # ntfy removal: implemented
 
-Status: done (2026-11-25). The ntfy container is gone. `lib/bus.mjs` serves the same wire subset from
+Status: done (2026-11-25). The ntfy container is gone. `lib/bus.ts` serves the same wire subset from
 SQLite on this machine; `scripts/ai-collab-bus.mjs` is the service; `deploy/compose.yaml` is deleted.
 This document records what was built, why, and how an existing install switches over.
 
@@ -18,7 +18,7 @@ The bus implements exactly that subset:
 | Auth | ntfy token, deny-all | same Bearer-token check, deny-all; token at `~/.config/ai-collab/bus-token` |
 | Rate limits | 429 handling, exempt-hosts config | none: loopback-only behind a shared token |
 | Message cap | 4095 bytes (server quirk) | 64 KB on the wire; clients keep the 4095 cap so messages stay deliverable to an operator-run ntfy too |
-| Test double | `test/helpers/fake-ntfy.mjs` (hand-written) | the same `lib/bus.mjs` server on the memory store, so tests exercise production code |
+| Test double | `test/helpers/fake-ntfy.mjs` (hand-written) | the same `lib/bus.ts` server on the memory store, so tests exercise production code |
 
 The wire stays ntfy-compatible on purpose: `defaults.json` can still point `url` at a real ntfy server
 (an operator's own, or a phone bridge), and `lib/transport.mjs` works against either.

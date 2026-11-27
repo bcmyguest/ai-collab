@@ -60,7 +60,7 @@ Generated from the task store by `ai-collab task render`. Change tasks with `ai-
 | Schedule run kills builders the PM started: runner SIGKILLs the whole process group on exit (runner/schedules.mjs:129) | P2 | done |
 | CLI send puts unknown flags (--reply-to, --progress) into the message body; add --reply-to and reject unknown flags | P2 | done |
 | Runner wake.send retries a codex thread that is closing (runner/runner.mjs:379-399) | P2 | done merged 0d2bd07 + 31cd4e3; retryable JSON-RPC refusals retried 3x, backoff capped 4s; mayHaveStarted never retried |
-| CI prek gate fails on main: end-of-file newlines in lib/compaction.mjs, lib/teams.mjs, test/teams.test.mjs, test/teams-mentions.test.mjs | P2 | done |
+| CI prek gate fails on main: end-of-file newlines in lib/compaction.ts, lib/teams.mjs, test/teams.test.mjs, test/teams-mentions.test.mjs | P2 | done |
 | Operator @mention of the PM wakes its schedule at once (runner has no run-now) | P2 | done An @session tag in any chat wakes that idle session (ui.mjs routeMentions) |
 | DOT prompt optional in parser but required by validatePattern (lib/dot.mjs:150-155) | P2 | done Team check reports the missing prompt with its line; parser unchanged |
 | onOverage true on overageEnabled even when overageStatus rejected (lib/limits.mjs:37-38) | P2 | done branch cursor-verify-fixes (Cursor deepseek, started 16:23); do not dispatch |

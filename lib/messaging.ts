@@ -10,7 +10,7 @@ import path from "node:path";
 import { MAX_BODY_CHARS, MESSAGE_MAX_BYTES, SESSION_LABEL, isGithubLogin, isValidName, statusTopic, inboxTopic, broadcastTopic, type loadConfig } from "./config.mjs";
 import { deepLink } from "./deep-link.ts";
 import { alertPriority, readAlertLevel } from "./alerts.ts";
-import { parsePhoneReply, parseQuestionText } from "./questions.mjs";
+import { parsePhoneReply, parseQuestionText } from "./questions.ts";
 import { readState, writeState, statePath, withLock } from "./state.ts";
 import { parseMode, recordMode } from "./mode.ts";
 import { imageAttachment, readAttachment } from "./attachment.ts";

@@ -2,11 +2,32 @@
  * The bus's /threads routes (docs/threads.md "Bus routes") over a store's `threads` object, and the client the
  * UI server calls them with. A store without threads (the memory store) answers 404 to every route.
  */
+import type { IncomingMessage, ServerResponse } from "node:http";
+
 const BODY_MAX_BYTES = 1024 * 1024;
 const THREAD_PATH = /^\/threads\/(th_[a-f0-9]{16})(?:\/(prs|sessions)(?:\/(\d{1,12}))?)?$/;
 
-async function readJson(req) {
-  const chunks = [];
+// oxlint-disable-next-line typescript/no-explicit-any -- request bodies and thread rows are JSON the store validates
+type Json = any;
+
+/** The thread store a bus store may carry (lib/threads). */
+export interface ThreadStore {
+  list(query: { project: string; archived: boolean }): Promise<Json>;
+  create(fields: Json): Promise<Json>;
+  sync(input: Json): Promise<Json>;
+  get(id: string): Promise<Json>;
+  update(id: string, fields: Json): Promise<Json>;
+  attachPr(id: string, pr: Json): Promise<Json>;
+  detachPr(id: string, prId: number): Promise<Json>;
+  moveSession(id: string, body: Json): Promise<Json>;
+}
+
+/** Bus URL, token and request timeout for threadClient. */
+export type ThreadClientConfig = { url: string; token?: string; timeoutMs?: number };
+type HttpError = Error & { status?: number; code?: string };
+
+async function readJson(req: AsyncIterable<Buffer>): Promise<Json> {
+  const chunks: Buffer[] = [];
   let total = 0;
   for await (const chunk of req) {
     total += chunk.length;
@@ -20,16 +41,16 @@ async function readJson(req) {
   throw Object.assign(new Error("bad json"), { status: 400 });
 }
 
-function send(res, status, value) {
+function send(res: ServerResponse, status: number, value: unknown): void {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(value));
 }
 
 /** Answers one /threads request; false when the path is not a thread route. */
-export async function threadRoute(store, req, res, url) {
+export async function threadRoute(store: { threads?: ThreadStore | null }, req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
   if (url.pathname !== "/threads" && !url.pathname.startsWith("/threads/")) return false;
   const threads = store.threads;
-  const reply = (status, value) => {
+  const reply = (status: number, value: unknown): boolean => {
     send(res, status, value);
     return true;
   };
@@ -52,33 +73,33 @@ export async function threadRoute(store, req, res, url) {
     return reply(405, { error: "method not allowed" });
   } catch (error) {
     // Postgres check and foreign-key violations are the caller's bad input.
-    const status = error.status || (/^23/.test(error.code || "") ? 400 : 500);
-    return reply(status, { error: status === 500 ? "thread store failed" : error.message });
+    const status = (error as HttpError).status || (/^23/.test((error as HttpError).code || "") ? 400 : 500);
+    return reply(status, { error: status === 500 ? "thread store failed" : (error as HttpError).message });
   }
 }
 
 /** The bus /threads client for one config ({url, token, timeoutMs}); a 404 from a store without threads reads as unavailable. */
-export function threadClient(cfg) {
-  const call = async (method, route, body) => {
+export function threadClient(cfg: ThreadClientConfig) {
+  const call = async (method: string, route: string, body?: unknown): Promise<Json> => {
     const res = await fetch(`${cfg.url}${route}`, {
       method,
       headers: { ...(cfg.token ? { authorization: `Bearer ${cfg.token}` } : {}), ...(body ? { "content-type": "application/json" } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
       signal: AbortSignal.timeout(cfg.timeoutMs || 5000),
     });
-    const value = await res.json().catch(() => ({}));
+    const value: Json = await res.json().catch(() => ({}));
     if (!res.ok) throw Object.assign(new Error(value.error || `threads: HTTP ${res.status}`), { status: res.status });
     return value;
   };
-  const at = (id) => `/threads/${encodeURIComponent(id)}`;
+  const at = (id: string) => `/threads/${encodeURIComponent(id)}`;
   return {
-    list: async (project, { archived = false } = {}) => (await call("GET", `/threads?project=${encodeURIComponent(project)}${archived ? "&archived=1" : ""}`)).threads,
-    get: (id) => call("GET", at(id)),
-    create: (fields) => call("POST", "/threads", fields),
-    update: (id, fields) => call("PATCH", at(id), fields),
-    attachPr: (id, pr) => call("POST", `${at(id)}/prs`, pr),
-    detachPr: (id, prId) => call("DELETE", `${at(id)}/prs/${encodeURIComponent(prId)}`),
-    moveSession: (id, session) => call("POST", `${at(id)}/sessions`, { session }),
-    sync: (input) => call("POST", "/threads/sync", input),
+    list: async (project: string, { archived = false }: { archived?: boolean } = {}): Promise<Json> => (await call("GET", `/threads?project=${encodeURIComponent(project)}${archived ? "&archived=1" : ""}`)).threads,
+    get: (id: string) => call("GET", at(id)),
+    create: (fields: unknown) => call("POST", "/threads", fields),
+    update: (id: string, fields: unknown) => call("PATCH", at(id), fields),
+    attachPr: (id: string, pr: unknown) => call("POST", `${at(id)}/prs`, pr),
+    detachPr: (id: string, prId: string | number) => call("DELETE", `${at(id)}/prs/${encodeURIComponent(prId)}`),
+    moveSession: (id: string, session: unknown) => call("POST", `${at(id)}/sessions`, { session }),
+    sync: (input: unknown) => call("POST", "/threads/sync", input),
   };
 }
