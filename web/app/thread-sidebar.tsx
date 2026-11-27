@@ -27,7 +27,7 @@ export type SidebarProps = {
 };
 
 const MENU = "z-50 min-w-56 rounded-md border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none";
-const ITEM = "flex min-h-9 cursor-pointer items-center gap-2 rounded-sm px-2 outline-none data-highlighted:bg-accent data-disabled:cursor-default data-disabled:opacity-50 max-sm:min-h-11";
+const ITEM = "flex min-h-9 cursor-pointer items-center gap-2 rounded-sm px-2 focus-visible:-outline-offset-2 data-highlighted:bg-accent data-disabled:cursor-default data-disabled:opacity-50 max-sm:min-h-11";
 const LABEL = "px-2 pb-1 pt-2 text-xs text-muted-foreground";
 const SEP = "my-1 h-px bg-border";
 const THEMES = [["system", "System"], ["light", "Light"], ["dark", "Dark"]];
