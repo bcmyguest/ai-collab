@@ -6,8 +6,8 @@ import { phoneFixture } from "../tools/smoke-ui.mjs";
 
 const browserTest = { skip: process.env.AI_COLLAB_BROWSER_TEST !== "1", timeout: 60_000 };
 
-async function open(t, width, hash) {
-  const fixture = await phoneFixture({ threads: true, peers: "claude,codex,cursor,opencode" });
+async function open(t, width, hash, threads = true) {
+  const fixture = await phoneFixture({ threads, peers: "claude,codex,cursor,opencode" });
   t.after(() => fixture.close());
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH });
   t.after(() => browser.close());
@@ -88,4 +88,17 @@ test("a thread lists its lead, child session and both running subagents, and cou
   await page.getByRole("button", { name: "Hide sessions in UI redesign" }).click();
   await tree.waitFor({ state: "detached" });
   await row.getByText("4 working", { exact: true }).waitFor();
+});
+
+test("threads with no live session sit under Settled, which starts collapsed once it grows long", browserTest, async (t) => {
+  const { page } = await open(t, 1440, "level=project", 6);
+  const active = page.locator('[data-group="active"]');
+  const settled = page.locator('[data-group="settled"]');
+  const toggle = settled.getByRole("button", { expanded: false });
+  await toggle.waitFor();
+  assert.match(await toggle.innerText(), /Settled\s*8/);
+  await toggle.click();
+  await settled.locator('[data-thread="th_00000000000000a3"]').waitFor();
+  assert.equal(await active.locator('[data-thread="th_00000000000000a3"]').count(), 0);
+  assert.equal(await page.locator('[data-group="working"] [data-thread="th_00000000000000a1"]').count(), 1);
 });

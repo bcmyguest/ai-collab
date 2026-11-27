@@ -82,7 +82,7 @@ export async function phoneFixture({ homeSessions = false, inactive = false, kan
       seenAt: Date.now() - 25 * 60 * 60_000,
     });
   }
-  const threadList = withThreads ? await threadFixture({ cfg, root: projectsConfig[0].root, address, label: sessionLabel, inject: fake.inject }) : [];
+  const threadList = withThreads ? await threadFixture({ cfg, root: projectsConfig[0].root, address, label: sessionLabel, inject: fake.inject, settled: typeof withThreads === "number" ? withThreads : 0 }) : [];
   const threadClient = withThreads ? item => memoryThreads(item.project === cfg.project ? threadList : []) : undefined;
   const ui = installUi(createUi({ projects, env, start, models, hasDraft: async () => false, threadClient,
     control: async () => ({ status: "requested" }) }));
@@ -144,7 +144,7 @@ function memoryThreads(list) {
  * Threads with every kind of session row: a live lead with a live child, running and finished subagents, a gone session whose
  * worktree was deleted, an address the registry no longer has, and a thread whose sessions are all gone.
  */
-async function threadFixture({ cfg, root, address, label, inject }) {
+async function threadFixture({ cfg, root, address, label, inject, settled = 0 }) {
   const { writeState } = await import("../lib/state.ts");
   const { processStart } = await import("../lib/process.ts");
   const { activityTopic } = await import("../lib/config.ts");
@@ -178,6 +178,8 @@ async function threadFixture({ cfg, root, address, label, inject }) {
     thread("th_00000000000000a1", "UI redesign", [lead, child, gone, missing], { branch: "feat/ui-redesign-v2", updatedAt: now - 5000, prs: [{ number: 812, state: "open" }] }),
     thread("th_00000000000000a2", "Composer keeps focus", [address], { branch: "fix/composer-keep-focus" }),
     thread("th_00000000000000a3", "Old layout spike", [gone, missing], { updatedAt: now - 3 * 3600_000 }),
+    // threads: N adds N old threads whose only session is gone, as a long-lived store accumulates.
+    ...Array.from({ length: settled }, (_, index) => thread("th_" + String(index).padStart(16, "b"), "Old thread " + (index + 1), [missing], { updatedAt: now - (4 + index) * 3600_000 })),
   ];
 }
 

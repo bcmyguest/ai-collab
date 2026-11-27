@@ -7,7 +7,7 @@ import { Menu, MenuContent, MenuGroup, MenuGroupLabel, MenuItem, MenuItemIndicat
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { isLive, sessionState } from "@/lib/session-state";
-import { COLLAPSED, GROUPS, elapsed, shortName, threadGroups, threadSession, unthreaded, workingTime, type Agent, type GroupId, type Thread, type ThreadRow } from "@/lib/thread-groups";
+import { COLLAPSED, GROUPS, SETTLED_OPEN, elapsed, shortName, threadGroups, threadSession, unthreaded, workingTime, type Agent, type GroupId, type Thread, type ThreadRow } from "@/lib/thread-groups";
 import { AgentName, HarnessMark } from "./agent-mark";
 import { SessionTree, missingSession, workingCount, type OpenSession } from "./thread-sessions";
 import { Dot, ago } from "./chat-shared";
@@ -138,7 +138,9 @@ function SessionItem({ agent, name, selected, now, onOpen }: { agent: Agent; nam
 }
 
 function Group({ id, label, rows, children }: { id: GroupId | "sessions" | "inactive"; label: string; rows: number; children: ReactNode }) {
-  const [open, setOpen] = useState(!COLLAPSED.includes(id as GroupId) && id !== "inactive");
+  // Null until the operator toggles, so a Settled group that grows long once the snapshot lands still starts collapsed.
+  const [toggled, setOpen] = useState<boolean | null>(null);
+  const open = toggled ?? (!COLLAPSED.includes(id as GroupId) && id !== "inactive" && !(id === "settled" && rows > SETTLED_OPEN));
   if (!rows) return null;
   return <section aria-label={label} data-group={id}>
     <h2>

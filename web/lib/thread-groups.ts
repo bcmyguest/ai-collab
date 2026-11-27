@@ -20,6 +20,8 @@ export const GROUPS: [GroupId, string][] = [
   ["settled", "Settled"], ["snoozed", "Snoozed"], ["archived", "Archived"],
 ];
 export const COLLAPSED: GroupId[] = ["snoozed", "archived"];
+// Settled threads past this many start collapsed behind their count.
+export const SETTLED_OPEN = 5;
 const NAME_WORDS = 5;
 const NAME_CHARS = 40;
 
@@ -29,7 +31,7 @@ export function threadGroups(threads: Thread[] = [], agents: Agent[] = [], now: 
   const groups = Object.fromEntries(GROUPS.map(([id]) => [id, [] as ThreadRow[]])) as Record<GroupId, ThreadRow[]>;
   for (const thread of threads) {
     const sessions = (thread.sessions || []).map(id => byId.get(id)).filter((agent): agent is Agent => Boolean(agent));
-    const shown = threadStatus(thread.status, sessions, now) as string;
+    const shown = threadStatus(thread.status, sessions, now, (thread.sessions || []).length) as string;
     const harnesses = [...new Set((thread.sessions || []).map(id => byId.get(id)?.peer || id.split("#")[0]).filter(Boolean))];
     const row = { ...thread, shown, agents: sessions, harnesses };
     const group: GroupId = shown === "archived" || shown === "snoozed" ? shown : thread.pinned ? "pinned"
