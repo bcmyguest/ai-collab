@@ -8,6 +8,7 @@ import { groupLabel } from "@/lib/chat-turns";
 import { clearText, compactionText, modelText } from "@/lib/compaction-view";
 import { activeAgents, inputBlocks, readableText, resultLanguage, runState, subagentLabel, summarize } from "@/lib/activity-rows";
 import { toolDiff } from "@/lib/tool-diff";
+import { elapsed } from "@/lib/thread-groups";
 import { ChoiceCard, askedQuestions } from "./cards";
 import { Counts, ToolDiff } from "./tool-diff";
 
@@ -195,9 +196,45 @@ export function ActivityRow({ row, when, now, goRun }) {
 /** "Working now" with each agent running: the session with an open tool call, and its running subagents. */
 export function Working({ rows, now }) {
   const busy = activeAgents(rows, now);
+  const [open, setOpen] = useState(false);
   if (!busy.length) return null;
-  return <p role="status" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-    <LoaderCircle className="size-4 animate-spin"/>Working now:
-    {busy.map(item => <span key={item.key} data-agent={item.agent} className="font-mono text-xs text-foreground">{item.kind ? item.kind + " subagent in " + item.agent : item.agent + " (session)"}</span>)}
-  </p>;
+  const sessions = busy.filter(item => !item.kind);
+  const runs = rows.filter(row => row.type === "subagent" && runState(row, now) === "running");
+  return <div role="status" className="flex min-w-0 flex-col gap-2 text-sm text-muted-foreground">
+    {sessions.length > 0 && <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none"/>Working now
+      {sessions.map(item => <span key={item.key} data-agent={item.agent} className="font-mono text-xs text-foreground">{item.agent}</span>)}
+    </p>}
+    {runs.length > 0 && <div className="flex min-w-0 flex-col gap-2">
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}
+        className="flex min-w-0 items-center gap-2 rounded-xl bg-card px-2.5 py-1.5 text-left text-sm text-foreground shadow-surface">
+        <LoaderCircle className="size-4 shrink-0 animate-spin text-live motion-reduce:animate-none"/>
+        <span className="min-w-0 flex-1 truncate">{runs.length === 1 ? "1 subagent working" : runs.length + " subagents working"}{" · " + [...new Set(runs.map(run => run.kind || "agent"))].join(", ")}</span>
+        <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none", open && "rotate-90")}/>
+      </button>
+      {open && <ul aria-label="Working subagents" className="ml-3 flex min-w-0 flex-col gap-2 border-l pl-3">
+        {runs.map(run => <li key={run.id}><WorkingRun run={run} now={now}/></li>)}
+      </ul>}
+    </div>}
+  </div>;
+}
+
+/** One running subagent; it expands to its task, status, running time and newest step. */
+function WorkingRun({ run, now }) {
+  const [open, setOpen] = useState(false);
+  const took = elapsed(now - (run.time || 0) * 1000);
+  return <div className="flex min-w-0 flex-col gap-1" data-run={run.run}>
+    <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex min-w-0 items-center gap-2 rounded-lg px-1 py-1 text-left text-sm hover:bg-accent">
+      <ChevronRight className={cn("size-3.5 shrink-0 transition-transform motion-reduce:transition-none", open && "rotate-90")}/>
+      <span className="min-w-0 flex-1 truncate"><span className="text-foreground">{run.kind || "agent"}</span>{run.description && " · " + run.description}</span>
+      <span className="shrink-0 text-xs tabular-nums">{took}</span>
+    </button>
+    {open && <dl className="ml-6 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+      <dt>Task</dt><dd className="min-w-0 text-foreground [overflow-wrap:anywhere]">{run.description || "No task summary"}</dd>
+      <dt>Status</dt><dd className="text-foreground">running · {run.steps === 1 ? "1 step" : (run.steps || 0) + " steps"}</dd>
+      <dt>Running for</dt><dd className="text-foreground">{took}</dd>
+      <dt>In</dt><dd className="min-w-0 truncate font-mono text-foreground">{run.agent}</dd>
+      {run.last && <><dt>Last step</dt><dd className="min-w-0 truncate font-mono text-foreground">{run.last.tool} {run.last.summary}</dd></>}
+    </dl>}
+  </div>;
 }

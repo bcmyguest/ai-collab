@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { isLive, sessionState } from "@/lib/session-state";
 import { COLLAPSED, GROUPS, elapsed, shortName, threadGroups, threadSession, unthreaded, workingTime, type Agent, type GroupId, type Thread, type ThreadRow } from "@/lib/thread-groups";
 import { AgentName, HarnessMark } from "./agent-mark";
+import { SessionTree, missingSession, type OpenSession } from "./thread-sessions";
 import { ago } from "./chat-shared";
 import { Logo } from "./logo";
 
@@ -76,17 +77,22 @@ function PrBadges({ prs }: { prs?: Thread["prs"] }) {
   </span>;
 }
 
-/** One thread: waiting mark, title, its age or working time, harness marks and PRs; the open one nests its sessions. */
-function ThreadItem({ row, selected, now, navigate, project }: { row: ThreadRow; selected: Selected; now: number; navigate: Navigate; project: string }) {
+/** One thread: waiting mark, title, its age or working time, harness marks and PRs, then every session it holds. */
+function ThreadItem({ row, all, selected, now, navigate, project }: { row: ThreadRow; all: Agent[]; selected: Selected; now: number; navigate: Navigate; project: string }) {
   const open = selected.level === "session" && Boolean(selected.session) && (row.sessions || []).includes(selected.session || "");
   const target = threadSession(row, row.agents);
   const working = workingTime(row, now);
   const waiting = row.shown === "waiting";
   const go = (session: string) => session ? navigate({ project, level: "session", harness: session.split("#")[0], session, ...(open && selected.tab ? { tab: selected.tab } : {}) })
     : navigate({ project, level: "project" });
+  const byId = new Map(all.map(agent => [agent.id, agent]));
+  const sessions = (row.sessions || []).map(id => byId.get(id) || missingSession(id));
+  const openRun: OpenSession = (session, run) => run
+    ? navigate({ project, level: "session", harness: session.split("#")[0], session, tab: "subagents", run })
+    : go(session);
   return <li className="flex min-w-0 flex-col">
     <button type="button" data-thread={row.id} aria-current={open ? "true" : undefined} onClick={() => go(target)}
-      className={cn("flex min-w-0 flex-col gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-sidebar-accent max-md:py-2.5", open && "bg-sidebar-accent")}>
+      className={cn("flex min-w-0 flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left hover:bg-sidebar-accent max-md:py-2.5", open && "bg-sidebar-accent/60")}>
       <span className="flex min-w-0 items-center gap-2">
         {waiting && <span role="img" aria-label="Waiting on you" className="size-1.5 shrink-0 rounded-full bg-primary"/>}
         <span className={cn("min-w-0 flex-1 truncate", (open || waiting) && "font-medium")} title={row.title || row.branch || row.id}>{row.title || row.branch || row.id}</span>
@@ -101,13 +107,11 @@ function ThreadItem({ row, selected, now, navigate, project }: { row: ThreadRow;
         <PrBadges prs={row.prs}/>
       </span>}
     </button>
-    {open && row.agents.length > 0 && <ul aria-label={"Sessions in " + (row.title || row.id)} className="ml-3 flex flex-col border-l pl-1.5">
-      {row.agents.map(agent => <SessionItem key={agent.id} agent={agent} name={shortName(agent, row.title)} selected={selected} now={now} onOpen={() => go(agent.id)}/>)}
-    </ul>}
+    {sessions.length > 0 && <SessionTree sessions={sessions} all={all} label={"Sessions in " + (row.title || row.id)} title={row.title} selected={selected} now={now} open={openRun}/>}
   </li>;
 }
 
-/** One session row: glyph, short name, and a waiting or working mark. */
+/** One session outside any thread: glyph, short name, and a waiting or working mark. */
 function SessionItem({ agent, name, selected, now, onOpen }: { agent: Agent; name: string; selected: Selected; now: number; onOpen: () => void }) {
   const state = sessionState(agent, now);
   const current = selected.level === "session" && selected.session === agent.id;
@@ -162,7 +166,7 @@ function AppMenu({ data, current, navigate, counts, decisions, pause, openSchedu
           <span className="flex-1">Teams</span>{counts.patterns > 0 && <span className="text-xs text-muted-foreground">{counts.patterns}</span>}
         </MenuItem>
         <MenuItem className={ITEM} onSelect={() => navigate({ project: current, level: "session" })}><span className="flex-1">All sessions</span></MenuItem>
-        <MenuItem className={ITEM} onSelect={() => navigate({ project: current, level: "compactions" })}><span className="flex-1">Compaction map</span></MenuItem>
+        <MenuItem className={ITEM} onSelect={() => navigate({ project: current, level: "compactions" })}><span className="flex-1">History</span></MenuItem>
         {ready && !data.hosted && <MenuItem className={ITEM} disabled={disabled} onSelect={pause}>
           <span className="flex-1">{project?.paused ? "Resume new work" : "Pause new work"}</span>
           {project?.paused && <span className="text-xs text-muted-foreground">paused</span>}
@@ -212,9 +216,10 @@ export function ThreadSidebar(props: SidebarProps) {
   const { data, selected, now, navigate, newThread, disabled, controls } = props;
   const home = selected.level === "home" || selected.level === "inbox";
   const current = home ? "" : selected.project || data.project || "";
-  const agents = home ? [] : (data.agents || []).filter(agent => !agent.gone);
+  const all = home ? [] : data.agents || [];
+  const agents = all.filter(agent => !agent.gone);
   const threads = home ? [] : data.threads || [];
-  const groups = threadGroups(threads, agents, now);
+  const groups = threadGroups(threads, all, now);
   const loose = unthreaded(agents, threads);
   const live = loose.filter(agent => isLive(agent, now) || agent.online);
   const idle = loose.filter(agent => !(isLive(agent, now) || agent.online));
@@ -246,7 +251,7 @@ export function ThreadSidebar(props: SidebarProps) {
         </li>)}
       </ul> : <>
         {GROUPS.map(([id, label]) => <Group key={id} id={id} label={label} rows={groups[id].length}>
-          {groups[id].map(row => <ThreadItem key={row.id} row={row} selected={selected} now={now} navigate={navigate} project={current}/>)}
+          {groups[id].map(row => <ThreadItem key={row.id} row={row} all={all} selected={selected} now={now} navigate={navigate} project={current}/>)}
         </Group>)}
         <Group id="sessions" label={threads.length ? "Sessions outside threads" : "Sessions"} rows={live.length}>{live.map(sessionRow)}</Group>
         <Group id="inactive" label="Inactive sessions" rows={idle.length}>{idle.map(sessionRow)}</Group>

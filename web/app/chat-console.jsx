@@ -138,7 +138,8 @@ export function Console({ account }) {
   useEffect(() => {
     if (!ready) return;
     const list = stick.current?.scrollRef.current;
-    if (home && list) {
+    // Home and History open at their top: the overview, or the map above the chat.
+    if ((home || compactions) && list) {
       stick.current.stopScroll();
       list.scrollTop = 0;
       return;
@@ -148,7 +149,7 @@ export function Console({ account }) {
     // Leaving the bottom lock first stops use-stick-to-bottom pulling the restored list down on its next resize.
     stick.current.stopScroll();
     list.scrollTop = saved;
-  }, [ready, requested, home]);
+  }, [ready, requested, home, compactions]);
   useEffect(() => {
     const list = stick.current?.scrollRef.current;
     if (!ready || !memoryKey || !list) return;
@@ -243,13 +244,15 @@ export function Console({ account }) {
   const agent = level === "session" ? data.agents.find(item => item.id === selected.session) : undefined;
   const target = level === "session" ? selected.session : "all";
   const missing = level === "session" && !target;
+  // A session the server lists as gone, or no longer lists at all: its row still opens what history remains.
+  const ended = level === "session" && Boolean(target) && ready && (!agent || Boolean(agent.gone));
   const patterns = level === "patterns";
   const inbox = level === "inbox";
   const identity = agentName(agent);
   const sessionLabel = !agent?.generatedName ? agent?.name : "";
   // A picked project's own views read alike: the header's kicker names the project and its h1 the view. A session keeps
   // its own name; Home and the inbox are not inside a project.
-  const projectView = level === "project" ? "Chat" : level === "tasks" ? "Tasks" : level === "patterns" ? "Teams" : "";
+  const projectView = level === "project" ? "Chat" : level === "tasks" ? "Tasks" : level === "patterns" ? "Teams" : level === "compactions" ? "History" : "";
   const title = inbox ? "Decision inbox" : home ? "Home" : level === "session" ? identity || sessionLabel || short(selected.session) || "Sessions"
     : projectView || project;
   // A home or Sessions card opens its session, or one of its subagent runs.
@@ -483,7 +486,7 @@ export function Console({ account }) {
         decide={(id, answer) => action("decide", { id, answer }, "Decided")}
         review={(id, decision, note, packet) => action("review", { id, decision, note, ...packet }, decision === "accept" ? "Build accepted" : "Build returned")}
         skip={taskId => action("skip", { taskId }, "Skipped")}
-        open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatContainerRoot key={inbox ? "inbox" : home ? "home" : "conversation"} initial={home ? false : "instant"} contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
+        open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatContainerRoot key={inbox ? "inbox" : home ? "home" : "conversation"} initial={home || compactions ? false : "instant"} contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
         <ChatRuntimeProvider key={requested} entries={thread} operator={data.operator}>
         <ChatContainerContent key={requested} className="mx-auto w-full max-w-3xl gap-5 px-3 py-4">
           {!ready && (home || listing || compactions) && !loadError && <p className="py-16 text-center text-sm text-muted-foreground">Loading sessions…</p>}
@@ -510,8 +513,8 @@ export function Console({ account }) {
               skip={payload => action("skip", payload, "Skipped")}/>}
           </>}
           {ready && compactions && <CompactionMap agents={data.agents || []} now={now}/>}
-          {!home && !listing && (!ready || (thread.length + live.length === 0 && queue.length === 0)) && <p className="py-16 text-center text-sm text-muted-foreground">
-            {ready ? "No messages yet." : loadError ? "" : watching ? "Loading project chat…" : "Loading conversation…"}</p>}
+          {!home && !listing && !(ready && compactions) && (!ready || (thread.length + live.length === 0 && queue.length === 0)) && <p className="py-16 text-center text-sm text-muted-foreground">
+            {ready ? (ended ? "This session has ended, and the recent history holds none of its messages." : "No messages yet.") : loadError ? "" : watching ? "Loading project chat…" : "Loading conversation…"}</p>}
           {ready && !home && !listing && <ThreadPrimitive.Messages>
               {({ message }) => {
                 const [entry] = getExternalStoreMessages(message) || [];

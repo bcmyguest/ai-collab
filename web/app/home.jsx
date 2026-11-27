@@ -49,7 +49,7 @@ export function SessionMenu({ node, disabled, dispose, raw, map, detailsAction, 
     <DropdownMenuContent align="end">
       {detailsAction}
       {raw && <DropdownMenuItem onSelect={() => raw(node)}>Raw activity</DropdownMenuItem>}
-      {map && <DropdownMenuItem onSelect={() => map(node)}>Compaction map</DropdownMenuItem>}
+      {map && <DropdownMenuItem onSelect={() => map(node)}>History</DropdownMenuItem>}
       {dispose && <DropdownMenuItem disabled={disabled || node.online || !node.registered} onSelect={() => dispose(node)}>Dispose</DropdownMenuItem>}
     </DropdownMenuContent>
   </DropdownMenu>;
