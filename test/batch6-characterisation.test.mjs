@@ -48,12 +48,12 @@ test("exportParent appends the export line once and only for an absolute file wi
   assert.equal(exportParent(cfg, join(dir, "missing", "env")), false);
 });
 
-test("childHint prefixes AI_COLLAB_PARENT for every host but Claude", () => {
-  assert.equal(childHint({ ...cfg, session: "" }, "codex"), "");
-  const claude = childHint(cfg, "claude");
-  assert.ok(claude.startsWith("[ai-collab] An agent you start from your shell"));
-  assert.ok(claude.includes(`codex exec "<prompt>", claude -p "<prompt>", or cursor-agent -p "<prompt>"`));
-  assert.ok(childHint(cfg, "codex").includes(`AI_COLLAB_PARENT=p1#s1 codex exec "<prompt>", AI_COLLAB_PARENT=p1#s1 claude -p`));
+test("childHint points every host at spawn_agent, not shell starts", () => {
+  assert.equal(childHint({ ...cfg, session: "" }), "");
+  const hint = childHint(cfg);
+  assert.ok(hint.startsWith("[ai-collab] To hand work to another agent, call the ai-collab spawn_agent tool"));
+  assert.ok(hint.includes("Do not start harnesses from your shell."));
+  assert.ok(!hint.includes("codex exec"));
 });
 
 test("parentLine names the parent and the child's own address", () => {

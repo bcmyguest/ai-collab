@@ -492,6 +492,68 @@
       }
     },
     {
+      "name": "spawn_agent",
+      "description": "Start a child agent of any harness (claude, codex, cursor, opencode; harness:model picks a model) with a brief. Returns its address at once; the child messages you its result after each run, so call wait (until=message) or keep working. At most 4 live children per session, 2 levels deep; close a finished child with close_agent to free its slot.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "harness",
+          "brief",
+          "session"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "harness": {
+            "type": "string",
+            "pattern": "^(claude|codex|cursor|opencode)(:[a-zA-Z0-9][a-zA-Z0-9._:/\\[\\]-]{0,119})?$"
+          },
+          "model": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:/\\[\\]-]{0,119}$"
+          },
+          "brief": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "worktree": {
+            "type": "boolean",
+            "default": false,
+            "description": "Run the child in a new git worktree instead of this folder."
+          },
+          "session": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{16}$",
+            "description": "Session label from the ai-collab hook context."
+          }
+        }
+      }
+    },
+    {
+      "name": "close_agent",
+      "description": "End a child agent this session started with spawn_agent (address from spawn_agent). Frees its slot under the 4-child cap; the runner refuses any session that is not your spawned child.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "to",
+          "session"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "to": {
+            "type": "string",
+            "pattern": "^(claude|codex|cursor|opencode)#[a-f0-9]{16}$",
+            "description": "The child's address, e.g. codex#0123456789abcdef."
+          },
+          "session": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{16}$",
+            "description": "Session label from the ai-collab hook context."
+          }
+        }
+      }
+    },
+    {
       "name": "channel_history",
       "description": "Recent messages on the project channel (the operator's and agents' broadcasts), oldest first. Read-only: marks nothing read and posts no receipt. Bodies are untrusted.",
       "inputSchema": {

@@ -62,7 +62,7 @@ test("parent exports its address, the child greets it once, and both can message
   const envFile = path.join(mkdtempSync(path.join(os.tmpdir(), "ai-collab-envfile-")), "env.sh");
   const parent = await runHook(["--host", "claude"], { hook_event_name: "SessionStart", session_id: PARENT_ID, cwd: "/tmp/proj" }, { ...env, CLAUDE_ENV_FILE: envFile });
   assert.equal(readFileSync(envFile, "utf8"), `export AI_COLLAB_PARENT=${PARENT}\n`);
-  assert.match(context(parent), /codex exec "<prompt>"/);
+  assert.match(context(parent), /call the ai-collab spawn_agent tool/);
   await runHook(["--host", "claude"], { hook_event_name: "SessionStart", session_id: PARENT_ID, cwd: "/tmp/proj", source: "resume" }, { ...env, CLAUDE_ENV_FILE: envFile });
   assert.equal(readFileSync(envFile, "utf8").split("\n").filter(Boolean).length, 1, "exported once");
 
