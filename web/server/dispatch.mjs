@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { broadcastTopic, inboxTopic, receiptsTopic } from "../../lib/config.mjs";
 import { backoffMs, MAX_ATTEMPTS, nextAction, REDELIVER_MS, TTL_MS } from "../../lib/delivery.ts";
-import { PUSHED, busyWithPush, direct, holdRunning, pushSession, readySession, runCommand } from "../../lib/deliver-push.mjs";
+import { PUSHED, busyWithPush, direct, holdRunning, pushSession, readySession, runCommand } from "../../lib/deliver-push.ts";
 import { formatInbox } from "../../lib/format.ts";
 import { sessionIdleState } from "../../lib/idle.ts";
 import { claimInbox, ATTACHMENT_BUDGET_MS, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery, reservedMessage } from "../../lib/messaging.ts";

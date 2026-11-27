@@ -12,29 +12,43 @@ import { commandSupport } from "../web/lib/slash-commands.js";
 import { claudePermissionError } from "./harness.ts";
 import { bypassRefusal } from "./sessions/launch.ts";
 
-const NEEDS_MODEL = { status: "failed", detail: "Give a model as provider/model, for example /model anthropic/claude-sonnet." };
+/** A slash command's result; status is succeeded, failed, pending or unsupported. */
+export type SlashResult = { status: string; detail: string };
+/** The registry session a command targets. */
+export type SlashPeer = { harness: string; sessionId: string; cwd?: unknown; id?: unknown; sandbox?: unknown };
+type OpencodeRequest = (method: string, path: string, opts: { body: unknown; env?: NodeJS.ProcessEnv }) => Promise<{ ok: boolean; error?: string }>;
+export type SlashDeps = {
+  compact?: (peer: SlashPeer) => Promise<SlashResult>;
+  opencode?: OpencodeRequest;
+  setPermission?: (peer: SlashPeer, mode: string) => Promise<string>;
+  setMode?: (peer: SlashPeer, mode: string) => Promise<{ permissionMode: string }>;
+  askTeamPermission?: (team: string, mode: string) => SlashResult;
+};
+
+const NEEDS_MODEL: SlashResult = { status: "failed", detail: "Give a model as provider/model, for example /model anthropic/claude-sonnet." };
 // Compact takes no instructions: no harness here has a verified channel for them.
-const COMPACT_ARGS = {
+// oxlint-disable-next-line quality/no-known-value-widening -- looked up by the session's runtime harness
+const COMPACT_ARGS: Record<string, string | undefined> = {
   claude: "Claude's compaction through the Agent SDK takes no instructions here.",
   codex: "thread/compact/start takes only a thread id (app-server schema), so it takes no instructions.",
   opencode: "The session.compact request body is not verified, so it takes no instructions.",
 };
 
 /** The {providerID, modelID} pair from "provider/model", or null when either part is missing. */
-export function modelRef(args) {
+export function modelRef(args: string): { providerID: string; modelID: string } | null {
   const slash = args.indexOf("/");
   if (slash <= 0 || slash === args.length - 1) return null;
   return { providerID: args.slice(0, slash), modelID: args.slice(slash + 1) };
 }
 
 // The checks lib/sessions/control.ts makes before any compaction, applied to every command.
-function verifiedSession(peer) {
+function verifiedSession(peer: SlashPeer): boolean {
   return nativeSessionId(peer.harness, peer.sessionId) && typeof peer.cwd === "string" && isAbsolute(peer.cwd) &&
     typeof peer.id === "string" && peer.id.endsWith("#" + sessionLabel(peer.sessionId));
 }
 
 // A permission mode argument: one of the Claude values, refused when bypassPermissions has no OpenShell or host allowance.
-function permissionArg(value, { sandboxed = false } = {}) {
+function permissionArg(value: unknown, { sandboxed = false }: { sandboxed?: boolean } = {}): { error: string; mode?: undefined } | { mode: string; error?: undefined } {
   const mode = String(value ?? "").trim();
   if (!mode) return { error: "Give a permission mode, for example /permission default." };
   const error = claudePermissionError(mode);
@@ -44,21 +58,21 @@ function permissionArg(value, { sandboxed = false } = {}) {
 }
 
 /** /permission <mode>: stores the mode for the session's next start or wake; the running turn keeps its mode. */
-async function permissionCommand(peer, args, { setPermission }) {
+async function permissionCommand(peer: SlashPeer, args: string, { setPermission }: SlashDeps): Promise<SlashResult> {
   if (peer.harness !== "claude") return { status: "unsupported", detail: "/permission sets Claude's permission mode." };
   const checked = permissionArg(args, { sandboxed: peer.sandbox === true });
   if (checked.error) return { status: "failed", detail: checked.error };
   if (!setPermission) return { status: "unsupported", detail: "No store for the session's permission mode." };
   try {
-    const where = await setPermission(peer, checked.mode);
+    const where = await setPermission(peer, checked.mode as string);
     return { status: "succeeded", detail: `The next start or wake of this session uses ${checked.mode} (${where === "owned" ? "runner record" : "session registry"}).` };
   } catch (error) {
-    return { status: "failed", detail: error.message };
+    return { status: "failed", detail: (error as Error).message };
   }
 }
 
 /** /mode <mode>: changes a live runner-owned session's permission mode through the runner's control route. */
-async function modeCommand(peer, args, { setMode }) {
+async function modeCommand(peer: SlashPeer, args: string, { setMode }: SlashDeps): Promise<SlashResult> {
   const mode = String(args ?? "").trim();
   if (!mode) return { status: "failed", detail: "Give a permission mode, for example /mode auto." };
   if (!setMode) return { status: "unsupported", detail: "No runner for /mode." };
@@ -66,22 +80,22 @@ async function modeCommand(peer, args, { setMode }) {
     const changed = await setMode(peer, mode);
     return { status: "succeeded", detail: `Permission mode is now ${changed.permissionMode}.` };
   } catch (error) {
-    return { status: "failed", detail: error.message };
+    return { status: "failed", detail: (error as Error).message };
   }
 }
 
 /** /team-permission <team> <mode>: validates both words, then asks the operator to confirm before the team.dot write. */
-function teamPermissionCommand(args, { askTeamPermission }) {
+function teamPermissionCommand(args: string, { askTeamPermission }: SlashDeps): SlashResult {
   const [team, value, ...extra] = String(args ?? "").trim().split(/\s+/);
   if (!team || !value || extra.length) return { status: "failed", detail: "Use /team-permission <team> <mode>." };
   const checked = permissionArg(value);
   if (checked.error) return { status: "failed", detail: checked.error };
   if (!askTeamPermission) return { status: "unsupported", detail: "No team store for /team-permission." };
-  return askTeamPermission(team, checked.mode);
+  return askTeamPermission(team, checked.mode as string);
 }
 
 /** Resolves {status, detail}; status is succeeded, failed, pending or unsupported. */
-export async function slashCommand(peer, { name, args = "" }, { compact, opencode = opencodeRequest, setPermission, setMode, askTeamPermission } = {}) {
+export async function slashCommand(peer: SlashPeer | null | undefined, { name, args = "" }: { name: string; args?: string }, { compact, opencode = opencodeRequest, setPermission, setMode, askTeamPermission }: SlashDeps = {}): Promise<SlashResult> {
   if (!peer || !verifiedSession(peer)) return { status: "unsupported", detail: "Missing a verified native session ID or workspace." };
   if (name === "team-permission") return teamPermissionCommand(args, { askTeamPermission });
   const support = commandSupport(peer.harness, name);
@@ -89,8 +103,8 @@ export async function slashCommand(peer, { name, args = "" }, { compact, opencod
   if (name === "permission") return permissionCommand(peer, args, { setPermission });
   if (name === "mode") return modeCommand(peer, args, { setMode });
   if (name === "compact") {
-    if (args) return { status: "unsupported", detail: COMPACT_ARGS[peer.harness] };
-    return compact(peer);
+    if (args) return { status: "unsupported", detail: COMPACT_ARGS[peer.harness] as string };
+    return (compact as NonNullable<SlashDeps["compact"]>)(peer);
   }
   if (peer.harness !== "opencode") return { status: "unsupported", detail: support.reason };
   const path = `/api/session/${encodeURIComponent(peer.sessionId)}`;
@@ -98,8 +112,8 @@ export async function slashCommand(peer, { name, args = "" }, { compact, opencod
     const ref = modelRef(args);
     if (!ref) return NEEDS_MODEL;
     const r = await opencode("POST", `${path}/model`, { body: ref });
-    return r.ok ? { status: "succeeded", detail: `Switched the model to ${args}.` } : { status: "failed", detail: r.error };
+    return r.ok ? { status: "succeeded", detail: `Switched the model to ${args}.` } : { status: "failed", detail: r.error as string };
   }
   const r = await opencode("POST", `${path}/command`, { body: { command: name, arguments: args } });
-  return r.ok ? { status: "succeeded", detail: `Ran /${name}.` } : { status: "failed", detail: r.error };
+  return r.ok ? { status: "succeeded", detail: `Ran /${name}.` } : { status: "failed", detail: r.error as string };
 }

@@ -52,7 +52,7 @@ Every command except `show` and `check` rewrites the file in its canonical form:
 
 ## The tick
 
-`runner/schedules.mjs` resolves which project a schedule's `cwd` lies in (`projectOfFolder`) and appends the rendered mission to the last argument of the command — the prompt, for a harness command. A command whose binary is not a harness (`node`, `npx`, a shell script) is left exactly as `schedules.json` wrote it, because its argv is not a prompt. A `pm` schedule with `workspace` reads `MISSION.md` from that clone instead of the registered project root, and runs the command there. `cwd` still names the project.
+`runner/schedules.ts` resolves which project a schedule's `cwd` lies in (`projectOfFolder`) and appends the rendered mission to the last argument of the command — the prompt, for a harness command. A command whose binary is not a harness (`node`, `npx`, a shell script) is left exactly as `schedules.json` wrote it, because its argv is not a prompt. A `pm` schedule with `workspace` reads `MISSION.md` from that clone instead of the registered project root, and runs the command there. `cwd` still names the project.
 
 The result: edit `MISSION.md`, commit it, and the next tick sees it. Nothing in `schedules.json` has to change, and the prompt is never two versions behind the file.
 

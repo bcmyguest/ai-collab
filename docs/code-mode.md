@@ -57,8 +57,8 @@ The CLI read commands follow the same rule: `peers`, `history`, `agents`, `sessi
 - `ai.*` tools: `list_agents`, `list_sessions`, `channel_history`, `task_list`, `team_status`, `pattern_list`,
   `pattern_status`, `send`, `task_update`. Start, interrupt and operator-only tools are not exposed; they keep their
   approval. The tool description lists each call's arguments, generated from the MCP schemas in
-  `lib/tool-api.mjs`.
-- Each `ai.*` call runs on the host through `lib/tool-api.mjs`, after a check of its arguments against the tool's
+  `lib/tool-api.ts`.
+- Each `ai.*` call runs on the host through `lib/tool-api.ts`, after a check of its arguments against the tool's
   schema. `session` is always the caller's.
 - Limits: `timeout_ms` 1000-120000 (default 30000), 200 `ai.*` calls, 4 MB of program output, 256 MB of heap.
 

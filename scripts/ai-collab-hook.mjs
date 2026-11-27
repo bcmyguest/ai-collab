@@ -12,7 +12,7 @@
  * A prompt the operator typed records operatorPromptAt for this session; AFK mode changes only when the operator sets it.
  * --host opencode takes Claude-shaped input from the OpenCode plugin (lib/opencode-plugin.mjs) and answers in Claude's shapes.
  * PermissionRequest (Claude, Codex, OpenCode) and Cursor beforeShellExecution / beforeMCPExecution ask the operator's phone in AFK
- * mode on or quiet (lib/approvals.mjs); no answer means no decision, so the harness shows its own prompt.
+ * mode on or quiet (lib/approvals.ts); no answer means no decision, so the harness shows its own prompt.
  * In mode off a Claude or Codex prompt becomes a view-only card; PostToolUse(Failure), Stop, StopFailure, UserPromptSubmit
  * or SessionEnd of that session closes it.
  * Any failure prints {} and exits 0: the session continues unchanged. Transcripts are never read.
@@ -42,7 +42,7 @@ import { activityEvents, publishActivity } from "../lib/activity.ts";
 import { compactionFields } from "../lib/compaction.ts";
 import { clearFields } from "../lib/session-events.mjs";
 import { sendReceipts, settleReceipts } from "../lib/receipts.ts";
-import { closeTerminalCards, decideApproval, decideQuestion } from "../lib/approvals.mjs";
+import { closeTerminalCards, decideApproval, decideQuestion } from "../lib/approvals.ts";
 import { classifyLimit } from "../lib/limits.ts";
 import { alertLimit } from "../lib/limit-alert.ts";
 import { hookTrace } from "../lib/cursor-trace.ts";

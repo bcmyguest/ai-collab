@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
-import { toolClient } from "../lib/tool-api.mjs";
+import { toolClient } from "../lib/tool-api.ts";
 import { READ_TOOLS, readsThroughRunCode } from "../lib/code-run.mjs";
 import { runCodeReadRecipe } from "../lib/store-read.ts";
 import { serveMcp } from "../lib/surfaces/render-mcp.ts";

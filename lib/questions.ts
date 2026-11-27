@@ -162,7 +162,7 @@ export async function findAnswers(cfg: Cfg, questions: OpenQuestion[], { poll = 
 }
 
 /**
- * Asks the operator's phone. Options make a choice card (the approval envelope of lib/approvals.mjs); the answer is the chosen labels.
+ * Asks the operator's phone. Options make a choice card (the approval envelope of lib/approvals.ts); the answer is the chosen labels.
  * Without options the phone gets a text question with a reply field.
  */
 export async function askQuestion(cfg: Cfg, question: unknown, options: AskOptions = {}): Promise<AnswerResult> {

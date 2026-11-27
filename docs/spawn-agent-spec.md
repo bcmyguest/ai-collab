@@ -204,7 +204,7 @@ export function spawnReport(child: string, outcome: string, text: string): strin
 
 `system: false` makes the brief show as the parent's input in the UI, not as a system prompt. The runner prepends no prompt text; the child learns its parent from the hook context (`lib/family.ts` `parentLine`) or, for owned sessions, from B5.
 
-### B2. Control route, `runner/control.mjs`
+### B2. Control route, `runner/control.ts`
 
 `route` (lines 41-95) already forwards `POST /v1/sessions` to `runner.start(input)`. Pass the three new fields through. If `route` whitelists fields, add `managed`, `parent` and `spawn` there.
 
@@ -320,7 +320,7 @@ Insert after `team_start` (line ~275):
 },
 ```
 
-Take the model pattern from the runner's `MODEL` regex (`runner/runner.mjs`, constants 43-73) instead of the one above if they differ. `surfaces` is `["mcp"]` only: `run_code` programs cannot spawn (answer 3). Leave `listing` and `available` unset so every host sees the op; `lib/tool-api.mjs` `listed(env)` filters only `builder_start`.
+Take the model pattern from the runner's `MODEL` regex (`runner/runner.mjs`, constants 43-73) instead of the one above if they differ. `surfaces` is `["mcp"]` only: `run_code` programs cannot spawn (answer 3). Leave `listing` and `available` unset so every host sees the op; `lib/tool-api.ts` `listed(env)` filters only `builder_start`.
 
 ### B9. CLI, `lib/cli.mjs`
 

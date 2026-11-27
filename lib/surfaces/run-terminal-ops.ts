@@ -1,5 +1,5 @@
-// MCP tools for run in terminal (lib/run-terminal.mjs); listed only on the host with runInTerminal on.
-import { RUN_ID, REASON_MAX, SCRIPT_MAX_BYTES, TIMEOUT_MAX_S, createRunRequest, onHost, runInTerminalEnabled, waitForRun } from "../run-terminal.mjs";
+// MCP tools for run in terminal (lib/run-terminal.ts); listed only on the host with runInTerminal on.
+import { RUN_ID, REASON_MAX, SCRIPT_MAX_BYTES, TIMEOUT_MAX_S, createRunRequest, onHost, runInTerminalEnabled, waitForRun } from "../run-terminal.ts";
 import { IDENTITY, WAIT } from "./schema.ts";
 import { passJs } from "./types.ts";
 import type { Op } from "./ops.ts";

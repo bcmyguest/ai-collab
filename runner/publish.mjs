@@ -7,7 +7,7 @@ import { publishStatus } from "../lib/messaging.ts";
 import { publishActivity } from "../lib/activity.ts";
 import { compactionFields } from "../lib/compaction.ts";
 import { modelFields } from "../lib/session-events.mjs";
-import { approvalMessage, cleanQuestions } from "../lib/approvals.mjs";
+import { approvalMessage, cleanQuestions } from "../lib/approvals.ts";
 import { sendReceipts } from "../lib/receipts.ts";
 import { reportContext } from "../lib/usage.ts";
 import { APPROVAL_TIMEOUT_MIN, ERROR, NOTICE } from "./contract.mjs";
@@ -67,7 +67,7 @@ export function activityFor(e, { system } = {}) {
 /** One activity row when the session ends. */
 export const sessionEndedRow = (reason) => ({ type: "stop", input: ["session ended", reason].filter(Boolean).join(" · ") });
 
-/** The approval envelope of an owned session (lib/approvals.mjs shape plus owned:true), or null when it cannot fit. */
+/** The approval envelope of an owned session (lib/approvals.ts shape plus owned:true), or null when it cannot fit. */
 export function ownedApprovalMessage(cfg, harness, { id, tool, summary, questions }, { now = Date.now(), ttlMs = DEFAULT_APPROVAL_MS } = {}) {
   const clean = questions === undefined ? undefined : cleanQuestions(questions);
   const req = { tool: String(tool).slice(0, 128), summary: String(summary).slice(0, 300), ...(clean ? { questions: clean } : {}) };
