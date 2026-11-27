@@ -14,7 +14,7 @@ import { parsePhoneReply, parseQuestionText } from "./questions.mjs";
 import { readState, writeState, statePath, withLock } from "./state.mjs";
 import { parseMode, recordMode } from "./mode.mjs";
 import { imageAttachment, readAttachment } from "./attachment.mjs";
-import { attachmentOf, cacheAttachmentsWithin, cacheUploadedAttachment, localizedAttachment } from "./attachment-cache.mjs";
+import { attachmentOf, cacheAttachmentsWithin, cacheUploadedAttachment, localizedAttachment } from "./attachment-cache.ts";
 import { encodeEnvelope, parseWireEnvelope } from "./agui.mjs";
 import { sendReceipts, settleReceipts } from "./receipts.mjs";
 import { reconnectBackoff } from "./operator.ts";
@@ -587,7 +587,7 @@ export async function claimInbox(cfg: Cfg, opts: ClaimOptions = {}): Promise<Inb
     // A delivered attachment is cached once for the whole machine, outside the lock and under a short budget,
     // so the agent reads the file the UI already has instead of downloading it from ntfy again.
     return r.value.some((m) => m.attachment && !(m.attachment as { local_path?: string }).local_path)
-      ? await cacheAttachmentsWithin(cfg, r.value, { budgetMs: ATTACHMENT_BUDGET_MS })
+      ? await cacheAttachmentsWithin(cfg, r.value, { budgetMs: ATTACHMENT_BUDGET_MS }) as InboxMessage[]
       : r.value;
   } catch (err) {
     if (strict) throw err;
