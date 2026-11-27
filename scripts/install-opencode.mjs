@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Installs the OpenCode 2 plugin shim and the ai-collab MCP server into OpenCode's global config.
-import { installOpenCode } from "../lib/install-opencode.mjs";
+import { installOpenCode } from "../lib/install-opencode.ts";
 
 const result = installOpenCode({ importMetaUrl: import.meta.url, env: process.env });
 if (!result.ok) {

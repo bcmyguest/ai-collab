@@ -9,7 +9,7 @@ import { basename, join } from "node:path";
 import { stateDir } from "../config.mjs";
 import { PROMPT_MAX_CHARS } from "../start.mjs";
 import { cursorLimitFile, cursorLimitUntil, detectLimit, fallbackChain, isBlockingLimit, recordCursorLimit } from "../limits.ts";
-import { listModels } from "../models.mjs";
+import { listModels } from "../models.ts";
 import { traceStream } from "../cursor-trace.ts";
 import { OUT, SANDBOX, WORK } from "../sandbox.ts";
 import { BUILDER_HARNESSES, DEFAULT_MODEL, BASE_REF, SYNC_TIMEOUT_MS, readState, updateState } from "./state.ts";

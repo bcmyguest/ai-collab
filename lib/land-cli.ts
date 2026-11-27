@@ -5,7 +5,7 @@ import { parseArgs } from "node:util";
 import { broadcastTopic, stateDir } from "./config.mjs";
 import { checkoutBranch, deployLink, dbosVersion, dirty, inFlight, installUnits, pointLink, readLink, resolveSource, unitsInstalled } from "./deploy-tree.mjs";
 import { AUTO_DEPLOY_TIMEOUT_MS, HOST_CHECKOUT, SERVICES, deployHost, execRun, finishBranch, mergeNode, npmCommand, readLastDeploy, requestLand, restartServices, writeLastDeploy } from "./land.mjs";
-import { operatorConfigs } from "./mode.mjs";
+import { operatorConfigs } from "./mode.ts";
 import { publish } from "./messaging.ts";
 import { withLock } from "./state.ts";
 import { openTasks } from "./tasks.mjs";

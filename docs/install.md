@@ -60,7 +60,7 @@ OpenCode 2 (checked with 2.2.5) loads ai-collab as a server plugin:
 node /path/to/ai-collab/scripts/install-opencode.mjs
 ```
 
-`installOpenCode` (`lib/install-opencode.mjs`) writes three things under `$XDG_CONFIG_HOME/opencode` (default `~/.config/opencode`) and keeps every other setting:
+`installOpenCode` (`lib/install-opencode.ts`) writes three things under `$XDG_CONFIG_HOME/opencode` (default `~/.config/opencode`) and keeps every other setting:
 
 | What | Where | Content |
 |---|---|---|

@@ -9,7 +9,7 @@ import { publish, querySafe, type Cfg } from "./messaging.ts";
 import { stripControl } from "./format.ts";
 import { textAttachment } from "./attachment.ts";
 import { MESSAGE_MAX_BYTES } from "./messaging.ts";
-import { machinePrompt } from "./mode.mjs";
+import { machinePrompt } from "./mode.ts";
 import { envelopeToEvent } from "./agui.mjs";
 import { compactionFields } from "./compaction.mjs";
 import { clearFields, modelFields } from "./session-events.mjs";

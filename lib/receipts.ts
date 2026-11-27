@@ -7,19 +7,23 @@ import { alertPriority, readAlertLevel } from "./alerts.ts";
 import { MESSAGE_MAX_BYTES, SESSION_LABEL, isValidName, receiptsTopic } from "./config.mjs";
 import { publish } from "./messaging.ts";
 import { encodeEnvelope, parseWireEnvelope } from "./agui.mjs";
+import type { Cfg } from "./messaging.ts";
+
+/** The config fields a receipt reads: who read it, and where to publish. */
+type ReceiptCfg = Pick<Cfg, "peer" | "project"> & { session?: string; wire?: unknown; enabled?: boolean };
 
 export const RECEIPT_TIMEOUT_MS = 1500;
 const MESSAGE_ID = /^[a-zA-Z0-9-]{1,64}$/;
 const READS_MAX = 5000;
-const pending = new Set();
+const pending = new Set<Promise<unknown>>();
 
-function receipt(cfg, ids, ts) {
+function receipt(cfg: ReceiptCfg, ids: string[], ts: string): string {
   return encodeEnvelope("receipt", { from: cfg.peer, ...(cfg.session ? { session: cfg.session } : {}), ids, state: "read", ts }, cfg.wire);
 }
 
 // Receipt envelopes for ids, split so each stays within ntfy's message limit.
-export function receiptMessages(cfg, ids, ts = new Date().toISOString()) {
-  const batches = [];
+export function receiptMessages(cfg: ReceiptCfg, ids: string[], ts: string = new Date().toISOString()): string[] {
+  const batches: string[][] = [];
   for (const id of ids) {
     const last = batches.at(-1);
     if (last && Buffer.byteLength(receipt(cfg, [...last, id], ts)) <= MESSAGE_MAX_BYTES) last.push(id);
@@ -29,29 +33,30 @@ export function receiptMessages(cfg, ids, ts = new Date().toISOString()) {
 }
 
 /** Starts a background read-receipt publish for delivered message ids; await settleReceipts() before exiting. */
-export function sendReceipts(cfg, ids) {
-  const valid = [...new Set(ids)].filter((id) => typeof id === "string" && MESSAGE_ID.test(id));
+export function sendReceipts(cfg: Cfg | null | undefined, ids: unknown[]): void {
+  const valid = [...new Set(ids)].filter((id): id is string => typeof id === "string" && MESSAGE_ID.test(id));
   if (!cfg?.enabled || !valid.length) return;
   const signal = AbortSignal.timeout(RECEIPT_TIMEOUT_MS);
   const task = Promise.all(receiptMessages(cfg, valid).map((message) =>
     publish(cfg, receiptsTopic(cfg.project), message, { title: "ai-collab receipt", signal, priority: alertPriority(readAlertLevel(), "other") }))).catch(() => {});
   pending.add(task);
-  task.finally(() => pending.delete(task));
+  void task.finally(() => pending.delete(task));
 }
 
 /** Resolves when every receipt publish started by this process has finished or timed out. */
 export const settleReceipts = () => Promise.all(pending);
 
 /** Adds each receipt's reader (peer#session) to reads: message id → Set of readers. Oldest ids drop past READS_MAX. */
-export function readReceipts(events, reads = new Map(), limit = READS_MAX) {
+export function readReceipts(events: Array<{ message: string }>, reads: Map<string, Set<string>> = new Map(), limit: number = READS_MAX): Map<string, Set<string>> {
   for (const ev of events) {
     const m = parseWireEnvelope(ev.message);
     if (m?.kind !== "receipt" || m.state !== "read" || !isValidName(m.from) || !Array.isArray(m.ids)) continue;
     const reader = typeof m.session === "string" && SESSION_LABEL.test(m.session) ? `${m.from}#${m.session}` : m.from;
     for (const id of m.ids) {
       if (typeof id !== "string" || !MESSAGE_ID.test(id)) continue;
-      if (!reads.has(id)) reads.set(id, new Set());
-      reads.get(id).add(reader);
+      let set = reads.get(id);
+      if (!set) reads.set(id, set = new Set());
+      set.add(reader);
     }
   }
   for (const id of reads.keys()) {

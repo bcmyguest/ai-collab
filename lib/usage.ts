@@ -11,18 +11,38 @@ import { alertPriority, readAlertLevel } from "./alerts.ts";
 import { closeSync, fstatSync, openSync, readFileSync, readSync } from "node:fs";
 import { encodeEnvelope } from "./agui.mjs";
 import { broadcastTopic } from "./config.mjs";
-import { publish } from "./messaging.ts";
+import { publish, type Cfg } from "./messaging.ts";
 import { writeState, statePath, withLock } from "./state.ts";
+// oxlint-disable-next-line typescript/no-explicit-any -- hook payloads and transcript JSONL; each field is checked before use
+type Json = any;
+
+export interface ContextUsage {
+  tokens: number | null;
+  window: number | null;
+}
+
+/** One instruction file Claude loaded, as the context state records it. */
+export interface ContextFile {
+  path: string;
+  memory: string;
+  load: string;
+  at: number;
+}
+
+export interface ContextRead extends ContextUsage {
+  at: number | null;
+  files: ContextFile[];
+}
 
 export const CONTEXT_ALERT_TOKENS = 200_000;
 const TAIL_BYTES = 512 * 1024;
 const CONTEXT_FILES_MAX = 50;
 const MEMORY_TYPES = new Set(["User", "Project", "Local", "Managed"]);
-/** Instruction loads a compaction drops from the context (lib/usage.mjs recordInstructions). */
+/** Instruction loads a compaction drops from the context (lib/usage.ts recordInstructions). */
 export const ON_DEMAND_LOADS = new Set(["nested_traversal", "path_glob_match"]);
 const LOAD_REASONS = new Set(["session_start", "nested_traversal", "path_glob_match", "include", "compact"]);
 
-function tailLines(file) {
+function tailLines(file: string): string[] {
   const fd = openSync(file, "r");
   try {
     const size = fstatSync(fd).size;
@@ -35,29 +55,29 @@ function tailLines(file) {
   }
 }
 
-function count(value) {
-  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+function count(value: unknown): number | null {
+  return Number.isSafeInteger(value) && (value as number) >= 0 ? value as number : null;
 }
 
-function contextStatePath(cfg) {
+function contextStatePath(cfg: Cfg): string {
   return statePath(cfg).replace(/\.json$/, ".context.json");
 }
 
 /** {tokens, window} from the harness's last usage report; each is null when unknown. */
-export function contextUsage(host, msg) {
+export function contextUsage(host: string, msg: Record<string, Json>): ContextUsage {
   if (host === "cursor" || host === "opencode") return { tokens: count(msg.context_tokens), window: null };
-  const none = { tokens: null, window: null };
+  const none: ContextUsage = { tokens: null, window: null };
   const file = msg.transcript_path;
   if (typeof file !== "string" || !file.endsWith(".jsonl")) return none;
-  let lines;
+  let lines: string[];
   try { lines = tailLines(file); } catch { return none; }
   for (const line of lines) {
-    let entry;
+    let entry: Json;
     try { entry = JSON.parse(line); } catch { continue; }
     if (host === "claude" && entry?.type === "assistant" && entry.message?.usage) {
       const u = entry.message.usage;
       const parts = [u.input_tokens, u.cache_read_input_tokens ?? 0, u.cache_creation_input_tokens ?? 0].map(count);
-      return { tokens: parts.includes(null) ? null : parts.reduce((a, b) => a + b, 0), window: null };
+      return { tokens: parts.includes(null) ? null : (parts as number[]).reduce((a, b) => a + b, 0), window: null };
     }
     if (host === "codex" && entry?.type === "event_msg" && entry.payload?.type === "token_count" && entry.payload.info) {
       return {
@@ -69,16 +89,16 @@ export function contextUsage(host, msg) {
   return none;
 }
 
-export function contextTokens(host, msg) {
+export function contextTokens(host: string, msg: Record<string, Json>): number | null {
   return contextUsage(host, msg).tokens;
 }
 
 /** Alert once per crossing above the threshold; a failed publish stays armed so the next sample retries; ≤ threshold re-arms. */
-export async function reportContext(cfg, tokens, { send = publish, window = null } = {}) {
+export async function reportContext(cfg: Cfg, tokens: number | null, { send = publish, window = null }: { send?: typeof publish; window?: number | null } = {}): Promise<{ alerted: boolean }> {
   if (!cfg.enabled || !cfg.session || tokens === null) return { alerted: false };
   const file = contextStatePath(cfg);
   const result = await withLock(file, async () => {
-    let state = {};
+    let state: Record<string, Json> = {};
     try { state = JSON.parse(readFileSync(file, "utf8")); } catch { /* missing: armed */ }
     // The file is rewritten only when the tokens or window change; contextAt is the time of that change.
     if (state.contextTokens !== tokens || state.contextWindow !== window) {
@@ -104,14 +124,14 @@ export async function reportContext(cfg, tokens, { send = publish, window = null
 }
 
 /** Drops the on-demand instruction files from the state once a compaction has finished; resolves true when any was dropped. */
-export async function dropOnDemandFiles(cfg) {
+export async function dropOnDemandFiles(cfg: Cfg): Promise<boolean> {
   if (!cfg.enabled || !cfg.session) return false;
   const file = contextStatePath(cfg);
   const result = await withLock(file, async () => {
-    let state;
+    let state: Record<string, Json>;
     try { state = JSON.parse(readFileSync(file, "utf8")); } catch { return false; }
     const files = Array.isArray(state.contextFiles) ? state.contextFiles : [];
-    const kept = files.filter(entry => !ON_DEMAND_LOADS.has(entry.load));
+    const kept = files.filter((entry: ContextFile) => !ON_DEMAND_LOADS.has(entry.load));
     if (kept.length === files.length) return false;
     state.contextFiles = kept;
     writeState(file, state);
@@ -121,15 +141,15 @@ export async function dropOnDemandFiles(cfg) {
 }
 
 /** Records one instruction file from the InstructionsLoaded hook; a later load of the same path replaces its entry. */
-export async function recordInstructions(cfg, msg) {
+export async function recordInstructions(cfg: Cfg, msg: Record<string, Json>): Promise<boolean> {
   const { file_path: path, memory_type: memory, load_reason: load } = msg;
   if (!cfg.enabled || !cfg.session || typeof path !== "string" || !path.startsWith("/") || !MEMORY_TYPES.has(memory) || !LOAD_REASONS.has(load)) return false;
   const file = contextStatePath(cfg);
   const result = await withLock(file, async () => {
-    let state = {};
+    let state: Record<string, Json> = {};
     try { state = JSON.parse(readFileSync(file, "utf8")); } catch { /* missing: none loaded yet */ }
     // A compaction drops the files that were loaded on demand (nested or glob-matched) from the context; the rest reload.
-    const kept = (Array.isArray(state.contextFiles) ? state.contextFiles : []).filter(entry => entry.path !== path);
+    const kept: ContextFile[] = (Array.isArray(state.contextFiles) ? state.contextFiles : []).filter((entry: ContextFile) => entry.path !== path);
     const others = load === "compact" ? kept.filter(entry => !ON_DEMAND_LOADS.has(entry.load)) : kept;
     state.contextFiles = [...others, { path, memory, load, at: Date.now() }].slice(-CONTEXT_FILES_MAX);
     writeState(file, state);
@@ -139,12 +159,12 @@ export async function recordInstructions(cfg, msg) {
 }
 
 /** The session's context from its state file: {tokens, window, at, files}; absent parts are null or []. */
-export function readContext(cfg) {
-  const empty = { tokens: null, window: null, at: null, files: [] };
+export function readContext(cfg: Cfg): ContextRead {
+  const empty: ContextRead = { tokens: null, window: null, at: null, files: [] };
   if (!cfg.session) return empty;
-  let state;
+  let state: Record<string, Json>;
   try { state = JSON.parse(readFileSync(contextStatePath(cfg), "utf8")); } catch { return empty; }
-  const files = Array.isArray(state.contextFiles) ? state.contextFiles.filter(entry => typeof entry?.path === "string") : [];
+  const files = Array.isArray(state.contextFiles) ? state.contextFiles.filter((entry: Json) => typeof entry?.path === "string") : [];
   return {
     tokens: count(state.contextTokens),
     window: count(state.contextWindow),

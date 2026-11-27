@@ -5,11 +5,11 @@ import { messageView, respond, sendAndAwait, waitForIdle, waitForMessages } from
 import { readInbox } from "../messaging.ts";
 import { askQuestion, requestWait, waitForAnswer } from "../questions.mjs";
 import { HISTORY_DEFAULT, HISTORY_MAX, PRIORITIES, RESPOND_STATES, channelHistory, replyToOperator, sendMessage } from "../messaging.ts";
-import { storedMode } from "../mode.mjs";
+import { storedMode } from "../mode.ts";
 import { teamStart, teamStatus } from "../teams.mjs";
 import { listPatterns } from "../patterns.mjs";
 import { advanceRun, runStatus } from "../pattern-runs.mjs";
-import { listModels } from "../models.mjs";
+import { listModels } from "../models.ts";
 import { interruptSession } from "../sessions/control.ts";
 import { ID_MAX, STATUSES, TASK_PRIORITIES, openTasks, sortTasks } from "../tasks.mjs";
 import { BODY, IDENTITY, MESSAGE_ID, URGENT, WAIT, type JsonSchema, type Surface } from "./schema.ts";

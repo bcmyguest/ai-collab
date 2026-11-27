@@ -7,7 +7,7 @@ import { REQUIRE_RUN_CODE_ENV } from "../code-mode.mjs";
 import { codexCompact, codexLiveCompact, CLIENT, connect } from "../codex-compact.mjs";
 import { sendMessage } from "../messaging.ts";
 import { isRunning } from "../process.ts";
-import { WAKE_ENV, WAKE_PROMPT } from "../mode.mjs";
+import { WAKE_ENV, WAKE_PROMPT } from "../mode.ts";
 import { opencodeRequest } from "../opencode-api.mjs";
 import { argv, type Command, type Harness } from "../harness.ts";
 import type { Session, SessionCfg } from "./registry.ts";

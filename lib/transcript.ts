@@ -9,7 +9,7 @@
 import { closeSync, openSync, readSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
-import { operatorPrompt } from "./mode.mjs";
+import { operatorPrompt } from "./mode.ts";
 // oxlint-disable-next-line typescript/no-explicit-any -- transcript JSONL entries; each field is checked before use
 type Json = any;
 

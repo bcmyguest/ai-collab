@@ -21,7 +21,7 @@ import { cacheAttachmentsWithin } from "../../lib/attachment-cache.ts";
 import { pollCached } from "../../lib/messaging.ts";
 import { handOff } from "../../lib/stop.mjs";
 import { opencodeRequest } from "../../lib/opencode-api.mjs";
-import { readReceipts } from "../../lib/receipts.mjs";
+import { readReceipts } from "../../lib/receipts.ts";
 import { listSessions } from "../../lib/sessions.mjs";
 import { writeState } from "../../lib/state.ts";
 

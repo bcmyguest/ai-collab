@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Installs this plugin into ~/.cursor/plugins/local/ai-collab (symlink; --copy to copy).
-import { installCursorPlugin } from "../lib/install-cursor.mjs";
+import { installCursorPlugin } from "../lib/install-cursor.ts";
 
 const result = installCursorPlugin({ importMetaUrl: import.meta.url, copy: process.argv.includes("--copy") });
 if (!result.ok) {

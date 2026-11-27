@@ -10,7 +10,7 @@ Pulsar 2.0.0 (github.com/yocontra/pulsar). Anchors are in the shipped bundle `~/
 | `send` priority `urgent` (mid-turn) / `normal` (wakes idle) / `fyi` (no wake) | boolean `urgent` (marker file, earlier poll, `lib/inbox.mjs:92`) | No `fyi`; "urgent" only shortens the poll, it never lands mid-turn |
 | `expect_reply`; footer "waiting for your reply" | none | Missing |
 | `respond` working/reply/done/declined, `retry` on declined | `RESPOND_STATES`, `respond()` (`lib/agents.mjs:61`) | No `retry`; `working` does not lease the message |
-| Redelivery: 10 min ack timeout, 30 min lease, 5 attempts, 24 h TTL, "attempt 2 of 5" note, sender notice on give-up (`run-daemon-bvewb3t3.js:3032-3038`, `:3300-3330`) | read receipts only (`lib/receipts.mjs`) | No redelivery, attempt counter or dead-letter notice |
+| Redelivery: 10 min ack timeout, 30 min lease, 5 attempts, 24 h TTL, "attempt 2 of 5" note, sender notice on give-up (`run-daemon-bvewb3t3.js:3032-3038`, `:3300-3330`) | read receipts only (`lib/receipts.ts`) | No redelivery, attempt counter or dead-letter notice |
 | `wait` for `message`, `reply:<id>`, `idle:<agent>` (also ends when the agent's session ends) (`mcp-0pzhrq2f.js:909`) | `wait` for next message only | Add `reply:<id>` (cheap) and `idle:<agent>` (needs an idle signal) |
 | `set_identity`: activity, tags, name, model, cwd, `inbound` accept/hold/refuse; auto tags `harness`, `model`, `project`, `branch`, `worktree`, `pr` | name, activity, tags (`lib/sessions.mjs:71`) | No auto tags; no inbound policy; no inbox cap (Pulsar: 50 unread); no rate limits (60 sends/min, 6 broadcasts/min) |
 | `inbox`, plus history by `query`, `message_id`, `thread_id` with receipts | `inbox` with `peek` | No history search or thread view |
