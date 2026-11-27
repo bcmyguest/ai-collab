@@ -930,8 +930,9 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     const claimed = claims.take(workflowId);
     const timer = new AbortController();
     const timeout = builder ? BUILDER_START_TIMEOUT_MS : startTimeoutMs;
+    let run = null;
     try {
-      const run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, system: Boolean(builder || patternRun) || system !== false, ...(continuation ? { continuation } : {}), ...(builder ? { builder } : {}), ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), codeMode: resolveCodeMode(codeMode, env), ...(managed ? { managed: true } : {}), ...(spawned ? { parent, spawn: { depth } } : {}) });
+      run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, system: Boolean(builder || patternRun) || system !== false, ...(continuation ? { continuation } : {}), ...(builder ? { builder } : {}), ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), codeMode: resolveCodeMode(codeMode, env), ...(managed ? { managed: true } : {}), ...(spawned ? { parent, spawn: { depth } } : {}) });
       if (builder) watchBuilderFailure(workflowId, run);
       const ended = run.then((out) => fail(502, `${harness} session ended at once: ${out?.ended || "no reason"}`));
       ended.catch(() => {});
@@ -943,7 +944,11 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       return { status: "started", session: s.record.address, nativeId: s.record.nativeId, workflowId, ...(taskId ? { taskId } : {}), ...(spawned ? { cwd: s.record.cwd } : {}), detail: `${harness} owned session started` };
     } catch (error) {
       // A start the caller was told failed must not leave a child running: a continuation or a spawn is cancelled.
-      if ((continuation || spawned) && error.status === 504) await durable.cancel(workflowId).catch((cancelError) => log(`could not cancel ${workflowId}: ${cancelError.message}`));
+      if ((continuation || spawned) && error.status === 504) {
+        await durable.cancel(workflowId).catch((cancelError) => log(`could not cancel ${workflowId}: ${cancelError.message}`));
+        // A claim that passed its abort check just before the cancel leaves a live record; end it once the workflow stops.
+        run?.catch(() => {}).finally(() => releaseCancelled(project, workflowId));
+      }
       if (error.status) throw error;
       throw Object.assign(new Error(`${harness} failed to start: ${error.message}`), { status: 502 });
     } finally {
@@ -966,6 +971,16 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   }
 
   // Spawned children of a parent that are live or still opening.
+  // Ends whatever session a cancelled start's workflow claimed, so it holds no cap slot and no harness.
+  async function releaseCancelled(project, workflowId) {
+    const late = [...sessions.values()].find(({ record }) => record.workflowId === workflowId && record.status !== "ended");
+    if (late) return endSession(late, "start timed out").catch((error) => log(`could not end ${late.record.address}: ${error.message}`));
+    const cfg = configs.get(project);
+    for (const record of cfg?.enabled ? listOwned(cfg) : []) {
+      if (record.workflowId === workflowId && record.status !== "ended") writeOwned(sessionCfg(project, record.harness, record.label), { ...record, status: "ended" });
+    }
+  }
+
   function liveChildren(parent) {
     const live = [...sessions.values()].filter(({ record }) => record.parent === parent && record.spawn && record.status !== "ended").length;
     return live + (spawning.get(parent) ?? 0);
