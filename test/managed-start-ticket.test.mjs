@@ -95,3 +95,13 @@ test("harness subcommands that start no session are allowed", () => {
     assert.equal(shellHarnessStart("claude", "pretooluse", bash(command)), true, command);
   }
 });
+
+// The top-level keys of session-start.command.output in codex-cli 0.171.0, which sets additionalProperties: false.
+const CODEX_SESSION_START_KEYS = new Set(["continue", "stopReason", "suppressOutput", "systemMessage", "hookSpecificOutput"]);
+
+test("a Codex SessionStart refusal uses only fields Codex's output schema accepts", async (t) => {
+  const env = { ...setup(t), AI_COLLAB_PEER: "codex" };
+  const r = await runHook(["--host", "codex"], { ...start("41111111-2222-3333-4444-555555555555"), model: "gpt-test", permission_mode: "default", transcript_path: null }, { ...env, [MANAGED_ENV]: "1" });
+  assert.deepEqual(r, { continue: false, stopReason: MANAGED_START_REFUSED });
+  assert.deepEqual(Object.keys(r).filter((k) => !CODEX_SESSION_START_KEYS.has(k)), []);
+});
