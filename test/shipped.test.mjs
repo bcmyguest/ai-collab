@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { shippedTasks } from "../web/server/shipped.mjs";
+import { shippedTasks } from "../web/server/shipped.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 test("a reviewed task can ship after it was marked done", t => {

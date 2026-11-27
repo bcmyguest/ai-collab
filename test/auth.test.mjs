@@ -5,7 +5,7 @@ import path from "node:path";
 import { loadConfig } from "../lib/config.ts";
 import { claimInbox } from "../lib/inbox.mjs";
 import { formatInbox } from "../lib/format.ts";
-import { SESSION_COOKIE, STATE_COOKIE, createAuth, signSession, verifySession } from "../web/server/auth.mjs";
+import { SESSION_COOKIE, STATE_COOKIE, createAuth, signSession, verifySession } from "../web/server/auth.ts";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

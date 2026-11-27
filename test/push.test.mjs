@@ -8,7 +8,7 @@ import path from "node:path";
 import { broadcastTopic, inboxTopic, loadConfig } from "../lib/config.ts";
 import { approvalMessage, approvalRequest } from "../lib/approvals.ts";
 import { askQuestion } from "../lib/questions.ts";
-import { createPush, notice } from "../web/server/push.mjs";
+import { createPush, notice } from "../web/server/push.ts";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

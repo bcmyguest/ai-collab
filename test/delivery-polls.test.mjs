@@ -13,7 +13,7 @@ import { processStart } from "../lib/process.ts";
 import { writeState } from "../lib/state.ts";
 import { openDurable } from "../runner/durable.mjs";
 import { DELIVERY, deliveryWorkflow } from "../runner/delivery.ts";
-import { REDELIVER_MS, TTL_MS, createDispatcher } from "../web/server/dispatch.mjs";
+import { REDELIVER_MS, TTL_MS, createDispatcher } from "../web/server/dispatch.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const T0 = Date.UTC(2026, 10, 25);

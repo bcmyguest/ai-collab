@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mergeReview } from "../web/server/land-reviews.mjs";
+import { mergeReview } from "../web/server/land-reviews.ts";
 
 const TIP = "e".repeat(40);
 const ok = (stdout = "") => ({ status: 0, stdout, stderr: "" });

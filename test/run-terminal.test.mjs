@@ -11,7 +11,7 @@ import { createUi } from "../web/server/ui.mjs";
 import { MessageProcessor } from "@a2ui/web_core/v0_9";
 import { ChipApi, aiCollabCatalog } from "../web/lib/a2ui-catalog.js";
 import { runAnswer, runOperations, runOutcome } from "../web/lib/a2ui-run.js";
-import { runTerminalUi } from "../web/server/run-terminal.mjs";
+import { runTerminalUi } from "../web/server/run-terminal.ts";
 import { ScriptApi } from "../web/lib/a2ui-run-catalog.js";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

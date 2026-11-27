@@ -17,7 +17,7 @@ import { statePath, writeState } from "../lib/state.ts";
 import { runWaiter } from "../lib/waiter.ts";
 import { openDurable } from "../runner/durable.mjs";
 import { deliveryWorkflow } from "../runner/delivery.ts";
-import { createDispatcher } from "../web/server/dispatch.mjs";
+import { createDispatcher } from "../web/server/dispatch.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const CLAUDE_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5e";

@@ -3,7 +3,7 @@ import { rmSync } from "node:fs";
 import { test } from "node:test";
 import { broadcastTopic, statusTopic } from "../lib/config.ts";
 import { publishStatus } from "../lib/inbox.mjs";
-import { createHostedUi } from "../web/server/hosted.mjs";
+import { createHostedUi } from "../web/server/hosted.ts";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { firstUpdate } from "./helpers/ui-stream.mjs";

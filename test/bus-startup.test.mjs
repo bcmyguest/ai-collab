@@ -1,5 +1,5 @@
 // The bus runs on Postgres only: the store switch refuses sqlite, a missing Postgres stops the start with a
-// pointer at `ai-collab postgres up`, and a leftover bus.db beside an empty store refuses the start.
+// pointer at `ai-collab postgres up`.
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
@@ -9,7 +9,7 @@ import { after, test } from "node:test";
 import { resolveBusStoreKind } from "../lib/bus.ts";
 import { openPostgresBusStore } from "../lib/bus-postgres.ts";
 import { pgUrl } from "../lib/postgres.ts";
-import { legacyBusDb, main } from "../scripts/ai-collab-bus.mjs";
+import { main } from "../scripts/ai-collab-bus.mjs";
 import { dbosTestDb } from "./helpers/dbos-env.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 
@@ -75,20 +75,6 @@ test("the bus refuses to start when Postgres is unreachable and points at ai-col
   const { code, text } = await runMain(env);
   assert.equal(code, 1);
   assert.match(text, new RegExp(`no Postgres on 127\\.0\\.0\\.1:${port}.*run \`ai-collab postgres up\``));
-});
-
-test("legacyBusDb: no file passes, a file beside an empty store refuses, beside a filled store warns", async (t) => {
-  const dir = tempDir(t, "bus-legacy-");
-  const empty = { isEmpty: async () => true };
-  const filled = { isEmpty: async () => false };
-  assert.deepEqual(await legacyBusDb({ dataDir: dir, store: empty }), { refuse: false, message: "" });
-  writeFileSync(path.join(dir, "bus.db"), "");
-  const refused = await legacyBusDb({ dataDir: dir, store: empty });
-  assert.equal(refused.refuse, true);
-  assert.match(refused.message, /ai-collab bus migrate --to postgres/);
-  const warned = await legacyBusDb({ dataDir: dir, store: filled });
-  assert.equal(warned.refuse, false);
-  assert.match(warned.message, /retired SQLite store/);
 });
 
 test("postgres store isEmpty turns false after the first publish", { skip: !pgUp && "Postgres not reachable" }, async () => {

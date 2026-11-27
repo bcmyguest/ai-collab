@@ -10,7 +10,7 @@ import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { sessionIdleState } from "../lib/idle.ts";
 import { listSessions, recordSession } from "../lib/sessions.mjs";
 import { sessionState } from "../web/lib/session-state.js";
-import { taskBoard } from "../web/server/task-board.mjs";
+import { taskBoard } from "../web/server/task-board.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const cli = fileURLToPath(new URL("../scripts/ai-collab.mjs", import.meta.url));

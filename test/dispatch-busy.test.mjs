@@ -8,7 +8,7 @@ import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { sendMessage } from "../lib/inbox.mjs";
 import { processStart } from "../lib/process.ts";
 import { writeState } from "../lib/state.ts";
-import { REDELIVER_MS, createDispatcher } from "../web/server/dispatch.mjs";
+import { REDELIVER_MS, createDispatcher } from "../web/server/dispatch.ts";
 
 const OPENCODE_ID = "ses_0123456789abcdefghijABCDEFGH";
 

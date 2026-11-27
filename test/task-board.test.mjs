@@ -3,7 +3,7 @@ import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { test, after } from "node:test";
 import { addProgress, addTask, createFileBackend, ownTask, writeStore } from "../lib/tasks.ts";
-import { taskBoard } from "../web/server/task-board.mjs";
+import { taskBoard } from "../web/server/task-board.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const NOW = Date.parse("2026-11-22T00:00:00Z");

@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { threadRows, threadStatus } from "../web/lib/threads.js";
-import { projectThreads, promptTitle } from "../web/server/threads.mjs";
+import { projectThreads, promptTitle } from "../web/server/threads.ts";
 import { sessionLabel } from "../lib/config.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 

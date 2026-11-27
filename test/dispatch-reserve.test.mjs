@@ -9,7 +9,7 @@ import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { claimInbox, sendMessage } from "../lib/inbox.mjs";
 import { processStart } from "../lib/process.ts";
 import { writeState } from "../lib/state.ts";
-import { createDispatcher } from "../web/server/dispatch.mjs";
+import { createDispatcher } from "../web/server/dispatch.ts";
 
 const CODEX_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
 const CLAUDE_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a6c";
