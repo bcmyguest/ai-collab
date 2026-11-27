@@ -1,13 +1,13 @@
 // A runner wake of a managed session keeps native subagents off, whatever the owned record file says.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { recordSession } from "../lib/sessions.mjs";
-import { MANAGED_ENV } from "../lib/subagent-guard.ts";
+import { MANAGED_ENV, MANAGED_TICKET_ENV } from "../lib/subagent-guard.ts";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner, WAKE } from "../runner/runner.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
@@ -25,7 +25,7 @@ function setup(t, fake) {
     AI_COLLAB_STATE_DIR: path.join(home, "state"), AI_COLLAB_TIMEOUT_MS: "2000",
   };
   const cfg = loadConfig(env, { cwd: root });
-  return { root, env, cfg, db: path.join(home, "state", "runner.db") };
+  return { home, root, env, cfg, db: path.join(home, "state", "runner.db") };
 }
 
 async function until(check, what, ms = 4000) {
@@ -97,4 +97,31 @@ test("a later wake of an adopted managed session, after a runner restart, keeps 
     }
   }
   assert.deepEqual(results, [{ managed: true, env: "1" }, { managed: true, env: "1" }]);
+});
+
+test("a runner-owned managed session gets the managed flag but no start ticket on open or resume", async (t) => {
+  const fake = await startFakeNtfy();
+  t.after(() => fake.close());
+  const ctx = setup(t, fake);
+  const { adapter, resumed } = recordingAdapter();
+  const durable = openDurable(ctx.db);
+  const runner = createRunner({ projects: [ctx.cfg], adapters: new Map([["codex", adapter]]), durable, env: ctx.env, startGapMs: 0, watch: true, pumpMs: 0 });
+  await runner.boot();
+  try {
+    await new Promise((r) => setTimeout(r, 50));
+    const { session, nativeId } = await runner.start({ project: "demo", harness: "codex", prompt: "first", managed: true });
+    await until(() => runner.get(session).status === "idle", "idle");
+    await runner.close(session);
+    await until(() => runner.get(session).status === "ended", "ended");
+    const ev = fake.inject("ai-collab-demo--to--codex", direct(sessionLabel(nativeId), "again"));
+    await until(() => durable.status(`${WAKE}:${session}:${ev.id}`)?.status === "SUCCESS", "wake");
+    const open = adapter.calls.find((c) => c.op === "open").options.env;
+    assert.equal(open[MANAGED_ENV], "1");
+    // The owned record authorises the start; an unbound ticket would let a grandchild in.
+    assert.equal(open[MANAGED_TICKET_ENV], undefined);
+    assert.deepEqual(resumed, [{ managed: true, env: "1" }]);
+    assert.equal(existsSync(path.join(ctx.home, ".local", "state", "ai-collab", "managed-tickets")), false);
+  } finally {
+    await runner.stop();
+  }
 });
