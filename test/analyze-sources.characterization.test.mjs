@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { READ_PATHS, classifyCall, isRefusal, isRunCodeFailure, journalSource, taskStoreSource } from "../lib/analyze-sources.mjs";
+import { READ_PATHS, classifyCall, isRefusal, isRunCodeFailure, journalSource, taskStoreSource } from "../lib/analyze-sources.ts";
 
 const home = () => mkdtempSync(join(tmpdir(), "as-"));
 const put = (path, text) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, text); };
