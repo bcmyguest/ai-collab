@@ -271,7 +271,11 @@ A closed card shows **Skipped**. A second Skip, or an answer after a Skip, retur
 
 ## Landing from the phone
 
-An agent lands a branch with `ai-collab land request <branch>`. It pushes the branch to `origin` (never `main`), opens a PR into `main` or reuses the open one, and prints the PR URL.
+An agent finishes a branch with `ai-collab land finish <branch> --proof <file>`. With a GitHub `origin` and a signed-in `gh` it pushes the branch (never `main`) and opens a draft PR into `main` with the proof in its body, or reuses the open one. Otherwise it files a review packet on the project's task board and pushes nothing. `--landing pr|packet|branch` forces one path; a team sets it with the graph attribute `landing` ([Teams and patterns](teams.md#landing-policy)). `ai-collab land request <branch>` still pushes the branch and opens a non-draft PR.
+
+**Land green reviews** on Home (`POST /api/land-reviews`) opens the PR for each review answered "merge when green" whose branch tip still equals the submitted commit. It never pushes `main` and leaves each task in review; the receipt reads **PR opened**.
+
+The Land panel needs `gh` signed in on the host, the host checkout at `/home/b/ai-collab`, and a systemd user manager for the deploy unit. `ai-collab deploy` needs the same checkout on `main`, Node with npm (`mergeNode` resolves mise's Node when the running one lacks npm) and the deploy lock in the state directory.
 
 The Home **Land** panel lists the open PRs into `main`: title, branch, `+` and `-` lines, check state, and a link to the PR's files. **Merge** is enabled only when every check succeeded. A PR with pending, failing or no checks cannot merge.
 

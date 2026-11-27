@@ -27,6 +27,7 @@ Graph attributes:
 | `description` | text | none |
 | `max_visits` | 1-50 | unlimited |
 | `permission` | `auto-afk`, `inherit`, or a Claude permission mode (`default`, `acceptEdits`, `auto`, `bypassPermissions`, `dontAsk`, `plan`) | `auto` for runs |
+| `landing` | `pr`, `packet` or `branch`: how a member finishes branch work ([Landing policy](#landing-policy)) | a draft PR when GitHub is reachable, else a review packet |
 
 Node attributes (a node is a role; its name is `[a-z][a-z0-9-]{0,23}`):
 
@@ -79,6 +80,32 @@ Does not load (the file shows `invalid` with the line):
 - Handoff notes reach the next role labeled as untrusted data.
 - A finished or failed run sends each role's session a closing message ("Stop work on this run"). The operator gets a project broadcast on failure.
 - New DOT runs share the runner’s start rate limit. Roles within a run can start as soon as their handoff is ready. Legacy JSON patterns use the project’s 10-second start gate.
+
+## Landing policy
+
+A member never pushes `main`. When its work is on a branch, it finishes with:
+
+```sh
+ai-collab land finish <branch> --proof <file> [--landing pr|packet|branch] [--task <id>]
+```
+
+`--proof` names a file with the commands the member ran and their output. The graph attribute `landing` picks the policy, and a local run's role brief names the matching command (`--landing <policy>` only when the team sets one):
+
+| `landing` | Result |
+|---|---|
+| unset (also a session without a team) | `pr` when `origin` is a GitHub URL and `gh auth status` passes, else `packet` |
+| `pr` | Pushes the branch and opens a draft PR into `main` (or reuses the open one). The body lists the commits and the proof. Refused without GitHub; no fallback. |
+| `packet` | Pushes nothing. Puts a review packet ([builder review packet](builders.md#review)) for the branch on the project's task board: on `--task <id>`, else on a new task `Review <branch>: <subject>`. Its check reads `not run by the host` with the start of the proof, so it never counts as green. |
+| `branch` | Pushes the branch only. |
+
+```dot
+digraph "ship" {
+  graph [landing="pr"];
+  ...
+}
+```
+
+The attribute is parsed by `lib/catalog/dot.ts`, carried on the pattern by `withExtras` (`lib/catalog/pattern-model.ts`), and kept in the run snapshot, so a later edit does not change a running team. An unknown value fails with its line. OpenShell runs do not get the command in the brief: the sandbox's `ai-collab` shim runs only task commands.
 
 ## Runs and kinds
 
@@ -160,7 +187,7 @@ A writing agent turns a plain-language request into one `team.dot`; the operator
 
 Code lives in `lib/catalog/`. `lib/patterns.mjs` and `lib/teams.mjs` re-export it for their importers.
 
-- `dot.ts`: parses and serializes `team.dot`. Node attributes: agent, count, skill, prompt, fallback, code_mode. Edge attributes: on, kind, required, cap. Graph attributes: description, max_visits. Parse errors carry the line of the first problem. Serialization writes the canonical form the parser reads back.
+- `dot.ts`: parses and serializes `team.dot`. Node attributes: agent, count, skill, prompt, fallback, code_mode. Edge attributes: on, kind, required, cap. Graph attributes: description, max_visits, permission, landing. Parse errors carry the line of the first problem. Serialization writes the canonical form the parser reads back.
 - `pattern-model.ts`: pattern validation and the `team.dot` round trip, with no file access. Pattern: named roles (responsibility, harness, model) and handoffs. A handoff is required (the run cannot finish without it) or guidance (`required: false`, the lead may skip it).
 - `projects.ts`: `projects.json` read, write and update under its lock.
 - `teams.ts`, `roster.ts`: team member lists, team sessions, team create and start. Pattern names are checked in `roster.ts`, so `teams.ts` does not import patterns.

@@ -16,11 +16,11 @@ Give the operator one place to run, watch and steer a coding agents from a phone
 
 - Leave ai-collab-runner active so the current PM tick can finish. When merged runner code needs loading, report that a runner restart is wanted. The coordinator restarts it between ticks.
 - Restarting ai-collab-ui is fine.
-- Run `ai-collab merge start builder/<name>` on the PM host. It fetches origin/main, creates a fresh merge worktree, merges the builder branch and runs the isolated host gate.
+- Finish an accepted builder branch with `ai-collab land finish builder/<name> --proof <file>`: a draft PR with the proof, or a review packet without GitHub. Agents never push main; the operator lands with `npm run land -- <branch>` (docs/development.md#land-a-branch-on-main).
 - Run the host gate with the installed Node and npm binaries. The smaller sandbox test suite is insufficient for the host gate.
-- On green, the command pushes the tested commit and prints the host pull, UI deploy and smoke commands. It cleans up the merge worktree and branch on success. Never check out `main` in a second worktree (no `-f`): moving main from elsewhere leaves /home/b/ai-collab's files stale.
+- Never check out `main` in a second worktree (no `-f`): moving main from elsewhere leaves /home/b/ai-collab's files stale.
 - Merge and resolve conflicts in a worktree (`git worktree add`), never in /home/b/ai-collab: the CLI, hooks and OpenCode load code from that checkout, so conflict markers there break every agent. Push the merged result; then pull in /home/b/ai-collab.
-- If the merge gate refuses after creating a worktree, hand it to the coordinator. See [merge gate triage](docs/development.md#merge-gate-triage). Resolve conflicts there or in a fresh worktree from origin/main, then rerun the isolated gate before pushing.
+- If the operator's land gate refuses, see [land gate triage](docs/development.md#land-gate-triage). Resolve conflicts in a fresh worktree from origin/main and push the branch, not main.
 - After landing, verify origin/main, mark tasks done, render the board and clean up stale builder worktrees.
 - Never hold the builder pool for a merge; merge in parallel.
 - Read the builder failure before retrying. Keep a usage-limit verdict and reset time on the existing task. Retry with another operator-approved model or after reset, and continue landing eligible changes.
