@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { closeSync, mkdirSync, mkdtempSync, openSync, rmSync, writeSync } from "node:fs";
 import { delimiter, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { BRANCH, HOST_CHECKOUT, mergeNode, npmCommand } from "../lib/land.mjs";
+import { BRANCH, HOST_CHECKOUT, mergeNode, npmCommand } from "../lib/land.ts";
 
 const USAGE = `Usage: npm run land -- <branch>
 

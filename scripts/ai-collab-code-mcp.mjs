@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// MCP server "ai-collab-code": tools that run a JavaScript program in an OpenShell sandbox (lib/code-run.mjs).
+// MCP server "ai-collab-code": tools that run a JavaScript program in an OpenShell sandbox (lib/code-run.ts).
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { toolClient } from "../lib/tool-api.ts";
-import { BOOTSTRAP, RUN_CODE, RUN_READ_CODE, TIMEOUT_DEFAULT_MS, TIMEOUT_MAX_MS, CODE_MAX_CHARS, codeSandbox, programSource, formatRun, hostCaller, prepareSandbox, programArgv, removeCodeSandbox, runCodeTool, runProgram } from "../lib/code-run.mjs";
+import { BOOTSTRAP, RUN_CODE, RUN_READ_CODE, TIMEOUT_DEFAULT_MS, TIMEOUT_MAX_MS, CODE_MAX_CHARS, codeSandbox, programSource, formatRun, hostCaller, prepareSandbox, programArgv, removeCodeSandbox, runCodeTool, runProgram } from "../lib/code-run.ts";
 import { serveMcp } from "../lib/surfaces/render-mcp.ts";
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;

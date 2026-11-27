@@ -16,10 +16,17 @@ import { APPROVAL_TIMEOUT_MIN, ERROR, NOTICE } from "./contract.ts";
 const DEFAULT_APPROVAL_MS = APPROVAL_TIMEOUT_MIN * 60_000;
 const PUBLISH_TIMEOUT_MS = 3000;
 
-const withAgent = (row, e) => (e.subagentRunId ? { ...row, agent: { id: e.subagentRunId, type: e.metadata?.aiCollab?.subagentType || "" } } : row);
+// oxlint-disable-next-line typescript/no-explicit-any -- runner events and activity rows are AG-UI JSON
+type Json = any;
+type Cfg = Parameters<typeof publish>[0];
+type Harness = Parameters<typeof publishActivity>[1];
+/** An approval card from a harness interrupt. */
+export type ApprovalCard = { id: string; tool: unknown; summary: unknown; questions?: unknown };
+
+const withAgent = (row: Json, e: Json): Json => (e.subagentRunId ? { ...row, agent: { id: e.subagentRunId, type: e.metadata?.aiCollab?.subagentType || "" } } : row);
 
 // A compact row; a step carrying metadata.aiCollab.compaction also gets the shared compaction fields.
-function compactRow(type, meta) {
+function compactRow(type: string, meta: Json): Json {
   const fields = meta?.compaction ? compactionFields(meta.compaction) : null;
   const compaction = fields ? { compaction: fields } : {};
   if (type === EventType.STEP_FINISHED) {
@@ -30,11 +37,11 @@ function compactRow(type, meta) {
 }
 
 /** Activity rows (lib/activity.ts event shape) for one RunnerEvent; [] when the event has no row on ntfy. */
-export function activityFor(e, { system } = {}) {
+export function activityFor(e: Json, { system }: { system?: boolean } = {}): Json[] {
   const meta = e.metadata?.aiCollab;
   switch (e.type) {
     case EventType.RUN_STARTED: {
-      const prompt = contentToText(e.input?.messages.findLast(message => message.role === "user")?.content);
+      const prompt = contentToText(e.input?.messages.findLast((message: Json) => message.role === "user")?.content);
       return prompt ? [{ type: "prompt", input: prompt, ...(system === true ? { system: true } : {}) }] : [];
     }
     case EventType.TEXT_MESSAGE_CHUNK:
@@ -65,45 +72,45 @@ export function activityFor(e, { system } = {}) {
 }
 
 /** One activity row when the session ends. */
-export const sessionEndedRow = (reason) => ({ type: "stop", input: ["session ended", reason].filter(Boolean).join(" · ") });
+export const sessionEndedRow = (reason?: string): Json => ({ type: "stop", input: ["session ended", reason].filter(Boolean).join(" · ") });
 
 /** The approval envelope of an owned session (lib/approvals.ts shape plus owned:true), or null when it cannot fit. */
-export function ownedApprovalMessage(cfg, harness, { id, tool, summary, questions }, { now = Date.now(), ttlMs = DEFAULT_APPROVAL_MS } = {}) {
+export function ownedApprovalMessage(cfg: Cfg, harness: Harness, { id, tool, summary, questions }: ApprovalCard, { now = Date.now(), ttlMs = DEFAULT_APPROVAL_MS }: { now?: number; ttlMs?: number } = {}) {
   const clean = questions === undefined ? undefined : cleanQuestions(questions);
   const req = { tool: String(tool).slice(0, 128), summary: String(summary).slice(0, 300), ...(clean ? { questions: clean } : {}) };
   return approvalMessage(cfg, harness, req, { id, expiresAt: now + ttlMs, ts: new Date(now).toISOString(), owned: true });
 }
 
-export function approvalEndMessage(cfg, id, reason) {
+export function approvalEndMessage(cfg: Cfg, id: string, reason: string) {
   return approvalEnd(cfg, id, reason, { session: cfg.session, owned: true });
 }
 
 /** Publishes the owned approval card on the broadcast topic; throws when it cannot fit or publish. */
-export async function publishApproval(cfg, harness, card, ttlMs) {
+export async function publishApproval(cfg: Cfg, harness: Harness, card: ApprovalCard, ttlMs?: number): Promise<void> {
   const message = ownedApprovalMessage(cfg, harness, card, { ttlMs });
   if (!message) throw new Error("approval does not fit in one ntfy message");
   const who = `${cfg.peer}#${cfg.session}`;
   await publish(cfg, broadcastTopic(cfg.project), message, { title: `${card.tool} needs approval for ${who}: ${card.summary}`.slice(0, 200), signal: AbortSignal.timeout(PUBLISH_TIMEOUT_MS) });
 }
 
-export async function publishApprovalEnd(cfg, id, reason) {
+export async function publishApprovalEnd(cfg: Cfg, id: string, reason: string): Promise<void> {
   await publish(cfg, broadcastTopic(cfg.project), approvalEndMessage(cfg, id, reason), { signal: AbortSignal.timeout(PUBLISH_TIMEOUT_MS) });
 }
 
 /** Activity, status and alert publishes for one event; interrupts go through publishApproval. Never throws. */
-export async function publishEvent(cfg, harness, e, options) {
+export async function publishEvent(cfg: Cfg, harness: Harness, e: Json, options?: { system?: boolean }): Promise<void> {
   try {
     const rows = activityFor(e, options);
     if (rows.length) await publishActivity(cfg, harness, rows, { timeoutMs: PUBLISH_TIMEOUT_MS, run: e });
     if (e.type === EventType.RUN_STARTED) await publishStatus(cfg, { event: "start", harness });
     if (e.type === EventType.RUN_FINISHED || e.type === EventType.RUN_ERROR) await publishStatus(cfg, { event: "stop", harness });
-    const tokens = e.type === EventType.STATE_DELTA ? e.delta.find((op) => op.path === "/contextTokens")?.value : undefined;
+    const tokens = e.type === EventType.STATE_DELTA ? e.delta.find((op: Json) => op.path === "/contextTokens")?.value : undefined;
     if (Number.isSafeInteger(tokens)) await reportContext(cfg, tokens);
   } catch { /* best effort, like hooks */ }
 }
 
 /** Publishes the session-ended row and a stop status. Never throws. */
-export async function publishEnded(cfg, harness, reason) {
+export async function publishEnded(cfg: Cfg, harness: Harness, reason?: string): Promise<void> {
   try {
     await publishActivity(cfg, harness, [sessionEndedRow(reason)], { timeoutMs: PUBLISH_TIMEOUT_MS });
     await publishStatus(cfg, { event: "stop", harness });
@@ -111,6 +118,6 @@ export async function publishEnded(cfg, harness, reason) {
 }
 
 /** Publishes read receipts for message ids the harness accepted. */
-export function publishReceipts(cfg, ids) {
+export function publishReceipts(cfg: Cfg, ids: string[] | null | undefined): void {
   if (ids?.length) sendReceipts(cfg, ids);
 }

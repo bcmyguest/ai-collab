@@ -8,7 +8,7 @@ Keep `RoleGraph` and draw the run on it. The Patterns run view already has the f
 
 ## What the page already has
 
-`runStatus` returns the run file (`lib/pattern-runs.mjs`). The UI snapshot sends the newest 20 of those objects as `data.runs` (`web/server/ui.mjs`). `RunView` in `web/app/patterns-page.jsx` reads that object. It already passes `active` and `used={run}` into `RoleGraph`.
+`runStatus` returns the run file (`lib/pattern-runs.ts`). The UI snapshot sends the newest 20 of those objects as `data.runs` (`web/server/ui.mjs`). `RunView` in `web/app/patterns-page.jsx` reads that object. It already passes `active` and `used={run}` into `RoleGraph`.
 
 The run object holds:
 

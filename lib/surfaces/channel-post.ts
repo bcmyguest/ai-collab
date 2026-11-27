@@ -1,7 +1,7 @@
 // Posts to the shared channel; a progress post also records on the session's building task.
 import { sendMessage } from "../messaging.ts";
 import { storedMode } from "../mode.ts";
-import { PROGRESS_MAX, clipProgress, ownedBuilding, recordOwnerProgress } from "../tasks.mjs";
+import { PROGRESS_MAX, clipProgress, ownedBuilding, recordOwnerProgress } from "../tasks.ts";
 import type { SurfaceConfig } from "./types.ts";
 
 export interface ChannelPost {

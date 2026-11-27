@@ -21,7 +21,7 @@ The project task list is a store outside git: `$XDG_DATA_HOME/ai-collab/tasks/<p
 
 ## Backends
 
-Lib: `lib/tasks.mjs`. Every backend offers `list`, `get`, `add`, `update`, `addProgress`, `remove` and `replaceAll`. Only `file` exists. A project picks its backend with `"tasks"` in its `projects.json` entry; the default is `file`. A GitHub Issues or Linear backend would implement the same methods.
+Lib: `lib/tasks.ts`. Every backend offers `list`, `get`, `add`, `update`, `addProgress`, `remove` and `replaceAll`. Only `file` exists. A project picks its backend with `"tasks"` in its `projects.json` entry; the default is `file`. A GitHub Issues or Linear backend would implement the same methods.
 
 ## CLI
 

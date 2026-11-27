@@ -44,7 +44,7 @@ const SANDBOX_NAME_MAX = 19;
 const SETUP_TIMEOUT_MS = 60_000;
 export const SYNC_TIMEOUT_MS = 600_000;
 export const UPLOAD_TIMEOUT_MS = 900_000;
-// run_code's shared sandbox and its per-call read sandboxes (lib/code-run.mjs) sit outside the cap.
+// run_code's shared sandbox and its per-call read sandboxes (lib/code-run.ts) sit outside the cap.
 const CAP_EXEMPT = /^(ai-collab-code$|aic-ro-)/;
 const MANAGED_LABEL = "ai-collab.managed";
 const PROJECT_LABEL = "ai-collab.project";

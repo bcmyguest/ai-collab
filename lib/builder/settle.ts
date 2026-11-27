@@ -3,7 +3,7 @@ import * as S from "../sandbox.ts";
 import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { clipProgress, openTasks, reviewPacket, STATUSES } from "../tasks.mjs";
+import { clipProgress, openTasks, reviewPacket, STATUSES } from "../tasks.ts";
 import { cleanBuilders } from "../builder-clean.ts";
 import { loadConfig } from "../config.ts";
 import { task } from "../task-cli.ts";

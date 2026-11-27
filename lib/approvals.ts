@@ -75,7 +75,7 @@ export function approvalRequest(host: string | undefined, key: string | undefine
 }
 
 /** The approval envelope within ntfy's limit; null if it cannot fit. */
-export function approvalMessage(cfg: Cfg, host: string, req: ApprovalRequest, { id, expiresAt, ts = new Date().toISOString(), view = false, owned = false }: { id: string; expiresAt: number; ts?: string; view?: boolean; owned?: boolean }): string | null {
+export function approvalMessage(cfg: Cfg, host: string, req: Omit<ApprovalRequest, "input">, { id, expiresAt, ts = new Date().toISOString(), view = false, owned = false }: { id: string; expiresAt: number; ts?: string; view?: boolean; owned?: boolean }): string | null {
   // A view-only card has its own kind, so readers that answer "approval" envelopes never offer Allow / Deny for it.
   const kind = view ? "approval-view" : "approval";
   const base = {

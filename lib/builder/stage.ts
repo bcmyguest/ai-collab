@@ -4,7 +4,7 @@ import { appendFileSync, chmodSync, copyFileSync, cpSync, existsSync, mkdirSync,
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { cursorBinary, findExecutable } from "../start.mjs";
-import { openTasks } from "../tasks.mjs";
+import { openTasks } from "../tasks.ts";
 import { HOME_IN, NTFY_TOKEN_IN, OUT, SANDBOX, TOOLS, WORK } from "../sandbox.ts";
 import { APP_ROOT, BASE_REF, GIT_TIMEOUT_MS, SYNC_TIMEOUT_MS, updateState } from "./state.ts";
 import type { BuilderPaths, BuilderState, Env } from "./state.ts";

@@ -8,10 +8,10 @@ import { HISTORY_DEFAULT, HISTORY_MAX, PRIORITIES, RESPOND_STATES, channelHistor
 import { storedMode } from "../mode.ts";
 import { teamStart, teamStatus } from "../teams.mjs";
 import { listPatterns } from "../patterns.mjs";
-import { advanceRun, runStatus } from "../pattern-runs.mjs";
+import { advanceRun, runStatus } from "../pattern-runs.ts";
 import { listModels } from "../models.ts";
 import { interruptSession } from "../sessions/control.ts";
-import { ID_MAX, STATUSES, TASK_PRIORITIES, openTasks, sortTasks } from "../tasks.mjs";
+import { ID_MAX, STATUSES, TASK_PRIORITIES, openTasks, sortTasks } from "../tasks.ts";
 import { BODY, IDENTITY, MESSAGE_ID, URGENT, WAIT, type JsonSchema, type Surface } from "./schema.ts";
 import { postToChannel } from "./channel-post.ts";
 import { taskView, updateTask } from "./task-view.ts";

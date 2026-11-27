@@ -131,7 +131,7 @@ Each trace has an `AGENT` root (`cursor-agent run`), one `LLM` child (`llm.model
 | Path | Role |
 |---|---|
 | `lib/code-mode.ts` | the setting and each harness's switch |
-| `lib/code-run.mjs` | run_code: description, schema check, sandbox staging, the in-sandbox bootstrap, limits |
+| `lib/code-run.ts` | run_code: description, schema check, sandbox staging, the in-sandbox bootstrap, limits |
 | `lib/analyze-run-code.ts`, `lib/analyze-sources.ts`, `lib/analyze-otlp.ts` | `ai-collab analyze run-code`: aggregation and report, per-harness log readers, OTLP encoder |
 | `lib/cursor-trace.ts` | Cursor run traces: stream-json, ACP and hook recorders, OTLP export |
 | `scripts/ai-collab-code-mcp.mjs` | the `ai-collab-code` MCP server |

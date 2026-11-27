@@ -9,7 +9,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { EventType } from "@ag-ui/core";
 import { DOT_EVENT_MAX } from "../lib/catalog/dot.ts";
 import { getPattern } from "../lib/patterns.mjs";
-import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, cutPatternEntry, cutPatternLeave, cutPatternRun, launchPatternRun, NOTE_MAX, preparePatternRun, RUN_ID, runStatus, sessionsOfRun } from "../lib/pattern-runs.mjs";
+import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, cutPatternEntry, cutPatternLeave, cutPatternRun, launchPatternRun, NOTE_MAX, preparePatternRun, RUN_ID, runStatus, sessionsOfRun } from "../lib/pattern-runs.ts";
 import { patternWorkflowId, runIdOfPatternWorkflow, runPatternWorkflow, seedPatternRun } from "../lib/pattern-workflow.ts";
 import { statePath } from "../lib/state.ts";
 import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, parentAddress, receiptsTopic, sessionLabel, startPlaceSetting } from "../lib/config.ts";
@@ -30,7 +30,7 @@ import { BUILDER_START_TIMEOUT_MS, builderPaths, builderResumePrompt, stoppedBui
 import { pickedWorktree } from "../lib/sessions/git-refs.ts";
 import { PROMPT_MAX_CHARS, childEnv, checkPrompt, claudePermissionFor, findExecutable, modelShape, projectRoot, worktreeNames } from "../lib/start.mjs";
 import { parseCodeMode, resolveCodeMode } from "../lib/code-mode.ts";
-import { openTasks } from "../lib/tasks.mjs";
+import { openTasks } from "../lib/tasks.ts";
 import { describeFinish, finishMemberBranch, landFinishRequest } from "../lib/land-member.ts";
 import { listOwned, nextPermission, ownedFile, readOwned, writeOwned } from "../lib/sessions/registry.ts";
 import { modelFields } from "../lib/session-events.ts";
@@ -43,7 +43,7 @@ import { noSubagentEnv } from "../lib/subagent-guard.ts";
 import { SPAWN_MAX_CHILDREN, SPAWN_MAX_DEPTH, spawnBriefNote, spawnReport, spawnSelfNote } from "../lib/spawn.ts";
 import { sandboxCapRefusal, sandboxName, teamSandboxName } from "./sandbox.mjs";
 import { DELIVERY, deliveryWorkflow } from "./delivery.ts";
-import { publishApproval, publishApprovalEnd, publishEnded, publishEvent, publishReceipts } from "./publish.mjs";
+import { publishApproval, publishApprovalEnd, publishEnded, publishEvent, publishReceipts } from "./publish.ts";
 
 export const START_TIMEOUT_MS = 60_000;
 export const START_GAP_MS = 10_000;

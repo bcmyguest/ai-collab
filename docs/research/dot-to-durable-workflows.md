@@ -51,7 +51,7 @@ The class is a sketch of the runtime we want. It is a poor sketch of the authori
 | `pm -> done [on="task closed"]` and `ceo -> done [on="course set"]` | Terminal edges. A required incoming edge that has not fired still blocks `done`, which `decide` already enforces |
 | The task text passed to `team start` | The workflow input, in the same role as `topic` in the paste |
 
-`decide` in `lib/pattern-runs.mjs` is already the transition function: the live role, the event name, the cap, fan-in, and `done`. The interpreter calls that function. It does not reimplement it.
+`decide` in `lib/pattern-runs.ts` is already the transition function: the live role, the event name, the cap, fan-in, and `done`. The interpreter calls that function. It does not reimplement it.
 
 ## One interpreter, every team
 

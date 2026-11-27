@@ -1,4 +1,4 @@
-import { execRun, requestLand, HOST_CHECKOUT } from "../../lib/land.mjs";
+import { execRun, requestLand, HOST_CHECKOUT } from "../../lib/land.ts";
 
 const stages = ["pm-merge", "answer-sync"];
 const stage = id => stages.findIndex(name => id === name || id.startsWith(name + "-"));

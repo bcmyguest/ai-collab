@@ -1,5 +1,5 @@
 // Task fields as agents see them through the MCP and code surfaces.
-import { PROGRESS_MAX, clipProgress, openTasks, priorityOf } from "../tasks.mjs";
+import { PROGRESS_MAX, clipProgress, openTasks, priorityOf } from "../tasks.ts";
 import type { SurfaceConfig, TaskView } from "./types.ts";
 
 export interface TaskUpdateArgs {

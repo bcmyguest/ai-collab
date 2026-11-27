@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { listModels } from "./models.ts";
 import { createPattern, deletePattern, getPattern, listPatterns } from "./patterns.mjs";
-import { advanceRun, listRuns, runStatus, startRun } from "./pattern-runs.mjs";
+import { advanceRun, listRuns, runStatus, startRun } from "./pattern-runs.ts";
 import { passJs } from "./surfaces/types.ts";
 import type { Cfg } from "./messaging.ts";
 

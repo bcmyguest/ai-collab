@@ -48,8 +48,8 @@ export async function createTeam(cfg: CatalogConfig, name: string, members: stri
 export async function teamStart(cfg: CatalogConfig, name: string, member: string, task: string, env: NodeJS.ProcessEnv = process.env, { start = startSession as unknown as StartFn, models, permission }: { start?: StartFn; models?: Models; permission?: string } = {}): Promise<Record<string, unknown>> {
   if (patternWithRole(cfg, name, member, env)) {
     if (permission !== undefined) return { team: name, member, status: "failed", detail: "A team.dot team's runs take its permission attribute; set it with /team-permission" };
-    // oxlint-disable-next-line quality/no-chained-type-assertions -- pattern-runs.mjs is untyped JS; StartRunFn is its contract
-    const { startRun } = await import("../pattern-runs.mjs") as unknown as { startRun: StartRunFn };
+    // oxlint-disable-next-line quality/no-chained-type-assertions -- pattern-runs takes a full Cfg; StartRunFn is the catalog-config contract
+    const { startRun } = await import("../pattern-runs.ts") as unknown as { startRun: StartRunFn };
     const result = await startRun(cfg, name, task, env, { start, models });
     return { team: name, member, status: result.status, session: result.session || "", detail: result.detail || "", ...(result.id ? { id: result.id } : {}) };
   }

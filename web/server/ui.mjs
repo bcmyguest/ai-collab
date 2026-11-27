@@ -1,6 +1,6 @@
 import { SEND_CONFIRMATION } from "../lib/send-confirmation.js";
 import { landReviews, mergeReview } from "./land-reviews.mjs";
-import { HOST_CHECKOUT, LandRefused, deployedField, hostLand } from "../../lib/land.mjs";
+import { HOST_CHECKOUT, LandRefused, deployedField, hostLand } from "../../lib/land.ts";
 import { isProjectPaused, PROJECT_PAUSED, setProjectPaused } from "../../lib/project-pause.ts";
 import { terminalHasDraft } from "../../lib/terminal-draft.ts";
 import { EventType } from "@ag-ui/core";
@@ -46,13 +46,13 @@ import { authorModel, authorTeam, saveAuthoredTeam } from "../../lib/catalog/aut
 import { listOwned, readOwned, setNextPermission } from "../../lib/sessions/registry.ts";
 import { requestTeamPermission } from "../../lib/team-permission.ts";
 import { builderAssignment, recoverBuilder, stoppedBuilder } from "../../lib/builder.ts";
-import { REVIEW_ACTIONS, STATUSES, TaskNotFoundError, openTasks } from "../../lib/tasks.mjs";
-import { priorityOf } from "../../lib/task-order.mjs";
+import { REVIEW_ACTIONS, STATUSES, TaskNotFoundError, openTasks } from "../../lib/tasks.ts";
+import { priorityOf } from "../../lib/task-order.ts";
 import { mentions, mentionedNames, mentionedTeams, startOnlyMentions, messageDestinations } from "../lib/message-routing.js";
 import { taskTags } from "../lib/task-tags.js";
 import { shippedTasks } from "./shipped.mjs";
 import { taskBoard } from "./task-board.mjs";
-import { advanceRun, listRuns, rolesByAddress, startRun } from "../../lib/pattern-runs.mjs";
+import { advanceRun, listRuns, rolesByAddress, startRun } from "../../lib/pattern-runs.ts";
 import { formatTeamOrchestrator } from "../../lib/format.ts";
 import { activityRows, groupSubagents, summarize, turnStarts } from "../lib/activity-rows.js";
 import { childRuns } from "../lib/child-subagents.js";

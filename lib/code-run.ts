@@ -8,30 +8,45 @@
  * Verified against openshell 0.1.9 on 2026-11-22: the default policy denies egress (fetch fails with EACCES), the image
  * has no node and no libatomic, so the host node binary and its non-glibc libraries are uploaded once per sandbox.
  */
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { readFileSync, realpathSync, copyFileSync, mkdtempSync, rmSync, statSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { findExecutable } from "./start.mjs";
+import { findExecutable } from "./sessions/scope.ts";
 import { autoDefaults } from "./config.ts";
 import { REQUIRE_RUN_CODE_ENV } from "./code-mode.ts";
 import { sharedLibs } from "./builder.ts";
+import type * as SandboxModule from "./sandbox.ts";
 // Loaded on first use, as lib/builder.ts does: plugin libraries import without the runner tree.
-let S;
-const sandboxLib = async () => (S ??= await import("../runner/sandbox.mjs"));
+type SandboxLib = typeof SandboxModule;
+let S: SandboxLib | undefined;
+const sandboxLib = async (): Promise<SandboxLib> => (S ??= await import("./sandbox.ts"));
+
+// oxlint-disable-next-line typescript/no-explicit-any -- JSON schemas, tool results and sandbox messages are JSON
+type Json = any;
+type Env = NodeJS.ProcessEnv;
+/** An MCP tool definition as the tool API lists it. */
+export type ToolDef = { name: string; description?: string; inputSchema?: Json; annotations?: Json };
+type ToolClient = { listTools: () => ToolDef[]; callTool: (name: string, args: Json, options: { signal?: AbortSignal }) => Promise<Json> };
+type CallTool = (name: string, args: Json) => Promise<Json>;
+/** The openshell binary and sandbox a run uses. */
+export type CodeSandbox = { openshell: string; name: string; policy?: string };
+/** One program run: the value or error, printed lines, ai.* call count and elapsed ms. */
+export type ProgramRun = { ok: boolean; value?: Json; error?: string; logs: string[]; calls: number; ms: number };
+type SpawnFn = (file: string, args: string[], options: Json) => ChildProcess;
 
 export const RUN_CODE = "run_code";
 export const RUN_READ_CODE = "run_read_code";
 export const READ_TOOLS = ["list_agents", "list_sessions", "channel_history", "task_list", "team_status", "pattern_list", "pattern_status"];
 export const CODE_TOOLS = [...READ_TOOLS, "send", "task_update"];
 /** Tagged starts always require run_code; machine defaults apply when OpenShell is available. */
-export function readsThroughRunCode(env = process.env) {
+export function readsThroughRunCode(env: Env = process.env): boolean {
   return env[REQUIRE_RUN_CODE_ENV] === "1" || (autoDefaults(env)?.readsThroughRunCode === true
     && Boolean(env.AI_COLLAB_OPENSHELL_BIN || findExecutable("openshell", env.PATH || "")));
 }
-const toolsFor = (readOnly) => readOnly ? READ_TOOLS : CODE_TOOLS;
+const toolsFor = (readOnly: boolean): string[] => readOnly ? READ_TOOLS : CODE_TOOLS;
 const READ_SANDBOX_PREFIX = "aic-ro-";
 const READ_POLICY = fileURLToPath(new URL("./code-read-policy.yaml", import.meta.url));
 export const CODE_MAX_CHARS = 20_000;
@@ -39,6 +54,8 @@ export const OUTPUT_MAX_CHARS = 16_000;
 export const TIMEOUT_DEFAULT_MS = 30_000;
 export const TIMEOUT_MAX_MS = 120_000;
 export const CALLS_MAX = 200;
+/** Clipped text and how many characters were cut. */
+export type Clipped = { text: string; cut: number };
 // The sandbox runs programs only; openshell 0.1.9 caps a sandbox name at 19 characters.
 export const CODE_SANDBOX = "ai-collab-code";
 export const REMOTE_DIR = "/sandbox/.ai-collab-code";
@@ -80,8 +97,8 @@ function run({ code, tools, timeoutMs }) {
 `;
 
 /** A JSON schema as a TypeScript-like type, for the ai.* signatures in the tool description. */
-export function schemaType(schema = {}) {
-  if (Array.isArray(schema.enum)) return schema.enum.map((v) => JSON.stringify(v)).join(" | ");
+export function schemaType(schema: Json = {}): string {
+  if (Array.isArray(schema.enum)) return schema.enum.map((v: unknown) => JSON.stringify(v)).join(" | ");
   switch (schema.type) {
     case "string": return "string";
     case "integer": case "number": return "number";
@@ -92,23 +109,23 @@ export function schemaType(schema = {}) {
   }
 }
 
-function objectType(schema, omit = []) {
-  const required = new Set(schema.required || []);
+function objectType(schema: Json, omit: string[] = []): string {
+  const required = new Set<string>(schema.required || []);
   const fields = Object.entries(schema.properties || {}).filter(([key]) => !omit.includes(key))
     .map(([key, value]) => `${key}${required.has(key) ? "" : "?"}: ${schemaType(value)}`);
   return fields.length ? `{ ${fields.join(", ")} }` : "{}";
 }
 
 /** One ai.* line: the call shape without `session` (the server fills it in) and the tool's first sentence. */
-export function signature(tool) {
+export function signature(tool: ToolDef): string {
   const args = objectType(tool.inputSchema || {}, ["session"]);
-  const needsArgs = (tool.inputSchema?.required || []).some((key) => key !== "session");
+  const needsArgs = (tool.inputSchema?.required || []).some((key: string) => key !== "session");
   const first = String(tool.description || "").split(/(?<=\.)\s/)[0];
   return `ai.${tool.name}(${needsArgs ? "args" : "args?"}: ${args}): Promise<object>  // ${first}`;
 }
 
 /** The run_code tool definition; its description lists the ai.* API generated from the allowed tools' schemas. */
-export function runCodeTool(tools = [], { readOnly = false, builder = false } = {}) {
+export function runCodeTool(tools: ToolDef[] = [], { readOnly = false, builder = false }: { readOnly?: boolean; builder?: boolean } = {}): ToolDef {
   if (builder) return {
     name: RUN_CODE,
     description: "Run an async JavaScript function body in this builder's OpenShell worktree. "
@@ -154,7 +171,7 @@ export function runCodeTool(tools = [], { readOnly = false, builder = false } = 
 }
 
 /** Why a value breaks a JSON schema (the subset the ai-collab tool schemas use), or "" when it fits. */
-export function schemaProblem(schema = {}, value, path = "args") {
+export function schemaProblem(schema: Json = {}, value: Json, path = "args"): string {
   if (Array.isArray(schema.enum) && !schema.enum.includes(value)) return `${path} must be one of ${schema.enum.join(", ")}`;
   switch (schema.type) {
     case "string":
@@ -194,15 +211,15 @@ export function schemaProblem(schema = {}, value, path = "args") {
  * The program text for one run: inline `code`, or a .js/.mjs `file` inside the session's working folder (read here, on the
  * host side of the sandbox), with `input` bound first as `const input = <JSON>;`. Exactly one of code and file.
  */
-export function programSource({ code, file, input } = {}, { cwd = process.cwd() } = {}) {
+export function programSource({ code, file, input }: { code?: unknown; file?: unknown; input?: unknown } = {}, { cwd = process.cwd() }: { cwd?: string } = {}): string {
   const inline = typeof code === "string" && code.trim() !== "";
   const named = typeof file === "string" && file.trim() !== "";
   if (inline === named) throw new Error("Pass exactly one of code or file");
-  let body = code;
+  let body = code as string;
   if (named) {
     if (!/\.m?js$/.test(file)) throw new Error("file must be a .js or .mjs program");
-    let real;
-    let base;
+    let real: string;
+    let base: string;
     try { real = realpathSync(resolve(cwd, file)); base = realpathSync(cwd); }
     catch { throw new Error(`cannot read ${file}`); }
     const rel = relative(base, real);
@@ -218,8 +235,8 @@ export function programSource({ code, file, input } = {}, { cwd = process.cwd() 
  * The host side of ai.* calls: checks args against the tool's schema, fills in the session, and calls the tool
  * through lib/tool-api.ts's client. Resolves the tool's data; rejects with the tool's or the check's error.
  */
-export function hostCaller({ client, session, signal, readOnly = false }) {
-  const schemas = new Map(client.listTools().map((tool) => [tool.name, tool.inputSchema || {}]));
+export function hostCaller({ client, session, signal, readOnly = false }: { client: ToolClient; session: string; signal?: AbortSignal; readOnly?: boolean }): CallTool {
+  const schemas = new Map<string, Json>(client.listTools().map((tool) => [tool.name, tool.inputSchema || {}]));
   return async (name, args) => {
     const schema = schemas.get(name);
     if (!toolsFor(readOnly).includes(name) || !schema) throw new Error(`ai.${name} is not available in ${readOnly ? RUN_READ_CODE : RUN_CODE}`);
@@ -232,7 +249,7 @@ export function hostCaller({ client, session, signal, readOnly = false }) {
 }
 
 /** The openshell binary and sandbox a run uses; throws an actionable error when openshell is missing. */
-export function codeSandbox(env = process.env, { readOnly = false } = {}) {
+export function codeSandbox(env: Env = process.env, { readOnly = false }: { readOnly?: boolean } = {}): CodeSandbox {
   const openshell = env.AI_COLLAB_OPENSHELL_BIN || findExecutable("openshell", env.PATH || "");
   if (!openshell) throw new Error("run_code needs OpenShell, and openshell is not on PATH; nothing ran. Install it (docs/code-mode.md) or use the ai-collab tools directly.");
   if (readOnly) return { openshell, name: READ_SANDBOX_PREFIX + randomBytes(6).toString("hex"), policy: READ_POLICY };
@@ -243,7 +260,7 @@ export function codeSandbox(env = process.env, { readOnly = false } = {}) {
 }
 
 /** A marker of the host node build; a sandbox whose marker differs gets the runtime uploaded again. */
-export function runtimeMarker(nodePath) {
+export function runtimeMarker(nodePath: string): string {
   const stat = statSync(nodePath);
   return `${process.version} ${stat.size} ${Math.round(stat.mtimeMs)}`;
 }
@@ -252,7 +269,10 @@ export function runtimeMarker(nodePath) {
  * Makes sure the sandbox exists and holds the node runtime (node, missing libraries, marker) under REMOTE_DIR/rt.
  * Throws an Error the model can act on; never runs anything on the host but openshell and ldd.
  */
-export async function prepareSandbox({ env = process.env, nodePath = env.AI_COLLAB_CODE_NODE || process.execPath, run, ensure, upload, libs = sharedLibs, sandbox = codeSandbox(env) } = {}) {
+export async function prepareSandbox({ env = process.env, nodePath = env.AI_COLLAB_CODE_NODE || process.execPath, run, ensure, upload, libs = sharedLibs, sandbox = codeSandbox(env) }: {
+  env?: Env; nodePath?: string; run?: SandboxLib["runTool"]; ensure?: SandboxLib["ensureSandbox"]; upload?: SandboxLib["uploadTree"];
+  libs?: (nodePath: string, env: Env) => Promise<string[]>; sandbox?: CodeSandbox;
+} = {}): Promise<{ openshell: string; name: string }> {
   const lib = await sandboxLib();
   run ??= lib.runTool;
   ensure ??= lib.ensureSandbox;
@@ -261,7 +281,7 @@ export async function prepareSandbox({ env = process.env, nodePath = env.AI_COLL
   try {
     await ensure({ openshell, env, name, policy, recreateBroken: true, labels: lib.sandboxLabels({ project: RUN_CODE, kind: "code", owner: name }) });
   } catch (error) {
-    throw new Error(`run_code could not reach its OpenShell sandbox ${name}; nothing ran: ${error.message}`);
+    throw new Error(`run_code could not reach its OpenShell sandbox ${name}; nothing ran: ${(error as Error).message}`);
   }
   const marker = runtimeMarker(nodePath);
   const seen = await run(openshell, ["sandbox", "exec", "--no-tty", "-n", name, "--", "cat", `${REMOTE_DIR}/rt/MARKER`], { env, timeoutMs: 30_000 });
@@ -275,7 +295,7 @@ export async function prepareSandbox({ env = process.env, nodePath = env.AI_COLL
     writeFileSync(join(rt, "MARKER"), `${marker}\n`);
     await upload({ openshell, env, sandbox: name, local: rt, remote: REMOTE_DIR, gitIgnore: false });
   } catch (error) {
-    throw new Error(`run_code could not stage node in sandbox ${name}; nothing ran: ${error.message}`);
+    throw new Error(`run_code could not stage node in sandbox ${name}; nothing ran: ${(error as Error).message}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -283,14 +303,14 @@ export async function prepareSandbox({ env = process.env, nodePath = env.AI_COLL
 }
 
 /** Delete a per-program sandbox and the files it held. */
-export async function removeCodeSandbox({ openshell, name }, env = process.env) {
+export async function removeCodeSandbox({ openshell, name }: CodeSandbox, env: Env = process.env): Promise<void> {
   const { destroyOwnedSandboxes } = await sandboxLib();
   const result = await destroyOwnedSandboxes({ openshell, env, project: RUN_CODE, kind: "code", owner: name, legacyNames: [name] });
   if (!result.ok) process.stderr.write(`ai-collab: could not delete code sandbox ${name}: ${result.detail}\n`);
 }
 
 /** The argv that runs the bootstrap in the sandbox. */
-export async function programArgv({ openshell, name }) {
+export async function programArgv({ openshell, name }: CodeSandbox): Promise<string[]> {
   const { execArgv } = await sandboxLib();
   return execArgv({
     openshell, sandbox: name, workdir: "/sandbox", env: { LD_LIBRARY_PATH: `${REMOTE_DIR}/rt/lib` },
@@ -299,7 +319,7 @@ export async function programArgv({ openshell, name }) {
 }
 
 /** Text clipped to max characters, with how much was cut. */
-export function clip(text, max = OUTPUT_MAX_CHARS) {
+export function clip(text: string, max: number = OUTPUT_MAX_CHARS): Clipped {
   return text.length <= max ? { text, cut: 0 } : { text: text.slice(0, max), cut: text.length - max };
 }
 
@@ -307,19 +327,22 @@ export function clip(text, max = OUTPUT_MAX_CHARS) {
  * Runs one program through argv (the sandbox exec) and answers its ai.* calls with callTool(name, args).
  * Resolves {ok, value?, error?, logs, calls, ms}; never rejects.
  */
-export function runProgram({ argv, code, callTool, env, timeoutMs = TIMEOUT_DEFAULT_MS, signal, spawnFn = spawn, now = Date.now, readOnly = false, builder = false, cwd }) {
-  const tools = builder ? [] : toolsFor(readOnly);
+export function runProgram({ argv, code, callTool, env, timeoutMs = TIMEOUT_DEFAULT_MS, signal, spawnFn = spawn, now = Date.now, readOnly = false, builder = false, cwd }: {
+  argv: string[]; code: string; callTool: CallTool; env?: Env; timeoutMs?: number; signal?: AbortSignal; spawnFn?: SpawnFn;
+  now?: () => number; readOnly?: boolean; builder?: boolean; cwd?: string;
+}): Promise<ProgramRun> {
+  const tools: string[] = builder ? [] : toolsFor(readOnly);
   const started = now();
-  const logs = [];
+  const logs: string[] = [];
   let logChars = 0;
   let calls = 0;
-  return new Promise((resolve) => {
+  return new Promise<ProgramRun>((resolve) => {
     const child = spawnFn(argv[0], argv.slice(1), { env, cwd, detached: builder, stdio: ["pipe", "pipe", "pipe"], shell: false });
     let settled = false;
     let stdoutBytes = 0;
     let stderr = "";
     let buffer = "";
-    const finish = (out) => {
+    const finish = (out: { ok: boolean; value?: Json; error?: string }) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -330,7 +353,7 @@ export function runProgram({ argv, code, callTool, env, timeoutMs = TIMEOUT_DEFA
     const stop = () => {
       if (builder && child.pid) {
         try { process.kill(-child.pid, "SIGKILL"); return; } catch (error) {
-          if (error.code === "ESRCH") return;
+          if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
           // Some OpenShell policies deny signaling a process group.
         }
       }
@@ -342,8 +365,8 @@ export function runProgram({ argv, code, callTool, env, timeoutMs = TIMEOUT_DEFA
     const timer = setTimeout(() => finish({ ok: false, error: `the program timed out after ${timeoutMs} ms` }), timeoutMs);
     signal?.addEventListener("abort", onAbort, { once: true });
     if (signal?.aborted) onAbort();
-    const write = (message) => { if (!settled) child.stdin.write(`${JSON.stringify(message)}\n`); };
-    const answer = async (message) => {
+    const write = (message: Json) => { if (!settled) child.stdin?.write(`${JSON.stringify(message)}\n`); };
+    const answer = async (message: Json) => {
       const { call: id, tool } = message;
       if (!tools.includes(tool)) return write({ id, error: `ai.${tool} is not available in ${readOnly ? RUN_READ_CODE : RUN_CODE}; allowed: ${tools.join(", ")}` });
       if (++calls > CALLS_MAX) return write({ id, error: `more than ${CALLS_MAX} ai.* calls in one program` });
@@ -351,11 +374,11 @@ export function runProgram({ argv, code, callTool, env, timeoutMs = TIMEOUT_DEFA
         const args = message.args && typeof message.args === "object" && !Array.isArray(message.args) ? message.args : {};
         write({ id, result: await callTool(tool, args) });
       } catch (error) {
-        write({ id, error: error.message });
+        write({ id, error: (error as Error).message });
       }
     };
-    const onLine = (line) => {
-      let message;
+    const onLine = (line: string) => {
+      let message: Json;
       try { message = JSON.parse(line); } catch { message = { log: line }; }
       if (message?.done === true) return finish(message.error !== undefined ? { ok: false, error: String(message.error) } : { ok: true, value: message.value ?? null });
       if (builder && message?.localCall === true) { calls++; return; }
@@ -363,17 +386,20 @@ export function runProgram({ argv, code, callTool, env, timeoutMs = TIMEOUT_DEFA
       const text = typeof message?.log === "string" ? message.log : line;
       if (logChars <= OUTPUT_MAX_CHARS) { logs.push(text); logChars += text.length + 1; }
     };
-    child.stdin.on("error", () => {});
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk) => {
+    const stdin = child.stdin as NonNullable<ChildProcess["stdin"]>;
+    const stdout = child.stdout as NonNullable<ChildProcess["stdout"]>;
+    const stderrStream = child.stderr as NonNullable<ChildProcess["stderr"]>;
+    stdin.on("error", () => {});
+    stdout.setEncoding("utf8");
+    stderrStream.setEncoding("utf8");
+    stdout.on("data", (chunk: string) => {
       stdoutBytes += Buffer.byteLength(chunk);
       if (stdoutBytes > STREAM_MAX_BYTES) return finish({ ok: false, error: `the program printed more than ${STREAM_MAX_BYTES} bytes` });
       buffer += chunk;
-      let at;
+      let at: number;
       while ((at = buffer.indexOf("\n")) >= 0) { const line = buffer.slice(0, at); buffer = buffer.slice(at + 1); if (line) onLine(line); }
     });
-    child.stderr.on("data", (chunk) => { if (stderr.length < STDERR_KEEP) stderr += chunk; });
+    stderrStream.on("data", (chunk: string) => { if (stderr.length < STDERR_KEEP) stderr += chunk; });
     child.on("error", (error) => finish({ ok: false, error: `openshell could not start: ${error.message}` }));
     child.on("close", (code) => finish({ ok: false, error: `the sandbox exited ${code} before the program finished${stderr.trim() ? `: ${stderr.trim().slice(0, STDERR_KEEP)}` : ""}` }));
     write({ code, tools, timeoutMs });
@@ -381,7 +407,7 @@ export function runProgram({ argv, code, callTool, env, timeoutMs = TIMEOUT_DEFA
 }
 
 /** The tool result text: the value, then printed lines, clipped to OUTPUT_MAX_CHARS in all. */
-export function formatRun(run) {
+export function formatRun(run: ProgramRun): string {
   const body = { ok: run.ok, ...(run.ok ? { result: run.value } : { error: run.error }), ...(run.logs.length ? { logs: run.logs } : {}), calls: run.calls, ms: run.ms };
   const { text, cut } = clip(JSON.stringify(body));
   return cut ? `${text}\n[clipped ${cut} characters; return less]` : text;
