@@ -8,7 +8,7 @@ export const READY_POLL_MS = 5000;
 /**
  * Builds the workflow function over deps (injectable; the live set is in runner/runner.mjs):
  *   now(); scfgOf(project, session); sessionOf(project, address) -> live session or null; probe?(session) -> live-set probe, once per poll;
- *   ready(session, probe) -> bool; busy?(session, probe) -> bool (still working on an earlier push);
+ *   ready(session, probe, project) -> bool; busy?(session, probe) -> bool (still working on an earlier push);
  *   reserve(scfg, ids, {owner, allowSeen}) -> {owned, busy}; release(scfg, ids, owner); markDelivered(scfg, ids);
  *   snapshot(session) -> JSON; push(session, {text, urgent, ids}) -> {status}; awaitConfirm(id, session, snapshot) -> bool;
  *   waitConfirmed(session, ids, snapshot) -> bool after the full confirm window; confirmedSince(session, ids, snapshot) -> bool;
@@ -44,7 +44,7 @@ export function deliveryWorkflow(deps) {
         const session = deps.sessionOf(project, address);
         // One probe per poll, shared by ready and busy.
         const active = session ? (await deps.probe?.(session)) ?? null : null;
-        const ready = Boolean(session) && await deps.ready(session, active);
+        const ready = Boolean(session) && await deps.ready(session, active, project);
         const busy = ready && state.pushes > 0 && Boolean(await deps.busy?.(session, active));
         // Acks matter only to a redelivery; the first push never polls them.
         const acked = state.pushes > 0 && !wf.replaying && await deps.acked(project, address, message);

@@ -136,9 +136,9 @@ export function createDispatcher({
     return formatInbox(shown, { session: scfg.session, peer: scfg.peer });
   };
 
-  // Claude takes a socket message in any state, when its gate is open; Codex waits for an idle session; OpenCode takes a queued or steering prompt in any state.
-  function ready(session, active) {
-    return readySession(session, active, { env, idle });
+  // Claude takes a socket message in any state, when its gate is open and no Stop hook holds it; Codex waits for an idle session; OpenCode takes a queued or steering prompt in any state.
+  function ready(session, active, cfg) {
+    return readySession(session, active, { env, idle, cfg });
   }
 
   // Folds new receipts and replies to this ledger's messages into reads and answers.
@@ -171,7 +171,7 @@ export function createDispatcher({
     const entries = readLedger(cfg);
     const sessions = listSessions(cfg).filter((s) => PUSHED.has(s.harness) && s.online);
     for (const session of sessions) {
-      if (nextAction(FIRST_PUSH, now(), { acked: false, busy: false, ready: await ready(session, active) }) !== "push") continue;
+      if (nextAction(FIRST_PUSH, now(), { acked: false, busy: false, ready: await ready(session, active, cfg) }) !== "push") continue;
       const scfg = { ...cfg, peer: session.peer, session: session.session };
       // The predicate runs before the cap: fyi, broadcasts and messages in backoff or reserved do not use up the claim.
       // A project-chat @mention is not pushed here. claimInbox and the runner deliver it to the session it names.
@@ -207,7 +207,7 @@ export function createDispatcher({
         const state = { firstAt: e.firstAt, pushes: e.attempts, dueAt: e.lastAt + REDELIVER_MS };
         // Live busy and ready are probed only once the redelivery is due; before that the policy reads acks and the TTL alone.
         const probed = now() >= state.dueAt
-          ? { busy: Boolean(session && busyWithPush(session, active)), ready: Boolean(session) && await ready(session, active) }
+          ? { busy: Boolean(session && busyWithPush(session, active)), ready: Boolean(session) && await ready(session, active, cfg) }
           : { busy: false, ready: false };
         let action = nextAction(state, now(), { acked: acked(id, e.address), ...probed });
         // Re-check the answer right before redelivering, so one that arrived during the awaits above gets no copy.
