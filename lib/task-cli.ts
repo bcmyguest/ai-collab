@@ -1,7 +1,7 @@
 /** `ai-collab task ...`: list, show, add, set, block, progress, ask, own, remove, render, import. Store: lib/tasks.ts. */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { projectRoot } from "./start.mjs";
+import { projectRoot } from "./sessions/launch.ts";
 import { STATUSES, TASK_PRIORITIES, clipProgress, importReport, openTasks, priorityOf, renderFeatureRequests, sortTasks, validateTasks } from "./tasks.ts";
 // Any loadConfig result, the disabled one included; task reads only these fields.
 type TaskCfg = { enabled?: boolean; project?: string; peer?: string; session?: string };

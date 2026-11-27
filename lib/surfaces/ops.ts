@@ -1,13 +1,14 @@
 // The operation table: each op is rendered to the MCP servers (lib/surfaces/render-mcp.ts) and to the run_code ai client.
 import { BUILDER_HARNESSES, startBuilder } from "../builder.ts";
-import { agentDirectory, sessionDirectory, setIdentity, listSessions } from "../sessions.mjs";
+import { agentDirectory, sessionDirectory, setIdentity, listSessions } from "../sessions/registry.ts";
 import { messageView, respond, sendAndAwait, waitForIdle, waitForMessages } from "../agents.ts";
 import { readInbox, type InboxMessage } from "../messaging.ts";
 import { askQuestion, requestWait, waitForAnswer } from "../questions.ts";
 import { HISTORY_DEFAULT, HISTORY_MAX, PRIORITIES, RESPOND_STATES, channelHistory, replyToOperator, sendMessage } from "../messaging.ts";
 import { storedMode } from "../mode.ts";
-import { teamStart, teamStatus } from "../teams.mjs";
-import { listPatterns } from "../patterns.mjs";
+import { teamStart } from "../catalog/roster.ts";
+import { teamStatus } from "../catalog/teams.ts";
+import { listPatterns } from "../catalog/patterns.ts";
 import { advanceRun, runStatus } from "../pattern-runs.ts";
 import { listModels } from "../models.ts";
 import { interruptSession } from "../sessions/control.ts";

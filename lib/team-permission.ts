@@ -5,7 +5,7 @@
 import { askQuestion, type AnswerResult, type AskOptions } from "./questions.ts";
 import type { Cfg } from "./messaging.ts";
 import type { Pattern } from "./catalog/records.ts";
-import { getPattern, saveTeamText, teamTextOf } from "./patterns.mjs";
+import { getPattern, saveTeamText, teamTextOf } from "./catalog/patterns.ts";
 import { parseDot, serializeDot } from "./catalog/dot.ts";
 
 export type PermissionRequest = { status: "failed"; detail: string } | { status: "pending"; detail: string; done: Promise<string> };

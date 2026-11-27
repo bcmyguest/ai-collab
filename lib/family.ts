@@ -7,7 +7,7 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { basename, isAbsolute } from "node:path";
 import { sendMessage } from "./messaging.ts";
 import type { Cfg } from "./messaging.ts";
-import { claimParentNotice } from "./sessions.mjs";
+import { claimParentNotice } from "./sessions/registry.ts";
 
 const address = (cfg: Cfg) => `${cfg.peer}#${cfg.session}`;
 

@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { stateDir } from "../config.ts";
-import { PROMPT_MAX_CHARS } from "../start.mjs";
+import { PROMPT_MAX_CHARS } from "../sessions/launch.ts";
 import { cursorLimitFile, cursorLimitUntil, detectLimit, fallbackChain, isBlockingLimit, recordCursorLimit } from "../limits.ts";
 import { listModels } from "../models.ts";
 import { traceStream } from "../cursor-trace.ts";

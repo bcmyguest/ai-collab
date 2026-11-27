@@ -7,7 +7,7 @@ import {tmpdir} from "node:os";
 import {join, resolve} from "node:path";
 import {setTimeout as delay} from "node:timers/promises";
 import {compileTrace} from "../lib/pattern-compiler.ts";
-import {BUILT_IN_PATTERNS} from "../lib/patterns.mjs";
+import {BUILT_IN_PATTERNS} from "../lib/catalog/patterns.ts";
 
 const definition = BUILT_IN_PATTERNS.product;
 const expected = ["in vision", "built", "reported", "task closed"];

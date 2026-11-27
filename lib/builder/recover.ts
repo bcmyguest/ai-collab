@@ -4,7 +4,7 @@ import { isProjectPaused, PROJECT_PAUSED } from "../project-pause.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { stateDir } from "../config.ts";
-import { PROMPT_MAX_CHARS } from "../start.mjs";
+import { PROMPT_MAX_CHARS } from "../sessions/launch.ts";
 import { withLock } from "../state.ts";
 import { openTasks } from "../tasks.ts";
 import { BUILDER_HARNESSES, DEFAULT_MODEL, ID_RE, BUILDER_START_TIMEOUT_MS, SYNC_TIMEOUT_MS, FINAL_PHASES, LIVE_STATES, builderPaths, builderId, readState, updateState, builderExited, oneLine } from "./state.ts";

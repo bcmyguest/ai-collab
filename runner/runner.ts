@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { EventType } from "@ag-ui/core";
 import { DOT_EVENT_MAX } from "../lib/catalog/dot.ts";
-import { getPattern } from "../lib/patterns.mjs";
+import { getPattern } from "../lib/catalog/patterns.ts";
 import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, cutPatternEntry, cutPatternLeave, cutPatternRun, launchPatternRun, NOTE_MAX, preparePatternRun, RUN_ID, runStatus, sessionsOfRun } from "../lib/pattern-runs.ts";
 import { patternWorkflowId, runIdOfPatternWorkflow, runPatternWorkflow, seedPatternRun } from "../lib/pattern-workflow.ts";
 import { statePath } from "../lib/state.ts";
@@ -20,7 +20,7 @@ import { formatInbox } from "../lib/format.ts";
 import { attachmentOf, cacheAttachmentsWithin, localizedAttachment } from "../lib/attachment-cache.ts";
 import { streamEvents } from "../lib/messaging.ts";
 import { handedOff, handOff } from "../lib/stop.ts";
-import { listSessions, recordSession } from "../lib/sessions.mjs";
+import { listSessions, recordSession } from "../lib/sessions/registry.ts";
 import { claudeConfirmedSince, claudeSnapshot, claudeWindowMs } from "../lib/claude-socket.ts";
 import { ackTracker, busyWithPush, direct, holdRunning, PUSHED, pushSession, readDispatchLedger, readySession, writeDispatchLedger } from "../lib/deliver-push.ts";
 import { MAX_ATTEMPTS } from "../lib/delivery.ts";
@@ -28,7 +28,9 @@ import { sessionIdleState } from "../lib/idle.ts";
 import { opencodeRequest } from "../lib/opencode-api.ts";
 import { BUILDER_START_TIMEOUT_MS, builderPaths, builderResumePrompt, stoppedBuilder, ownedBuilder, stageOwnedBuilder, claimOwnedBuilder, finishOwnedBuilder, markOwnedBuilderFailed } from "../lib/builder.ts";
 import { pickedWorktree } from "../lib/sessions/git-refs.ts";
-import { PROMPT_MAX_CHARS, childEnv, checkPrompt, claudePermissionFor, findExecutable, modelShape, projectRoot, worktreeNames } from "../lib/start.mjs";
+import { PROMPT_MAX_CHARS, childEnv, checkPrompt, claudePermissionFor, projectRoot, worktreeNames } from "../lib/sessions/launch.ts";
+import { findExecutable } from "../lib/sessions/scope.ts";
+import { modelShape } from "../lib/harness.ts";
 import { parseCodeMode, resolveCodeMode } from "../lib/code-mode.ts";
 import { openTasks } from "../lib/tasks.ts";
 import { describeFinish, finishMemberBranch, landFinishRequest } from "../lib/land-member.ts";
@@ -41,7 +43,7 @@ import { sessionOfCommand } from "../lib/schedule-session.ts";
 import { ALLOW_HOST_AGENT_ENV } from "../lib/agent-guard.ts";
 import { noSubagentEnv } from "../lib/subagent-guard.ts";
 import { SPAWN_MAX_CHILDREN, SPAWN_MAX_DEPTH, spawnBriefNote, spawnReport, spawnSelfNote } from "../lib/spawn.ts";
-import { sandboxCapRefusal, sandboxName, teamSandboxName } from "./sandbox.mjs";
+import { sandboxCapRefusal, sandboxName, teamSandboxName } from "../lib/sandbox.ts";
 import { DELIVERY, deliveryWorkflow } from "./delivery.ts";
 import { publishApproval, publishApprovalEnd, publishEnded, publishEvent, publishReceipts } from "./publish.ts";
 
@@ -162,7 +164,7 @@ export function createClaims({ now = Date.now } = {}) {
   };
 }
 
-/** Creates the runner over project configs, a Map harness → Adapter and a durable log (runner/durable.mjs). */
+/** Creates the runner over project configs, a Map harness → Adapter and a durable log (lib/durable.ts). */
 export function createRunner({ projects, adapters, durable: rawDurable, env = process.env, git = runGit, now = Date.now, startGapMs = START_GAP_MS, approvalMs = approvalTimeoutMs(env), watch = true, log = () => {}, scheduleErrors = [], scheduleEntries = [], pumpMs = PUMP_MS, delivery = {}, startTimeoutMs = START_TIMEOUT_MS }: RunnerOptions) {
   // Tests hand createRunner a raw sqlite log; the runner itself passes an openWorkflows engine. One async surface either way.
   const durable = rawDurable.isAsync === true ? rawDurable : adaptSqlite(rawDurable);

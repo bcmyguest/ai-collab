@@ -2,7 +2,7 @@
  * run_code: one JavaScript program runs inside an OpenShell sandbox with a small `ai` client for ai-collab tools, and
  * only its returned value and printed lines come back. The program never runs on the host: without openshell or a
  * sandbox it is refused. ai.* calls travel as JSON lines over the `openshell sandbox exec` stdio (the only channel
- * into a sandbox, runner/sandbox.mjs) and the host answers them through the ai-collab MCP server, allowlist first.
+ * into a sandbox, lib/sandbox.ts) and the host answers them through the ai-collab MCP server, allowlist first.
  *
  * Tools run on the host through lib/tool-api.ts (the MCP server's own client), so the program needs no network.
  * Verified against openshell 0.1.9 on 2026-11-22: the default policy denies egress (fetch fails with EACCES), the image

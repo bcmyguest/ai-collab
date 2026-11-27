@@ -8,7 +8,7 @@ import { pollCached } from "./messaging.ts";
 import { readInbox, streamWaiter, waitUntil } from "./messaging.ts";
 import { cleanBody } from "./format.ts";
 import { sessionIdleState, type IdleState } from "./idle.ts";
-import { listSessions } from "./sessions.mjs";
+import { listSessions } from "./sessions/registry.ts";
 import { assertWaitSeconds } from "./operator.ts";
 
 const IDLE_POLL_MS = 1000;

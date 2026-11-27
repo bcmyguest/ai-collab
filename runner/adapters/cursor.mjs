@@ -7,7 +7,8 @@ import { basename, dirname, join } from "node:path";
 import { EventType } from "@ag-ui/core";
 import { autoDefaults, sessionLabel } from "../../lib/config.ts";
 import { exportSpans, otlpEndpoint, runRecorder } from "../../lib/cursor-trace.ts";
-import { cursorBinary, findExecutable } from "../../lib/start.mjs";
+import { cursorBinary } from "../../lib/harness.ts";
+import { findExecutable } from "../../lib/sessions/scope.ts";
 import { argv, LAUNCH_BINARY } from "../../lib/harness.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, permissionSettings } from "../contract.ts";
 import { builderPolicy } from "../../lib/builder.ts";
@@ -15,7 +16,7 @@ import { MANAGED_ENV, subagentDenial } from "../../lib/subagent-guard.ts";
 import {
   commitUncommitted, destroyOwnedSandboxes, downloadTree, ensureSandbox as ensureSandboxIn, execArgv as sandboxExecArgv, runTool,
   sandboxLabels, sandboxName as sandboxNameFor, teamSandboxName, uploadFile, uploadLogins, uploadSecret, uploadTree,
-} from "../sandbox.mjs";
+} from "../../lib/sandbox.ts";
 
 // ACP protocolVersion 1 and the method names come from the ACP spec; `agent acp` answered `initialize`
 // with protocolVersion 1 on 2026-11-22 (docs/owned-sessions-contract.md, Cursor adapter).

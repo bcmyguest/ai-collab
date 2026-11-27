@@ -10,7 +10,7 @@ import { configDir, listProjects, loadProjects, stateDir } from "../lib/config.t
 import { DEFAULT_RETENTION_MS, openBus, resolveBusStoreKind } from "../lib/bus.ts";
 import { openPostgresBusStore } from "../lib/bus-postgres.ts";
 import { pgPasswordFile, pgReachable, pgUrl } from "../lib/postgres.ts";
-import { listOwned, listSessions } from "../lib/sessions.mjs";
+import { listOwned, listSessions } from "../lib/sessions/registry.ts";
 import { threadSessionsOf } from "../lib/threads.ts";
 
 function busToken(env) {

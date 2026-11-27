@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { configDir } from "../config.ts";
 import { listModels } from "../models.ts";
-import { listSessions } from "../sessions.mjs";
+import { listSessions } from "../sessions/registry.ts";
 import { formatHarnessModel, parseHarnessModel } from "../harness.ts";
 import { readJson, withLock, writeJson } from "../store.ts";
 import { entryTeams, findProject, plainMap, updateProjects } from "./projects.ts";

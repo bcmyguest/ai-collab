@@ -1,7 +1,7 @@
 /** `ai-collab pattern ...`: list, show, create, delete, start, runs, status, advance. */
 import { readFileSync } from "node:fs";
 import { listModels } from "./models.ts";
-import { createPattern, deletePattern, getPattern, listPatterns } from "./patterns.mjs";
+import { createPattern, deletePattern, getPattern, listPatterns } from "./catalog/patterns.ts";
 import { advanceRun, listRuns, runStatus, startRun } from "./pattern-runs.ts";
 import { passJs } from "./surfaces/types.ts";
 import type { Cfg } from "./messaging.ts";

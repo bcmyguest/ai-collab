@@ -10,7 +10,7 @@ import { refreshPmWorkspace } from "../lib/pm-workspace.ts";
 import { withReview } from "../lib/pm-review.ts";
 import { isProjectPaused, PROJECT_PAUSED } from "../lib/project-pause.ts";
 import { harnessOfCommand, projectOfFolder, sessionOfCommand } from "../lib/schedule-session.ts";
-import { childEnv } from "../lib/start.mjs";
+import { childEnv } from "../lib/sessions/launch.ts";
 import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.ts";
 import { ROLE_ENV } from "../lib/cursor-trace.ts";
 import { scopeLaunch } from "../lib/sessions/scope.ts";

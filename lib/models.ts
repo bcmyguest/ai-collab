@@ -9,7 +9,9 @@ import { execFile } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { MODEL_NAME, childEnv, cursorBinary, findExecutable, modelShape } from "./start.mjs";
+import { MODEL_NAME, cursorBinary, modelShape } from "./harness.ts";
+import { childEnv } from "./sessions/launch.ts";
+import { findExecutable } from "./sessions/scope.ts";
 // oxlint-disable-next-line typescript/no-explicit-any -- harness model-list JSON; each field is checked before use
 type Json = any;
 

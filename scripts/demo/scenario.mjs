@@ -1,6 +1,6 @@
 /**
  * The demo story: the operator asks two agents for a calculator and watches them work from a phone.
- * Every row comes from the real system: hook processes with fake payloads, lib/inbox.mjs sendMessage, the
+ * Every row comes from the real system: hook processes with fake payloads, lib/messaging.ts sendMessage, the
  * Next.js UI. Selectors use roles, labels and text; optional beats (approval card, Home) are skipped when absent.
  */
 import { broadcastTopic } from "../../lib/config.ts";
