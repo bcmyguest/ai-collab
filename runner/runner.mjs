@@ -75,6 +75,8 @@ const MODEL = /^[a-zA-Z0-9][a-zA-Z0-9._:/[\]-]{0,119}$/;
 const MANAGED_ENV_HARNESSES = new Set(["claude", "codex"]);
 // Spawned children of these harnesses run in OpenShell with full access, never on the host (docs/spawn-agent-spec.md, answer 6).
 const SPAWN_IN_OPENSHELL = new Set(["cursor"]);
+// A worktree add that fails, most often on a name a parallel start just took, retries this many times in all.
+const WORKTREE_ATTEMPTS = 4;
 
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
 // Approvals off outside OpenShell is an unguarded agent on the host (lib/agent-guard.mjs); only the operator's env lifts it.
@@ -382,20 +384,20 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     if (place === "folder") return root;
     const adapter = adapterOf(harness);
     if (!(adapter.capabilities.places ?? ["folder", "worktree"]).includes(place)) fail(400, `${harness} owned sessions cannot use place ${place} yet`);
-    let tree = patternRun ? { name: "team-" + patternRun, branch: "team/" + patternRun } : worktreeNames(harness, now());
+    const base = patternRun ? { name: "team-" + patternRun, branch: "team/" + patternRun } : worktreeNames(harness, now());
     const gitFile = findExecutable("git", childEnv(env).PATH);
     if (!gitFile) fail(500, "git is not installed");
-    // Names have one-second resolution and spawns skip the start gap, so a taken name gets a random suffix.
-    if (!patternRun && (existsSync(join(root, ".claude", "worktrees", tree.name))
-      || await git(gitFile, ["-C", root, "show-ref", "--verify", "--quiet", `refs/heads/${tree.branch}`], { cwd: root, env: childEnv(env) }) === 0)) {
-      const suffix = randomBytes(3).toString("hex");
-      tree = { name: `${tree.name}-${suffix}`, branch: `${tree.branch}-${suffix}` };
+    if (patternRun && existsSync(join(root, ".claude", "worktrees", base.name, ".git"))) return join(root, ".claude", "worktrees", base.name);
+    // Names have one-second resolution and parallel spawns skip the start gap, so a failed add retries under a fresh suffix.
+    let code = 0;
+    for (let attempt = 0; attempt < WORKTREE_ATTEMPTS; attempt++) {
+      const suffix = attempt === 0 || patternRun ? "" : "-" + randomBytes(3).toString("hex");
+      const cwd = join(root, ".claude", "worktrees", base.name + suffix);
+      code = await git(gitFile, ["-C", root, "worktree", "add", "-b", base.branch + suffix, cwd], { cwd: root, env: childEnv(env) });
+      if (code === 0) return cwd;
+      if (patternRun) break;
     }
-    const cwd = join(root, ".claude", "worktrees", tree.name);
-    if (patternRun && existsSync(join(cwd, ".git"))) return cwd;
-    const code = await git(gitFile, ["-C", root, "worktree", "add", "-b", tree.branch, cwd], { cwd: root, env: childEnv(env) });
-    if (code !== 0) fail(500, `git worktree add exited ${code}`);
-    return cwd;
+    fail(500, `git worktree add exited ${code}`);
   }
 
   /**
