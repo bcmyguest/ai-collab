@@ -29,6 +29,7 @@ export type Session = Identity & {
   lastOperatorPromptAt?: number;
   parent?: string;
   parentNotifiedAt?: number;
+  subagentHintAt?: number;
   identityName?: string;
   sandbox?: boolean;
   peer?: string;
@@ -102,7 +103,7 @@ export async function recordSession(cfg: SessionCfg, { id, cwd, harness, event, 
   await withLock(file, async () => {
     const last = operatorPromptAt || lastOperatorPromptAt(cfg);
     const own = readOwn(cfg);
-    const { parentNotifiedAt } = own;
+    const { parentNotifiedAt, subagentHintAt } = own;
     // The harness's session name stays until the harness reports a new one.
     const title = name || (typeof own.name === "string" && !MACHINE_NAME.test(own.name) ? own.name : "");
     // The model a hook reports stays until a later hook reports another.
@@ -119,6 +120,7 @@ export async function recordSession(cfg: SessionCfg, { id, cwd, harness, event, 
       ...(parent ? { parent } : {}),
       ...(title ? { name: title } : {}),
       ...(Number.isSafeInteger(parentNotifiedAt) ? { parentNotifiedAt } : {}),
+      ...(Number.isSafeInteger(subagentHintAt) ? { subagentHintAt } : {}),
       ...cleanIdentity(own),
       // The set_identity name survives a hook that reports another title.
       ...(typeof own.identityName === "string" && NAME.test(own.identityName) ? { identityName: own.identityName } : {}),
@@ -159,6 +161,19 @@ export async function claimParentNotice(cfg: SessionCfg): Promise<boolean> {
     const own = readOwn(cfg);
     if (!own.id || own.parentNotifiedAt) return false;
     writeState(file, { ...own, parentNotifiedAt: Date.now() });
+    return true;
+  });
+  return Boolean(r.locked && r.value);
+}
+
+/** Marks the native-subagent hint as shown in this session; true only the first time. */
+export async function claimSubagentHint(cfg: SessionCfg): Promise<boolean> {
+  if (!cfg.session) return false;
+  const file = ownFile(cfg);
+  const r = await withLock(file, async () => {
+    const own = readOwn(cfg);
+    if (!own.id || own.subagentHintAt) return false;
+    writeState(file, { ...own, subagentHintAt: Date.now() });
     return true;
   });
   return Boolean(r.locked && r.value);
