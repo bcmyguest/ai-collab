@@ -11,6 +11,11 @@ export function jobAgent(job) {
   return resumed?.harness && resumed?.session ? resumed.harness + "#" + resumed.session : "";
 }
 
+/** The job's command with each absolute path cut to its last part, for a one-line row; the detail sheet keeps it whole. */
+export function commandLabel(command) {
+  return Array.isArray(command) ? command.map(arg => /^\/[^\s]*\/[^/\s]+$/.test(arg) ? arg.slice(arg.lastIndexOf("/") + 1) : arg).join(" ") : "";
+}
+
 /** [label, value] rows for the job's detail sheet; a field the runner did not send gets no row. */
 export function jobDetail(job) {
   const rows = [["Schedule", everyLabel(job.everyMs)]];
