@@ -164,7 +164,7 @@ async function deliver(cfg, host, event, msg, key) {
     await currentMode(cfg).catch(() => {});
     if (host === "claude") exportParent(cfg, process.env.CLAUDE_ENV_FILE);
     await greetParent(cfg, { harness: host, cwd: msg.cwd }).catch(() => {});
-    family = [parentLine(cfg), childHint(cfg, host)].filter(Boolean).join("\n");
+    family = [parentLine(cfg), childHint(cfg)].filter(Boolean).join("\n");
   }
   const messages = await claimInbox(cfg, { throttle: event !== "SessionStart", limit: 4 });
   sendReceipts(cfg, messages.map((m) => m.id));

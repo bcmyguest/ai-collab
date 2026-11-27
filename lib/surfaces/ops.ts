@@ -17,6 +17,7 @@ import { postToChannel } from "./channel-post.ts";
 import { taskView, updateTask } from "./task-view.ts";
 import { passJs, type Args, type SurfaceConfig } from "./types.ts";
 import { RUN_TERMINAL_OPS } from "./run-terminal-ops.ts";
+import { spawnAgent } from "../spawn.ts";
 
 // A handler's result is JSON-serialisable: it goes back to the agent as a JSON text.
 export type OpResult = object;
@@ -287,6 +288,23 @@ export const OPS: Op[] = [
       const modelList = await listModels(cfg.stateDir, env, passJs({ peers: cfg.peers }));
       return teamStart(cfg, passJs(args.name), passJs(args.member), passJs(args.task), env, passJs({ models: modelList }));
     },
+  },
+  {
+    name: "spawn_agent",
+    description: "Start a child agent of any harness (claude, codex, cursor, opencode; harness:model picks a model) with a brief. Returns its address at once; the child messages you its result after each run, so call wait (until=message) or keep working. At most 4 live children per session, 2 levels deep.",
+    inputSchema: {
+      type: "object", required: ["harness", "brief", "session"], additionalProperties: false,
+      properties: {
+        harness: { type: "string", pattern: "^(claude|codex|cursor|opencode)(:[a-zA-Z0-9][a-zA-Z0-9._:/\\[\\]-]{0,119})?$" },
+        model: { type: "string", pattern: "^[a-zA-Z0-9][a-zA-Z0-9._:/\\[\\]-]{0,119}$" },
+        brief: BODY,
+        worktree: { type: "boolean", default: false, description: "Run the child in a new git worktree instead of this folder." },
+        session: IDENTITY,
+      },
+    },
+    surfaces: ["mcp"],
+    needsSession: true,
+    handler: (args, { cfg, env }) => spawnAgent(passJs(cfg), passJs({ harness: args.harness, brief: args.brief, worktree: args.worktree === true, ...(args.model ? { model: args.model } : {}) }), passJs({ env })),
   },
   {
     name: "channel_history",

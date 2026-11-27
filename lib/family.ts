@@ -34,12 +34,12 @@ export async function greetParent(cfg: Cfg, { harness, cwd }: { harness?: string
   return true;
 }
 
-/** How this session starts a child agent that reports back; Claude's shell already carries AI_COLLAB_PARENT. */
-export function childHint(cfg: Cfg, host: string): string {
+/** How this session hands work to a child agent: spawn_agent, never a shell start (refused in managed sessions). */
+export function childHint(cfg: Cfg): string {
   if (!cfg.session) return "";
-  const prefix = host === "claude" ? "" : `AI_COLLAB_PARENT=${address(cfg)} `;
-  return `[ai-collab] An agent you start from your shell in this project joins AI Collab and messages you its address: `
-    + `${prefix}codex exec "<prompt>", ${prefix}claude -p "<prompt>", or ${prefix}cursor-agent -p "<prompt>". Message it with send_to_peer; list sessions with list_sessions.`;
+  return "[ai-collab] To hand work to another agent, call spawn_agent (harness, model, brief); it returns the child's address at once "
+    + "and the child messages you its result when each run ends. Do not start harnesses from your shell. "
+    + "Message a child with send_to_peer; list sessions with list_sessions.";
 }
 
 /** Hook context for a child: its own address, its parent's, and how to answer it. */
