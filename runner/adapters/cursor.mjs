@@ -36,6 +36,8 @@ const SANDBOX_LAUNCHER = LAUNCH_BINARY.cursor;
 // The CLI marks itself non-dumpable unless this is set; OpenShell then cannot read its /proc/<pid>/exe and denies its sockets (lib/builder.ts).
 const SANDBOX_CURSOR_ENV = { CURSOR_AGENT_ALLOW_PROCESS_INSPECTION: "1" };
 const GIT_TIMEOUT_MS = 120_000;
+// How long shutdown waits for killed CLIs to exit before it waits on their sandbox releases.
+const SHUTDOWN_EXIT_WAIT_MS = 5_000;
 
 /** The OpenShell sandbox name for a project: ai-collab-<project>, lowercase, at most 40 characters of project. */
 export const sandboxName = (project) => sandboxNameFor(project);
@@ -376,6 +378,8 @@ export default function cursorAdapter(config = {}) {
   let policyDir = "";
   let policyUsers = 0;
   const connections = new Set();
+  // Sandbox releases in flight, including those a dying CLI starts; shutdown waits for them.
+  const releasing = new Set();
   // One sandbox per project, reused: created by the first session and deleted when the last one closes.
   const sandboxes = new Map();
   // Sessions restored after a runner restart, by address. Each holds a claim on its sandbox until it resumes or closes.
@@ -572,7 +576,11 @@ export default function cursorAdapter(config = {}) {
   // Copies a sandbox session's edits back to the host worktree, then drops the session's claim on the sandbox;
   // the sandbox is deleted when no session holds it any more. Logs rather than throws, and runs at most once.
   function closeSandbox(session) {
-    session.release ??= releaseSandbox(session);
+    if (!session.release) {
+      session.release = releaseSandbox(session);
+      releasing.add(session.release);
+      session.release.finally(() => releasing.delete(session.release)).catch(() => {});
+    }
     return session.release;
   }
 
@@ -723,8 +731,15 @@ export default function cursorAdapter(config = {}) {
     },
 
     async shutdown() {
+      const exits = [...connections].map((conn) => conn.closed);
       for (const conn of connections) conn.kill();
       connections.clear();
+      // A killed CLI's exit starts its session's release; wait for the exits, then for every release.
+      let timer;
+      const cap = new Promise((resolve) => { timer = setTimeout(resolve, SHUTDOWN_EXIT_WAIT_MS); });
+      await Promise.race([Promise.allSettled(exits), cap]);
+      clearTimeout(timer);
+      await Promise.allSettled([...releasing]);
       dropPolicy();
     },
   };
