@@ -29,7 +29,7 @@ function compactRow(type, meta) {
   return { type: "compact", input: ["compacting", meta?.note].filter(Boolean).join(" · "), ...compaction };
 }
 
-/** Activity rows (lib/activity.mjs event shape) for one RunnerEvent; [] when the event has no row on ntfy. */
+/** Activity rows (lib/activity.ts event shape) for one RunnerEvent; [] when the event has no row on ntfy. */
 export function activityFor(e, { system } = {}) {
   const meta = e.metadata?.aiCollab;
   switch (e.type) {

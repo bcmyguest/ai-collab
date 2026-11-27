@@ -19,7 +19,7 @@
  * --read-gate refuses an agent read of the task store or state dir when readsThroughRunCode is on, with the
  * run_code recipe, and otherwise prints {}. Cursor beforeShellExecution and beforeReadFile use it so a
  * non-matching command is not turned into an approval prompt. A human shell never runs this hook.
- * Cursor events also feed the run's OTLP trace (lib/cursor-trace.mjs); its export waits at most 1.5 s after the output.
+ * Cursor events also feed the run's OTLP trace (lib/cursor-trace.ts); its export waits at most 1.5 s after the output.
  * Every message handed to the agent gets a read receipt, published in the background like activity.
  */
 import path from "node:path";
@@ -232,7 +232,7 @@ async function main() {
   const storeRead = storeReadDenial(host, key, msg);
   if (storeRead && readsThroughRunCode(env)) return emit(storeRead);
   if (argv.includes("--read-gate")) return emit({});
-  // Every Cursor run, joined project or not, records its turn for the OTLP trace (lib/cursor-trace.mjs); never awaited before output.
+  // Every Cursor run, joined project or not, records its turn for the OTLP trace (lib/cursor-trace.ts); never awaited before output.
   traced = host === "cursor" ? hookTrace(msg, { env }).catch(() => null) : null;
   const cfg = loadConfig(env, { cwd, host, session });
   if (!cfg.enabled) return emit(neutral(host, key));
