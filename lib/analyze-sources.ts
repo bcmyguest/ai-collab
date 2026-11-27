@@ -151,11 +151,8 @@ export function claudeSource({ home = homedir() }: { home?: string } = {}): Sour
           if (!m || typeof m !== "object") continue;
           if ((m as JsonObj).role === "user" && wantsResult && Array.isArray((m as JsonObj).content)) {
             for (const p of (m as JsonObj).content as JsonObj[]) {
-              const tuId = (p as JsonObj).tool_use_id as string | undefined;
-              if ((p as JsonObj).type === "tool_result" && tuId != null && pending.has(tuId)) {
-                const call = pending.get(tuId);
-                if (call) settle(call, (p as JsonObj).content, (p as JsonObj).is_error === true);
-              }
+              const tuId = (p as JsonObj).tool_use_id as string;
+              if ((p as JsonObj).type === "tool_result" && pending.has(tuId)) settle(pending.get(tuId) as Call, (p as JsonObj).content, (p as JsonObj).is_error === true);
             }
             continue;
           }
@@ -178,7 +175,7 @@ export function claudeSource({ home = homedir() }: { home?: string } = {}): Sour
           for (const p of Array.isArray((m as JsonObj).content) ? (m as JsonObj).content as JsonObj[] : []) {
             if ((p as JsonObj).type !== "tool_use" || turn.ids!.has((p as JsonObj).id as string)) continue;
             turn.ids!.add((p as JsonObj).id as string);
-            const call = makeCall((p as JsonObj).name as string || "", (p as JsonObj).input, false);
+            const call = makeCall((p as JsonObj).name as string, (p as JsonObj).input, false);
             turn.calls.push(call);
             if (call.path) pending.set((p as JsonObj).id as string, call);
           }
@@ -218,7 +215,7 @@ export function codexSource({ home = homedir() }: { home?: string } = {}): Sourc
           if ((d as JsonObj)?.type === "session_meta") { native = (p as JsonObj).id as string || native; cwd = (p as JsonObj).cwd as string || cwd; sub = Boolean(((p as JsonObj).source as JsonObj)?.subagent) || sub; }
           else if ((d as JsonObj)?.type === "turn_context") { model = (p as JsonObj).model as string || model; models.set((p as JsonObj).turn_id as string, (p as JsonObj).model as string); cwd = (p as JsonObj).cwd as string || cwd; }
           else if ((d as JsonObj)?.type === "response_item" && ((p as JsonObj).type === "function_call" || (p as JsonObj).type === "custom_tool_call")) {
-            const call = makeCall((p as JsonObj).namespace ? `${(p as JsonObj).namespace as string}${(p as JsonObj).name as string}` : (p as JsonObj).name as string || "", (p as JsonObj).type === "function_call" ? parseArgs((p as JsonObj).arguments) : (p as JsonObj).input, (p as JsonObj).type === "custom_tool_call");
+            const call = makeCall((p as JsonObj).namespace ? `${(p as JsonObj).namespace as string}${(p as JsonObj).name as string}` : (p as JsonObj).name as string, (p as JsonObj).type === "function_call" ? parseArgs((p as JsonObj).arguments) : (p as JsonObj).input, (p as JsonObj).type === "custom_tool_call");
             byCall.set((p as JsonObj).call_id as string, call);
             queued.push(call);
           } else if ((d as JsonObj)?.type === "response_item" && ((p as JsonObj).type === "function_call_output" || (p as JsonObj).type === "custom_tool_call_output")) {
@@ -228,7 +225,7 @@ export function codexSource({ home = homedir() }: { home?: string } = {}): Sourc
             if (seen.has((p as JsonObj).response_id as string)) continue;
             seen.add((p as JsonObj).response_id as string);
             const u = (p as JsonObj).usage as Record<string, number> | undefined;
-            emit((d as JsonObj)?.timestamp as string || "", (p as JsonObj).turn_id as string || "", { input: (u?.input_tokens || 0) - (u?.cached_input_tokens || 0), cw5: 0, cw1: 0, cacheRead: u?.cached_input_tokens || 0, output: u?.output_tokens || 0 });
+            emit((d as JsonObj)?.timestamp as string, (p as JsonObj).turn_id as string, { input: (u?.input_tokens || 0) - (u?.cached_input_tokens || 0), cw5: 0, cw1: 0, cacheRead: u?.cached_input_tokens || 0, output: u?.output_tokens || 0 });
           }
         }
         if (queued.length && last) { (last as Turn).calls.push(...queued); }
@@ -257,7 +254,7 @@ export function opencodeSource({ home = homedir() }: { home?: string } = {}): So
           const p = parse(r.data) as JsonObj | null;
           if (!p) continue;
           const state = (p as JsonObj).state as JsonObj | undefined;
-          const call = makeCall((p as JsonObj).tool as string || "", state?.input, false);
+          const call = makeCall((p as JsonObj).tool as string, state?.input, false);
           settle(call, state?.output ?? state?.error, state?.status === "error");
           const arr = parts.get(r.message_id);
           if (arr) arr.push(call); else parts.set(r.message_id, [call]);
@@ -307,7 +304,7 @@ export function cursorSource({ home = homedir() }: { home?: string } = {}): Sour
               for (const p of (d as JsonObj).content as JsonObj[]) {
                 model = (((p as JsonObj).providerOptions as JsonObj)?.cursor as JsonObj)?.modelName as string || model;
                 if ((p as JsonObj).type !== "tool-call") continue;
-                const mcp = (p as JsonObj).toolName === "CallMcpTool" && (p as JsonObj).args ? `mcp__${((p as JsonObj).args as JsonObj).server}__${((p as JsonObj).args as JsonObj).toolName}` : (p as JsonObj).toolName as string || "";
+                const mcp = (p as JsonObj).toolName === "CallMcpTool" && (p as JsonObj).args ? `mcp__${((p as JsonObj).args as JsonObj).server}__${((p as JsonObj).args as JsonObj).toolName}` : (p as JsonObj).toolName as string;
                 const call = makeCall(mcp, (p as JsonObj).args, false);
                 byCall.set((p as JsonObj).toolCallId as string, call);
                 calls.push(call);
@@ -365,7 +362,7 @@ export function taskStoreSource({ home = homedir() }: { home?: string } = {}): S
       for (const file of files(home, ".local/share/ai-collab/tasks/*.json")) {
         const d = parse(readFileSync(file, "utf8")) as JsonObj | null;
         const taskList = Array.isArray((d as JsonObj)?.tasks) ? (d as JsonObj).tasks as JsonObj[] : [];
-        for (const t of taskList) tasks.push({ id: (t as JsonObj).id as string || "", status: (t as JsonObj).status as string || "", updated: (t as JsonObj).updated as string | number || "", created: (t as JsonObj).created as string | number || "", progress: ((t as JsonObj).progress as unknown[] | undefined)?.length || 0 });
+        for (const t of taskList) tasks.push({ id: (t as JsonObj).id as string, status: (t as JsonObj).status as string, updated: (t as JsonObj).updated as string | number, created: (t as JsonObj).created as string | number, progress: (((t as JsonObj).progress || []) as unknown[]).length });
       }
       return { tasks };
     },
