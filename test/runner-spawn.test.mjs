@@ -10,6 +10,7 @@ import { MANAGED_ENV } from "../lib/subagent-guard.ts";
 import { listSessions } from "../lib/sessions.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
+import { route } from "../runner/control.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 
@@ -262,3 +263,21 @@ test("a resume takes managed from the durable workflow input, not the owned reco
     await second.stop();
   }
 });
+
+test("a parent closes its own spawned child, which frees a slot under the cap", (t) => withRunner(t, async ({ runner }) => {
+  const children = [];
+  for (let i = 0; i < 4; i++) children.push((await runner.start(spawnInput(`child ${i}`))).session);
+  await assert.rejects(runner.start(spawnInput("fifth")), { status: 429 });
+  const [harness, label] = children[0].split("#");
+  const [status, closed] = await route(runner, "POST", new URL(`http://runner/v1/sessions/${harness}/${label}/close-child`), { parent: PARENT });
+  assert.equal(status, 200);
+  assert.equal(closed.status, "ended");
+  assert.equal((await runner.start(spawnInput("fifth"))).status, "started");
+}));
+
+test("close-child refuses a session that is not the caller's spawned child", (t) => withRunner(t, async ({ runner }) => {
+  const child = (await runner.start(spawnInput("child"))).session;
+  await assert.rejects(runner.closeChild(child, "claude#0123456789abcdef"), { status: 403 });
+  await assert.rejects(runner.closeChild(PARENT, PARENT), { status: 403 });
+  assert.notEqual(runner.get(child).status, "ended");
+}));

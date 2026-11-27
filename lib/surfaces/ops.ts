@@ -17,7 +17,7 @@ import { postToChannel } from "./channel-post.ts";
 import { taskView, updateTask } from "./task-view.ts";
 import { passJs, type Args, type SurfaceConfig } from "./types.ts";
 import { RUN_TERMINAL_OPS } from "./run-terminal-ops.ts";
-import { spawnAgent } from "../spawn.ts";
+import { closeAgent, spawnAgent } from "../spawn.ts";
 
 // A handler's result is JSON-serialisable: it goes back to the agent as a JSON text.
 export type OpResult = object;
@@ -291,7 +291,7 @@ export const OPS: Op[] = [
   },
   {
     name: "spawn_agent",
-    description: "Start a child agent of any harness (claude, codex, cursor, opencode; harness:model picks a model) with a brief. Returns its address at once; the child messages you its result after each run, so call wait (until=message) or keep working. At most 4 live children per session, 2 levels deep.",
+    description: "Start a child agent of any harness (claude, codex, cursor, opencode; harness:model picks a model) with a brief. Returns its address at once; the child messages you its result after each run, so call wait (until=message) or keep working. At most 4 live children per session, 2 levels deep; close a finished child with close_agent to free its slot.",
     inputSchema: {
       type: "object", required: ["harness", "brief", "session"], additionalProperties: false,
       properties: {
@@ -305,6 +305,20 @@ export const OPS: Op[] = [
     surfaces: ["mcp"],
     needsSession: true,
     handler: (args, { cfg, env }) => spawnAgent(passJs(cfg), passJs({ harness: args.harness, brief: args.brief, worktree: args.worktree === true, ...(args.model ? { model: args.model } : {}) }), passJs({ env })),
+  },
+  {
+    name: "close_agent",
+    description: "End a child agent this session started with spawn_agent (address from spawn_agent). Frees its slot under the 4-child cap; the runner refuses any session that is not your spawned child.",
+    inputSchema: {
+      type: "object", required: ["to", "session"], additionalProperties: false,
+      properties: {
+        to: { type: "string", pattern: "^(claude|codex|cursor|opencode)#[a-f0-9]{16}$", description: "The child's address, e.g. codex#0123456789abcdef." },
+        session: IDENTITY,
+      },
+    },
+    surfaces: ["mcp"],
+    needsSession: true,
+    handler: (args, { cfg, env }) => closeAgent(passJs(cfg), String(args.to), passJs({ env })),
   },
   {
     name: "channel_history",

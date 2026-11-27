@@ -96,3 +96,34 @@ test("ai-collab spawn exits 2 on a usage error and 1 when the runner refuses or 
   assert.equal(await runCli(["spawn", "codex", "--brief", "x"], { env: { ...env, AI_COLLAB_RUNNER_SOCKET: path.join(refusing.dir, "none.sock") }, stdout: sink(), stderr: down }), 1);
   assert.match(down.lines.join(""), /needs the ai-collab runner/);
 });
+
+test("close_agent is an MCP tool the spawn_agent description names", () => {
+  const op = OPS.find((o) => o.name === "close_agent");
+  assert.ok(op, "close_agent exists");
+  assert.deepEqual(op.surfaces, ["mcp"]);
+  assert.equal(op.needsSession, true);
+  assert.deepEqual(op.inputSchema.required, ["to", "session"]);
+  assert.match(OPS.find((o) => o.name === "spawn_agent").description, /close_agent/);
+});
+
+test("the close_agent MCP tool asks the runner to close a child of the calling session", { timeout: 10000 }, async (t) => {
+  const fake = await startFakeNtfy();
+  const runner = await fakeRunner(t, { status: 200, body: { status: "ended" } });
+  const env = peerEnv(fake, { peer: "claude", AI_COLLAB_RUNNER_SOCKET: runner.socket });
+  const script = fileURLToPath(new URL("../scripts/ai-collab-mcp.mjs", import.meta.url));
+  const child = spawn(process.execPath, [script, "claude"], { env, stdio: ["pipe", "pipe", "inherit"] });
+  t.after(() => { child.kill(); return fake.close(); });
+  const output = createInterface({ input: child.stdout })[Symbol.asyncIterator]();
+  let id = 0;
+  const request = async (method, params) => {
+    child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }) + "\n");
+    return JSON.parse((await output.next()).value).result;
+  };
+  await request("initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+  const result = await request("tools/call", { name: "close_agent", arguments: { to: "codex#0011223344556677", session: LABEL } });
+  assert.ok(!result.isError, result.content[0].text);
+  assert.deepEqual(JSON.parse(result.content[0].text), { status: "ended", session: "codex#0011223344556677" });
+  assert.equal(runner.seen[0].method, "POST");
+  assert.equal(runner.seen[0].url, "/v1/sessions/codex/0011223344556677/close-child");
+  assert.deepEqual(runner.seen[0].body, { parent: `claude#${LABEL}` });
+});

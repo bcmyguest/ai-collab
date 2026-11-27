@@ -13,6 +13,7 @@ export const REPORT_PREFIX = "[spawn_agent]";
 export const REPORT_TEXT_MAX = 3500; // stays under BODY's 4000 (lib/surfaces/schema.ts)
 export const SPAWN_NOTE = "It reports to you by message when each run ends; reply with send. wait until=message blocks for the report.";
 const RUNNER_DOWN = "spawn_agent needs the ai-collab runner (systemctl --user start ai-collab-runner)";
+const CHILD_ADDRESS = /^(claude|codex|cursor|opencode)#([a-f0-9]{16})$/;
 // Socket errors that mean no runner is listening.
 const DOWN_CODES = new Set(["ECONNREFUSED", "ENOENT"]);
 
@@ -50,6 +51,25 @@ export async function spawnAgent(cfg: SpawnCfg, input: SpawnInput, { env = proce
     status: "started", session: reply.body.session, harness: parsed.harness, model,
     cwd: typeof reply.body.cwd === "string" ? reply.body.cwd : "", note: SPAWN_NOTE,
   };
+}
+
+/** Closes a child this session spawned; the runner refuses any other session. */
+export async function closeAgent(cfg: SpawnCfg, to: string, { env = process.env, request = runnerRequest as Request }: { env?: NodeJS.ProcessEnv; request?: Request } = {}): Promise<{ status: string; session: string }> {
+  if (!cfg.session || !cfg.peer) throw new Error("close_agent needs this session's address; pass session");
+  const match = CHILD_ADDRESS.exec(to);
+  if (!match) throw new Error(`"${to}" is not a session address`);
+  let reply;
+  try {
+    reply = await request("POST", `/v1/sessions/${match[1]}/${match[2]}/close-child`, { parent: `${cfg.peer}#${cfg.session}` }, { socket: runnerSocket(env) });
+  } catch (error) {
+    if (DOWN_CODES.has((error as NodeJS.ErrnoException).code ?? "")) throw new Error(RUNNER_DOWN.replace("spawn_agent", "close_agent"));
+    throw error;
+  }
+  if (reply.status !== 200 || typeof reply.body?.status !== "string") {
+    const message = typeof reply.body?.error === "string" ? reply.body.error : `runner close returned HTTP ${reply.status}`;
+    throw Object.assign(new Error(message), { status: reply.status });
+  }
+  return { status: reply.body.status, session: to };
 }
 
 /** The brief with a line naming the parent, unless the brief already names it; the runner counts it against the prompt limit. */
