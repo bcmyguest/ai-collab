@@ -70,7 +70,7 @@ A snoozed or archived thread whose session asks a question shows `waiting` again
 
 ## Assignment
 
-The thread store's `sync` (`lib/threads.mjs`) gives every unassigned session a thread. It runs in one transaction under an advisory lock and assigns only sessions without a `thread_sessions` row, so a second run assigns nothing; it also gives a thread without a worktree the folder of its first session. Parents go before children.
+The thread store's `sync` (`lib/threads.ts`) gives every unassigned session a thread. It runs in one transaction under an advisory lock and assigns only sessions without a `thread_sessions` row, so a second run assigns nothing; it also gives a thread without a worktree the folder of its first session. Parents go before children.
 
 | Session | Thread |
 |---|---|

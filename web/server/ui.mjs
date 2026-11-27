@@ -44,7 +44,7 @@ import { compactionFields } from "../../lib/compaction.ts";
 import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern, savePattern, saveTeamText, teamTemplates, teamTextOf } from "../../lib/patterns.mjs";
 import { authorModel, authorTeam, saveAuthoredTeam } from "../../lib/catalog/author.ts";
 import { listOwned, readOwned, setNextPermission } from "../../lib/sessions/registry.ts";
-import { requestTeamPermission } from "../../lib/team-permission.mjs";
+import { requestTeamPermission } from "../../lib/team-permission.ts";
 import { builderAssignment, recoverBuilder, stoppedBuilder } from "../../lib/builder.ts";
 import { REVIEW_ACTIONS, STATUSES, TaskNotFoundError, openTasks } from "../../lib/tasks.mjs";
 import { priorityOf } from "../../lib/task-order.mjs";
@@ -70,7 +70,7 @@ import { answerMessage, answerText, terminalMessages } from "../lib/operator-mes
 import { A2UI_ACTIVITY, choiceAnswers, surfaceAnswer, surfaceOf } from "../lib/a2ui.js";
 import { runTerminalUi } from "./run-terminal.mjs";
 import { projectThreads } from "./threads.mjs";
-import { THREAD_ID } from "../../lib/threads.mjs";
+import { THREAD_ID } from "../../lib/threads.ts";
 
 export { mentionedNames, mentionedTeams, startOnlyMentions };
 

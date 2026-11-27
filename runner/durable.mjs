@@ -1,1 +1,1 @@
-export * from "../lib/durable.mjs";
+export * from "../lib/durable.ts";

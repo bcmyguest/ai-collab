@@ -148,7 +148,7 @@ The durable core is the interesting amber-blue boundary: a home-grown, DBOS-shap
 | Tailscale, systemd, Docker, OpenShell | Off-the-shelf plumbing | Tailscale is the only inbound path; systemd owns process lifetimes |
 | Harness CLIs | Third-party (claude, codex, cursor-agent, opencode) | Adapters normalize their output; we never patch them |
 | Model provider APIs | Third-party | The only outbound traffic |
-| Durable core (`lib/durable.mjs`) | Home-grown | DBOS-shaped: workflows, checkpointed steps, exactly-once messages |
+| Durable core (`lib/durable.ts`) | Home-grown | DBOS-shaped: workflows, checkpointed steps, exactly-once messages |
 | Runner (`runner/`) | Home-grown | Owns sessions, sandboxes, control socket, schedules, pattern runs |
 | Session hooks and MCP servers | Home-grown | The seam between harnesses and the bus; injects inbound text as untrusted data |
 | Pattern compiler (`lib/catalog/dot.ts`, `lib/pattern-compiler.ts`) | Home-grown | DOT graph in, validated transitions out; verifiable with traces, no model calls |

@@ -3,7 +3,7 @@
  * session is idle. When a non-fyi message arrives it claims the inbox and returns it; the hook script then exits 2,
  * which wakes the idle session. While the session's Stop hook runs (an AFK or question hold), the waiter claims nothing:
  * Claude queues a rewake until that hook ends, so the hold delivers the message instead. A waiter that claimed messages
- * as a Stop hook started hands them over (lib/stop.mjs handOff) instead of waking the session. One waiter per session: a pid file in the session state dir; a new waiter kills the old one.
+ * as a Stop hook started hands them over (lib/stop.ts handOff) instead of waking the session. One waiter per session: a pid file in the session state dir; a new waiter kills the old one.
  */
 import { readFileSync, rmSync } from "node:fs";
 import { claimInbox } from "./messaging.ts";
@@ -12,14 +12,14 @@ import { isRunning, processStart } from "./process.ts";
 import { readInbox, streamWaiter, waitUntil } from "./messaging.ts";
 import type { Cfg, InboxMessage, Outcome, Step } from "./messaging.ts";
 import { statePath, withLock, writeState } from "./state.ts";
-import { handOff, stopHookRunning, takeHandoff } from "./stop.mjs";
+import { handOff, stopHookRunning, takeHandoff } from "./stop.ts";
 import { setTimeout as delay } from "node:timers/promises";
 
 // Below the 3600 s hook timeout in hooks/hooks.json; the next hook event re-arms a waiter that ran out.
 export const WAITER_MAX_S = 3300;
 const SLICE_MS = 30_000;
 const HELD_POLL_MS = 500;
-// Time a Stop-started waiter gives the Stop hook to mark itself (lib/stop.mjs stopHookRunning).
+// Time a Stop-started waiter gives the Stop hook to mark itself (lib/stop.ts stopHookRunning).
 export const STOP_GRACE_MS = 1500;
 // Time a waiter holds claimed messages before it wakes the session, so a Stop hook starting meanwhile can mark itself.
 export const CLAIM_SETTLE_MS = 1500;

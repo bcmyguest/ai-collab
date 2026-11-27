@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type pg from "pg";
 import { DEFAULT_RETENTION_MS, parseSince, type BusEvent, type PublishInput } from "./bus.ts";
-import { THREAD_ID, createThreadStore, migrateThreads } from "./threads.mjs";
+import { THREAD_ID, createThreadStore, migrateThreads } from "./threads.ts";
 
 const PUBLISH_LOCK = 7306457; // pg_advisory_xact_lock key: publishes commit in id order
 const SCHEMA_LOCK = 7306458; // serializes CREATE ... IF NOT EXISTS across processes

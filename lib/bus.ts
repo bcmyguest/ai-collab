@@ -103,7 +103,7 @@ export function parseSince(since: unknown, nowSec: number = Math.floor(Date.now(
  *   putFile({name, data}) -> {file, type, size}
  *   getFile(id) -> {data, type, name, size} | null
  *   prune(nowSec?) -> {events, files}
- *   threads?                    the thread store (lib/threads.mjs); Postgres only, docs/threads.md
+ *   threads?                    the thread store (lib/threads.ts); Postgres only, docs/threads.md
  *   close()
  */
 

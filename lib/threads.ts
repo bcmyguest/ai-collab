@@ -6,6 +6,52 @@ import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { worktreeRoot } from "./sessions/registry.ts";
 
+// oxlint-disable-next-line typescript/no-explicit-any -- database rows and request fields are untyped JSON
+type Json = any;
+
+interface Queryable {
+  query(sql: string, params?: unknown[]): Promise<{ rows: Json[] }>;
+}
+
+interface DbClient extends Queryable {
+  release(): void;
+}
+
+interface DbPool extends Queryable {
+  connect(): Promise<DbClient>;
+}
+
+interface Thread {
+  id: string;
+  project: string;
+  title: string;
+  worktree: string;
+  branch: string;
+  baseRef: string;
+  parentThreadId: string | null;
+  leadSession: string | null;
+  patternRun: string | null;
+  status: string;
+  pinned: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface Pr {
+  id: number;
+  position: number;
+  number: number | null;
+  url: string | null;
+  head: string;
+  base: string;
+  state: string;
+}
+
+interface ThreadWithParts extends Thread {
+  sessions: string[];
+  prs: Pr[];
+}
+
 export const THREAD_STATUSES = ["active", "snoozed", "settled", "archived"];
 export const PR_STATES = ["draft", "open", "merged", "closed"];
 export const THREAD_ID = /^th_[a-f0-9]{16}$/;
@@ -16,31 +62,31 @@ const TEXT_MAX = 200;
 const URL_MAX = 500;
 const SYNC_MAX = 2000;
 
-function bad(message, status = 400) {
+function bad(message: string, status = 400) {
   return Object.assign(new Error(message), { status });
 }
 
-const clean = (value, max = TEXT_MAX) => String(value ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, max);
+const clean = (value: unknown, max = TEXT_MAX) => String(value ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, max);
 
-function text(value, name, max = TEXT_MAX) {
+function text(value: unknown, name: string, max = TEXT_MAX): string {
   if (value === undefined || value === null) return "";
   if (typeof value !== "string") throw bad(`${name} must be a string`);
   return clean(value, max);
 }
 
-function folder(value, name) {
+function folder(value: unknown, name: string): string {
   const v = text(value, name, 1000);
   if (v && !path.isAbsolute(v)) throw bad(`${name} must be an absolute path`);
   return v;
 }
 
-function optional(value, pattern, name) {
+function optional(value: unknown, pattern: RegExp, name: string): string | null {
   if (value === undefined || value === null || value === "") return null;
   if (typeof value !== "string" || !pattern.test(value)) throw bad(`Invalid ${name}`);
   return value;
 }
 
-const rowThread = (row) => ({
+const rowThread = (row: Json): Thread => ({
   id: row.id,
   project: row.project,
   title: row.title,
@@ -56,7 +102,7 @@ const rowThread = (row) => ({
   updatedAt: Number(row.updated_at),
 });
 
-const rowPr = (row) => ({
+const rowPr = (row: Json): Pr => ({
   id: Number(row.id),
   position: row.position,
   number: row.number === null ? null : Number(row.number),
@@ -67,7 +113,7 @@ const rowPr = (row) => ({
 });
 
 /** Creates the thread tables and the events.thread_id column inside the caller's open migration transaction. */
-export async function migrateThreads(client, schema) {
+export async function migrateThreads(client: Queryable, schema: string): Promise<void> {
   const statuses = THREAD_STATUSES.map((s) => `'${s}'`).join(",");
   const states = PR_STATES.map((s) => `'${s}'`).join(",");
   await client.query(`CREATE TABLE IF NOT EXISTS ${schema}.threads (
@@ -114,12 +160,12 @@ export async function migrateThreads(client, schema) {
 }
 
 /** The thread store over one pool; `schema` is already validated by the caller. */
-export function createThreadStore({ pool, schema, now = Date.now }) {
+export function createThreadStore({ pool, schema, now = Date.now }: { pool: DbPool; schema: string; now?: () => number }) {
   let last = 0;
   // Strictly increasing stamps keep join order when several sessions join within one millisecond.
   const stamp = () => (last = Math.max(now(), last + 1));
 
-  async function inTransaction(fn) {
+  async function inTransaction<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -135,28 +181,28 @@ export function createThreadStore({ pool, schema, now = Date.now }) {
   }
 
   /** Threads with their sessions and PRs, two queries for any number of threads. */
-  async function withParts(rows, db = pool) {
+  async function withParts(rows: Json[], db: Queryable = pool): Promise<Thread[]> {
     const threads = rows.map(rowThread);
     if (!threads.length) return threads;
     const ids = threads.map((t) => t.id);
     const sessions = await db.query(`SELECT thread_id, session FROM ${schema}.thread_sessions WHERE thread_id = ANY($1) ORDER BY joined_at, session`, [ids]);
     const prs = await db.query(`SELECT * FROM ${schema}.thread_prs WHERE thread_id = ANY($1) ORDER BY position, id`, [ids]);
-    const byId = new Map(threads.map((t) => [t.id, Object.assign(t, { sessions: [], prs: [] })]));
-    for (const row of sessions.rows) byId.get(row.thread_id).sessions.push(row.session);
-    for (const row of prs.rows) byId.get(row.thread_id).prs.push(rowPr(row));
+    const byId = new Map(threads.map((t): [string, ThreadWithParts] => [t.id, Object.assign(t, { sessions: [], prs: [] })]));
+    for (const row of sessions.rows) (byId.get(row.thread_id) as ThreadWithParts).sessions.push(row.session);
+    for (const row of prs.rows) (byId.get(row.thread_id) as ThreadWithParts).prs.push(rowPr(row));
     return threads;
   }
 
-  async function get(id, db = pool) {
+  async function get(id: string, db: Queryable = pool): Promise<Thread> {
     if (typeof id !== "string" || !THREAD_ID.test(id)) throw bad("Invalid thread");
     const { rows } = await db.query(`SELECT * FROM ${schema}.threads WHERE id = $1`, [id]);
     if (!rows.length) throw bad("Unknown thread", 404);
     return (await withParts(rows, db))[0];
   }
 
-  const touch = (db, id) => db.query(`UPDATE ${schema}.threads SET updated_at = $2 WHERE id = $1`, [id, stamp()]);
+  const touch = (db: Queryable, id: string) => db.query(`UPDATE ${schema}.threads SET updated_at = $2 WHERE id = $1`, [id, stamp()]);
 
-  async function list({ project, archived = false } = {}) {
+  async function list({ project, archived = false }: { project?: Json; archived?: Json } = {}): Promise<Thread[]> {
     if (typeof project !== "string" || !project) throw bad("project required");
     const { rows } = await pool.query(
       `SELECT * FROM ${schema}.threads WHERE project = $1 AND ($2 OR status <> 'archived') ORDER BY pinned DESC, updated_at DESC, id`,
@@ -165,7 +211,7 @@ export function createThreadStore({ pool, schema, now = Date.now }) {
     return withParts(rows);
   }
 
-  async function create(fields = {}, client = pool) {
+  async function create(fields: Json = {}, client: Queryable = pool): Promise<Thread> {
     const project = text(fields.project, "project");
     if (!project) throw bad("project required");
     const branch = text(fields.branch, "branch");
@@ -173,7 +219,7 @@ export function createThreadStore({ pool, schema, now = Date.now }) {
     if (branch && !BRANCH.test(branch)) throw bad("Invalid branch");
     if (baseRef && !BRANCH.test(baseRef)) throw bad("Invalid baseRef");
     const at = stamp();
-    const row = [
+    const row: Json[] = [
       `th_${randomBytes(8).toString("hex")}`, project, text(fields.title, "title"), folder(fields.worktree, "worktree"), branch, baseRef,
       optional(fields.parentThreadId, THREAD_ID, "parentThreadId"), optional(fields.leadSession, SESSION, "leadSession"),
       text(fields.patternRun, "patternRun") || null, at,
@@ -186,11 +232,11 @@ export function createThreadStore({ pool, schema, now = Date.now }) {
     return get(row[0], client);
   }
 
-  async function update(id, { title, status, pinned, leadSession } = {}) {
+  async function update(id: string, { title, status, pinned, leadSession }: { title?: Json; status?: Json; pinned?: Json; leadSession?: Json } = {}): Promise<Thread> {
     await get(id);
-    const sets = [];
-    const values = [id];
-    const set = (column, value) => sets.push(`${column} = $${values.push(value)}`);
+    const sets: string[] = [];
+    const values: unknown[] = [id];
+    const set = (column: string, value: unknown) => sets.push(`${column} = $${values.push(value)}`);
     if (title !== undefined) set("title", text(title, "title"));
     if (status !== undefined) {
       if (!THREAD_STATUSES.includes(status)) throw bad("Invalid status");
@@ -206,7 +252,7 @@ export function createThreadStore({ pool, schema, now = Date.now }) {
     return get(id);
   }
 
-  async function attachPr(id, { number, url, head, base, state = "open", position } = {}) {
+  async function attachPr(id: string, { number, url, head, base, state = "open", position }: { number?: Json; url?: Json; head?: Json; base?: Json; state?: string; position?: Json } = {}): Promise<Thread> {
     if (number !== undefined && number !== null && !(Number.isSafeInteger(number) && number > 0)) throw bad("Invalid PR number");
     if (url !== undefined && url !== null && !(typeof url === "string" && url.startsWith("https://") && url.length <= URL_MAX && !/\s/.test(url))) throw bad("Invalid PR url");
     if ((number === undefined || number === null) && (url === undefined || url === null)) throw bad("A PR needs a number or a url");
@@ -230,7 +276,7 @@ export function createThreadStore({ pool, schema, now = Date.now }) {
     return get(id);
   }
 
-  async function detachPr(id, prId) {
+  async function detachPr(id: string, prId: number): Promise<Thread> {
     if (!Number.isSafeInteger(prId) || prId <= 0) throw bad("Invalid PR");
     await get(id);
     await inTransaction(async (client) => {
@@ -243,13 +289,13 @@ export function createThreadStore({ pool, schema, now = Date.now }) {
     return get(id);
   }
 
-  const join = (db, project, session, threadId) => db.query(
+  const join = (db: Queryable, project: string, session: string, threadId: string) => db.query(
     `INSERT INTO ${schema}.thread_sessions (project, session, thread_id, joined_at) VALUES ($1, $2, $3, $4)
      ON CONFLICT (project, session) DO UPDATE SET thread_id = EXCLUDED.thread_id, joined_at = EXCLUDED.joined_at`,
     [project, session, threadId, stamp()],
   );
 
-  async function moveSession(id, { session } = {}) {
+  async function moveSession(id: string, { session }: { session?: Json } = {}): Promise<Thread> {
     if (typeof session !== "string" || !SESSION.test(session)) throw bad("Invalid session");
     const thread = await get(id);
     await join(pool, thread.project, session, id);
@@ -258,30 +304,30 @@ export function createThreadStore({ pool, schema, now = Date.now }) {
   }
 
   /** Gives each unassigned session a thread by the docs/threads.md "Assignment" rules; fills an empty worktree on the way. */
-  async function sync({ project, root = "", sessions } = {}) {
+  async function sync({ project, root = "", sessions }: { project?: Json; root?: string; sessions?: Json[] } = {}) {
     if (typeof project !== "string" || !project) throw bad("project required");
     if (!Array.isArray(sessions) || sessions.length > SYNC_MAX) throw bad("sessions must be an array");
     const base = folder(root, "root");
     const input = sessions.filter((s) => s && typeof s.address === "string" && SESSION.test(s.address) && typeof s.cwd === "string" && path.isAbsolute(s.cwd));
     return inTransaction(async (client) => {
       await client.query("SELECT pg_advisory_xact_lock($1)", [SYNC_LOCK]);
-      const threads = new Map((await client.query(`SELECT * FROM ${schema}.threads WHERE project = $1 ORDER BY created_at, id`, [project])).rows.map((row) => [row.id, rowThread(row)]));
-      const member = new Map();
+      const threads = new Map<string, Thread>((await client.query(`SELECT * FROM ${schema}.threads WHERE project = $1 ORDER BY created_at, id`, [project])).rows.map((row) => [row.id, rowThread(row)]));
+      const member = new Map<string, Thread | undefined>();
       for (const row of (await client.query(`SELECT session, thread_id FROM ${schema}.thread_sessions WHERE project = $1`, [project])).rows) {
         member.set(row.session, threads.get(row.thread_id));
       }
-      const assigned = [];
+      const assigned: Json[] = [];
       let created = 0;
-      const tree = (s) => (typeof s.worktree === "string" && path.isAbsolute(s.worktree) && s.worktree) || (base && (s.cwd === base || s.cwd.startsWith(base + path.sep)) ? base : s.cwd);
-      const branchOf = (s) => (typeof s.branch === "string" && BRANCH.test(s.branch) ? s.branch : "");
-      const nameOf = (s) => (typeof s.name === "string" ? clean(s.name) : "");
-      const open = async (fields) => {
+      const tree = (s: Json) => (typeof s.worktree === "string" && path.isAbsolute(s.worktree) && s.worktree) || (base && (s.cwd === base || s.cwd.startsWith(base + path.sep)) ? base : s.cwd);
+      const branchOf = (s: Json) => (typeof s.branch === "string" && BRANCH.test(s.branch) ? s.branch : "");
+      const nameOf = (s: Json) => (typeof s.name === "string" ? clean(s.name) : "");
+      const open = async (fields: Json) => {
         const thread = await create({ project, ...fields }, client);
         threads.set(thread.id, thread);
         created += 1;
         return thread;
       };
-      const place = async (s) => {
+      const place = async (s: Json) => {
         const where = tree(s);
         const parent = typeof s.parent === "string" ? member.get(s.parent) : undefined;
         if (parent && (parent.worktree === where || !parent.worktree)) return parent;
@@ -327,12 +373,12 @@ export function createThreadStore({ pool, schema, now = Date.now }) {
     });
   }
 
-  return { list, get: (id) => get(id), create: (fields) => create(fields), update, attachPr, detachPr, moveSession, sync };
+  return { list, get: (id: string) => get(id), create: (fields: Json) => create(fields), update, attachPr, detachPr, moveSession, sync };
 }
 
 /** The sync input for one project: registry sessions and owned records merged by address, owned fields first. */
-export function threadSessionsOf({ sessions = [], owned = [], root = "" }) {
-  const byAddress = new Map();
+export function threadSessionsOf({ sessions = [], owned = [], root = "" }: { sessions?: Json[]; owned?: Json[]; root?: string }) {
+  const byAddress = new Map<string, Json>();
   for (const s of sessions) {
     if (!s || typeof s.id !== "string") continue;
     byAddress.set(s.id, { address: s.id, cwd: s.cwd, parent: s.parent, name: s.identityName || s.name, branch: s.branch });

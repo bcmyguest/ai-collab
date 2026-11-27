@@ -2,7 +2,7 @@
 /**
  * Agent hook. Reads one JSON object on stdin and writes exactly one JSON object on stdout.
  * Events: SessionStart (status start + current AFK mode + inbox), UserPromptSubmit / PostToolUse (inbox, throttled),
- * Stop (deliver waiting messages, AFK wait, important-question hold; see lib/stop.mjs), SessionEnd (status stop).
+ * Stop (deliver waiting messages, AFK wait, important-question hold; see lib/stop.ts), SessionEnd (status stop).
  * Every event also publishes activity (prompts, tool calls and results, assistant text; never thinking) to the
  * project's activity topic unless AI_COLLAB_ACTIVITY=off; that publish runs alongside delivery under a 1.5 s cap.
  * --rewake marks the Claude asyncRewake registration (lib/waiter.ts): it prints no JSON; it exits 2 with the messages on stderr.
@@ -29,7 +29,7 @@ import { childHint, exportParent, greetParent, parentLine } from "../lib/family.
 import { formatInbox, hookOutput, identityLine, stopOutput } from "../lib/format.ts";
 import { currentMode, operatorPrompt, takeModeNote } from "../lib/mode.ts";
 import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.mjs";
-import { decideStop, markStopRunning, noteHeld, takeHeld } from "../lib/stop.mjs";
+import { decideStop, markStopRunning, noteHeld, takeHeld } from "../lib/stop.ts";
 import { REQUIRE_RUN_CODE_ENV } from "../lib/code-mode.mjs";
 import { readsThroughRunCode } from "../lib/code-run.mjs";
 import { storeReadDenial } from "../lib/store-read.ts";

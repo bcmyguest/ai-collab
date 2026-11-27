@@ -13,7 +13,7 @@ import { DBOS } from "@dbos-inc/dbos-sdk";
 import type { WorkflowStatus } from "@dbos-inc/dbos-sdk";
 import { runWithTopContext } from "@dbos-inc/dbos-sdk/internal/context";
 import pg from "pg";
-import { openDurable } from "./durable.mjs";
+import { openDurable } from "./durable.ts";
 
 /** The DBOS applicationVersion: bump it whenever a workflow's recorded op sequence changes (test/dbos-step-sequences.test.mjs). */
 export const DBOS_APP_VERSION = "ai-collab-1";
@@ -65,7 +65,7 @@ export async function openWorkflows(opts: { engine?: string; file?: string } & D
   return await openDbosEngine(opts);
 }
 
-// The sync surface of lib/durable.mjs as the adapter needs it; tsc infers the .mjs exports too loosely to use directly.
+// The sync surface of lib/durable.ts as the adapter needs it; tsc infers the .mjs exports too loosely to use directly.
 type SqliteDurable = {
   register(name: string, fn: WfFn): void;
   scheduled(name: string, opts: { everyMs: number; firstStep?: string | null }, fn: (scheduled: Date, actual: Date, wf: Json) => Promise<WfValue>): void;

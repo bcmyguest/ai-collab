@@ -290,7 +290,7 @@ No new wake code. The report is a direct message, so it travels the paths in `do
 Add no new op. The parent already has two:
 
 - `wait` (`lib/surfaces/ops.ts:220`, default `until=message`) returns the report when it arrives.
-- `wait until=idle:<child>` returns `idle`, `ended` or `timeout` (`lib/agents.mjs:89` `waitForIdle`).
+- `wait until=idle:<child>` returns `idle`, `ended` or `timeout` (`lib/agents.ts:89` `waitForIdle`).
 
 The `spawn_agent` description and its `note` name both. There is no `wait_for_agent` (answer 2).
 

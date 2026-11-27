@@ -1,8 +1,8 @@
 // The operation table: each op is rendered to the MCP servers (lib/surfaces/render-mcp.ts) and to the run_code ai client.
 import { BUILDER_HARNESSES, startBuilder } from "../builder.ts";
 import { agentDirectory, sessionDirectory, setIdentity, listSessions } from "../sessions.mjs";
-import { messageView, respond, sendAndAwait, waitForIdle, waitForMessages } from "../agents.mjs";
-import { readInbox } from "../messaging.ts";
+import { messageView, respond, sendAndAwait, waitForIdle, waitForMessages } from "../agents.ts";
+import { readInbox, type InboxMessage } from "../messaging.ts";
 import { askQuestion, requestWait, waitForAnswer } from "../questions.ts";
 import { HISTORY_DEFAULT, HISTORY_MAX, PRIORITIES, RESPOND_STATES, channelHistory, replyToOperator, sendMessage } from "../messaging.ts";
 import { storedMode } from "../mode.ts";
@@ -196,7 +196,7 @@ export const OPS: Op[] = [
     surfaces: ["mcp", "code"],
     needsSession: true,
     handler: async (args, { cfg, signal }) => {
-      const sent: { reply?: unknown; messages?: unknown[]; [key: string]: unknown } = await sendAndAwait(cfg, passJs(args.to), passJs(args.body), passJs({
+      const sent: { reply?: InboxMessage; messages?: InboxMessage[]; [key: string]: unknown } = await sendAndAwait(cfg, passJs(args.to), passJs(args.body), passJs({
         awaitSeconds: args.await_reply ?? 0, urgent: args.urgent === true, replyTo: args.reply_to, attachment: args.attachment, signal,
         priority: args.priority, expectReply: args.expect_reply === true ? true : undefined,
       }));
