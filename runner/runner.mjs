@@ -409,8 +409,12 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     if (!places.includes(preferred)) return "folder";
     if (preferred !== "openshell") return preferred;
     if (harness === "codex") return "folder";
+    return openshellInstalled() ? "openshell" : "folder";
+  }
+
+  function openshellInstalled() {
     const bin = env.AI_COLLAB_OPENSHELL_BIN || "openshell";
-    return (bin.startsWith("/") ? existsSync(bin) : findExecutable(bin, childEnv(env).PATH)) ? "openshell" : "folder";
+    return Boolean(bin.startsWith("/") ? existsSync(bin) : findExecutable(bin, childEnv(env).PATH));
   }
 
   function checkOpenShellLaunch(harness, place, builder) {
@@ -898,6 +902,10 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     if (isProjectPaused(configs.get(project))) fail(409, PROJECT_PAUSED);
     const adapter = adapterOf(harness);
     const place = spawned && SPAWN_IN_OPENSHELL.has(harness) ? "openshell" : named ?? defaultPlace(harness);
+    // Full access is granted only inside the container, so a missing OpenShell refuses the spawn instead of a host fallback.
+    if (spawned && SPAWN_IN_OPENSHELL.has(harness) && !openshellInstalled()) {
+      fail(409, `spawn_agent runs ${harness} children in OpenShell with full access, and OpenShell is not installed on the runner host (set AI_COLLAB_OPENSHELL_BIN or install openshell)`);
+    }
     if (!PLACES.includes(place)) fail(400, "Unknown start place");
     // OpenShell is the boundary: every harness there runs with approvals off, whatever mode the caller named.
     // An unnamed Claude start takes the configured claudePermissionMode when it names a runner mode.
