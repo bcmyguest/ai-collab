@@ -1,6 +1,6 @@
 // A team graph plus a list of outcomes (edge labels) is the step log. decide owns the cap,
 // required-edge, and done rules. This walk only records enter, event, and leave.
-import { commitDecided, decide } from "./pattern-runs.mjs";
+import { commitDecided, decide } from "./pattern-runs.ts";
 
 type Role = { id: string; count?: number };
 export type TraceDefinition = { name: string; roles: Role[]; [key: string]: unknown };

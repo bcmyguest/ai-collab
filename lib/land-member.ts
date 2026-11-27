@@ -1,10 +1,10 @@
 // `land finish` for a pattern member in an OpenShell sandbox: it asks with a LAND_FINISH reply line, the runner finishes its run branch on the host.
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
-import { execRun, finishBranch, LandRefused } from "./land.mjs";
-import { sessionsOfRun } from "./pattern-runs.mjs";
+import { execRun, finishBranch, LandRefused } from "./land.ts";
+import { sessionsOfRun } from "./pattern-runs.ts";
 import { passJs } from "./surfaces/types.ts";
-import type { openTasks } from "./tasks.mjs";
+import type { openTasks } from "./tasks.ts";
 
 export const LAND_FINISH_PREFIX = "LAND_FINISH ";
 const PROOF_MAX = 3000;

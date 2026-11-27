@@ -4,14 +4,14 @@ import { mkdirSync, realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { loadProjects, stateDir, autoDefaults, autoDeployEnabled } from "../lib/config.ts";
-import { autoDeployEntry } from "../lib/land.mjs";
+import { autoDeployEntry } from "../lib/land.ts";
 import { HARNESSES } from "./contract.ts";
 import { openWorkflows } from "../lib/workflows.ts";
 import { pgUrl } from "../lib/postgres.ts";
 import { createRunner } from "./runner.mjs";
 import { listenControl, runnerSocket } from "./control.ts";
 import { loadSchedules, registerSchedules } from "./schedules.ts";
-import { startTaskWakes } from "./task-wake.mjs";
+import { startTaskWakes } from "./task-wake.ts";
 import { acquireLock } from "./lock.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));

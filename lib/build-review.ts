@@ -1,7 +1,7 @@
 /**
  * A build review packet: what a builder submitted, the host check's verdict, and the operator's decision on it.
  * The packet names the submitted commit, so a re-run that moves the branch makes it stale and its decision worthless.
- * Everything here is plain data plus one git read; the store (lib/tasks.mjs) validates and persists it.
+ * Everything here is plain data plus one git read; the store (lib/tasks.ts) validates and persists it.
  */
 import { execFileSync } from "node:child_process";
 

@@ -1,5 +1,5 @@
 // Task board view model: status columns, the status filter and relative ages.
-import { sortTasks } from "../../lib/task-order.mjs";
+import { sortTasks } from "../../lib/task-order.ts";
 
 export const COLUMNS = ["open", "decided", "building", "review", "blocked", "done"];
 export const FILTERS = ["all", ...COLUMNS];

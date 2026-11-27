@@ -15,7 +15,7 @@ import { START_HARNESSES, availableHarnesses, modelShape, startSession } from ".
 import { parseHarnessModel } from "./harness.ts";
 import { CURSOR_FALLBACK, OPENCODE_FALLBACK, REPLACEMENT_MAX, fallbackChain, replacementOptions, who } from "./limits.ts";
 import { listSessions } from "./sessions.mjs";
-import { listRuns } from "./pattern-runs.mjs";
+import { listRuns } from "./pattern-runs.ts";
 import { statePath, withLock, writeState } from "./state.ts";
 import { readJson as readStoreJson, writeJson } from "./store.ts";
 import type { Cfg } from "./messaging.ts";

@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { broadcastTopic, stateDir } from "./config.ts";
 import { checkoutBranch, deployLink, dbosVersion, dirty, inFlight, installUnits, pointLink, readLink, resolveSource, unitsInstalled } from "./deploy-tree.ts";
-import { AUTO_DEPLOY_TIMEOUT_MS, HOST_CHECKOUT, SERVICES, deployHost, execRun, finishBranch, mergeNode, npmCommand, readLastDeploy, requestLand, restartServices, writeLastDeploy } from "./land.mjs";
+import { AUTO_DEPLOY_TIMEOUT_MS, HOST_CHECKOUT, SERVICES, deployHost, execRun, finishBranch, mergeNode, npmCommand, readLastDeploy, requestLand, restartServices, writeLastDeploy } from "./land.ts";
 import { operatorConfigs } from "./mode.ts";
 import { publish } from "./messaging.ts";
 import { withLock } from "./state.ts";
-import { openTasks } from "./tasks.mjs";
+import { openTasks } from "./tasks.ts";
 import { passJs } from "./surfaces/types.ts";
 import type { Cfg } from "./messaging.ts";
 

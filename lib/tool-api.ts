@@ -1,5 +1,5 @@
 import { loadConfig, ownEnv } from "./config.ts";
-import { schemaProblem } from "./code-run.mjs";
+import { schemaProblem } from "./code-run.ts";
 import { OPS } from "./surfaces/ops.ts";
 import type { Cfg } from "./messaging.ts";
 

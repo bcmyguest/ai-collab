@@ -31,7 +31,7 @@ import { currentMode, operatorPrompt, takeModeNote } from "../lib/mode.ts";
 import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.ts";
 import { decideStop, markStopRunning, noteHeld, takeHeld } from "../lib/stop.ts";
 import { REQUIRE_RUN_CODE_ENV } from "../lib/code-mode.ts";
-import { readsThroughRunCode } from "../lib/code-run.mjs";
+import { readsThroughRunCode } from "../lib/code-run.ts";
 import { storeReadDenial } from "../lib/store-read.ts";
 import { recordSession, sessionName, standsDown } from "../lib/sessions/registry.ts";
 import { MANAGED_ENV, MANAGED_START_REFUSED, managedDenial, managedStartAllowed } from "../lib/subagent-guard.ts";

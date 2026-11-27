@@ -561,7 +561,7 @@ entry points, see [Live OpenShell bootstrap smoke](sandbox-smoke.md).
 | `lib/schedule-session.ts` | The registered session a schedule's command resumes, and the project a schedule's folder names |
 | `runner/lock.ts` | Single-instance lock (`runner.lock` beside `runner.db`) |
 | `runner/runner.mjs` | Session workflow, control operations, bus input |
-| `runner/publish.mjs` | Event → envelope mapping |
+| `runner/publish.ts` | Event → envelope mapping |
 | `runner/control.ts`, `runner/client.ts` | Control socket server and client |
 | `runner/main.mjs` | Service entry (`npm run runner`) |
 | `runner/adapters/fake.mjs` | Scripted adapter for tests and a template for real adapters |
