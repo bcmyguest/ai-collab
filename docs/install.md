@@ -107,4 +107,4 @@ npm run build                 # build and publish the next UI release
 npm run ui
 ```
 
-`npm run ui` runs `next start web -H 127.0.0.1 -p ${AI_COLLAB_UI_PORT:-8795}`. To run it as a service, see [Phone UI](phone-ui.md#run-as-a-service).
+`npm run ui` runs `next start web -H 127.0.0.1 -p ${AI_COLLAB_UI_PORT:-8795}`. To run it as a service, see [Phone UI](phone-ui.md#run-as-a-service). On the host, `ai-collab deploy --install-units` adds systemd drop-ins so the services run through a deploy link, and `ai-collab deploy --from <branch>` can then serve a branch; see [Deploy a branch or worktree](phone-ui.md#deploy-a-branch-or-worktree).

@@ -1,6 +1,6 @@
 import { SEND_CONFIRMATION } from "../lib/send-confirmation.js";
 import { landReviews, mergeReview } from "./land-reviews.mjs";
-import { HOST_CHECKOUT, LandRefused, hostLand } from "../../lib/land.mjs";
+import { HOST_CHECKOUT, LandRefused, deployedField, hostLand } from "../../lib/land.mjs";
 import { isProjectPaused, PROJECT_PAUSED, setProjectPaused } from "../../lib/project-pause.ts";
 import { terminalHasDraft } from "../../lib/terminal-draft.mjs";
 import { EventType } from "@ag-ui/core";
@@ -1211,6 +1211,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         unavailable: shown.filter(item => item.failed).map(item => item.cfg.project) } : {}),
       ...((scope === "home" ? shown.some(canLand) : canLand(project)) ? { landing } : {}),
       ...(hosted ? { hosted: true } : {}),
+      // A tree other than main serves this UI (`ai-collab deploy --from`); the header shows a banner.
+      ...(hosted ? {} : deployedField(env)),
       startable: startable(project),
       threads: project.threads?.list() || [],
       // The new-session default (defaults.json startDefault, else cursor on deepseek); the form prefills it when available.

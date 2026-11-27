@@ -25,6 +25,12 @@ export function LandPanel({ state, busy, result, onMerge }) {
   </section>;
 }
 
+/** The banner every screen shows while `ai-collab deploy --from` serves a tree other than main. */
+export function DeployedBanner({ deployed }) {
+  if (!deployed) return null;
+  return <p role="status" className="rounded-md border border-amber-500 bg-amber-500/15 px-3 py-1 text-sm font-medium break-all">deployed: {deployed}</p>;
+}
+
 /** The Land panel: loads /api/land and merges through POST /api/land with the same sign-in as approvals. */
 export function Land() {
   const [state, setState] = useState(null);

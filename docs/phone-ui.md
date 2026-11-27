@@ -289,19 +289,36 @@ Runs in the host checkout (`/home/b/ai-collab`):
 
 | Step | Result line |
 |---|---|
+| Another tree is deployed (`--from`) | `skipped: <ref> is deployed; run ai-collab deploy --main to return` |
 | Tracked files changed, or checkout not on `main` | `skipped: <reason>`; nothing pulled |
 | `git pull --ff-only` fails | `skipped: git pull --ff-only: <git message>` |
 | HEAD unchanged after the pull | `skipped: HEAD unchanged at <sha>` |
-| `npm ci --include=dev` or the UI deploy step fails | `failed: <step>` |
+| Runner turns in flight, or the DBOS app version changes | `skipped: <reasons>; --force restarts anyway` |
+| `npm ci --include=dev`, the build, the UI restart or the UI verify fails | `failed: <step>` |
 | Pull moved HEAD and the deploy succeeds | `deployed <old>..<new>` |
 
-On `deployed`, `failed` and `skipped`, the CLI publishes the line to each operator's broadcast topic, writes it to `deploy-last.json` in the state directory, and restarts `ai-collab-bus`, `ai-collab-ui` and `ai-collab-runner` in one transient unit. The Land panel shows the last line. Only a deploy that moved HEAD restarts services.
+A deploy builds with `npm run build`, checks again for in-flight turns and a DBOS app-version change, points the deploy link at the tree, restarts `ai-collab-ui` once, and runs `deploy/verify-ui.mjs` against it. Then the CLI publishes the line to each operator's broadcast topic and writes it to `deploy-last.json` in the state directory. Last, it restarts `ai-collab-bus` and `ai-collab-runner` in one transient unit, so each service restarts once. The Land panel shows the last line. Only a deploy that moved HEAD restarts services.
+
+The in-flight check asks the runner socket for sessions in status `running`; a runner that does not answer counts as idle. The DBOS check compares `DBOS_APP_VERSION` in `lib/workflows.ts` of the running tree and the new tree; it reads files only, never Postgres. `--force` skips both checks.
 
 Two deploys never run at once: the first holds `deploy.lock` in the state directory, and a second run prints `skipped: another deploy is running`. The lock records its owner pid. A lock whose pid is gone (a crash) is taken over on the next run.
 
+### Deploy a branch or worktree
+
+`ai-collab deploy --from <branch|path>` serves another tree, so the operator can try a branch on the phone before landing it. It is a Linux development tool.
+
+- A branch (`feat/x`) is checked out detached in `~/.cache/ai-collab-deploy/<branch>`, from the local branch or else `origin/<branch>`. Names must match `[A-Za-z0-9][A-Za-z0-9._/-]*` and pass `git check-ref-format --branch`; `main` is refused, use `--main`.
+- A path starts with `/`, `./` or `../`. It must be the top of a git work tree whose `package.json` is named `ai-collab`. The deploy runs `npm ci` and the build inside it.
+- A tree with tracked changes is refused unless `--allow-dirty`.
+- Git and npm run through `execFile` with argument arrays; no value passes through a shell.
+
+The units run the tree through a link, `~/.local/state/ai-collab/current`. `deploy-last.json` records `ref`, `tree` and `sha`, and every screen of the UI shows a `deployed: <ref>` banner while the ref is not `main`. The banner needs this feature in the deployed tree. While another tree is deployed, `--if-moved` does nothing, so auto deploy never pulls the branch back. `ai-collab deploy --main` returns: it pulls the host checkout, builds only when main moved since its last deploy, and points the link back.
+
+One-time setup: `ai-collab deploy --install-units` writes `deploy-tree.conf` drop-ins for the three units. Each drop-in repeats the unit's effective `ExecStart` and sets `WorkingDirectory` with the host checkout replaced by the link. It points the link at the host checkout and runs `systemctl --user daemon-reload`. The services keep running the host checkout until their next restart. Delete the three `~/.config/systemd/user/ai-collab-*.service.d/deploy-tree.conf` files and reload to undo it. `--from` refuses until the drop-ins exist.
+
 ### Auto deploy
 
-Set `AI_COLLAB_AUTO_DEPLOY=1`, or `"autoDeploy": true` in `defaults.json`, to add a runner schedule named `auto-deploy`. It runs `ai-collab deploy --if-moved` every 5 minutes with a 20-minute timeout, so a kill never lands mid-install. Without a change on `origin/main` it does nothing and publishes nothing. A skip with the same reason as the last recorded result is not published again. The flag is off by default; `AI_COLLAB_AUTO_DEPLOY` overrides `defaults.json`.
+Set `AI_COLLAB_AUTO_DEPLOY=1`, or `"autoDeploy": true` in `defaults.json`, to add a runner schedule named `auto-deploy`. It runs `ai-collab deploy --if-moved` every 5 minutes with a 20-minute timeout, so a kill never lands mid-install. Without a change on `origin/main`, or while another tree is deployed, it does nothing and publishes nothing. A skip with the same reason as the last recorded result is not published again. The flag is off by default; `AI_COLLAB_AUTO_DEPLOY` overrides `defaults.json`.
 
 ## Run in terminal
 

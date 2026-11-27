@@ -78,6 +78,10 @@ To read a brief from a file, use `ai-collab builder start --task <id> --brief <f
 
 `harness` and `model` use the CLI defaults when omitted. The tool uses the PM's configured project and returns the task, sandbox, worktree, branch, and either the runner session or the systemd unit. It applies the same project pause and sandbox capacity checks as `ai-collab builder start`. The tool is available through direct host MCP calls. The code-mode allowlists exclude builder launches, and sandboxed builders and scheduled ticks have no direct `builder_start` tool.
 
+## Try a branch on the phone UI
+
+`ai-collab deploy --from <branch|path>` builds a branch or worktree and restarts the services on it; `ai-collab deploy --main` returns to main. Run `ai-collab deploy --install-units` once first. Auto deploy holds while a branch is deployed. See [Deploy a branch or worktree](phone-ui.md#deploy-a-branch-or-worktree).
+
 ## Session registry
 
 ### Session names

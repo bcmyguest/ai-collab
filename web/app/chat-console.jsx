@@ -18,7 +18,7 @@ import { chatThread } from "@/lib/chat-turns";
 import { NewAgentComposer } from "./new-session";
 import { PatternsPage } from "./patterns-page";
 import { LandReviews } from "./land-reviews";
-import { Land } from "./land-panel";
+import { DeployedBanner, Land } from "./land-panel";
 import { OutcomeRequest } from "./outcomes";
 import { TaskBoard } from "./tasks";
 import { ProjectNav } from "./project-nav";
@@ -371,6 +371,7 @@ export function Console({ account }) {
       }}/>
     <main className="flex min-w-0 flex-1 flex-col">
       <header className="sticky top-0 z-10 flex flex-col gap-2 border-b bg-background/85 px-3 py-2 backdrop-blur supports-backdrop-filter:bg-background/70">
+        <DeployedBanner deployed={data.deployed}/>
         <div className={cn("flex items-center gap-2", level === "session" && "flex-wrap")}>
           <Button variant="ghost" size="icon" className="relative md:hidden" aria-label="Projects" aria-expanded={navOpen} onClick={() => setNavOpen(true)} title={anyWaiting ? "Sessions waiting on you" : undefined}>
             <Menu/>{anyWaiting && <span aria-hidden className="absolute right-1.5 top-1.5 size-2.5 rounded-full bg-amber-500 ring-2 ring-background"/>}
