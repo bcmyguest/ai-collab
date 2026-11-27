@@ -1,10 +1,10 @@
-// The bus store contract on SQLite and Postgres, plus Postgres-only checks: NOTIFY wakeups and ids under two publishers.
+// The bus store contract on Postgres, plus Postgres-only checks: NOTIFY wakeups and ids under two publishers.
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { rmSync } from "node:fs";
 import path from "node:path";
 import { test, after } from "node:test";
-import { createBusServer, openBusStore, resolveBusStoreKind } from "../lib/bus.mjs";
+import { createBusServer } from "../lib/bus.mjs";
 import { openPostgresBusStore } from "../lib/bus-postgres.mjs";
 import { pgUrl } from "../lib/postgres.mjs";
 import { pollCached, publish, streamEvents } from "../lib/transport.mjs";
@@ -14,7 +14,7 @@ import { tempDir } from "./helpers/tmp.mjs";
 const TOKEN = "tk_bus_store";
 const PNG = Buffer.from("89504e470d0a1a0a", "hex");
 const pgUp = await dbosTestDb();
-const KINDS = ["sqlite", "postgres"];
+const KINDS = ["postgres"];
 
 async function dropSchema(schema) {
   const { default: pg } = await import("pg");
@@ -31,9 +31,7 @@ async function withBus(kind, fn, storeOpts = {}) {
   const dir = tempDir({ after }, "ai-collab-bus-store-");
   const schema = `bus_t_${randomBytes(4).toString("hex")}`;
   const filesDir = path.join(dir, "files");
-  const open = () => (kind === "sqlite"
-    ? openBusStore({ file: path.join(dir, "bus.db"), filesDir })
-    : openPostgresBusStore({ url: pgUrl(process.env), filesDir, schema, ...storeOpts }));
+  const open = () => openPostgresBusStore({ url: pgUrl(process.env), filesDir, schema, ...storeOpts });
   const store = await open();
   const extra = [];
   const server = createBusServer({ store, token: TOKEN });
@@ -57,14 +55,6 @@ async function waitFor(check, ms) {
   }
   return true;
 }
-
-test("resolveBusStoreKind: env, then defaults.json, then sqlite", () => {
-  assert.equal(resolveBusStoreKind({}, {}), "sqlite");
-  assert.equal(resolveBusStoreKind({}, { busStore: "postgres" }), "postgres");
-  assert.equal(resolveBusStoreKind({ AI_COLLAB_BUS_STORE: "sqlite" }, { busStore: "postgres" }), "sqlite");
-  assert.equal(resolveBusStoreKind({ AI_COLLAB_BUS_STORE: "postgres" }, {}), "postgres");
-  assert.throws(() => resolveBusStoreKind({ AI_COLLAB_BUS_STORE: "redis" }, {}), /unknown store redis/);
-});
 
 for (const kind of KINDS) {
   const skip = kind === "postgres" && !pgUp && "Postgres not reachable";

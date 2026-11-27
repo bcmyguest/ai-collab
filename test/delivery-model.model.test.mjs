@@ -119,6 +119,7 @@ async function checkInvariants(m, r) {
   }
 }
 
+// Mirrors spec/tla/Delivery.tla Init and FirstPush.
 class NewMessage {
   check(m) {
     return m.messages.length < MAX_MESSAGES;
@@ -137,6 +138,7 @@ class NewMessage {
   }
 }
 
+// Mirrors spec/tla/Delivery.tla Land, Wake, AckedStep, Redeliver and Expire: the clock runs pushes, sleeps and polls.
 class Tick {
   constructor(ms) {
     this.ms = ms;
@@ -156,6 +158,7 @@ class Tick {
   }
 }
 
+// Mirrors spec/tla/Delivery.tla TargetBusy and TargetIdle.
 class SetBusy {
   constructor(busy) {
     this.busy = busy;
@@ -176,6 +179,7 @@ class SetBusy {
   }
 }
 
+// The spec folds ready into the target's idle state: mirrors spec/tla/Delivery.tla TargetIdle and TargetBusy.
 class SetReady {
   constructor(ready) {
     this.ready = ready;
@@ -197,6 +201,7 @@ class SetReady {
 }
 
 // Answer (reply or done) and Read (receipt) both put an ack on the message; each needs a push first.
+// Mirrors spec/tla/Delivery.tla Answer.
 class Ack {
   constructor(i, kind) {
     this.i = i;
@@ -220,6 +225,7 @@ class Ack {
   }
 }
 
+// Mirrors spec/tla/Delivery.tla Crash on a push step in flight, then OnCut.
 class Cut {
   check() {
     return true;
@@ -235,6 +241,7 @@ class Cut {
   }
 }
 
+// Mirrors spec/tla/Delivery.tla Crash and Restart while workflows wait; the spec's CrashAfterReserve is in runner-delivery-resume.test.mjs.
 class RestartRunner {
   check() {
     return true;
@@ -292,9 +299,7 @@ test("delivery workflow matches the model under random commands on a fake clock"
 });
 
 // Interleavings that random generation rarely reaches: an ack while the target waits, then the target frees up.
-// A and B are known bugs in the current delivery.mjs: a push after an answer observed while busy or not ready.
-// The fix waits for operator approval, so they stay todo; C runs and guards the busy-wait ack check.
-const KNOWN_BUG = "push after an answer observed while busy or not ready; fix pending operator approval";
+// They guard the answer re-check before reserve (caa522cd).
 const SCENARIOS = [
   { name: "ack during a busy wait, busy cleared before the next poll", commands: () => [new NewMessage(), new Tick(1000), new SetBusy(true), new Tick(REDELIVER_MS), new Ack(0, "reply"), new SetBusy(false), new Tick(60_000)] },
   { name: "ack while not ready, ready before the next poll", commands: () => [new NewMessage(), new Tick(1000), new SetReady(false), new Tick(REDELIVER_MS), new Ack(0, "reply"), new SetReady(true), new Tick(60_000)] },

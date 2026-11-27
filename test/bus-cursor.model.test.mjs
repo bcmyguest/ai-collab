@@ -14,7 +14,7 @@ import { tempDir } from "./helpers/tmp.mjs";
 
 // BUS_IMPL points the model at another bus.mjs, e.g. a scratch copy with a planted bug.
 const BUS_IMPL = process.env.BUS_IMPL ? path.resolve(process.env.BUS_IMPL) : fileURLToPath(new URL("../lib/bus.mjs", import.meta.url));
-const { createBusServer, openBusStore, openMemoryStore } = await import(pathToFileURL(BUS_IMPL).href);
+const { createBusServer, openMemoryStore } = await import(pathToFileURL(BUS_IMPL).href);
 const pgUp = await dbosTestDb();
 
 const TOKEN = "tk_bus_cursor_model";
@@ -54,9 +54,7 @@ async function openReal(kind, dir) {
 
 async function openStore(r) {
   if (r.kind === "postgres") return openPostgresBusStore({ url: pgUrl(process.env), filesDir: path.join(r.dir, "files"), retentionMs: RETENTION_MS, schema: r.schema });
-  return r.kind === "sqlite"
-    ? openBusStore({ file: path.join(r.dir, "bus.db"), filesDir: path.join(r.dir, "files"), retentionMs: RETENTION_MS })
-    : openMemoryStore();
+  return openMemoryStore();
 }
 
 async function startBus(r, port = 0) {
@@ -97,6 +95,11 @@ function expectedBackfill(m, topics, since) {
   return ids(sinceFilter(events, since));
 }
 
+/** Reset rule of lib/bus.mjs resolve: an event id (up to 8 digits) absent from the topics replays all and flags reset. */
+function expectedReset(m, topics, since) {
+  return /^\d{1,8}$/.test(since) && !m.log.some((e) => topics.includes(e.topic) && Number(e.id) === Number(since));
+}
+
 function isNumeric(since) {
   return /^\d+$/.test(since);
 }
@@ -117,11 +120,12 @@ function sinceFilter(events, since) {
 async function settle(m, r) {
   const until = Date.now() + SETTLE_MS;
   for (;;) {
-    const behind = SUBSCRIBERS.filter((s) => m.subs[s] && !sameIds(r.subs[s].received, m.subs[s].expected));
+    const behind = SUBSCRIBERS.filter((s) => m.subs[s] && (!sameIds(r.subs[s].received, m.subs[s].expected) || r.subs[s].resets !== m.subs[s].resets));
     if (behind.length === 0) break;
     if (Date.now() > until) {
       const s = behind[0];
       assert.deepEqual(r.subs[s].received, m.subs[s].expected, `subscriber ${s} stream differs from the model`);
+      assert.equal(r.subs[s].resets, m.subs[s].resets, `subscriber ${s} stream reset flags differ from the model`);
     }
     await sleep(5);
   }
@@ -172,7 +176,8 @@ function openStream(r, s, topics, since) {
   const opened = new Promise((resolve) => { markOpen = resolve; });
   rs.done = (async () => {
     try {
-      for await (const ev of streamEvents(cfgOf(r), topics, { since, signal: ctrl.signal, onOpen: markOpen })) rs.received.push(ev.id);
+      const onReset = () => { rs.resets += 1; };
+      for await (const ev of streamEvents(cfgOf(r), topics, { since, signal: ctrl.signal, onOpen: markOpen, onReset })) rs.received.push(ev.id);
     } catch { /* aborted, or the bus restarted under it */ }
     markOpen();
   })();
@@ -249,8 +254,11 @@ class Poll {
   async run(m, r) {
     const cursor = lastSeenOf(m.subs[this.s]);
     const since = this.mode === "cursor" ? cursor : POLL_SINCE[this.mode];
-    const got = (await pollCached(cfgOf(r), this.topic, since)).map((e) => e.id);
-    assert.deepEqual(got, expectedPoll(m, this.topic, since), `poll ${this.topic} since=${since || '""'} differs from the log slice`);
+    const events = await pollCached(cfgOf(r), this.topic, since);
+    assert.deepEqual(events.map((e) => e.id), expectedPoll(m, this.topic, since), `poll ${this.topic} since=${since || '""'} differs from the log slice`);
+    // Poll and stream agree: an unknown cursor replays the topic and flags every event reset.
+    const reset = expectedReset(m, [this.topic], since);
+    for (const e of events) assert.equal(e.reset === true, reset, `poll ${this.topic} since=${since || '""'} reset flag on ${e.id}`);
     await checkInvariants(m, r);
   }
 
@@ -272,9 +280,10 @@ class Subscribe {
 
   async run(m, r) {
     const expected = expectedBackfill(m, this.topics, this.since);
-    r.subs[this.s] = { ctrl: null, done: null, received: [] };
+    const resets = expectedReset(m, this.topics, this.since) ? 1 : 0;
+    r.subs[this.s] = { ctrl: null, done: null, received: [], resets: 0 };
     await openStream(r, this.s, this.topics, this.since);
-    m.subs[this.s] = { topics: this.topics, connected: true, expected };
+    m.subs[this.s] = { topics: this.topics, connected: true, expected, resets };
     await checkInvariants(m, r);
   }
 
@@ -316,6 +325,7 @@ class Reconnect {
   async run(m, r) {
     const sub = m.subs[this.s];
     const since = lastSeenOf(sub);
+    if (expectedReset(m, sub.topics, since)) sub.resets += 1;
     await openStream(r, this.s, sub.topics, since);
     sub.expected.push(...expectedBackfill(m, sub.topics, since));
     sub.connected = true;
@@ -329,7 +339,7 @@ class Reconnect {
 
 class RestartBus {
   check(m) {
-    return m.kind === "sqlite";
+    return m.kind === "postgres";
   }
 
   async run(m, r) {
@@ -356,7 +366,7 @@ class Prune {
   }
 
   check(m) {
-    return m.kind === "sqlite";
+    return m.kind === "postgres";
   }
 
   async run(m, r) {
@@ -384,14 +394,14 @@ function commandArb(kind) {
     { weight: 4, arbitrary: sub.map((s) => new Disconnect(s)) },
     { weight: 4, arbitrary: sub.map((s) => new Reconnect(s)) },
   ];
-  if (kind === "sqlite") {
+  if (kind === "postgres") {
     arbs.push({ weight: 1, arbitrary: fc.constant(new RestartBus()) });
     arbs.push({ weight: 2, arbitrary: fc.constantFrom(...ADVANCES).map((ms) => new Prune(ms)) });
   }
   return fc.oneof(...arbs);
 }
 
-for (const kind of ["memory", "sqlite", "postgres"]) {
+for (const kind of ["memory", "postgres"]) {
   const skip = kind === "postgres" && !pgUp && "Postgres not reachable";
   test(`bus cursor matches the model on the ${kind} store`, { skip }, async () => {
     await fc.assert(fc.asyncProperty(fc.commands([commandArb(kind)], { maxCommands: 14 }), async (cmds) => {

@@ -1,13 +1,13 @@
 // Unknown-cursor contract for the bus (4b batch 3): when `since` names an event the store cannot place —
 // pruned, newer than everything, not an id, or from another bus — the server replays from the oldest
 // retained event and says so with reset: true in the poll JSON and in the first stream line.
-// Each case runs on SQLite and Postgres (test/bus-store.test.mjs pattern); docs/research/bus-unknown-cursor.md.
+// Each case runs on Postgres (test/bus-store.test.mjs pattern); docs/research/bus-unknown-cursor.md.
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { test, after } from "node:test";
-import { createBusServer, openBusStore } from "../lib/bus.mjs";
+import { createBusServer } from "../lib/bus.mjs";
 import { openPostgresBusStore } from "../lib/bus-postgres.mjs";
 import { pgUrl } from "../lib/postgres.mjs";
 import { dbosTestDb } from "./helpers/dbos-env.mjs";
@@ -16,7 +16,7 @@ import { tempDir } from "./helpers/tmp.mjs";
 const TOKEN = "tk_unknown_cursor";
 const RETENTION_MS = 3_600_000;
 const STREAM_QUIET_MS = 400;
-const KINDS = ["sqlite", "postgres"];
+const KINDS = ["postgres"];
 const pgUp = await dbosTestDb();
 
 async function dropSchema(schema) {
@@ -33,9 +33,7 @@ async function openBusTmp(kind) {
   const dir = tempDir({ after }, "bus-unknown-cursor-");
   const filesDir = path.join(dir, "files");
   const schema = `bus_uc_${randomBytes(4).toString("hex")}`;
-  const store = kind === "sqlite"
-    ? openBusStore({ file: path.join(dir, "bus.db"), filesDir, retentionMs: RETENTION_MS })
-    : await openPostgresBusStore({ url: pgUrl(process.env), filesDir, schema, retentionMs: RETENTION_MS });
+  const store = await openPostgresBusStore({ url: pgUrl(process.env), filesDir, schema, retentionMs: RETENTION_MS });
   const server = createBusServer({ store, token: TOKEN });
   const url = await server.listen(0);
   return {

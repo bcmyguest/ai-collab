@@ -5,11 +5,11 @@ import { randomBytes } from "node:crypto";
 import { rmSync } from "node:fs";
 import path from "node:path";
 import { test, after } from "node:test";
-import { openBusStore } from "../lib/bus.mjs";
 import { openPostgresBusStore } from "../lib/bus-postgres.mjs";
 import { migrateBusToPostgres } from "../lib/bus-migrate.mjs";
 import { pgUrl } from "../lib/postgres.mjs";
 import { dbosTestDb } from "./helpers/dbos-env.mjs";
+import { openLegacyBusDb } from "./helpers/legacy-bus-db.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const pgUp = await dbosTestDb();
@@ -34,7 +34,7 @@ async function dropSchema(schema) {
 async function withStores(fn) {
   const dir = tempDir({ after }, "bus-migrate-");
   const schema = `bus_m_${randomBytes(4).toString("hex")}`;
-  const sqlite = openBusStore({ file: path.join(dir, "bus.db"), filesDir: path.join(dir, "files") });
+  const sqlite = openLegacyBusDb({ file: path.join(dir, "bus.db"), filesDir: path.join(dir, "files") });
   try {
     return await fn({ dir, schema, sqlite });
   } finally {

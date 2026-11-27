@@ -123,6 +123,7 @@ function checkInvariants(m, r) {
   }
 }
 
+// Mirrors spec/tla/StoreLock.tla Begin, Mkdir, WriteOwner, Check, TakeBreaker, Recheck and DropBreaker.
 class Acquire {
   constructor(p) {
     this.p = p;
@@ -161,6 +162,7 @@ class Acquire {
   }
 }
 
+// Mirrors spec/tla/StoreLock.tla RelRead, RelRename and RelCheck.
 class Release {
   constructor(p) {
     this.p = p;
@@ -187,6 +189,7 @@ class Release {
   }
 }
 
+// Mirrors spec/tla/StoreLock.tla Crash.
 class Crash {
   constructor(p) {
     this.p = p;
@@ -214,6 +217,7 @@ class Crash {
   }
 }
 
+// Mirrors spec/tla/StoreLock.tla Respawn: the pid runs a process with a new start time.
 class ReusePid {
   constructor(p) {
     this.p = p;
@@ -236,6 +240,7 @@ class ReusePid {
   }
 }
 
+// Mirrors spec/tla/StoreLock.tla Age: past staleMs is old, past 10 x staleMs is ancient.
 class Advance {
   constructor(ms) {
     this.ms = ms;

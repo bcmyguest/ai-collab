@@ -1,16 +1,14 @@
-// The local message bus: SQLite durability, retention, since-semantics, attachments, auth, streams.
+// The local message bus on the memory store: since-semantics, attachments, auth, streams.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readdirSync, readFileSync } from "node:fs";
-import path from "node:path";
-import { createBusServer, openBusStore, openMemoryStore, parseSince } from "../lib/bus.mjs";
+import { readFileSync } from "node:fs";
+import { createBusServer, openMemoryStore, parseSince } from "../lib/bus.mjs";
 import { pollCached, publish, streamEvents } from "../lib/transport.mjs";
-import { tempDir } from "./helpers/tmp.mjs";
 
 const TOKEN = "tk_bus_test";
 
-async function bus({ token = TOKEN, ...storeArgs } = {}) {
-  const store = storeArgs.file ? openBusStore(storeArgs) : openMemoryStore();
+async function bus({ token = TOKEN } = {}) {
+  const store = openMemoryStore();
   const server = createBusServer({ store, token });
   const url = await server.listen();
   const cfg = { url, token, timeoutMs: 2000 };
@@ -30,21 +28,6 @@ test("parseSince reads the four forms clients send", () => {
   assert.deepEqual(parseSince("zz9"), { kind: "none" });
 });
 
-test("sqlite events survive a store restart and prune at retention", async (t) => {
-  const dir = tempDir(t, "ai-collab-bus-");
-  const file = path.join(dir, "bus.db");
-  const first = await bus({ file, filesDir: path.join(dir, "files") });
-  t.after(() => first.close());
-  await publish(first.cfg, "t", "durable");
-  await first.close();
-
-  const second = await bus({ file, filesDir: path.join(dir, "files"), retentionMs: -1 });
-  t.after(() => second.close());
-  assert.deepEqual((await pollCached(second.cfg, "t", "all")).map((e) => e.message), ["durable"]);
-  second.store.prune();
-  assert.deepEqual(await pollCached(second.cfg, "t", "all"), [], "retention prunes past events");
-});
-
 test("since selects: all, id, unknown id, and unix time", async (t) => {
   const b = await bus();
   t.after(() => b.close());
@@ -57,8 +40,7 @@ test("since selects: all, id, unknown id, and unix time", async (t) => {
 });
 
 test("attachments round-trip: PUT stores the file, GET serves it, the event carries the url", async (t) => {
-  const dir = tempDir(t, "ai-collab-bus-");
-  const b = await bus({ file: path.join(dir, "bus.db"), filesDir: path.join(dir, "files") });
+  const b = await bus();
   t.after(() => b.close());
   const png = Buffer.from("89504e470d0a1a0a", "hex");
   const res = await fetch(`${b.url}/t?message=${encodeURIComponent(JSON.stringify({ text: "shot" }))}&filename=shot.png`, {
@@ -69,7 +51,6 @@ test("attachments round-trip: PUT stores the file, GET serves it, the event carr
   assert.equal(ev.attachment.name, "shot.png");
   assert.match(ev.attachment.url, /\/file\/[a-f0-9]+\.png$/);
   const file = ev.attachment.url.slice(ev.attachment.url.lastIndexOf("/") + 1);
-  assert.deepEqual(readdirSync(path.join(dir, "files")), [file]);
   const got = await fetch(`${b.url}/file/${file}`, { headers: { authorization: `Bearer ${TOKEN}` } });
   assert.equal(got.headers.get("content-type"), "image/png");
   assert.deepEqual(Buffer.from(await got.arrayBuffer()), png);

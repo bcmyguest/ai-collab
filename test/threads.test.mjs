@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { test, after } from "node:test";
-import { createBusServer, openBusStore } from "../lib/bus.mjs";
+import { createBusServer, openMemoryStore } from "../lib/bus.mjs";
 import { openPostgresBusStore } from "../lib/bus-postgres.mjs";
 import { pgUrl } from "../lib/postgres.mjs";
 import { sendMessage } from "../lib/messaging.ts";
@@ -175,15 +175,14 @@ test("the /threads routes drive the store over HTTP, and a store without threads
   assert.deepEqual(listed.sessions, [address("codex", 1)]);
   await assert.rejects(client.update(made.id, { status: "bogus" }), (error) => error.status === 400);
 
-  const dir = tempDir({ after }, "ai-collab-threads-sqlite-");
-  const sqlite = openBusStore({ file: path.join(dir, "bus.db"), filesDir: path.join(dir, "files") });
-  const server = createBusServer({ store: sqlite, token: TOKEN });
+  const memory = openMemoryStore();
+  const server = createBusServer({ store: memory, token: TOKEN });
   const url = await server.listen();
   try {
     await assert.rejects(threadClient({ ...cfg, url }).list("demo"), (error) => error.status === 404);
   } finally {
     await server.close();
-    sqlite.close();
+    memory.close();
   }
 }));
 
