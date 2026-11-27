@@ -105,7 +105,23 @@ digraph "ship" {
 }
 ```
 
-The attribute is parsed by `lib/catalog/dot.ts`, carried on the pattern by `withExtras` (`lib/catalog/pattern-model.ts`), and kept in the run snapshot, so a later edit does not change a running team. An unknown value fails with its line. OpenShell runs do not get the command in the brief: the sandbox's `ai-collab` shim runs only task commands.
+The attribute is parsed by `lib/catalog/dot.ts`, carried on the pattern by `withExtras` (`lib/catalog/pattern-model.ts`), and kept in the run snapshot, so a later edit does not change a running team. An unknown value fails with its line.
+
+### Finishing from an OpenShell sandbox
+
+A member in an OpenShell sandbox has no `ai-collab` CLI, no host git and no network beyond its harness API and ntfy, so it cannot run `land finish`. Its brief tells it to put this line last in its reply, or just before the `PATTERN_ADVANCE` line:
+
+```text
+LAND_FINISH {"proof":"<commands you ran and their output>"}
+```
+
+After the turn, inside the session's `run.wait` step so the recorded DBOS op sequence is unchanged, the runner on the host (`lib/land-member.ts`) refuses the request unless:
+
+- the session runs in OpenShell, is a member of a running pattern run, and its owned record's folder is that run's worktree (`.claude/worktrees/team-<run>`);
+- the host worktree is on `team/<run>`; `main` and `master` are always refused;
+- a proof is given, unless the team's `landing` is `branch`.
+
+The member supplies only the proof. The branch, the worktree and the landing policy come from the runner's records and the run snapshot. The runner then copies the sandbox's commits to the worktree (refused while the sandbox has uncommitted changes) and runs `finishBranch` there with the host's git and `gh`. The result, or the reason for a refusal, appears in the session's timeline. It runs before the reply's handoff, so the next role finds the PR or packet. The sandbox gains no command, network access or credential.
 
 ## Runs and kinds
 

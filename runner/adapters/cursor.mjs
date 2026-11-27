@@ -666,6 +666,17 @@ export default function cursorAdapter(config = {}) {
         if (conn.dead) throw conn.dead;
         return conn.request("session/set_model", { sessionId: session.sessionId, modelId }, TOOL_TIMEOUT_MS);
       },
+      // Copies the sandbox's commits to the host worktree for land finish; uncommitted work is refused so the two never diverge.
+      async syncBack() {
+        if (!session.sandbox || !session.cwd) throw new Error("this session has no sandbox to copy back");
+        const command = ["git", "-C", `${SANDBOX_ROOT}/work/${basename(session.cwd)}`, "status", "--porcelain"];
+        const status = await runTool(openshellBin, sandboxExecArgv({ openshell: openshellBin, sandbox: session.sandbox, command }).slice(1), { env: session.env });
+        if (status.code !== 0) throw new Error(`git status in the sandbox failed: ${(status.stderr || "").trim() || `exit ${status.code}`}`);
+        if (status.stdout.trim()) throw new Error("commit your work in the sandbox first");
+        if (!(await syncSandboxBack({ openshell: openshellBin, env: session.env, sandbox: session.sandbox, cwd: session.cwd, log: session.ctx.log }))) {
+          throw new Error("could not copy the sandbox commits to the host worktree");
+        }
+      },
       // Closing a sandbox session ends its CLI, copies its edits back, then deletes the sandbox.
       async close() {
         if (session.closed) return;

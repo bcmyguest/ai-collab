@@ -31,6 +31,7 @@ import { pickedWorktree } from "../lib/sessions/git-refs.ts";
 import { PROMPT_MAX_CHARS, childEnv, checkPrompt, claudePermissionFor, findExecutable, modelShape, projectRoot, worktreeNames } from "../lib/start.mjs";
 import { parseCodeMode, resolveCodeMode } from "../lib/code-mode.mjs";
 import { openTasks } from "../lib/tasks.mjs";
+import { describeFinish, finishMemberBranch, landFinishRequest } from "../lib/land-member.ts";
 import { listOwned, nextPermission, ownedFile, readOwned, writeOwned } from "../lib/sessions/registry.ts";
 import { modelFields } from "../lib/session-events.mjs";
 import { isBlockingLimit, limitFromRunError } from "../lib/limits.ts";
@@ -235,7 +236,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
         else {
           const outcome = e.outcome?.type ?? "success";
           const handoff = outcome === "success" ? patternHandoff(s.lastReply?.text) : undefined;
-          s.finished.set(e.runId, { outcome, ...(handoff ? { handoff } : {}) });
+          const landFinish = outcome === "success" && r.patternRun ? landFinishRequest(s.lastReply?.text) : undefined;
+          s.finished.set(e.runId, { outcome, ...(handoff ? { handoff } : {}), ...(landFinish ? { landFinish } : {}) });
         }
         s.wake();
         break;
@@ -317,6 +319,23 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   }
 
   // The live handle, resuming the native session for the next input when this execution has none (after a restart).
+  // A sandboxed pattern member's LAND_FINISH: the host checks and finishes its run branch; the result goes to its timeline.
+  async function finishSandboxedMember(s, staged, request) {
+    const { project, harness, patternRun } = s.record;
+    try {
+      if (request.error) throw new Error(request.error);
+      const handle = await liveHandle(s, staged);
+      const result = await finishMemberBranch({
+        record: s.record, run: runStatus(patternConfig(project), patternRun), root: projectRoot(project, env),
+        proof: request.proof, tasks: openTasks(project, env),
+        syncBack: () => (handle.syncBack ? handle.syncBack() : Promise.reject(new Error(`${harness} cannot copy sandbox work to the host`))),
+      });
+      await enqueuePublish(s, () => publishEvent(s.cfg, harness, { type: EventType.CUSTOM, name: NOTICE, value: "land finish: " + describeFinish(result) }));
+    } catch (error) {
+      await enqueuePublish(s, () => publishEvent(s.cfg, harness, { type: EventType.CUSTOM, name: ERROR, value: "land finish refused: " + error.message }));
+    }
+  }
+
   async function liveHandle(s, staged) {
     if (s.live) return s.live;
     if (s.record.status === "ended") fail(409, "The owned session has ended");
@@ -573,6 +592,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       const interrupted = () => cut(sent.runId, "runner restarted");
       const finished = sent.runId && await wf.step("run.wait", async () => {
         const done = builder && !s.live ? await interrupted() : await waitRun(s, sent.runId);
+        // Inside run.wait, so the recorded op sequence is unchanged; before the handoff, so the next role finds the PR or packet.
+        if (patternRun && done?.landFinish) await finishSandboxedMember(s, staged, done.landFinish);
         if (reports) await reportToParent(s, done);
         return done;
       }, { onCut: async () => {
