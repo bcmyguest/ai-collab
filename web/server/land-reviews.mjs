@@ -1,9 +1,5 @@
-import { execFile } from "node:child_process";
-import { join } from "node:path";
-import { promisify } from "node:util";
-import { HOST_CHECKOUT } from "../../lib/merge-cli.mjs";
+import { execRun, requestLand, HOST_CHECKOUT } from "../../lib/land.mjs";
 
-const run = promisify(execFile);
 const stages = ["pm-merge", "answer-sync"];
 const stage = id => stages.findIndex(name => id === name || id.startsWith(name + "-"));
 function rank(id) {
@@ -17,17 +13,19 @@ function authorized(task) {
     /^operator(?::.+)?$/.test(answer?.by) && /^merge(?:[ -])when(?:[ -])green$/i.test(answer.text.trim());
 }
 
-export async function mergeReview(review, env) {
-  const args = [join(HOST_CHECKOUT, "scripts/ai-collab.mjs"), "merge", "start", "--expect-tip", review.commit, review.branch];
+// Opens the review branch's PR into main; never pushes main.
+export async function mergeReview(review, env, { run = execRun, cwd = HOST_CHECKOUT } = {}) {
   try {
-    const { stdout } = await run(process.execPath, args, { env, maxBuffer: 16 * 1024 * 1024 });
-    return { landed: true, detail: receipt(stdout) || "Merge verified" };
+    const tip = await run("git", ["rev-parse", "--verify", `refs/heads/${review.branch}^{commit}`], { cwd, encoding: "utf8" });
+    if (tip.status !== 0 || tip.stdout.trim() !== review.commit) {
+      return { landed: false, detail: "the build branch moved past the submitted commit" };
+    }
+    const { url } = await requestLand(review.branch, { run, cwd });
+    return { landed: false, opened: true, detail: `PR ${url}` };
   } catch (error) {
-    return { landed: false, detail: receipt(error.stdout) || "Merge command failed. Check origin/main before retrying." };
+    return { landed: false, detail: error.message };
   }
 }
-
-const receipt = output => output?.trimEnd().split("\n").at(-1)?.match(/^merge: (.+)$/)?.[1];
 
 export async function landReviews(projects, { merge, by, onReceipt = () => {} }) {
   const queue = projects.flatMap(project =>
@@ -57,7 +55,7 @@ export async function landReviews(projects, { merge, by, onReceipt = () => {} })
       result.detail = result.landed ? `${result.detail}. Task update failed: ${error.message}` : error.message;
       if (result.landed) result.updateFailed = true;
     }
-    if (stage(id) !== -1 && (!result.landed || result.updateFailed)) prerequisite ??= id;
+    if (stage(id) !== -1 && ((!result.landed && !result.opened) || result.updateFailed)) prerequisite ??= id;
     receipts.push(result);
     onReceipt(result);
   }
