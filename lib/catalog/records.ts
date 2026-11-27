@@ -29,6 +29,8 @@ export type Pattern = {
   roles: Role[];
   handoffs: Handoff[];
   maxVisits?: number;
+  permission?: string;
+  landing?: string;
   source?: PatternSource;
   file?: string;
   legacy?: boolean;

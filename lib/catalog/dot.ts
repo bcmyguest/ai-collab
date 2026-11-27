@@ -3,6 +3,7 @@ import { claudePermissionError, HARNESSES, isHarness, parseHarnessModel } from "
 
 const DOT_DONE = "done";
 export const DOT_KINDS: readonly string[] = ["broadcast", "pair", "fan-in"];
+export const DOT_LANDINGS: readonly string[] = ["pr", "packet", "branch"];
 const DOT_COUNT_MAX = 8;
 const DOT_CAP_MAX = 10;
 export const DOT_EVENT_MAX = 60;
@@ -17,7 +18,7 @@ const NODE_ATTRS = ["agent", "count", "skill", "prompt", "fallback", "code_mode"
 const EDGE_ATTRS = ["on", "kind", "required", "cap"];
 // wteam display or session attributes: read, ignored, and reported as warnings.
 const COSMETIC_ATTRS = ["shape", "label", "handoff_tokens", "continue"];
-const GRAPH_ATTRS = ["description", "max_visits", "permission"];
+const GRAPH_ATTRS = ["description", "max_visits", "permission", "landing"];
 const PUNCT = "{}[]=,;";
 const WORD = /[A-Za-z_][A-Za-z0-9_]*|-?\d+(?:\.\d+)?/y;
 
@@ -49,6 +50,7 @@ export type DotTeam = {
   description: string;
   maxVisits: number | null;
   permission?: string;
+  landing?: string;
   nodes: DotNode[];
   edges: DotEdge[];
   warnings: DotWarning[];
@@ -60,6 +62,7 @@ export type DotTeamInput = {
   description?: string;
   maxVisits?: number | null;
   permission?: string;
+  landing?: string;
   nodes: Array<Omit<DotNode, "count" | "line"> & { count?: number }>;
   edges: Array<Omit<DotEdge, "kind"> & { kind?: string }>;
 };
@@ -316,6 +319,9 @@ export function parseDot(text: string): DotTeam {
   // A Claude permission setting for this team's starts; bypassPermissions is refused at start unless OpenShell allows it.
   const permissionAttr = graphAttrs.get("permission");
   if (permissionAttr && claudePermissionError(permissionAttr.value)) throw new DotError(claudePermissionError(permissionAttr.value), permissionAttr.line);
+  // How a member lands committed branch work once its part is done.
+  const landingAttr = graphAttrs.get("landing");
+  if (landingAttr && !DOT_LANDINGS.includes(landingAttr.value)) throw new DotError(`landing must be one of ${DOT_LANDINGS.join(", ")}; got "${landingAttr.value}"`, landingAttr.line);
 
   const nodes: DotNode[] = [];
   const ids = new Set<string>();
@@ -341,7 +347,7 @@ export function parseDot(text: string): DotTeam {
     }
   }
 
-  return { name: nameToken.value, description: graphAttrs.get("description")?.value ?? "", maxVisits, ...(permissionAttr ? { permission: permissionAttr.value } : {}), nodes, edges, warnings };
+  return { name: nameToken.value, description: graphAttrs.get("description")?.value ?? "", maxVisits, ...(permissionAttr ? { permission: permissionAttr.value } : {}), ...(landingAttr ? { landing: landingAttr.value } : {}), nodes, edges, warnings };
 }
 
 const quote = (text: unknown): string => `"${String(text).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n")}"`;
@@ -353,6 +359,7 @@ export function serializeDot(team: DotTeamInput): string {
   if (team.description) graphAttrs.push(`description=${quote(team.description)}`);
   if (team.maxVisits !== null && team.maxVisits !== undefined) graphAttrs.push(`max_visits=${team.maxVisits}`);
   if (team.permission) graphAttrs.push(`permission=${quote(team.permission)}`);
+  if (team.landing) graphAttrs.push(`landing=${quote(team.landing)}`);
   if (graphAttrs.length) lines.push(`  graph [${graphAttrs.join(", ")}];`);
   for (const node of team.nodes) {
     const fields = [`agent=${quote(node.agent)}`, `count=${node.count ?? 1}`];
