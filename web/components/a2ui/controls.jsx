@@ -25,7 +25,7 @@ export const TextFieldImpl = createComponentImplementation(basicCatalog.componen
   return <input type="text" aria-label={props.label || "Answer"} placeholder={props.label} value={props.value ?? ""}
     onChange={event => props.setValue?.(event.target.value)}
     className={cn("h-9 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground",
-      "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50")}/>;
+      "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring")}/>;
 });
 
 /** A short tag: a question's header, or a status. */

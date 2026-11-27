@@ -488,6 +488,12 @@ The sidebar (**Projects and threads**, `web/app/thread-sidebar.tsx`) lists proje
 one is picked. On a computer it sits left of the main column; on a phone it fills the screen, and the **Threads** button
 in the main column's header opens it. A picked project adds **New thread in <project>** at the top of its thread list, a
 44 px tap target on a phone.
+On a phone the main column's header repeats it as a **+** button after **Threads**.
+
+From a project page load, Tab reaches **New thread** in 3 stops on a computer (wordmark, project switcher, New thread)
+and 2 on a phone (Threads, New thread); Enter or Space opens the prompt with focus in it. Every stop shows a 2 px ring
+in the accent (`--ring` is `--primary`). `test/keyboard-new-chat-browser.test.mjs` checks both widths and the Menu's
+keyboard behaviour.
 
 The **Menu** button at the foot of the sidebar holds everything that is not a thread:
 

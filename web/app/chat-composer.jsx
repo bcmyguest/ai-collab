@@ -221,7 +221,7 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
     }}>
       <ImagePicker files={images} onChange={selectImages} onError={setImageError} disabled={busy}>
         <ComposerPrimitive.Root onSubmit={event => { event.preventDefault(); send(); }}
-          className={cn("cursor-text rounded-3xl border bg-card p-2 shadow-sm focus-within:ring-2 focus-within:ring-ring/50", busy && "cursor-not-allowed opacity-60")}>
+          className={cn("cursor-text rounded-3xl border bg-card p-2 shadow-sm focus-within:ring-2 focus-within:ring-ring", busy && "cursor-not-allowed opacity-60")}>
           {image && <ImageDraft file={image} disabled={busy} remove={() => { selectImages([]); focus(); }}/>}
           {imageError && <p role="alert" className="px-3 text-sm text-destructive">{imageError}</p>}
           <div id="composer-destination" aria-live="polite" title={recipients.join(", ") || undefined} className="max-h-[20dvh] overflow-y-auto break-words px-3 pt-1 text-xs font-medium text-muted-foreground">
