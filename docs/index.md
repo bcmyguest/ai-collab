@@ -30,6 +30,7 @@ The peer hooks and MCP server need only Node 24+ (builtin `fetch`). The operator
 | [Security model](security.md) | What is sent and what is trusted |
 | [Troubleshooting](troubleshooting.md) | Known limits and fixes |
 | [Development](development.md) | Tests, CI, releases, the demo |
+| [Verification](verification.md) | Model-based tests, TLA+ specs, `npm run tlc`, the bugs they found |
 
 ## What it does
 
