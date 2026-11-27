@@ -35,7 +35,7 @@ import { START_HARNESSES, availableHarnesses, availablePlaces, claudePermissionF
 import { codeModeDefault } from "../../lib/code-mode.mjs";
 import { cleanName } from "../../lib/sessions/registry.ts";
 import { listModels } from "../../lib/models.mjs";
-import { LIMIT_TOOL, chooseLimit, limitEndMessage, skipLimit } from "../../lib/limit-alert.mjs";
+import { LIMIT_TOOL, chooseLimit, limitEndMessage, skipLimit } from "../../lib/limit-alert.ts";
 import { limitEndNotice } from "../../lib/start-limit.mjs";
 import { closedProjectNames, createTeam, deleteTeam, listTeams, readProjectsFile, removeProject, setProjectClosed, teamTask } from "../../lib/teams.mjs";
 import { clearFields, modelFields, sessionHistory } from "../../lib/session-events.mjs";
@@ -1013,11 +1013,11 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return { sent: true, status: approval.questions ? "Answer sent" : decision === "allow" ? "Allow sent" : "Deny sent" };
   }
 
-  // A limit card's pick: "Wait for reset" acknowledges; a replacement starts a session (lib/limit-alert.mjs chooseLimit). No ntfy reply: no hook waits.
+  // A limit card's pick: "Wait for reset" acknowledges; a replacement starts a session (lib/limit-alert.ts chooseLimit). No ntfy reply: no hook waits.
   async function answerLimit(project, approval, answer) {
     if (hosted) reject(403, "Handle usage limits on the agent machine");
     const label = Object.values(parseChoice(approval.questions, answer) ?? {})[0];
-    // Text typed in Other, not a listed option, names a harness or model (lib/limit-alert.mjs typedReplacement).
+    // Text typed in Other, not a listed option, names a harness or model (lib/limit-alert.ts typedReplacement).
     const listedOption = (approval.questions?.[0]?.options ?? []).some(o => o.label === label);
     const result = await chooseLimit(project.cfg, { id: approval.id, ...(listedOption ? { label } : { typed: label }), start, env });
     if (result.status === "duplicate") reject(409, result.detail);
