@@ -5,7 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import { loadConfig } from "../lib/config.mjs";
-import { readOwned } from "../lib/sessions/registry.ts";
+import { readOwned, writeOwned } from "../lib/sessions/registry.ts";
+import { MANAGED_ENV } from "../lib/subagent-guard.ts";
 import { listSessions } from "../lib/sessions.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
@@ -230,6 +231,33 @@ test("a restart before the harness accepts the prompt reports interrupted", asyn
     const sent = await until(() => reports(fake).length && reports(fake), "report");
     assert.equal(sent.length, 1);
     assert.match(sent[0].body, /finished \(interrupted\)/);
+  } finally {
+    await second.stop();
+  }
+});
+
+test("a resume takes managed from the durable workflow input, not the owned record file", async (t) => {
+  const fake = await startFakeNtfy();
+  t.after(() => fake.close());
+  const ctx = setup(t, fake);
+  const first = makeRunner(ctx, createFakeAdapter({ harness: "codex" }));
+  await first.boot();
+  PARENT = (await first.start({ project: "demo", harness: "codex", prompt: "parent" })).session;
+  const { session } = await first.start(spawnInput("first turn"));
+  await until(() => reports(fake).length === 1, "first report").finally(() => first.stop());
+  // The session itself can write its owned record; turning managed off there must not reach the harness.
+  const label = session.split("#")[1];
+  writeOwned(ctx.cfg, { ...readOwned(ctx.cfg, label), managed: false });
+  const adapter = createFakeAdapter({ harness: "codex" });
+  const resumed = [];
+  const resume = adapter.resume.bind(adapter);
+  adapter.resume = (record, rctx, env) => { resumed.push({ managed: record.managed, env: env?.[MANAGED_ENV] }); return resume(record, rctx, env); };
+  const second = makeRunner(ctx, adapter);
+  try {
+    await second.boot();
+    await second.send(session, { text: "second turn" });
+    await until(() => resumed.length, "resume");
+    assert.deepEqual(resumed[0], { managed: true, env: "1" });
   } finally {
     await second.stop();
   }
