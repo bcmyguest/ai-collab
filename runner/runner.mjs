@@ -37,7 +37,7 @@ import { alertLimit } from "../lib/limit-alert.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, LIMIT, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, OPENSHELL_PERMISSION, permissionSettings, runnerModeOfClaude } from "./contract.mjs";
 import { sessionOfCommand } from "../lib/schedule-session.mjs";
 import { ALLOW_HOST_AGENT_ENV } from "../lib/agent-guard.mjs";
-import { MANAGED_ENV } from "../lib/subagent-guard.ts";
+import { noSubagentEnv } from "../lib/subagent-guard.ts";
 import { SPAWN_MAX_CHILDREN, SPAWN_MAX_DEPTH, spawnBriefNote, spawnReport, spawnSelfNote } from "../lib/spawn.ts";
 import { sandboxCapRefusal, sandboxName, teamSandboxName } from "./sandbox.mjs";
 import { DELIVERY, deliveryWorkflow } from "./delivery.mjs";
@@ -179,8 +179,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   const managedByWorkflow = new Map();
   const ownedEnv = (managed, harness) => {
     const base = childEnv(env);
-    // No start ticket: the owned record authorises this start, and an unbound ticket would admit a grandchild.
-    return managed && MANAGED_ENV_HARNESSES.has(harness) ? { ...base, [MANAGED_ENV]: "1" } : base;
+    // A fresh ticket per open and resume: the harness binds it at SessionStart, so a grandchild that inherits it is refused.
+    return managed && MANAGED_ENV_HARNESSES.has(harness) ? { ...base, ...noSubagentEnv(harness, base) } : base;
   };
   const find = (address) => sessions.get(address) || fail(404, "Unknown owned session");
 
@@ -317,6 +317,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     const adapter = adapterOf(s.record.harness);
     if (adapter.capabilities.resume === "none") fail(409, `${s.record.harness} sessions cannot resume`);
     s.resuming ??= (async () => {
+      // The harness's SessionStart reads this record, so the disk must already show the live status the runner holds.
+      save(s);
       // The owned record's /permission value first, else the registry entry's (setNextPermission), for this resume only.
       const cfg = configs.get(s.record.project);
       const claudePermission = s.record.claudePermission ?? (cfg ? nextPermission(cfg, { id: `${s.record.harness}#${s.record.label}`, label: s.record.label }) : undefined);

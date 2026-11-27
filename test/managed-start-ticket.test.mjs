@@ -2,11 +2,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadConfig, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, sessionLabel, stateDir } from "../lib/config.mjs";
+import { processStart } from "../lib/process.mjs";
 import { writeOwned } from "../lib/sessions/registry.ts";
 import {
   MANAGED_ENV, MANAGED_START_REFUSED, MANAGED_TICKET_ENV, managedStartAllowed, mintManagedTicket, noSubagentEnv, shellHarnessStart,
@@ -104,4 +105,28 @@ test("a Codex SessionStart refusal uses only fields Codex's output schema accept
   const r = await runHook(["--host", "codex"], { ...start("41111111-2222-3333-4444-555555555555"), model: "gpt-test", permission_mode: "default", transcript_path: null }, { ...env, [MANAGED_ENV]: "1" });
   assert.deepEqual(r, { continue: false, stopReason: MANAGED_START_REFUSED });
   assert.deepEqual(Object.keys(r).filter((k) => !CODEX_SESSION_START_KEYS.has(k)), []);
+});
+
+test("an owned session binds its ticket, so a grandchild with the inherited env is refused even for that session", (t) => {
+  const env = setup(t);
+  const id = "91111111-2222-3333-4444-555555555555";
+  const label = sessionLabel(id);
+  writeOwned(loadConfig(env, where(id)), { v: 1, label, address: `claude#${label}`, harness: "claude", nativeId: id, project: "demo", managed: true, status: "idle" });
+  const child = { ...env, [MANAGED_ENV]: "1", [MANAGED_TICKET_ENV]: mintManagedTicket(env) };
+  assert.equal(managedStartAllowed(child, where(id), { pid: 5, start: "1" }), true);
+  assert.equal(managedStartAllowed(child, where(id), { pid: 5, start: "1" }), true, "the same harness starts again (resume, compact)");
+  assert.equal(managedStartAllowed(child, where("a1111111-2222-3333-4444-555555555555"), { pid: 6, start: "1" }), false);
+  assert.equal(managedStartAllowed(child, where(id), { pid: 6, start: "1" }), false, "a grandchild resuming the owned session");
+});
+
+test("minting prunes tickets whose harness process has exited and keeps those of a running one", (t) => {
+  const env = setup(t);
+  const dir = join(stateDir(env), "managed-tickets");
+  const gone = mintManagedTicket(env);
+  const live = mintManagedTicket(env);
+  writeFileSync(join(dir, `${gone}.bound`), JSON.stringify({ pid: 999_999_999, start: "1" }));
+  writeFileSync(join(dir, `${live}.bound`), JSON.stringify({ pid: process.pid, start: processStart(process.pid) }));
+  mintManagedTicket(env);
+  assert.deepEqual([`${gone}.json`, `${gone}.bound`].map((f) => existsSync(join(dir, f))), [false, false]);
+  assert.deepEqual([`${live}.json`, `${live}.bound`].map((f) => existsSync(join(dir, f))), [true, true]);
 });

@@ -7,6 +7,7 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync }
 import { basename, join } from "node:path";
 import { MANAGED_ENV, SHELL_START_DENIED } from "./agent-guard.mjs";
 import { loadConfig, stateDir } from "./config.mjs";
+import { isRunning } from "./process.mjs";
 import { harnessOfBinary, type Harness } from "./harness.ts";
 import { readOwned } from "./sessions/registry.ts";
 import { hookReadCall } from "./store-read.mjs";
@@ -57,31 +58,45 @@ export function noSubagentArgs(harness: Harness): string[] {
   return [];
 }
 
-/** A new start ticket under the state dir that env names; old unused tickets are pruned. */
+/** A new start ticket under the state dir that env names; pruned: tickets whose harness exited, and unused ones after 7 days. */
 export function mintManagedTicket(env: Env): string {
   const dir = join(stateDir(env), "managed-tickets");
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const cutoff = Date.now() - TICKET_MAX_AGE_MS;
   for (const file of readdirSync(dir)) {
-    try { if (statSync(join(dir, file)).mtimeMs < cutoff) rmSync(join(dir, file), { force: true }); } catch { /* raced */ }
+    const path = join(dir, file);
+    try {
+      if (file.endsWith(".bound") && !isRunning(JSON.parse(readFileSync(path, "utf8")))) {
+        rmSync(path.replace(/\.bound$/, ".json"), { force: true });
+        rmSync(path, { force: true });
+      } else if (statSync(path).mtimeMs < cutoff) rmSync(path, { force: true });
+    } catch { /* raced or unreadable: the age rule removes it later */ }
   }
   const ticket = randomBytes(16).toString("hex");
   writeFileSync(join(dir, `${ticket}.json`), "{}\n", { mode: 0o600, flag: "wx" });
   return ticket;
 }
 
-/** Whether a SessionStart may proceed: unmanaged, a live owned record, or a ticket this harness process owns. */
+/**
+ * Whether a SessionStart may proceed: unmanaged, or a ticket this harness process owns (the first start binds it).
+ * Without a usable ticket, a live owned record for the session still allows it; a ticket bound to another process never does.
+ */
 export function managedStartAllowed(env: Env, where: { cwd: string; host: string; session: string }, proc: { pid: number; start: string | null }): boolean {
   if (!managedEnv(env)) return true;
+  const owned = ticketOwner(env, proc);
+  if (owned !== null) return owned;
   const cfg = loadConfig(env, where);
-  if (cfg.enabled && "stateDir" in cfg) {
-    const record = readOwned(cfg, where.session) as { status?: unknown } | null;
-    if (record && record.status !== "ended") return true;
-  }
+  if (!cfg.enabled || !("stateDir" in cfg)) return false;
+  const record = readOwned(cfg, where.session) as { status?: unknown } | null;
+  return Boolean(record && record.status !== "ended");
+}
+
+// Whether proc owns env's ticket, binding it on first use; null when env has no ticket file to bind.
+function ticketOwner(env: Env, proc: { pid: number; start: string | null }): boolean | null {
   const ticket = env[MANAGED_TICKET_ENV] ?? "";
-  if (!TICKET.test(ticket)) return false;
+  if (!TICKET.test(ticket)) return null;
   const dir = join(stateDir(env), "managed-tickets");
-  try { readFileSync(join(dir, `${ticket}.json`)); } catch { return false; }
+  try { readFileSync(join(dir, `${ticket}.json`)); } catch { return null; }
   const owner = JSON.stringify({ pid: proc.pid, start: proc.start });
   const bound = join(dir, `${ticket}.bound`);
   try {
