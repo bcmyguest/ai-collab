@@ -4,9 +4,18 @@ import { promisify } from "node:util";
 import { isRunning } from "./process.ts";
 
 const exec = promisify(execFile);
-const PROMPT = { claude: /^( *❯ +)/u, codex: /^( *› +)/u };
+// oxlint-disable-next-line quality/no-known-value-widening -- looked up by a runtime harness name
+const PROMPT: Record<string, RegExp> = { claude: /^( *❯ +)/u, codex: /^( *› +)/u };
 
-export function paneHasDraft(harness, tty, output) {
+/** The registry fields the draft check reads. */
+export interface DraftSession {
+  online?: boolean;
+  harness: string;
+  pid?: number;
+  pidStart?: string;
+}
+
+export function paneHasDraft(harness: string, tty: string, output: string): boolean {
   const [metadata, ...rows] = output.split("\n");
   const [paneTty, mode, x, y] = metadata.split(" ");
   if (paneTty !== tty || mode !== "0" || !/^\d+$/.test(x) || !/^\d+$/.test(y)) return false;
@@ -17,7 +26,7 @@ export function paneHasDraft(harness, tty, output) {
 }
 
 /** Best-effort local signal. Pane contents stay in memory and only the boolean leaves this function. */
-export async function terminalHasDraft(session, { env = process.env } = {}) {
+export async function terminalHasDraft(session: DraftSession | null | undefined, { env = process.env }: { env?: NodeJS.ProcessEnv } = {}): Promise<boolean> {
   if (!session?.online || !Object.hasOwn(PROMPT, session.harness)) return false;
   const { pid, pidStart: start, harness } = session;
   if (!isRunning({ pid, start })) return false;

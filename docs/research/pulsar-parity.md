@@ -46,7 +46,7 @@ Claude details to check before relying on the socket:
 | OpenCode | `/api/session/<id>/prompt` with `resume:true` | `delivery:"steer"` | user message | The plugin (`lib/opencode-plugin.mjs`) subscribes to ntfy itself and calls the same API, or the UI server does |
 | Cursor | none found | hooks only | followup at stop | Keep hooks; document the limit |
 
-Format pushed text like Pulsar (`[ai-collab] <name> (<harness>): <body>`, footer `— agent message · reply: respond m_…`) in `lib/format.mjs` (`formatInbox`), so hook, rewake and socket paths share one function.
+Format pushed text like Pulsar (`[ai-collab] <name> (<harness>): <body>`, footer `— agent message · reply: respond m_…`) in `lib/format.ts` (`formatInbox`), so hook, rewake and socket paths share one function.
 
 ## 4. Open decisions
 

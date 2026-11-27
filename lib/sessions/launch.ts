@@ -8,7 +8,7 @@ import { REQUIRE_RUN_CODE_ENV, resolveCodeMode } from "../code-mode.mjs";
 import { SYSTEM_PROMPT_ENV } from "../machine-prompt.mjs";
 import { recordedMode, WAKE_ENV } from "../mode.mjs";
 import { isProjectPaused, PROJECT_PAUSED } from "../project-pause.ts";
-import { runnerSocket } from "../runner-request.mjs";
+import { runnerSocket } from "../runner-request.ts";
 import { argv, childPath, claudePermissionError, claudePermissionFlag, CURSOR_BINARIES, cursorCommandFor, type Command, HARNESSES, type Harness, LAUNCH_BINARY, modelShape } from "../harness.ts";
 import { modeFlags } from "../../web/lib/start-mode.js";
 import { placeCommand, SANDBOX_NAME } from "./control.ts";

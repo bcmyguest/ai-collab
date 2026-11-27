@@ -4,7 +4,7 @@
  * reportToParent). docs/spawn-agent-spec.md Part B.
  */
 import { modelShape, parseHarnessModel } from "./harness.ts";
-import { runnerRequest, runnerSocket } from "./runner-request.mjs";
+import { runnerRequest, runnerSocket } from "./runner-request.ts";
 import { checkPrompt } from "./sessions/launch.ts";
 
 export const SPAWN_MAX_CHILDREN = 4; // live spawned children per parent

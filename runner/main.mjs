@@ -12,7 +12,7 @@ import { createRunner } from "./runner.mjs";
 import { listenControl, runnerSocket } from "./control.mjs";
 import { loadSchedules, registerSchedules } from "./schedules.mjs";
 import { startTaskWakes } from "./task-wake.mjs";
-import { acquireLock } from "./lock.mjs";
+import { acquireLock } from "./lock.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 

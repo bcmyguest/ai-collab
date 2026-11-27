@@ -1,8 +1,8 @@
 /**
  * Dispatcher in the UI server: pushes direct messages into Codex, OpenCode and Claude sessions.
- * Claude: a direct message goes to the session's messaging socket (lib/claude-socket.mjs) when the gate is open, and counts
+ * Claude: a direct message goes to the session's messaging socket (lib/claude-socket.ts) when the gate is open, and counts
  * as delivered only once the transcript shows it. Otherwise the waiter and hooks deliver it.
- * Codex: `codex queue --thread <id> --message <text> --resume`, only while the session is idle (lib/idle.mjs).
+ * Codex: `codex queue --thread <id> --message <text> --resume`, only while the session is idle (lib/idle.ts).
  * OpenCode: POST /api/session/<id>/prompt with delivery steer (urgent) or queue, and resume: true.
  * A pushed message is reserved before the push and marked delivered after it, so the session's hooks and the waiter skip it.
  * A failed push releases the reservation and backs off per (session, message). fyi and broadcast messages are never pushed.
@@ -14,8 +14,8 @@ import { join } from "node:path";
 import { broadcastTopic, inboxTopic, receiptsTopic } from "../../lib/config.mjs";
 import { backoffMs, MAX_ATTEMPTS, nextAction, REDELIVER_MS, TTL_MS } from "../../lib/delivery.ts";
 import { PUSHED, busyWithPush, direct, holdRunning, pushSession, readySession, runCommand } from "../../lib/deliver-push.mjs";
-import { formatInbox } from "../../lib/format.mjs";
-import { sessionIdleState } from "../../lib/idle.mjs";
+import { formatInbox } from "../../lib/format.ts";
+import { sessionIdleState } from "../../lib/idle.ts";
 import { claimInbox, ATTACHMENT_BUDGET_MS, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery, reservedMessage } from "../../lib/messaging.ts";
 import { cacheAttachmentsWithin } from "../../lib/attachment-cache.ts";
 import { pollCached } from "../../lib/messaging.ts";

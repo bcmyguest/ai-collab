@@ -9,7 +9,7 @@ import { HARNESSES } from "./contract.mjs";
 export const MAX_REQUEST_BYTES = 64 * 1024;
 const VERSION = 1;
 
-export { runnerSocket } from "../lib/runner-request.mjs";
+export { runnerSocket } from "../lib/runner-request.ts";
 
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
 

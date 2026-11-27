@@ -6,7 +6,7 @@ import { sessionLabel, SESSION_LABEL } from "../config.mjs";
 import { codexRequiredRunCodeArgs, REQUIRE_RUN_CODE_ENV } from "../code-mode.mjs";
 import { CODEX_HOOK_TRUST } from "../harness.ts";
 import { runningJobs } from "../job.ts";
-import { stripControl } from "../format.mjs";
+import { stripControl } from "../format.ts";
 import { isRunning } from "../process.ts";
 import { withLock, writeState } from "../state.ts";
 

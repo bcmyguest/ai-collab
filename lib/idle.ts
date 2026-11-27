@@ -10,7 +10,25 @@ import { activeOpencodeSessions } from "./opencode-api.mjs";
 
 const IDLE_EVENTS = new Set(["Stop", "SessionStart", "SessionEnd"]);
 
-function claudeStatus(session, home) {
+export type IdleState = "idle" | "busy" | "unknown";
+
+/** The registry fields the idle check reads. */
+export interface IdleSession {
+  harness?: string;
+  pid?: number;
+  sessionId?: string;
+  event?: string;
+  runningJobs?: number;
+}
+
+export interface IdleOptions {
+  env?: NodeJS.ProcessEnv;
+  home?: string;
+  active?: Set<string> | null;
+  fetchFn?: typeof fetch;
+}
+
+function claudeStatus(session: IdleSession, home: string): IdleState {
   try {
     const s = JSON.parse(readFileSync(join(home, ".claude", "sessions", `${session.pid}.json`), "utf8"));
     if (s.sessionId !== session.sessionId || typeof s.status !== "string") return "unknown";
@@ -21,18 +39,18 @@ function claudeStatus(session, home) {
 }
 
 /** "idle", "busy" or "unknown" for a registry session. active is a precomputed set of running OpenCode session ids. */
-export async function sessionIdleState(session, { env = process.env, home = env.HOME || homedir(), active, fetchFn } = {}) {
-  if (session.runningJobs > 0) return "busy";
+export async function sessionIdleState(session: IdleSession, { env = process.env, home = env.HOME || homedir(), active, fetchFn }: IdleOptions = {}): Promise<IdleState> {
+  if ((session.runningJobs as number) > 0) return "busy";
   switch (session.harness) {
     case "claude": return Number.isInteger(session.pid) ? claudeStatus(session, home) : "unknown";
     case "opencode": {
       const ids = active === undefined ? await activeOpencodeSessions({ env, fetchFn }) : active;
       if (!ids) return "unknown";
-      return ids.has(session.sessionId) ? "busy" : "idle";
+      return ids.has(session.sessionId as string) ? "busy" : "idle";
     }
     case "codex":
     case "cursor":
-      return IDLE_EVENTS.has(session.event) ? "idle" : "busy";
+      return IDLE_EVENTS.has(session.event as string) ? "idle" : "busy";
     default: return "unknown";
   }
 }

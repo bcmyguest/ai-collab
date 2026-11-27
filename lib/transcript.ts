@@ -10,15 +10,19 @@ import { closeSync, openSync, readSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { operatorPrompt } from "./mode.mjs";
+// oxlint-disable-next-line typescript/no-explicit-any -- transcript JSONL entries; each field is checked before use
+type Json = any;
 
 const READ_MAX_BYTES = 4 * 1024 * 1024;
+
+type QueueCheck = () => boolean;
 /** True when queued content came from the operator. */
-export function queuedByOperator(content, env = process.env) {
+export function queuedByOperator(content: unknown, env: NodeJS.ProcessEnv = process.env): boolean {
   return typeof content === "string" && operatorPrompt(content, env);
 }
 
 // Bytes [from, to) of the file as text.
-function readRange(path, from, to) {
+function readRange(path: string, from: number, to: number): string {
   const fd = openSync(path, "r");
   try {
     const data = Buffer.alloc(to - from);
@@ -33,8 +37,8 @@ function readRange(path, from, to) {
  * check() that reads the complete JSON lines appended to path since the watch began and reports
  * whether any satisfies match(entry). Null when the file is unreadable now.
  */
-function watchAppended(path, match) {
-  let offset;
+function watchAppended(path: string, match: (entry: Record<string, Json>) => boolean): QueueCheck | null {
+  let offset: number;
   try {
     offset = statSync(path).size;
   } catch {
@@ -50,9 +54,9 @@ function watchAppended(path, match) {
       if (size - from > READ_MAX_BYTES) { from = size - READ_MAX_BYTES; partial = ""; }
       const lines = (partial + readRange(path, from, size)).split("\n");
       offset = size;
-      partial = lines.pop();
+      partial = lines.pop() as string;
       for (const line of lines) {
-        let entry;
+        let entry: Json;
         try { entry = JSON.parse(line); } catch { continue; }
         if (entry && typeof entry === "object" && match(entry)) return true;
       }
@@ -67,7 +71,7 @@ function watchAppended(path, match) {
  * For a Stop hook: a check() reporting whether the operator queued a prompt in this session since the watch began.
  * Claude reads transcript_path, Codex reads history.jsonl; other harnesses and unreadable files return null.
  */
-export function watchQueue(host, input = {}, { env = process.env, now = Date.now } = {}) {
+export function watchQueue(host: string, input: { transcript_path?: unknown; session_id?: unknown } = {}, { env = process.env, now = Date.now }: { env?: NodeJS.ProcessEnv; now?: () => number } = {}): QueueCheck | null {
   if (host === "claude") {
     const path = input.transcript_path;
     if (typeof path !== "string" || !isAbsolute(path)) return null;
