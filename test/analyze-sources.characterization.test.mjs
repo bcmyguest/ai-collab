@@ -69,6 +69,13 @@ test("taskStoreSource reads every task file and counts each task's progress entr
   ]);
 });
 
+test("taskStoreSource keeps a missing id and a zero timestamp as they are; a missing progress counts 0", async () => {
+  const h = home();
+  put(join(h, ".local/share/ai-collab/tasks/c.json"), JSON.stringify({ tasks: [{ status: "done", updated: 0, created: 5 }] }));
+  const { tasks } = await taskStoreSource({ home: h }).load();
+  assert.deepEqual(tasks, [{ id: undefined, status: "done", updated: 0, created: 5, progress: 0 }]);
+});
+
 test("taskStoreSource with no tasks directory returns an empty list", async () => {
   const { tasks } = await taskStoreSource({ home: home() }).load();
   assert.deepEqual(tasks, []);
