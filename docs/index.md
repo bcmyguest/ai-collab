@@ -20,6 +20,7 @@ The peer hooks and MCP server need only Node 24+ (builtin `fetch`). The operator
 | [Approvals and questions](approvals.md) | Permission prompts and questions answered from the phone |
 | [Run in terminal](run-in-terminal.md) | An agent proposes a script; the operator reads it and clicks Run on the phone (off by default) |
 | [Messaging](messaging.md) | CLI and MCP tools, Stop continuation, receipts |
+| [Threads](threads.md) | The operator's conversation, worktree and sessions as one durable object on the Postgres bus |
 | [Tasks](tasks.md) | Project task store, `ai-collab task`, status board and dependency graph |
 | [PM mission file](mission.md) | `MISSION.md`: the mission, goals and rules the PM owns, and the review each run ends with |
 | [Builders](builders.md) | `ai-collab builder start`: one builder per task, each in its own OpenShell sandbox |

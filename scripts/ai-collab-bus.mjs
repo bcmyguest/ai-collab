@@ -5,10 +5,12 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { configDir, stateDir } from "../lib/config.mjs";
+import { configDir, listProjects, loadProjects, stateDir } from "../lib/config.mjs";
 import { DEFAULT_RETENTION_MS, openBus, resolveBusStoreKind } from "../lib/bus.mjs";
 import { openPostgresBusStore } from "../lib/bus-postgres.mjs";
 import { pgUrl } from "../lib/postgres.mjs";
+import { listOwned, listSessions } from "../lib/sessions.mjs";
+import { threadSessionsOf } from "../lib/threads.mjs";
 
 function busToken(env) {
   if (env.AI_COLLAB_BUS_TOKEN !== undefined) return env.AI_COLLAB_BUS_TOKEN.trim();
@@ -40,6 +42,21 @@ function busPort(env) {
   return 8794;
 }
 
+/** The thread backfill (docs/threads.md): every registered project's unassigned sessions get a thread. Idempotent. */
+export async function backfillThreads(threads, env, log) {
+  const roots = new Map(listProjects(env).map((entry) => [entry.project, entry.root]));
+  for (const cfg of loadProjects(env, { host: "operator" })) {
+    const root = roots.get(cfg.project) || "";
+    try {
+      const sessions = threadSessionsOf({ sessions: listSessions(cfg), owned: listOwned(cfg), root });
+      const { assigned, created } = await threads.sync({ project: cfg.project, root, sessions });
+      if (assigned.length) log(`threads: ${cfg.project}: ${assigned.length} session(s) assigned, ${created} thread(s) created`);
+    } catch (error) {
+      log(`threads: ${cfg.project}: backfill failed: ${error.message}`);
+    }
+  }
+}
+
 export async function main(env = process.env) {
   const log = (message) => process.stderr.write(`ai-collab-bus: ${message}\n`);
   const token = busToken(env);
@@ -53,6 +70,7 @@ export async function main(env = process.env) {
   const store = kind === "postgres"
     ? await openPostgresBusStore({ url: pgUrl(env), filesDir: path.join(dataDir, "files"), retentionMs, log })
     : undefined;
+  if (store?.threads) await backfillThreads(store.threads, env, log);
   const bus = openBus({ dataDir, token, retentionMs, baseUrl: env.AI_COLLAB_BUS_BASE_URL || "", store });
   const port = busPort(env);
   const url = await bus.listen(port, "127.0.0.1");
