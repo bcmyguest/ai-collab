@@ -36,7 +36,7 @@ import { alertLimit } from "../lib/limit-alert.mjs";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, LIMIT, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, OPENSHELL_PERMISSION, permissionSettings, runnerModeOfClaude } from "./contract.mjs";
 import { sessionOfCommand } from "../lib/schedule-session.mjs";
 import { ALLOW_HOST_AGENT_ENV } from "../lib/agent-guard.mjs";
-import { noSubagentEnv } from "../lib/subagent-guard.ts";
+import { MANAGED_ENV } from "../lib/subagent-guard.ts";
 import { SPAWN_MAX_CHILDREN, SPAWN_MAX_DEPTH, spawnBriefNote, spawnReport, spawnSelfNote } from "../lib/spawn.ts";
 import { sandboxCapRefusal, sandboxName, teamSandboxName } from "./sandbox.mjs";
 import { DELIVERY, deliveryWorkflow } from "./delivery.mjs";
@@ -178,7 +178,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   const managedByWorkflow = new Map();
   const ownedEnv = (managed, harness) => {
     const base = childEnv(env);
-    return managed && MANAGED_ENV_HARNESSES.has(harness) ? { ...base, ...noSubagentEnv(harness, base) } : base;
+    // No start ticket: the owned record authorises this start, and an unbound ticket would admit a grandchild.
+    return managed && MANAGED_ENV_HARNESSES.has(harness) ? { ...base, [MANAGED_ENV]: "1" } : base;
   };
   const find = (address) => sessions.get(address) || fail(404, "Unknown owned session");
 
