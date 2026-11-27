@@ -9,7 +9,7 @@ import { stateDir } from "../config.mjs";
 import { PROMPT_MAX_CHARS } from "../start.mjs";
 import { cursorLimitFile, cursorLimitUntil, detectLimit, fallbackChain, isBlockingLimit, recordCursorLimit } from "../limits.ts";
 import { listModels } from "../models.mjs";
-import { traceStream } from "../cursor-trace.mjs";
+import { traceStream } from "../cursor-trace.ts";
 import { OUT, SANDBOX, WORK } from "../sandbox.ts";
 import { BUILDER_HARNESSES, DEFAULT_MODEL, BASE_REF, SYNC_TIMEOUT_MS, readState, updateState } from "./state.ts";
 import type { BuilderPaths, BuilderState, Env } from "./state.ts";
@@ -145,7 +145,7 @@ export async function runSandboxAgent(state: BuilderState, paths: BuilderPaths, 
   const stop = () => child.kill("SIGTERM");
   signal?.addEventListener("abort", stop, { once: true });
   // A Cursor builder's stream-json passes through to the log and becomes its OTLP trace (model, tokens, tool calls).
-  const trace = cursor ? traceStream(child.stdout, { env, out: process.stdout, role: "builder", model: state.model }) : null;
+  const trace = cursor ? traceStream(child.stdout!, { env, out: process.stdout, role: "builder", model: state.model }) : null;
   let errorTail = "";
   let cursorLimit: string | undefined;
   let usageLimit = false;
