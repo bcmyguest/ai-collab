@@ -465,3 +465,15 @@ The operator answered the open questions on 2026-11-27:
 6. **Permission mode:** the operator skipped this question, so the standing rule applies: team members run in auto mode. Spawned children default to `auto`. This is a default, not a fixed rule; change it in `runner/runner.mjs` `start`. The runner has no `auto` mode for OpenCode or Cursor (`runner/contract.mjs` `PERMISSION_TABLE`), so those children take the mode a team member of that harness gets today (`supervised` on the host).
 7. **Shell starts:** a harness started from the shell inside a managed session is refused (B11 step 3).
 8. **Blocking:** the parent does not block. `spawn_agent` returns the child's address at once.
+
+## Implementation notes
+
+Where the built code differs from the text above (branch `feat/spawn-agent`):
+
+- **Managed env scope.** `AI_COLLAB_MANAGED=1` goes only to processes that serve one managed session or only managed sessions: a managed Claude child, the managed Codex app-server and detached `ai-collab team start` children. The OpenCode service and Cursor ACP get no new env; their gates read the owned record (`managedOwned` in `lib/subagent-guard.ts`).
+- **Codex.** Managed sessions always run on the second app-server (answer 5), because the shared app-server takes its env from the first session that starts it and must not carry the managed marker. The per-thread `config` keys are not sent. N2 confirmed the app-server applies the `-c` flags.
+- **Shell-start gates.** No Claude or Cursor "harness-flag check" existed, so `managedShellStartRefusal` runs in the hook read-gate (Claude and OpenCode `Bash`, Cursor `beforeShellExecution`) and in `lib/job.ts`. Codex shells have no gate: Codex `PreToolUse` runs `--activity` only. The command check is a heuristic: it strips env assignments and wrappers (`env`, `nohup`, `exec`, `command`, `time`, `setsid`, `nice`) but misses `bash -c "…"`.
+- **Child cap race.** The runner counts spawns that are still opening against the cap, so parallel `spawn_agent` calls cannot exceed 4.
+- **Wake path.** A detached managed session resumed by a wake gets no no-subagent argv; the hook backstop covers Claude.
+- **Brief note.** The parent line is added in `runner/runner.mjs` `start` (`lib/spawn.ts` `spawnBriefNote`) and counts against the 4000-char limit.
+- **`childHint`** takes no host argument; the hook passes `cfg` only.
