@@ -8,6 +8,8 @@ import { A2UI_CATALOG_ID } from "./a2ui.js";
 export const OptionPickerApi = {
   name: "OptionPicker",
   schema: z.object({
+    // The question, shown above the options and naming the group.
+    label: z.string().optional(),
     options: z.array(z.object({
       label: z.string(),
       value: z.string(),
@@ -26,7 +28,7 @@ export const OptionPickerApi = {
 // A short tag, such as a question's header or a status badge.
 export const ChipApi = {
   name: "Chip",
-  schema: z.object({ text: z.string(), tone: z.enum(["default", "muted"]).optional() }),
+  schema: z.object({ text: z.string(), tone: z.enum(["default", "muted", "accent"]).optional() }),
 };
 
 /** A catalog of the basic components and the given custom ones (API objects or React implementations). */

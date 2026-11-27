@@ -5,8 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MessageContent } from "@/components/ui/message";
 import { Textarea } from "@/components/ui/textarea";
+import { ChoiceList, ChoiceSummary } from "@/components/ui/choice-list";
+import { Input } from "@ui-sdk/react/input";
 import { cn } from "@/lib/utils";
-import { IN_TERMINAL, SKIPPED, approvalOutcome, approvalSurfaceId, questionText, questionSurfaceId, terminalHint } from "@/lib/a2ui";
+import { BLOCKING_LABEL, IN_TERMINAL, SKIPPED, approvalOutcome, isBlocking, approvalSurfaceId, questionText, questionSurfaceId, terminalHint } from "@/lib/a2ui";
 import { CARD, Surface } from "@/components/a2ui/surface";
 import { ConfirmButton } from "./pattern-graph";
 
@@ -19,42 +21,42 @@ export function ChoiceCard({ questions, answers, onSubmit, disabled, title }) {
   const readOnly = !onSubmit || Boolean(answers);
   const value = i => [...picked[i], ...(other[i].trim() ? [other[i].trim()] : [])].join(", ");
   const complete = questions.every((_, i) => value(i));
-  function toggle(i, label, multi) {
-    setPicked(list => list.map((items, j) => j !== i ? items : multi ? (items.includes(label) ? items.filter(x => x !== label) : [...items, label]) : [label]));
+  function pick(i, next, multi) {
+    setPicked(list => list.map((items, j) => j === i ? next : items));
     if (!multi) setOther(list => list.map((text, j) => j === i ? "" : text));
   }
   return <div className={cn(CARD, "flex flex-col gap-3")} data-card="choice">
     {title && <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><CircleHelp className="size-3.5"/>{title}</p>}
     {questions.map((q, i) => {
-      const chosen = answers?.[q.question];
-      return <fieldset key={i} className="flex min-w-0 flex-col gap-2">
-        <legend className="flex max-w-full flex-wrap items-center gap-2 pb-1 wrap-anywhere">
+      const chosen = String(answers?.[q.question] ?? "");
+      const labels = chosen ? chosen.split(", ") : [];
+      const typed = labels.some(label => !q.options.some(o => o.label === label));
+      return <section key={q.question} className={cn("flex min-w-0 flex-col gap-2", i > 0 && "border-t pt-3")}>
+        {(q.header || questions.length > 1) && <div className="flex min-w-0 items-center justify-between gap-2">
           {q.header && <Badge variant="secondary" className="min-h-5 max-w-full px-2 text-xs wrap-anywhere whitespace-normal">{q.header}</Badge>}
-          <span className="font-medium">{q.question}</span>
-          {q.multiSelect && <span className="text-xs text-muted-foreground">pick any</span>}
-        </legend>
-        {q.options.map(option => {
-          const on = readOnly ? String(chosen || "").split(", ").includes(option.label) : picked[i].includes(option.label);
-          return <button key={option.label} type="button" role={q.multiSelect ? "checkbox" : "radio"} aria-checked={on} disabled={readOnly || disabled}
-            onClick={() => toggle(i, option.label, q.multiSelect)}
-            className={cn("flex min-h-11 w-full min-w-0 flex-col gap-1 rounded-xl border px-3 py-2 text-left transition-colors enabled:hover:bg-accent disabled:cursor-default",
-              on && "border-primary bg-primary/10")}>
-            <span className="flex min-w-0 items-start gap-2 font-medium">
-              <span aria-hidden className={cn("mt-0.5 grid size-4 shrink-0 place-items-center border", q.multiSelect ? "rounded" : "rounded-full", on && "border-primary bg-primary text-primary-foreground")}>{on && <Check className="size-3"/>}</span>
-              <span className="min-w-0 wrap-anywhere">{option.label}</span>
-            </span>
-            {option.description && <span className="min-w-0 pl-6 text-sm wrap-anywhere text-muted-foreground">{option.description}</span>}
-            {option.preview && <pre className="ml-6 max-h-48 overflow-auto wrap-anywhere rounded-lg border bg-muted/50 px-2 py-1.5 font-mono text-xs whitespace-pre-wrap">{option.preview}</pre>}
-          </button>;
-        })}
-        {!readOnly && <Textarea aria-label={"Other answer: " + q.question} placeholder="Other…" value={other[i]} disabled={disabled}
-          onChange={event => { const text = event.target.value; setOther(list => list.map((v, j) => j === i ? text : v)); if (!q.multiSelect && text) setPicked(list => list.map((v, j) => j === i ? [] : v)); }}
-          className="min-h-9 text-sm"/>}
-        {readOnly && chosen && !q.options.some(o => String(chosen).split(", ").includes(o.label)) && <p className="text-xs">Answer: <span className="font-medium">{chosen}</span></p>}
-      </fieldset>;
+          {questions.length > 1 && <span className="text-xs text-muted-foreground">{i + 1} of {questions.length}</span>}
+        </div>}
+        {readOnly ? <>
+          <ChoiceSummary question={q.question} chosen={labels.filter(label => q.options.some(o => o.label === label))}/>
+          {typed && <p className="text-sm">Answer: <span className="font-medium">{chosen}</span></p>}
+          {!answers && <ul className="flex list-disc flex-col gap-0.5 pl-5 text-sm text-muted-foreground">
+            {q.options.map(o => <li key={o.label} className="wrap-anywhere"><span className="text-foreground">{o.label}</span>{o.description && " · " + o.description}</li>)}
+          </ul>}
+        </> : <ChoiceList question={q.question} options={q.options} multiSelect={q.multiSelect === true} value={picked[i]} disabled={disabled}
+          onValueChange={next => pick(i, next, q.multiSelect === true)}>
+          <label className="flex min-w-0 flex-col gap-1 pt-0.5">
+            <span className="text-xs text-muted-foreground">Or write your own answer</span>
+            <Input aria-label={"Other answer: " + q.question} placeholder="Other answer" value={other[i]} disabled={disabled}
+              onValueChange={text => { setOther(list => list.map((v, j) => j === i ? text : v)); if (!q.multiSelect && text) setPicked(list => list.map((v, j) => j === i ? [] : v)); }}
+              className="h-11 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-base text-foreground placeholder:text-muted-foreground sm:h-9 sm:text-sm"/>
+          </label>
+        </ChoiceList>}
+      </section>;
     })}
-    {!readOnly && <Button size="sm" className="self-start rounded-md" disabled={disabled || !complete}
-      onClick={() => onSubmit(Object.fromEntries(questions.map((q, i) => [q.question, value(i)])))}>Submit</Button>}
+    {!readOnly && <div className="flex justify-end">
+      <Button className="h-11 rounded-md px-4 sm:h-8 sm:px-3.5" disabled={disabled || !complete}
+        onClick={() => onSubmit(Object.fromEntries(questions.map((q, i) => [q.question, value(i)])))}>Submit</Button>
+    </div>}
   </div>;
 }
 
@@ -68,8 +70,11 @@ export function ApprovalCard({ skip, ...props }) {
   const open = !approvalOutcome(props.approval, props.now);
   // A view-only card closes in the terminal, and a runner session has no terminal prompt to fall back on.
   const skippable = skip && open && !props.approval.terminal && !props.approval.owned;
+  // A choice reads as a question; the chat message header above it already names the agent.
+  const count = props.approval.questions?.length ?? 0;
+  const kind = count > 1 ? count + " questions" : count ? "Question" : "Approval";
   return <>
-    <Surface id={approvalSurfaceId(props.approval.id)} head={props.head} kind="Approval" open={open} fallback={<LegacyApprovalCard {...props}/>}/>
+    <Surface id={approvalSurfaceId(props.approval.id)} head={count ? undefined : props.head} kind={kind} open={open} fallback={<LegacyApprovalCard {...props}/>}/>
     {skippable && <SkipButton disabled={props.disabled} onSkip={() => skip({ id: props.approval.id })}/>}
   </>;
 }
@@ -114,6 +119,7 @@ export function LegacyQuestionCard({ body, answer, by, skipped, disabled, onAnsw
   const [draft, setDraft] = useState("");
   return <div className={cn(CARD, "flex flex-col gap-2", !answer && !skipped && "border-primary/50")} data-card="question">
     <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><CircleHelp className="size-3.5"/>Question</p>
+    {!answer && !skipped && isBlocking(body) && <Badge variant="secondary" className="h-5 border-primary/40 bg-primary/10 px-2 text-xs font-medium text-primary">{BLOCKING_LABEL}</Badge>}
     <MessageContent markdown taskLinks={taskLinks} className="bubble max-w-full bg-transparent p-0 text-base leading-relaxed">{typeof body === "string" ? questionText(body) : body}</MessageContent>
     {answer ? <p className="text-xs text-muted-foreground">Answered: <span className="font-medium text-foreground">{answer}</span>{by && " · " + by}</p>
       : skipped ? <p className="text-xs text-muted-foreground" data-outcome="skipped">{SKIPPED}</p>
