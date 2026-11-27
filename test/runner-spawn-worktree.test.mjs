@@ -13,7 +13,7 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 
 const ID = ["-c", "user.name=Test", "-c", "user.email=test@example.invalid"];
 
-test("two worktree spawns in the same second each get their own worktree and branch", async (t) => {
+test("parallel worktree spawns in the same second each get their own worktree and branch", async (t) => {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
   const home = mkdtempSync(path.join(os.tmpdir(), "ai-collab-spawn-worktree-"));
@@ -33,9 +33,9 @@ test("two worktree spawns in the same second each get their own worktree and bra
   t.after(() => runner.stop());
   const parent = (await runner.start({ project: "demo", harness: "codex", prompt: "parent" })).session;
   const spawn = (prompt) => runner.start({ project: "demo", harness: "codex", prompt, place: "worktree", managed: true, parent, spawn: true, system: false });
-  const [a, b] = [await spawn("first"), await spawn("second")];
-  assert.deepEqual([a.status, b.status], ["started", "started"]);
-  assert.notEqual(a.cwd, b.cwd);
+  const children = await Promise.all(["first", "second", "third", "fourth"].map(spawn));
+  assert.deepEqual(children.map((c) => c.status), ["started", "started", "started", "started"]);
+  assert.equal(new Set(children.map((c) => c.cwd)).size, 4);
   const branches = execFileSync("git", ["-C", root, "branch", "--format=%(refname:short)"], { encoding: "utf8" }).split("\n").filter((n) => n.startsWith("ai-collab/"));
-  assert.equal(branches.length, 2);
+  assert.equal(branches.length, 4);
 });
