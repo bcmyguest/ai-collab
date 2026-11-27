@@ -61,7 +61,7 @@ export async function teamStart(cfg: CatalogConfig, name: string, member: string
   if (checked.error) throw new Error(checked.error);
   const parsed = parseHarnessModel(member);
   if (!parsed) throw new Error(`"${member}" is not a harness or harness:model`);
-  const result = await start(cfg, { harness: parsed.harness, prompt: checked.text, system: true, env, place: "folder", claudePermission: permission ?? "auto", ...(parsed.model ? { model: parsed.model } : {}) });
+  const result = await start(cfg, { harness: parsed.harness, prompt: checked.text, system: true, env, place: "folder", managed: true, claudePermission: permission ?? "auto", ...(parsed.model ? { model: parsed.model } : {}) });
   if (typeof result.session === "string") await recordTeamSession(cfg, name, member, result.session);
   return { team: name, member, ...result };
 }

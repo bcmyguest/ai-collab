@@ -46,7 +46,7 @@ const BINARY_HARNESS = new Map<string, Harness>([
 ]);
 
 export type ArgvOpts = {
-  start: { root: string; prompt: string; worktree?: string; model?: string; mode?: string; permission?: string; codeMode?: boolean; requireRunCode?: boolean };
+  start: { root: string; prompt: string; worktree?: string; model?: string; mode?: string; permission?: string; codeMode?: boolean; requireRunCode?: boolean; noSubagents?: string[] };
   wake: { id: string; prompt: string; requireRunCode?: boolean; path?: string; permission?: string };
   compact: { id: string };
   queue: { id: string; text: string };
@@ -134,17 +134,19 @@ export function claudePermissionFlag(setting: string, afk: boolean): string | un
   return afk ? "default" : undefined;
 }
 
-// A start's argv: the mode flags, Codex code mode, and the model after the mode flags. Null for a model or mode it cannot pass.
+// A start's argv: the mode flags, Codex code mode, the model after the mode flags, and a managed start's no-subagent args
+// last before the prompt. Null for a model or mode it cannot pass.
 function startArgv(harness: Harness, o: ArgvOpts["start"]): Command | null {
   if (o.model !== undefined && !modelShape(harness, o.model)) return null;
   const chosen = modeFlags(harness, o.mode ?? "agent");
   if (!chosen) return null;
   const flag = (name: string) => (o.model === undefined ? [] : [name, o.model]);
+  const off = o.noSubagents ?? [];
   switch (harness) {
     // A plan mode's own --permission-mode wins over the configured permission mode.
-    case "claude": return [LAUNCH_BINARY.claude, ["--bg", ...(o.worktree ? ["--worktree", o.worktree] : []), ...(chosen.length ? chosen : o.permission ? ["--permission-mode", o.permission] : []), ...flag("--model"), o.prompt]];
+    case "claude": return [LAUNCH_BINARY.claude, ["--bg", ...(o.worktree ? ["--worktree", o.worktree] : []), ...(chosen.length ? chosen : o.permission ? ["--permission-mode", o.permission] : []), ...flag("--model"), ...off, o.prompt]];
     // Codex code mode is a feature flag; Claude --bg refuses code mode (background job), so it gets nothing.
-    case "codex": return [LAUNCH_BINARY.codex, ["exec", "--json", CODEX_HOOK_TRUST, ...(typeof o.codeMode === "boolean" ? codexCodeModeArgs(o.codeMode) : []), ...(o.requireRunCode ? codexRequiredRunCodeArgs() : []), ...chosen, ...flag("-m"), o.prompt]];
+    case "codex": return [LAUNCH_BINARY.codex, ["exec", "--json", CODEX_HOOK_TRUST, ...(typeof o.codeMode === "boolean" ? codexCodeModeArgs(o.codeMode) : []), ...(o.requireRunCode ? codexRequiredRunCodeArgs() : []), ...chosen, ...flag("-m"), ...off, o.prompt]];
     case "cursor": return [LAUNCH_BINARY.cursor, ["-p", "--trust", "--output-format", "stream-json", "--workspace", o.root, ...chosen, ...flag("--model"), o.prompt]];
     // `opencode run` works in its cwd (the project root or a worktree); --format json prints one event per line.
     case "opencode": return [LAUNCH_BINARY.opencode, ["run", "--format", "json", ...chosen, ...flag("-m"), o.prompt]];
