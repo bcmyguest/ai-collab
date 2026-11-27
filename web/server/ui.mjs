@@ -33,7 +33,7 @@ import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } 
 import { START_HARNESSES, availableHarnesses, availablePlaces, claudePermissionFor, defaultStartPlace, findExecutable, openshellHarnesses, openshellRunner, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
 import { codeModeDefault } from "../../lib/code-mode.mjs";
 import { cleanName } from "../../lib/sessions/registry.ts";
-import { REF_NAME_MAX, gitRunner, listBranches, listWorktrees, parseWorktreeList, pickedWorktree, prHead, refInputError } from "../../lib/sessions/git-refs.ts";
+import { REF_NAME_MAX, gitRunner, listBranches, listWorktrees, parseWorktreeList, pickedWorktree, prHead, refInputError, untrackedDiff } from "../../lib/sessions/git-refs.ts";
 import { listModels } from "../../lib/models.mjs";
 import { LIMIT_TOOL, chooseLimit, limitEndMessage, skipLimit } from "../../lib/limit-alert.ts";
 import { limitEndNotice } from "../../lib/start-limit.mjs";
@@ -53,7 +53,7 @@ import { shippedTasks } from "./shipped.mjs";
 import { taskBoard } from "./task-board.mjs";
 import { advanceRun, listRuns, rolesByAddress, startRun } from "../../lib/pattern-runs.mjs";
 import { formatTeamOrchestrator } from "../../lib/format.mjs";
-import { activityRows, groupSubagents, summarize } from "../lib/activity-rows.js";
+import { activityRows, groupSubagents, summarize, turnStarts } from "../lib/activity-rows.js";
 import { childRuns } from "../lib/child-subagents.js";
 import { fallbackName, sessionCounts, shownOnline, visibleWake, waitingOn } from "../lib/session-state.js";
 import { createHostedUi } from "./hosted.mjs";
@@ -106,6 +106,8 @@ const IMPORTANT_PREFIX = "IMPORTANT, the agent waits for this answer: ";
 const PUSH_ACTIONS = ["key", "subscribe", "test"];
 // A review diff is plain text in one response; past this it is a download, not a phone view.
 const DIFF_MAX_BYTES = 4 * 1024 * 1024;
+// Largest untracked file the thread diff shows as an addition.
+const UNTRACKED_FILE_BYTES = 512 * 1024;
 const REF_KINDS = ["branches", "worktrees"];
 const PR_QUERY = /^#([1-9][0-9]{0,6})$/;
 // A question or approval reply the UI sent for a signed-in user names them in its reply title.
@@ -825,6 +827,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     }
     const pending = pendingBySender(project, list);
     const membership = rolesByAddress(listRuns(cfg));
+    const turns = turnStarts(rows);
     return shown.map(agent => {
       const row = latest.get(agent.id);
       const lastAt = row ? Math.max(row.time, ...(row.rows || []).map(r => r.time)) * 1000 : 0;
@@ -832,7 +835,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       // Unfinished runs; the browser counts only those with a row in the last 2 min (runState).
       const subagents = (runs.get(agent.id) || []).map(run => ({ id: run.id, agent: run.agent, run: run.run, kind: run.kind, description: run.description, steps: run.steps, time: run.time, lastTime: run.lastTime, last: run.last, open: run.open }));
       return {
-        ...agent, project: cfg.project, harness: peerOf(agent.id), online: shownOnline(agent), lastActivityAt: lastAt, ...(open ? { openCallAt: lastAt } : {}),
+        ...agent, project: cfg.project, harness: peerOf(agent.id), online: shownOnline(agent), lastActivityAt: lastAt, ...(open ? { openCallAt: lastAt } : {}), ...(turns.has(agent.id) ? { turnStartAt: turns.get(agent.id) } : {}),
         // Only the Stop hook's own "hold" status marks a hold; an ordinary turn end publishes "stop".
         afkHold: mode !== "off" && statuses.get(agent.id)?.event === "hold" && row?.type === "stop",
         ...(lastAction.has(agent.id) ? { lastAction: lastAction.get(agent.id) } : {}), subagents, pending: pending.get(agent.id) || [],
@@ -1195,8 +1198,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         const owned = agent.peer === "claude" && agent.id === session ? readOwned(project.cfg, agent.session) : null;
         const modelControl = owned?.address === agent.id && ["idle", "running"].includes(owned.status)
           ? { current: owned.model || "", busy: owned.status === "running" } : null;
-        const { lastActivityAt, openCallAt, afkHold, pending, team, role } = card || {};
-        const base = { ...agent, lastActivityAt, openCallAt, afkHold, pending, ...(team ? { team, role } : {}), ...(subagents.length ? { subagents } : {}), ...(modelControl ? { modelControl } : {}) };
+        const { lastActivityAt, openCallAt, turnStartAt, afkHold, pending, team, role } = card || {};
+        const base = { ...agent, lastActivityAt, openCallAt, turnStartAt, afkHold, pending, ...(team ? { team, role } : {}), ...(subagents.length ? { subagents } : {}), ...(modelControl ? { modelControl } : {}) };
         // Context telemetry and instruction files from the session's state file (lib/usage.mjs).
         const context = readContext({ stateDir: project.cfg.stateDir, project: project.cfg.project, peer: agent.peer, session: agent.session });
         const withContext = context.tokens !== null || context.files.length ? { ...base, context } : base;
@@ -1506,7 +1509,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   /**
-   * A thread's changes as plain text: its worktree against the merge-base with its base ref, uncommitted edits included.
+   * A thread's changes as plain text: its worktree against the merge-base with its base ref, uncommitted edits and
+   * untracked files included.
    * The worktree must be one git lists for the project checkout, so a stored path cannot point the diff elsewhere.
    */
   async function threadDiff(request) {
@@ -1536,7 +1540,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       if (!base) reject(409, "No base ref resolves for this thread");
       const { stdout } = await runFile(gitFile, ["diff", "--no-ext-diff", "--no-textconv", base, "--"],
         { cwd: tree, env, timeout: 10_000, maxBuffer: DIFF_MAX_BYTES }).catch(() => reject(422, "The thread diff is unavailable or larger than 4 MiB"));
-      return new Response(stdout, { headers: {
+      const added = await untrackedDiff(gitFile, tree, env, { fileBytes: UNTRACKED_FILE_BYTES, totalBytes: DIFF_MAX_BYTES - Buffer.byteLength(stdout) });
+      return new Response(stdout + added, { headers: {
         "Content-Type": "text/plain; charset=utf-8",
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "no-store",

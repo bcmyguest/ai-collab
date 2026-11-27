@@ -88,6 +88,18 @@ export function activityRows(items) {
   return rows.filter(row => !used.has(row));
 }
 
+/** When each session's running turn began (ms): its first prompt row after its newest stop row; a stopped session has none. */
+export function turnStarts(rows) {
+  const stops = new Map();
+  for (const row of rows) if (row.type === "stop" && !row.subagent?.id) stops.set(row.agent, Math.max(stops.get(row.agent) ?? -Infinity, row.time));
+  const starts = new Map();
+  for (const row of rows) {
+    if (row.type !== "prompt" || row.subagent?.id || row.time <= (stops.get(row.agent) ?? -Infinity)) continue;
+    starts.set(row.agent, Math.min(starts.get(row.agent) ?? Infinity, row.time * 1000));
+  }
+  return starts;
+}
+
 /** Folds each subagent run's rows into one "subagent" row at its first row's place; done on its stop row or the parent's completion notice. */
 export function groupSubagents(rows) {
   const runs = new Map();

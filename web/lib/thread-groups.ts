@@ -4,7 +4,7 @@ import { threadStatus } from "./threads.js";
 
 export type Agent = {
   id: string; peer?: string; name?: string; identityName?: string; generatedName?: boolean; gone?: boolean;
-  openCallAt?: number; lastActivityAt?: number; lastMessageAt?: number; [key: string]: unknown;
+  openCallAt?: number; turnStartAt?: number; lastActivityAt?: number; lastMessageAt?: number; [key: string]: unknown;
 };
 export type ThreadPr = { id?: string; number?: number; url?: string; state?: string; head?: string; base?: string };
 export type Thread = {
@@ -63,14 +63,16 @@ export function elapsed(ms: number): string {
 }
 
 /**
- * How long a working thread has worked: from its oldest open tool call, else its newest activity. Snapshots carry no
- * turn start, so this is the open call's age, not the whole turn's. Empty when no session works.
+ * How long a working thread has worked: from its earliest turn start. A harness that reports no prompt has none, so its
+ * oldest open tool call stands in, else its newest activity. Empty when no session works.
  */
 export function workingTime(row: ThreadRow, now: number): string {
   const working = row.agents.filter(agent => sessionState(agent, now) === "working");
   if (!working.length) return "";
-  const calls = working.map(agent => Number(agent.openCallAt) || 0).filter(Boolean);
-  const from = calls.length ? Math.min(...calls) : Math.max(...working.map(agent => Number(agent.lastActivityAt) || 0));
+  const earliest = (key: "turnStartAt" | "openCallAt") => Math.min(...working.map(agent => Number(agent[key]) || Infinity));
+  const turn = earliest("turnStartAt");
+  const call = earliest("openCallAt");
+  const from = turn < Infinity ? turn : call < Infinity ? call : Math.max(...working.map(agent => Number(agent.lastActivityAt) || 0));
   return from ? elapsed(now - from) : "";
 }
 

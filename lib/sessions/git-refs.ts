@@ -1,6 +1,7 @@
 // Git ref and worktree lookups for session start: branch and worktree pickers, and validation of caller-supplied refs.
 import { execFile } from "node:child_process";
-import { isAbsolute, resolve } from "node:path";
+import { lstat } from "node:fs/promises";
+import { isAbsolute, join, resolve } from "node:path";
 import { findExecutable } from "./scope.ts";
 
 /** Most refs a picker shows. */
@@ -11,6 +12,8 @@ export const REF_NAME_MAX = 200;
 const REF_FORMAT = "%(refname)%00%(committerdate:unix)%00%(objectname:short)";
 const NOT_A_WORKTREE = "worktree is not one of this project's worktrees";
 const FULL_SHA = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
+/** Most untracked files one diff lists. */
+const UNTRACKED_MAX = 200;
 const given = (value: unknown) => value !== undefined && value !== null && value !== "";
 
 /** One record of `git worktree list --porcelain`; branch is the full ref ("refs/heads/x") or null when detached. */
@@ -226,4 +229,37 @@ export async function prHead(ghFile: string, run: GitRun, root: string, number: 
   if ((await run(["cat-file", "-e", `${headRefOid}^{commit}`], root)).code === 0) base = headRefOid;
   else if (isCrossRepository !== true && (await run(["rev-parse", "--verify", "--quiet", "--end-of-options", `refs/remotes/origin/${headRefName}^{commit}`], root)).code === 0) base = `origin/${headRefName}`;
   return { number, title, head: headRefName, base };
+}
+
+export type UntrackedCaps = { fileBytes: number; totalBytes: number };
+
+/**
+ * Untracked, non-ignored files of a worktree as new-file diffs, read with `git diff --no-index` so the index stays as it is.
+ * A file over fileBytes is left out, and listing stops before the text would pass totalBytes.
+ */
+export async function untrackedDiff(gitFile: string, tree: string, env: NodeJS.ProcessEnv, { fileBytes, totalBytes }: UntrackedCaps): Promise<string> {
+  const listed = await gitText(gitFile, ["ls-files", "-z", "--others", "--exclude-standard"], tree, env, 4 * 1024 * 1024);
+  const files = (listed ?? "").split("\0").filter(name => name && !name.endsWith("/")).slice(0, UNTRACKED_MAX);
+  let out = "";
+  let bytes = 0;
+  for (const name of files) {
+    const stat = await lstat(join(tree, name)).catch(() => null);
+    if (!stat || !(stat.isFile() || stat.isSymbolicLink()) || stat.size > fileBytes) continue;
+    // --no-index exits 1 when the paths differ, which a new file always does.
+    const diff = await gitText(gitFile, ["diff", "--no-index", "--no-color", "--no-ext-diff", "--no-textconv", "--", "/dev/null", name], tree, env, fileBytes * 2 + 4096, [0, 1]);
+    if (!diff) continue;
+    bytes += Buffer.byteLength(diff);
+    if (bytes > totalBytes) break;
+    out += diff;
+  }
+  return out;
+}
+
+function gitText(gitFile: string, args: string[], cwd: string, env: NodeJS.ProcessEnv, maxBuffer: number, ok = [0]): Promise<string | null> {
+  return new Promise(done => {
+    execFile(gitFile, args, { cwd, env, shell: false, timeout: 10_000, maxBuffer, encoding: "utf8" }, (error, stdout) => {
+      const code = error ? (error as NodeJS.ErrnoException).code : 0;
+      done(typeof code === "number" && ok.includes(code) ? stdout : null);
+    });
+  });
 }
