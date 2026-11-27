@@ -9,7 +9,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
-import { markStopRunning } from "../lib/stop.mjs";
+import { handedOff, markStopRunning } from "../lib/stop.mjs";
 import { processStart } from "../lib/process.mjs";
 import { writeState } from "../lib/state.mjs";
 import { openDurable } from "../runner/durable.mjs";
@@ -101,13 +101,13 @@ test("the delivery workflow passes the project to ready", async (t) => {
 
 test("a hold that starts after the ready check releases the reservation and the push waits until it ends", async (t) => {
   const log = { pushes: [], releases: [] };
-  const heldUntil = Date.now() + 200;
+  let checks = 0;
   const durable = durableIn(t);
-  durable.register("delivery", deliveryWorkflow(deps(log, { held: async () => Date.now() < heldUntil })));
+  durable.register("delivery", deliveryWorkflow(deps(log, { held: async () => (checks += 1) === 1 })));
   const out = await durable.startWorkflowOnce("delivery", "delivery:a:m1", { project: "demo", address: ADDRESS, message });
   assert.equal(out.status, "delivered");
   assert.equal(log.pushes.length, 1);
-  assert.ok(log.pushes[0] >= heldUntil, "pushed while the hold ran");
+  assert.equal(checks, 2, "the push waited for a hold check that found the hold ended");
   assert.ok(log.releases.length > 0 && log.releases.every((owner) => owner === "delivery:a:m1"), "the reservation was released for the hold");
 });
 
@@ -131,6 +131,7 @@ test("the runner re-checks the target's Stop hook right before the push", async 
   await delay(400);
   assert.equal(log.pushes.length, 0, "pushed while the Stop hook ran");
   release();
-  assert.equal((await out).status, "delivered");
-  assert.equal(log.pushes.length, 1);
+  assert.equal((await out).status, "delivered", "the hand-off to the hold counts as delivered");
+  assert.equal(log.pushes.length, 0, "the hold gets the message through the hand-off, not a push");
+  assert.equal(handedOff(ctx.target, "m1"), true, "the hand-off file holds the message");
 });
