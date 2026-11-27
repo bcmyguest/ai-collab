@@ -158,10 +158,10 @@ export function runRecorder({ address, role, model, now = Date.now }: {
   const rec = {
     address, model, usage: null, status: "ok",
     toolStart(id: string, name: string, input?: unknown) { open.set(id, { name, startMs: now(), input }); },
-    toolEnd(id: string, info?: { name?: string; input?: unknown; failed?: boolean }) {
-      const started = open.get(id) ?? { name: info?.name || "tool", startMs: now(), input: info?.input };
+    toolEnd(id: string, { name, input, failed = false }: { name?: string; input?: unknown; failed?: boolean } = {}) {
+      const started = open.get(id) ?? { name: name || "tool", startMs: now(), input };
       open.delete(id);
-      tools.push({ ...started, endMs: now(), failed: info?.failed ?? false });
+      tools.push({ ...started, endMs: now(), failed });
     },
     spans({ status }: { status?: string } = {}) {
       const endMs = now();
@@ -204,7 +204,7 @@ export function streamTrace({ address, role, model, now = Date.now }: {
       if (event.type === "result") {
         rec.status = event.is_error ? "error" : "ok";
         const u = event.usage;
-        if (u && typeof u === "object") rec.usage = { input: Number((u as Record<string, unknown>).inputTokens), output: Number((u as Record<string, unknown>).outputTokens), cacheRead: Number((u as Record<string, unknown>).cacheReadTokens), cacheWrite: Number((u as Record<string, unknown>).cacheWriteTokens) };
+        if (u && typeof u === "object") rec.usage = { input: (u as Record<string, number>).inputTokens, output: (u as Record<string, number>).outputTokens, cacheRead: (u as Record<string, number>).cacheReadTokens, cacheWrite: (u as Record<string, number>).cacheWriteTokens };
       }
     },
     spans({ exitStatus } = {}) {
@@ -293,7 +293,7 @@ export async function hookTrace(msg: {
   for (const r of records) {
     if (!r.tool || (r.id && seen.has(r.id as string))) continue;
     if (r.id) seen.add(r.id as string);
-    tools.push({ name: r.tool as string, startMs: (r.at as number) - Math.round((r.duration as number) || 0), endMs: r.at as number, input: r.input, failed: r.failed as boolean });
+    tools.push({ name: r.tool as string, startMs: (r.at as number) - Math.round(r.duration as number), endMs: r.at as number, input: r.input, failed: r.failed as boolean });
   }
   const durationMs = Number(msg.duration_ms) || 0;
   const startMs = Math.min(records.find((r) => r.start)?.start as number ?? at, durationMs ? at - durationMs : at, ...tools.map((t) => t.startMs));
