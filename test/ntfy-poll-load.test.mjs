@@ -37,7 +37,7 @@ test("the ntfy error code of a 429 is logged once per process", async () => {
     });
     const logged = lines.filter((l) => l.includes("42905"));
     assert.equal(logged.length, 1);
-    assert.match(logged[0], /ntfy HTTP 429 code 42905: limit reached: daily bandwidth reached/);
+    assert.match(logged[0], /bus HTTP 429 code 42905: limit reached: daily bandwidth reached/);
   } finally {
     await fake.close();
   }
