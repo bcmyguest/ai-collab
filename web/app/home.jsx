@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Bot, ChevronRight, CircleHelp, CornerLeftUp, LoaderCircle, MoreHorizontal } from "lucide-react";
+import { ChevronRight, CircleDot, CircleHelp, CornerLeftUp, LoaderCircle, MoreHorizontal } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -209,7 +209,7 @@ export function SubagentList({ rows, session, run, pick, when, now, back, childR
   const children = <ul aria-label="Child sessions" className="flex min-w-0 flex-col gap-2">
     {childRuns.map(child => <li key={child.id}>
       <button type="button" onClick={() => openChild(child)} className="flex w-full min-w-0 items-start gap-2.5 rounded-2xl border bg-card px-3 py-2.5 text-left text-sm shadow-xs">
-        <Bot className="mt-0.5 size-4 shrink-0 text-muted-foreground"/>
+        <CircleDot aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground"/>
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="min-w-0 font-medium">{child.kind} · {short(child.id)} · {child.online ? "online" : "offline"}</span>
           {child.description && <span className="min-w-0 truncate text-xs text-muted-foreground">{child.description}</span>}
@@ -224,7 +224,7 @@ export function SubagentList({ rows, session, run, pick, when, now, back, childR
   <ul aria-label="Subagents" className="flex min-w-0 flex-col gap-2">
     {[...runs].reverse().map(row => <li key={row.id}>
       <button type="button" onClick={() => pick(row.run)} className="flex w-full min-w-0 items-start gap-2.5 rounded-2xl border bg-card px-3 py-2.5 text-left text-sm shadow-xs">
-        {runState(row, now) === "running" ? <LoaderCircle className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground"/> : <Bot className="mt-0.5 size-4 shrink-0 text-muted-foreground"/>}
+        {runState(row, now) === "running" ? <LoaderCircle className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground"/> : <CircleDot aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground"/>}
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
             <span aria-hidden className={cn("inline-block size-2 shrink-0 rounded-full", SUBAGENT_DOT[subagentState(row, now)])}/>

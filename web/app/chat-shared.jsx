@@ -5,11 +5,6 @@ import { Avatar as BaseAvatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { isLive } from "@/lib/session-state";
 
-export const HARNESS_COLORS = {
-  claude: "[&_[data-slot=avatar-fallback]]:bg-claude", codex: "[&_[data-slot=avatar-fallback]]:bg-codex",
-  cursor: "[&_[data-slot=avatar-fallback]]:bg-cursor", opencode: "[&_[data-slot=avatar-fallback]]:bg-opencode", operator: "[&_[data-slot=avatar-fallback]]:bg-primary",
-  system: "[&_[data-slot=avatar-fallback]]:bg-muted-foreground",
-};
 export const HARNESS_NAMES = { claude: "Claude Code", codex: "Codex", cursor: "Cursor", opencode: "OpenCode" };
 export const clock = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -25,13 +20,12 @@ export function ago(ms, now) {
 
 export const peerOf = address => String(address || "").split("#")[0];
 export const short = address => address?.includes("#") ? address.slice(0, address.indexOf("#") + 9) : address;
-export const colorOf = address => HARNESS_COLORS[peerOf(address)] || "[&_[data-slot=avatar-fallback]]:bg-agent";
 
 export function Avatar({ address, className, by }) {
   const peer = peerOf(address);
   const label = by ? by.slice(0, 2).toUpperCase() : peer === "operator" ? "You" : peer === "system" ? "Sys" : peer.slice(0, 2).toUpperCase();
   const fallback = !by && hasLogo(peer) ? <HarnessLogo peer={peer} className="size-[55%]"/> : label;
-  return <BaseAvatar className={cn("size-8 shrink-0 text-xs font-semibold [&_[data-slot=avatar-fallback]]:text-white", colorOf(address), className)}><AvatarFallback>{fallback}</AvatarFallback></BaseAvatar>;
+  return <BaseAvatar title={address} className={cn("size-8 shrink-0 rounded-md text-xs font-medium [&_[data-slot=avatar-fallback]]:rounded-md [&_[data-slot=avatar-fallback]]:bg-muted [&_[data-slot=avatar-fallback]]:text-muted-foreground", className)}><AvatarFallback>{fallback}</AvatarFallback></BaseAvatar>;
 }
 
 export function Dot({ online }) {
