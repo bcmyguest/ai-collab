@@ -230,8 +230,8 @@ UNVERIFIED:
 | Path | Role |
 |---|---|
 | `lib/builder.ts` | `builder start/run/list/stop` |
-| `lib/cli.mjs` | `ai-collab builder` wiring |
-| `lib/prune.mjs` | `ai-collab prune`: builder copies and worktrees |
+| `lib/cli.ts` | `ai-collab builder` wiring |
+| `lib/prune.ts` | `ai-collab prune`: builder copies and worktrees |
 | `test/prune.test.mjs` | prune decisions, archive refs and reachability against temp repos |
 | `lib/sandbox.ts` | OpenShell list, create, upload, download, exec argv, delete, staged upload |
 | `test/builder.test.mjs` | end to end against the fakes |

@@ -3,17 +3,19 @@
  * so tests can drive it with fake stdio.
  */
 import { parseArgs } from "node:util";
+import type { ReadStream } from "node:tty";
 import { loadConfig } from "./config.ts";
 import { HISTORY_DEFAULT, HISTORY_MAX, channelHistory, readStatuses, sendMessage } from "./messaging.ts";
 import { formatHistory, formatInbox, formatMessageLine } from "./format.ts";
 import { readInbox } from "./messaging.ts";
 import { MODES, currentModeKnown, operatorConfigs, publishMode, storedMode } from "./mode.ts";
-import { agentDirectory, listSessions, sessionDirectory, setIdentity } from "./sessions.mjs";
+import { agentDirectory, listSessions, sessionDirectory, setIdentity } from "./sessions/registry.ts";
 import { respond, sendAndAwait, waitForIdle, waitForMessages, waitForReply } from "./agents.ts";
 import { interruptSession } from "./sessions/control.ts";
 import { setup } from "./setup.ts";
 import { postgresCommand } from "./postgres.ts";
-import { createTeam, deleteTeam, listTeams, teamStart, teamStatus } from "./teams.mjs";
+import { deleteTeam, listTeams, teamStatus } from "./catalog/teams.ts";
+import { createTeam, teamStart } from "./catalog/roster.ts";
 import { listModels } from "./models.ts";
 import { pattern } from "./pattern-cli.ts";
 import { task } from "./task-cli.ts";
@@ -23,7 +25,7 @@ import { job } from "./job.ts";
 import { analyze } from "./analyze-run-code.ts";
 import { builder } from "./builder/cli.ts";
 import { spawn } from "./spawn-cli.ts";
-import { prune } from "./prune.mjs";
+import { prune } from "./prune.ts";
 import { busCommand } from "./bus-migrate.ts";
 import { STATUSES } from "./tasks.ts";
 import { postToChannel } from "./surfaces/channel-post.ts";
@@ -117,11 +119,29 @@ export const USAGE = `usage: ai-collab <command>
 Required: AI_COLLAB_PROJECT, AI_COLLAB_PEER. Optional: AI_COLLAB_URL (default http://127.0.0.1:8794),
 AI_COLLAB_TOKEN, AI_COLLAB_PEERS. See README.md.`;
 
+// oxlint-disable-next-line typescript/no-explicit-any -- the config and sub-command results are passed through to modules that check them
+type Json = any;
+type Env = NodeJS.ProcessEnv;
+/** An output stream; isTTY is read by afk park. */
+type Out = NodeJS.WritableStream & { isTTY?: boolean };
+type KeyInput = Pick<ReadStream, "isRaw" | "readableFlowing" | "isTTY" | "on" | "off" | "once" | "pause" | "resume" | "setRawMode">;
+/** Injected stdio and clocks, so tests drive the CLI without a terminal. */
+export type CliIo = {
+  env?: Env; stdout?: Out; stderr?: Out; stdin?: KeyInput; readStdin?: () => Promise<string>; now?: () => number; agent?: boolean;
+};
+/** Flag arity: 0 for a boolean, 1 for one value, "many" for a repeated flag. */
+export type FlagSpec = Record<string, 0 | 1 | "many">;
+type Streams = { out: Out; err: Out };
+/** Flags by name (flags.bad marks a missing value) and the remaining words. */
+export type ParsedFlags = { flags: Json; words: string[] };
+// Sub-commands check cfg.enabled themselves, so they take the loaded config as it comes.
+const configOf = (env: Env): Json => loadConfig(env);
+
 // Reads a piped body. Gives up after 2s so an open-but-silent stdin cannot hang the CLI.
-function readStdinDefault(limitMs = 2000) {
+function readStdinDefault(limitMs = 2000): Promise<string> {
   if (process.stdin.isTTY) return Promise.resolve("");
   return new Promise((resolve) => {
-    const chunks = [];
+    const chunks: Buffer[] = [];
     const timer = setTimeout(() => resolve(Buffer.concat(chunks).toString("utf8")), limitMs);
     process.stdin.on("data", (c) => chunks.push(c));
     process.stdin.on("end", () => {
@@ -135,11 +155,11 @@ function readStdinDefault(limitMs = 2000) {
   });
 }
 
-function waitForLocalKey(input) {
+function waitForLocalKey(input: KeyInput): Promise<boolean> {
   return new Promise((resolve, reject) => {
     const wasRaw = input.isRaw;
     const wasFlowing = input.readableFlowing === true;
-    const finish = (local, error) => {
+    const finish = (local: boolean, error?: Error) => {
       input.off("data", onData);
       input.off("end", onEnd);
       input.off("error", onError);
@@ -153,13 +173,13 @@ function waitForLocalKey(input) {
       if (error) reject(error);
       else resolve(local);
     };
-    const onData = (chunk) => {
+    const onData = (chunk: Buffer | string) => {
       const key = String(chunk);
       if (key === " ") finish(true);
       if (key === "\x03") finish(false);
     };
     const onEnd = () => finish(false);
-    const onError = (error) => finish(false, error);
+    const onError = (error: Error) => finish(false, error);
 
     input.setRawMode(true);
     input.once("end", onEnd);
@@ -169,7 +189,7 @@ function waitForLocalKey(input) {
   });
 }
 
-async function afk([mode, ...extra], { env, out, err, now, input }) {
+async function afk([mode, ...extra]: string[], { env, out, err, now, input }: Streams & { env: Env; now?: () => number; input: KeyInput }): Promise<number> {
   const cfgs = operatorConfigs(env);
   if (!cfgs.length) {
     err.write("ai-collab: afk: no enabled project in projects.json or the environment\n");
@@ -200,7 +220,7 @@ async function afk([mode, ...extra], { env, out, err, now, input }) {
 }
 
 // Live and recent sessions of this project on this machine; needs only the project, not a peer name.
-function sessions(env, { out, err }) {
+function sessions(env: Env, { out, err }: Streams): number {
   const cfg = loadConfig({ ...env, AI_COLLAB_PEER: env.AI_COLLAB_PEER || "operator" });
   if (!cfg.enabled) {
     err.write(`ai-collab: disabled: ${cfg.reason}\n`);
@@ -215,13 +235,13 @@ function sessions(env, { out, err }) {
 }
 
 /** Splits argv into flags (spec: name → arity 0, 1, or "many") and words; flags.bad marks a missing value. Unknown tokens stay words, so a message may start with a dash. */
-export function parseFlags(argv, spec) {
-  const options = Object.fromEntries(Object.entries(spec).map(([name, arity]) => [name.slice(2), arity === 0 ? { type: "boolean" } : { type: "string" }]));
+export function parseFlags(argv: string[], spec: FlagSpec): ParsedFlags {
+  const options = Object.fromEntries(Object.entries(spec).map(([name, arity]) => [name.slice(2), arity === 0 ? { type: "boolean" as const } : { type: "string" as const }]));
   const { tokens } = parseArgs({ args: argv, options, strict: false, allowPositionals: true, tokens: true });
-  const flags = {};
-  const words = [];
+  const flags: Json = {};
+  const words: string[] = [];
   let last = -1;
-  for (const token of tokens) {
+  for (const token of tokens as Json[]) {
     if (token.index === last) continue;
     last = token.index;
     const arity = token.kind === "option" ? spec[token.rawName] : undefined;
@@ -235,10 +255,10 @@ export function parseFlags(argv, spec) {
 }
 
 const HARNESSES = ["claude", "codex", "cursor", "opencode"];
-const call = (tool, args = {}) => `return await ai.${tool}(${JSON.stringify(args)});`;
+const call = (tool: string, args: Json = {}): string => `return await ai.${tool}(${JSON.stringify(args)});`;
 
 /** The run_code program that answers a CLI read command, or null when argv is not a read. */
-export function readProgram([cmd, sub, ...rest]) {
+export function readProgram([cmd, sub, ...rest]: string[]): string | null {
   const args = sub === undefined ? [] : [sub, ...rest];
   if (args.some((a) => a === "--help" || a === "-h")) return null;
   if (cmd === "peers" || cmd === "agents") {
@@ -263,10 +283,10 @@ export function readProgram([cmd, sub, ...rest]) {
 }
 
 // An agent session: its label is exported, or a coding-agent harness is an ancestor of this process.
-const agentCaller = (env) => Boolean(env.AI_COLLAB_SESSION) || HARNESSES.some((h) => harnessProcess(h));
+const agentCaller = (env: Env): boolean => Boolean(env.AI_COLLAB_SESSION) || HARNESSES.some((h) => harnessProcess(h));
 
 // Live sessions with their set_identity fields; needs only the project, like sessions.
-function agents(env, argv, { out, err }) {
+function agents(env: Env, argv: string[], { out, err }: Streams): number {
   const { flags } = parseFlags(argv, { "--all": 0, "--tag": "many" });
   if (flags.bad) {
     err.write("ai-collab: usage: agents [--all] [--tag T]...\n");
@@ -280,13 +300,13 @@ function agents(env, argv, { out, err }) {
   const list = agentDirectory(cfg, { all: flags["--all"] === true, tags: flags["--tag"] || [] });
   if (!list.length) out.write("no live sessions recorded on this machine\n");
   for (const a of list) {
-    out.write(`${a.address}\t${a.harness}\t${a.online ? "online" : "offline"}\tactive ${a.lastActive || "?"}${a.runningJobs ? `\tjobs ${a.runningJobs}` : ""}\t${a.name || "-"}\t${a.activity || "-"}\t${(a.tags || []).join(",") || "-"}${a.parent ? `\tparent ${a.parent}` : ""}\n`);
+    out.write(`${a.address}\t${a.harness}\t${a.online ? "online" : "offline"}\tactive ${a.lastActive || "?"}${a.runningJobs ? `\tjobs ${a.runningJobs}` : ""}\t${a.name || "-"}\t${a.activity || "-"}\t${((a.tags || []) as string[]).join(",") || "-"}${a.parent ? `\tparent ${a.parent}` : ""}\n`);
   }
   return 0;
 }
 
 // Interrupts a Codex or OpenCode session's running turn; needs only the project.
-async function interrupt([address, ...extra], env, { out, err }) {
+async function interrupt([address, ...extra]: string[], env: Env, { out, err }: Streams): Promise<number> {
   const cfg = loadConfig({ ...env, AI_COLLAB_PEER: env.AI_COLLAB_PEER || "operator" });
   if (!cfg.enabled) {
     err.write(`ai-collab: disabled: ${cfg.reason}\n`);
@@ -307,7 +327,7 @@ async function interrupt([address, ...extra], env, { out, err }) {
 }
 
 // Changes a runner-owned session's permission mode through the runner's control route; an agent session may not.
-async function sessionMode([address, mode, ...extra], env, { out, err, agent }) {
+async function sessionMode([address, mode, ...extra]: string[], env: Env, { out, err, agent }: Streams & { agent: boolean }): Promise<number> {
   if (!address || !mode || extra.length) {
     err.write("ai-collab: usage: mode <peer#session> <mode>\n");
     return 1;
@@ -317,7 +337,7 @@ async function sessionMode([address, mode, ...extra], env, { out, err, agent }) 
     return 1;
   }
   const [harness, label = ""] = address.split("#");
-  let result;
+  let result: Json;
   try {
     result = await runnerRequest("POST", `/v1/sessions/${encodeURIComponent(harness)}/${encodeURIComponent(label)}/mode`, { mode }, { socket: runnerSocket(env) });
   } catch {
@@ -332,7 +352,7 @@ async function sessionMode([address, mode, ...extra], env, { out, err, agent }) 
   return 0;
 }
 
-async function team([sub, ...rest], { env, cfg, out, err, io }) {
+async function team([sub, ...rest]: string[], { env, cfg, out, err, io }: Streams & { env: Env; cfg: Json; io: CliIo }): Promise<number> {
   if (!cfg.enabled) {
     err.write(`ai-collab: disabled: ${cfg.reason}\n`);
     return 2;
@@ -389,12 +409,12 @@ async function team([sub, ...rest], { env, cfg, out, err, io }) {
     err.write(`ai-collab: unknown team command "${sub}"\n`);
     return 1;
   } catch (e) {
-    err.write(`ai-collab: team: ${e.message}\n`);
+    err.write(`ai-collab: team: ${(e as Error).message}\n`);
     return 1;
   }
 }
 
-export async function runCli(argv, io = {}) {
+export async function runCli(argv: string[], io: CliIo = {}): Promise<number> {
   const env = io.env || process.env;
   const out = io.stdout || process.stdout;
   const err = io.stderr || process.stderr;
@@ -421,19 +441,19 @@ export async function runCli(argv, io = {}) {
   if (cmd === "agents") return agents(env, rest, { out, err });
   if (cmd === "interrupt") return interrupt(rest, env, { out, err });
   if (cmd === "mode") return sessionMode(rest, env, { out, err, agent: io.agent ?? agentCaller(env) });
-  if (cmd === "team") return team(rest, { env, cfg: loadConfig(env), out, err, io });
-  if (cmd === "pattern") return pattern(rest, { env, cfg: loadConfig(env), out, err, io });
-  if (cmd === "task") return task(rest, { env, cfg: loadConfig(env), out, err });
+  if (cmd === "team") return team(rest, { env, cfg: configOf(env), out, err, io });
+  if (cmd === "pattern") return pattern(rest, { env, cfg: configOf(env), out, err, io });
+  if (cmd === "task") return task(rest, { env, cfg: configOf(env), out, err });
   if (cmd === "analyze") return rest[0] === "run-code" ? analyze(rest.slice(1), { env, stdout: out, stderr: err }) : (err.write("ai-collab: usage: analyze run-code [flags]\n"), 2);
-  if (cmd === "mission") return mission(rest, { env, cfg: loadConfig(env), out, err });
-  if (cmd === "land") return land(rest, { env, cfg: loadConfig(env), out, err });
+  if (cmd === "mission") return mission(rest, { env, cfg: configOf(env), out, err });
+  if (cmd === "land") return land(rest, { env, cfg: configOf(env), out, err });
   if (cmd === "deploy") return deploy(rest, { env, out, err });
-  if (cmd === "job") return job(rest, { env, cfg: loadConfig(env), out, err, registered: (cfg, address) => listSessions(cfg).some(s => s.id === address) });
-  if (cmd === "spawn") return spawn(rest, { env, cfg: loadConfig(env), out, err, readStdin: io.readStdin || readStdinDefault });
-  if (cmd === "builder") return builder(rest, { env, cfg: loadConfig(env), out, err });
-  if (cmd === "prune") return prune(rest, { env, cfg: loadConfig(env), out, err });
+  if (cmd === "job") return job(rest, { env, cfg: configOf(env), out, err, registered: (cfg, address) => listSessions(cfg).some(s => s.id === address) });
+  if (cmd === "spawn") return spawn(rest, { env, cfg: configOf(env), out, err, readStdin: io.readStdin || readStdinDefault });
+  if (cmd === "builder") return builder(rest, { env, cfg: configOf(env), out, err });
+  if (cmd === "prune") return prune(rest, { env, cfg: configOf(env), out, err });
 
-  const cfg = loadConfig(env);
+  const cfg: Json = loadConfig(env);
   if (!cfg.enabled) {
     err.write(`ai-collab: disabled: ${cfg.reason}\n`);
     return 2;
@@ -489,7 +509,7 @@ export async function runCli(argv, io = {}) {
       }
       const sent = await sendAndAwait(cfg, target, body, { awaitSeconds, attachment, urgent, priority, expectReply, ...(replyTo ? { replyTo } : {}) });
       out.write(`sent to ${sent.to}${sent.id ? ` (id ${sent.id})` : ""}\n`);
-      if (sent.reply) out.write(`${formatInbox([sent.reply, ...sent.messages])}\n`);
+      if (sent.status === "replied") out.write(`${formatInbox([sent.reply, ...sent.messages])}\n`);
       else out.write("no reply yet\n");
       return 0;
     }
@@ -571,7 +591,7 @@ export async function runCli(argv, io = {}) {
     err.write(`ai-collab: unknown command "${cmd}"\n${USAGE}\n`);
     return 1;
   } catch (e) {
-    err.write(`ai-collab: ${e.message}\n`);
+    err.write(`ai-collab: ${(e as Error).message}\n`);
     return 1;
   }
 }

@@ -3,7 +3,7 @@
 Status: approved; the operator answered the open questions on 2026-11-27 (see [Operator answers](#operator-answers)). Written 2026-11-26 against `main` at `81129778`, rebased onto `b981d36e` (family and job moved to `.ts`).
 Operator decisions of 2026-11-27, with decision 3 as revised:
 
-1. A new tool, `spawn_agent(harness, model, brief, worktree?)`, on MCP (`lib/surfaces/ops.ts`) and the CLI (`lib/cli.mjs`), built on the runner. It does not extend `builder_start`.
+1. A new tool, `spawn_agent(harness, model, brief, worktree?)`, on MCP (`lib/surfaces/ops.ts`) and the CLI (`lib/cli.ts`), built on the runner. It does not extend `builder_start`.
 2. Every session ai-collab starts (team members, pattern members, builders, spawned agents) runs with native subagents blocked. Sessions the operator starts keep them.
 3. `spawn_agent` returns at once with the child's address. The parent keeps working. Each time the child finishes a run, its result reaches the parent as a direct message through the existing delivery and wake paths. Waiting is optional.
 
@@ -322,7 +322,7 @@ Insert after `team_start` (line ~275):
 
 Take the model pattern from the runner's `MODEL` regex (`runner/runner.mjs`, constants 43-73) instead of the one above if they differ. `surfaces` is `["mcp"]` only: `run_code` programs cannot spawn (answer 3). Leave `listing` and `available` unset so every host sees the op; `lib/tool-api.ts` `listed(env)` filters only `builder_start`.
 
-### B9. CLI, `lib/cli.mjs`
+### B9. CLI, `lib/cli.ts`
 
 Syntax:
 
