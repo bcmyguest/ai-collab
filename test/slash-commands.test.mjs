@@ -72,7 +72,7 @@ test("unknown names fall back to passthrough support", () => {
 
 test("matchCommands filters by prefix and carries the support status", () => {
   assert.deepEqual(matchCommands("opencode", "co").map(c => [c.name, c.status]), [["compact", "supported"]]);
-  assert.deepEqual(matchCommands("codex", "").map(c => c.name), ["compact", "model", "clear", "permission", "team-permission"]);
+  assert.deepEqual(matchCommands("codex", "").map(c => c.name), ["compact", "model", "clear", "permission", "mode", "team-permission"]);
 });
 
 test("matchCommands offers a typed name that no known command matches as passthrough", () => {

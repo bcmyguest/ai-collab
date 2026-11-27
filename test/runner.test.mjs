@@ -131,8 +131,8 @@ test("start opens a session, claims the registry, and publishes prompt, text and
     assert.ok(mine.every((r) => r.from === "codex" && r.harness === "codex"));
     const record = readOwned(ctx.cfg, label);
     assert.equal(record.status, "idle");
-    assert.equal(record.permissionMode, "auto");
-    assert.equal(adapter.calls[0].options.permission.approvalsReviewer, "auto_review");
+    assert.equal(record.permissionMode, "supervised");
+    assert.equal(adapter.calls[0].options.permission.approvalsReviewer, "user");
     assert.equal(adapter.calls[0].options.env.AI_COLLAB_OWNED, undefined);
     const listed = listSessions({ ...ctx.cfg, peers: [] }).find((s) => s.id === started.session);
     assert.equal(listed.online, true);
