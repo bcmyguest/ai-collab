@@ -1,6 +1,6 @@
 # spawn_agent and native-subagent blocking: implementation spec
 
-Status: spec only, nothing implemented. Written 2026-11-26 against `main` at `81129778`.
+Status: spec only, nothing implemented. Written 2026-11-26 against `main` at `81129778`, rebased onto `b981d36e` (family and job moved to `.ts`).
 Operator decisions of 2026-11-27, with decision 3 as revised:
 
 1. A new tool, `spawn_agent(harness, model, brief, worktree?)`, on MCP (`lib/surfaces/ops.ts`) and the CLI (`lib/cli.mjs`), built on the runner. It does not extend `builder_start`.
@@ -202,7 +202,7 @@ export function spawnReport(child: string, outcome: string, text: string): strin
 5. If the runner is down (connection refused), throw "spawn_agent needs the ai-collab runner (systemctl --user start ai-collab-runner)". There is no fallback to detached starts: it would bring the bug back.
 6. Return `{ status: "started", session, harness, model: model ?? "", cwd, note }` with `note = "It reports to you by message when each run ends; reply with send. wait until=message blocks for the report."`.
 
-`system: false` makes the brief show as the parent's input in the UI, not as a system prompt. The runner prepends no prompt text; the child learns its parent from the hook context (`lib/family.mjs` `parentLine`) or, for owned sessions, from B5.
+`system: false` makes the brief show as the parent's input in the UI, not as a system prompt. The runner prepends no prompt text; the child learns its parent from the hook context (`lib/family.ts` `parentLine`) or, for owned sessions, from B5.
 
 ### B2. Control route, `runner/control.mjs`
 
@@ -334,9 +334,9 @@ ai-collab spawn <harness[:model]> [--model <id>] [--worktree] (--brief <text> | 
 3. Exit 2 on a usage error; exit 1 when the runner refuses (print its `error`).
 4. Add `spawn` to the run_code-first mapping (lines ~237-256) only if B8 adds `"code"`.
 
-### B10. Steer agents to spawn_agent, `lib/family.mjs`
+### B10. Steer agents to spawn_agent, `lib/family.ts`
 
-`childHint` (line 37) tells agents to start children from the shell. That is the bug path. Replace its text:
+`childHint` (line 38) tells agents to start children from the shell. That is the bug path. Replace its text:
 
 ```
 [ai-collab] To hand work to another agent, call spawn_agent (harness, model, brief); it returns the child's address at once and the child messages you its result when each run ends. Do not start harnesses from your shell. Message a child with send_to_peer; list sessions with list_sessions.
@@ -358,7 +358,7 @@ Fix:
 
 1. `spawn_agent` registers every child itself: the runner writes `registry/<harness>#<label>.json` with `event: "owned"` and `parent` (B4 step 2), whatever the plugin does. Nothing in this path relies on the OpenCode hook.
 2. `childHint` stops recommending shell starts (B10).
-3. Shell starts from a managed session are refused: in `lib/agent-guard.mjs`, add `export function managedShellStartRefusal(argv, env)`. It returns `SUBAGENT_DENIED` when `agentHarness(argv)` is non-empty and `env.AI_COLLAB_MANAGED === "1"`, else `""`. Call it wherever `assertHostAgent` runs (`lib/job.mjs`) and in the Claude and Cursor shell gates beside the existing harness-flag check. Operator sessions are untouched.
+3. Shell starts from a managed session are refused: in `lib/agent-guard.mjs`, add `export function managedShellStartRefusal(argv, env)`. It returns `SUBAGENT_DENIED` when `agentHarness(argv)` is non-empty and `env.AI_COLLAB_MANAGED === "1"`, else `""`. Call it wherever `assertHostAgent` runs (`lib/job.ts`) and in the Claude and Cursor shell gates beside the existing harness-flag check. Operator sessions are untouched.
 4. If H1 holds, also make `listSessions` keep a peer that is a harness name (`claude`, `codex`, `cursor`, `opencode`) even when `cfg.peers` omits it. This change touches `test/sessions*.test.mjs`; list it in the patch.
 
 Run the H1-H3 checks first and record the result on the board task.
