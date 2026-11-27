@@ -277,9 +277,18 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     };
   }
 
+  // The workflow's durable input decides; with no workflow row, fail closed on the owned record or the registry entry.
+  function managedFor(record) {
+    const known = managedByWorkflow.get(record.workflowId);
+    if (known !== undefined) return known;
+    if (record.managed === true) return true;
+    const cfg = configs.get(record.project);
+    return Boolean(cfg?.enabled && listSessions(cfg).some((e) => e.id === record.address && e.managed === true));
+  }
+
   // The in-memory session for a claimed record; built fresh on every workflow execution, replay included.
   function runtime(wf, record, holder) {
-    if (managedByWorkflow.get(record.workflowId) === true) record.managed = true;
+    if (managedFor(record)) record.managed = true;
     else delete record.managed;
     let wakeAll = () => {};
     const s = {

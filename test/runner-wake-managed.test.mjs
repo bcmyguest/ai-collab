@@ -7,6 +7,7 @@ import path from "node:path";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { recordSession } from "../lib/sessions.mjs";
+import { writeOwned } from "../lib/sessions/registry.ts";
 import { MANAGED_ENV, MANAGED_TICKET_ENV } from "../lib/subagent-guard.ts";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner, WAKE } from "../runner/runner.mjs";
@@ -125,3 +126,31 @@ test("a runner-owned managed session gets the managed flag but no start ticket o
     await runner.stop();
   }
 });
+
+// A record whose session workflow row is gone: managed cannot come from the durable input.
+for (const [what, owned, registry] of [["owned record", true, false], ["registry entry", false, true]]) {
+  test(`a wake with no session workflow row keeps the block when the ${what} says managed`, async (t) => {
+    const fake = await startFakeNtfy();
+    t.after(() => fake.close());
+    const ctx = setup(t, fake);
+    const nativeId = `codex-thread-orphan-${owned}`;
+    const label = sessionLabel(nativeId);
+    writeOwned({ ...ctx.cfg, peer: "codex", session: label }, {
+      v: 1, label, address: `codex#${label}`, workflowId: `session:gone-${owned}`, harness: "codex", nativeId, project: "demo", cwd: ctx.root,
+      place: "folder", permissionMode: "default", ...(owned ? { managed: true } : {}), status: "ended", run: null, approvals: [], createdAt: Date.now(),
+    });
+    await recordSession({ ...ctx.cfg, peer: "codex", session: label }, { id: nativeId, cwd: ctx.root, harness: "codex", event: "stop", managed: registry });
+    const { adapter, resumed } = recordingAdapter();
+    const durable = openDurable(ctx.db);
+    const runner = createRunner({ projects: [ctx.cfg], adapters: new Map([["codex", adapter]]), durable, env: ctx.env, startGapMs: 0, watch: false, pumpMs: 0 });
+    await runner.boot();
+    try {
+      const ev = fake.inject("ai-collab-demo--to--codex", direct(label, "resume"));
+      await runner.pump();
+      await until(() => durable.status(`${WAKE}:codex#${label}:${ev.id}`)?.status === "SUCCESS", "wake");
+      assert.deepEqual(resumed, [{ managed: true, env: "1" }]);
+    } finally {
+      await runner.stop();
+    }
+  });
+}
