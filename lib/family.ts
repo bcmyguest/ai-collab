@@ -37,7 +37,7 @@ export async function greetParent(cfg: Cfg, { harness, cwd }: { harness?: string
 /** How this session hands work to a child agent: spawn_agent, never a shell start (refused in managed sessions). */
 export function childHint(cfg: Cfg): string {
   if (!cfg.session) return "";
-  return "[ai-collab] To hand work to another agent, call spawn_agent (harness, model, brief); it returns the child's address at once "
+  return "[ai-collab] To hand work to another agent, call the ai-collab spawn_agent tool (harness, model, brief); it returns the child's address at once "
     + "and the child messages you its result when each run ends. Do not start harnesses from your shell. "
     + "Message a child with send_to_peer; list sessions with list_sessions.";
 }
