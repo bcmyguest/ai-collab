@@ -74,3 +74,18 @@ test("the compaction map is called History in the menu and the view", browserTes
   await page.getByRole("region", { name: "History" }).or(page.locator('[aria-label="History"]')).first().waitFor();
   assert.equal(await page.getByText(/compaction map/i).count(), 0);
 });
+
+test("a thread lists its lead, child session and both running subagents, and counts them when collapsed", browserTest, async (t) => {
+  const { fixture, page } = await open(t, 1440, "level=project");
+  const [lead, child] = fixture.threads[0].sessions;
+  const tree = page.getByRole("list", { name: "Sessions in UI redesign" });
+  await tree.locator(`[data-session="${lead}"]`).waitFor();
+  await tree.locator(`[data-session="${child}"]`).waitFor();
+  await tree.locator('[data-run="run-live"]').waitFor();
+  await tree.locator('[data-run="run-tabs"]').waitFor();
+  const row = page.locator('[data-thread="t-redesign"]');
+  assert.equal(await row.getAttribute("data-working"), "4");
+  await page.getByRole("button", { name: "Hide sessions in UI redesign" }).click();
+  await tree.waitFor({ state: "detached" });
+  await row.getByText("4 working", { exact: true }).waitFor();
+});

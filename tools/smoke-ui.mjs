@@ -170,6 +170,8 @@ async function threadFixture({ cfg, root, address, label, inject }) {
   }
   events.push({ type: "tool_result", tool: "Agent", callId: "live", output: JSON.stringify({ status: "async_launched", agentId: "run-live", description: "Screenshot every view" }) });
   events.push({ type: "tool_call", tool: "Bash", callId: "b1", input: { command: "node tools/shots.mjs" }, agent: { id: "run-live", type: "general-purpose" } });
+  events.push({ type: "tool_result", tool: "Agent", callId: "live2", output: JSON.stringify({ status: "async_launched", agentId: "run-tabs", description: "Audit the tab order" }) });
+  events.push({ type: "tool_call", tool: "Read", callId: "r1", input: { file_path: "web/app/chat-console.jsx" }, agent: { id: "run-tabs", type: "Explore" } });
   events.forEach((event, index) => inject(activityTopic(cfg.project), buildActivity(agent, "claude", event, new Date(now - (events.length - index) * 1000).toISOString()).message));
   const thread = (id, title, sessions, extra = {}) => ({ id, project: cfg.project, title, sessions, leadSession: sessions[0], status: "active", createdAt: now - 7200_000, updatedAt: now - 60_000, ...extra });
   return [

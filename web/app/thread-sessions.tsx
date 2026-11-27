@@ -1,7 +1,7 @@
 "use client";
 // A thread's sessions in the sidebar: lead, children and subagent runs, live or finished; gone sessions stay and open their history.
 import { useState } from "react";
-import { ChevronRight, LoaderCircle } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isLive, sessionState } from "@/lib/session-state";
 import { runState } from "@/lib/activity-rows";
@@ -19,6 +19,28 @@ const ROW = "flex w-full min-w-0 items-start gap-2 rounded-lg px-2 text-left hov
 /** A session the thread lists but the server no longer knows: only its address remains. */
 export function missingSession(id: string): Agent {
   return { id, peer: id.split("#")[0], gone: true, missing: true };
+}
+
+/** A session the sidebar shows as live: not gone, and either working now or online. */
+function sessionLive(agent: Agent, now: number): boolean {
+  return !agent.gone && (isLive(agent, now) || Boolean(agent.online));
+}
+
+/** Unfinished runs of one session; child sessions list as sessions of their own. */
+function openRuns(agent: Agent): Run[] {
+  return ((agent.subagents || []) as Run[]).filter(run => !run.child && !run.done);
+}
+
+/** Every agent working under a thread: its live sessions, their live child sessions and their unfinished subagent runs. */
+export function workingCount(sessions: Agent[], all: Agent[], now: number): number {
+  const seen = new Set<string>();
+  const visit = (agent: Agent, depth: number): number => {
+    if (seen.has(agent.id) || depth > 3) return 0;
+    seen.add(agent.id);
+    const kids = all.filter(kid => kid.parent === agent.id && kid.id !== agent.id);
+    return (sessionLive(agent, now) ? 1 : 0) + openRuns(agent).length + kids.reduce((sum, kid) => sum + visit(kid, depth + 1), 0);
+  };
+  return sessions.reduce((sum, agent) => sum + visit(agent, 0), 0);
 }
 
 /** The sessions under a thread, children nested under their parent; every row opens its session. */
@@ -39,10 +61,10 @@ function SessionItem({ agent, name, selected, now, open, children }: {
   agent: Agent; name: string; selected: Selected; now: number; open: OpenSession; children?: React.ReactNode;
 }) {
   const state = sessionState(agent, now);
-  const live = !agent.gone && (isLive(agent, now) || Boolean(agent.online));
+  const live = sessionLive(agent, now);
   const current = selected.level === "session" && selected.session === agent.id;
   const detail = agentDetail(agent);
-  const runs = ((agent.subagents || []) as Run[]).filter(run => !run.child);
+  const runs = openRuns(agent);
   const finished = (agent.finishedSubagents || []) as Run[];
   const kids = Array.isArray(children) ? children.filter(Boolean) : [];
   return <li className="flex min-w-0 flex-col">
@@ -84,14 +106,13 @@ function FinishedRuns({ runs, now, selected, onOpen }: { runs: Run[]; now: numbe
   </li>;
 }
 
-/** One subagent run: a spinner while it runs, its kind and task, and its step count. */
+/** One subagent run: a live dot until it finishes, its kind and task, and its step count. */
 function RunItem({ run, now, current, onOpen }: { run: Run; now: number; current: boolean; onOpen: () => void }) {
   const running = !run.done && runState(run, now) === "running";
   return <li>
-    <button type="button" data-run={run.run} aria-current={current ? "page" : undefined} onClick={onOpen} title={run.description || run.kind}
+    <button type="button" data-run={run.run} data-running={running ? "true" : undefined} aria-current={current ? "page" : undefined} onClick={onOpen} title={run.description || run.kind}
       className={cn(ROW, "items-center py-0.5 text-xs max-md:py-2", current ? "bg-sidebar-accent text-foreground" : "text-muted-foreground")}>
-      {running ? <LoaderCircle aria-label="Running" className="size-3 shrink-0 animate-spin text-live motion-reduce:animate-none"/>
-        : <span aria-hidden className="mx-0.5 size-2 shrink-0 rounded-full border border-muted-foreground/60"/>}
+      <Dot online={!run.done}/>
       <span className="min-w-0 flex-1 truncate"><span className={running ? "text-foreground" : ""}>{run.kind || "agent"}</span>{run.description && " · " + run.description}</span>
       {(run.steps || 0) > 0 && <span className="shrink-0 tabular-nums">{run.steps}</span>}
     </button>
