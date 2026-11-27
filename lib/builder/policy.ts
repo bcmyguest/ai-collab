@@ -3,7 +3,7 @@ import * as S from "../sandbox.ts";
 import { readFileSync } from "node:fs";
 import { argv } from "../harness.ts";
 import type { Harness } from "../harness.ts";
-import { TRACE_ENV } from "../cursor-trace.mjs";
+import { TRACE_ENV } from "../cursor-trace.ts";
 import { SANDBOX, TOOLS } from "../sandbox.ts";
 
 export const APP_IN = "/sandbox/tools/ai-collab";
