@@ -9,7 +9,7 @@ export const READY_POLL_MS = 5000;
  * Builds the workflow function over deps (injectable; the live set is in runner/runner.mjs):
  *   now(); scfgOf(project, session); sessionOf(project, address) -> live session or null; probe?(session) -> live-set probe, once per poll;
  *   ready(session, probe, project) -> bool; held?(session, scfg) -> bool (a Stop hook holds the session, so the push waits);
- *   handOff?(scfg, messages) (writes the messages to the session's hand-off file for that hold, lib/stop.mjs);
+ *   handOff?(scfg, messages) (writes the messages to the session's hand-off file for that hold, lib/stop.mjs; a handed message counts as delivered);
  *   busy?(session, probe) -> bool (still working on an earlier push);
  *   reserve(scfg, ids, {owner, allowSeen}) -> {owned, busy}; release(scfg, ids, owner); markDelivered(scfg, ids);
  *   snapshot(session) -> JSON; push(session, {text, urgent, ids}) -> {status}; awaitConfirm(id, session, snapshot) -> bool;
@@ -78,13 +78,13 @@ export function deliveryWorkflow(deps) {
       // A Stop hook that started since the ready check delivers the message itself; the check runs inside the step so replays match.
       const pushed = await wf.step("push", async () => {
         if (!(await deps.held?.(session, scfg))) return deps.push(session, { text, urgent: current.urgent === true, ids: [id] });
-        // The hold reads the hand-off file every second; the release below keeps the inbox copy, which the hold de-duplicates.
-        await Promise.resolve(deps.handOff?.(scfg, [current])).catch(() => {});
-        return { status: "held" };
+        // The hold reads the hand-off file every second and the mark step hides the inbox copy; a failed hand-off retries.
+        if (!deps.handOff) return { status: "held" };
+        return Promise.resolve().then(() => deps.handOff(scfg, [current])).then(() => ({ status: "handed" }), () => ({ status: "held" }));
       }, {
         onCut: async () => ({ status: await deps.waitConfirmed(session, [id], snap) ? "delivered" : "cut" }),
       });
-      if (pushed.status === "delivered") {
+      if (pushed.status === "delivered" || pushed.status === "handed") {
         await wf.step("mark", () => deps.markDelivered(scfg, [id]));
         return "delivered";
       }

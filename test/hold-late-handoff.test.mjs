@@ -108,7 +108,7 @@ test("a reserved message reaches a hold with a 10 s slice within 2 s when the pu
   assert.equal(r.why, "messages");
   assert.ok(r.at - holdAt < 2000, `the hold got the message after ${r.at - holdAt} ms`);
   assert.equal(shown(r.text, "late for the hold"), 1, "the hold shows the message once");
-  assert.equal((await out).status, "skipped", "the retry finds the message delivered");
+  assert.equal((await out).status, "delivered", "the hand-off counts as delivered");
   assert.deepEqual(pushes, [], "nothing was pushed");
 });
 
