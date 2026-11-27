@@ -2,7 +2,8 @@
 // ai-collab-bus entry: the local message bus that replaces the ntfy container.
 // Reads url/token from defaults.json (or AI_COLLAB_BUS_* env), serves Postgres-backed events on loopback,
 // and prunes past retention hourly. Sandboxes reach it through host.openshell.internal, same as ntfy.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import path from "node:path";
 import { configDir, listProjects, loadProjects, stateDir } from "../lib/config.mjs";
@@ -130,4 +131,4 @@ export async function main(env = process.env, { err = process.stderr } = {}) {
   return 0;
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) await main();
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) await main();

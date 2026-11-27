@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ai-collab-runner entry: loads projects and adapters, recovers durable sessions, serves the control socket.
-import { mkdirSync } from "node:fs";
+import { mkdirSync, realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { loadProjects, stateDir, autoDefaults, autoDeployEnabled } from "../lib/config.mjs";
@@ -89,4 +89,4 @@ export async function main(env = process.env) {
   process.on("SIGINT", shutdown);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) await main();
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) await main();
