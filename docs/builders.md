@@ -242,17 +242,16 @@ UNVERIFIED:
 
 ## Prune copies
 
-`ai-collab prune [--apply] [--older-than 7d] [--json]` is a dry run unless `--apply` is given. The cutoff must be at least 24h. It removes:
+`ai-collab prune [--apply] [--older-than 7d] [--project NAME] [--json]` is a dry run unless `--apply` is given. The cutoff must be at least 24h. It runs once per listed project (`projects.json` entries and auto-joined repos), or only the one `--project` names; a project whose root is gone or whose run fails is reported and skipped. A builder belongs to the project its `state.json` root names; a builder with no root, or a root no project has, goes with the first project. It removes:
 
 - Builder dirs in a settled phase (`finished`, `failed`, `stopped`) whose `state.json` is older than the cutoff, with the unit inactive, no live pid, and the task not open (any status except `done`; a missing task counts as closed). It deletes `back/` (clone), `stage/` (staged tree and `tools/`), `download-*` and `*.log` files over 1 MiB. It keeps `state.json`, `brief.md`, `policy.yaml`, the `workflow-*.db` journal, `out/` (ai-collab call records and oncebitten payloads) and smaller logs.
 - Before a clone is deleted, its uncommitted work is committed, and every branch, tag, the stash and HEAD are copied to `refs/ai-collab/archive/<builder-id>/{heads/*,tags/*,stash,HEAD}` in the project repo, then HEAD is verified. A clone with ignored files outside `node_modules` is kept. A clone whose archive has diverged is kept. A builder with unlanded commits and no clone is kept.
 - Linked worktrees of the project repo, except the main worktree, protected checkouts, and any worktree that contains another worktree. A worktree goes only when all hold:
-  - `git status --porcelain --untracked-files=all --ignored=matching` reports nothing, except one top-level `node_modules` symlink. Ignored paths outside `node_modules` and `web/.next*` keep it.
-  - Its HEAD reflog holds no commit that no ref reaches (HEAD itself excepted).
-  - It is not locked, and no live process has its cwd inside it.
+  - `git status --porcelain --untracked-files=all --ignored=matching` reports nothing, except one top-level `node_modules` symlink. Ignored paths keep it unless they are `node_modules`, `.next*`, `next-env.d.ts`, `.venv`, `__pycache__` or `target` at any depth, or match the project's `pruneIgnored` globs.
+  - It is not locked, and no live process has its cwd inside it. A lock Claude Code wrote (`claude agent|session <name> (pid N start S)`) whose process has exited, or whose pid now has another start time, counts as unlocked; removal drops that lock first.
   - No open builder task has it as `state.worktree`.
   - Every activity signal is older than the cutoff: HEAD commit, directory and file mtimes (the scan skips `node_modules` and `.next`, and keeps the worktree past 50,000 entries), index, HEAD reflog, and any session seen inside. A session record that is live (process running or a job running) and inside the worktree keeps it at once; an unreadable registry record keeps every worktree.
-- A detached HEAD goes to `refs/ai-collab/archive/wt-<name>` before removal. Removal locks the worktree, re-checks every rule, then runs `git worktree remove` without `--force`. A refused removal unlinks only the `node_modules` symlink, retries, and restores the link if the retry fails. Missing worktrees are pruned after kept ones are locked. Branches are never deleted.
+- A detached HEAD goes to `refs/ai-collab/archive/wt-<name>` before removal. Each HEAD reflog entry that no ref reaches goes to `refs/ai-collab/archive/wt-<name>-reflog/<sha>`, so every commit the worktree held stays reachable. Removal locks the worktree, re-checks every rule, then runs `git worktree remove` without `--force`. A refused removal unlinks only the `node_modules` symlink, retries, and restores the link if the retry fails. Missing worktrees are pruned after kept ones are locked. Branches are never deleted.
 
 To run prune daily, add one entry to `~/.config/ai-collab/schedules.json` (the operator adds it; nothing enables it by default):
 
@@ -266,7 +265,7 @@ To run prune daily, add one entry to `~/.config/ai-collab/schedules.json` (the o
 }
 ```
 
-`cwd` is the registered project root, which selects the project. The runner gives the command `~/.local/bin` and its own node directory on PATH, so `ai-collab` resolves to the checkout that `~/.local/bin/ai-collab` links to. That link points at `/home/b/ai-collab`, so the entry runs the code on the main branch until feat/prune merges. Each run ends with one stderr line, for example `prune applied: reclaimed 21.52 GB; builders 13 (clone 13, staged 1); worktrees 0; archives 13; skipped 240 (...)`, which the schedule record keeps as its output tail.
+`cwd` only sets where the command runs; prune covers every listed project. The runner gives the command `~/.local/bin` and its own node directory on PATH, so `ai-collab` resolves to the checkout that `~/.local/bin/ai-collab` links to. That link points at `/home/b/ai-collab`, so the entry runs the code on the main branch until feat/prune merges. Each run ends with one stderr line, for example `prune applied: reclaimed 21.52 GB; builders 13 (clone 13, staged 1); worktrees 0; archives 13; skipped 240 (...)`, which the schedule record keeps as its output tail. Lines before it give one summary per project, prefixed with the project name.
 
 Builders hold no harness transcript on the host. Claude, Codex and OpenCode write their output to the unit's journal, Cursor streams to OTLP, and the sandbox session directories are destroyed at cleanup.
 

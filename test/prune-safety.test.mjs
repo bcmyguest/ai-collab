@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync, chmodSync, existsSync, lstatSync, lutimesSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";import os from "node:os";
 import path from "node:path";
 import { stateDir } from "../lib/config.mjs";
-import { parsePruneArgs, pruneRepo } from "../lib/prune.mjs";
+import { isAllowedIgnored, isStaleClaudeLock, parsePruneArgs, pruneProjects, pruneRepo } from "../lib/prune.mjs";
 
 const NOW = Date.parse("2026-11-25T00:00:00Z");
 const WEEK = 7 * 86_400_000;
@@ -178,17 +178,21 @@ test("a fresh file under an allowlisted ignored dir keeps its worktree", async (
   assert.equal(outcomes(summary)["worktree:fresh"], "newer than cutoff");
 });
 
-test("a commit held only by the worktree HEAD reflog keeps its worktree", async (t) => {
+test("a commit held only by the worktree HEAD reflog is archived, then its worktree goes", async (t) => {
   const s = scene(t);
   git(s.repo, ["branch", "rl", "main"]);
   const p = addWorktree(s, "rl", (q) => ["--detach", q, "main"]);
   writeFileSync(path.join(p, "lost.txt"), "lost\n");
   git(p, ["add", "lost.txt"]);
   git(p, ["commit", "-q", "-m", "lost"], { GIT_AUTHOR_DATE: OLD_ISO, GIT_COMMITTER_DATE: OLD_ISO });
+  const lost = git(p, ["rev-parse", "HEAD"]);
   git(p, ["checkout", "-q", "rl"]);
   ageWorktree(s.repo, p);
-  const summary = await pruneRepo({ env: s.env, root: s.repo, olderThanMs: WEEK, apply: false, now: NOW });
-  assert.equal(outcomes(summary)["worktree:rl"], "HEAD reflog holds commits on no ref");
+  const summary = await pruneRepo({ env: s.env, root: s.repo, olderThanMs: WEEK, apply: true, now: NOW });
+  assert.equal(outcomes(summary)["worktree:rl"], "remove");
+  assert.ok(!existsSync(p));
+  assert.equal(git(s.repo, ["rev-parse", `refs/ai-collab/archive/wt-rl-reflog/${lost}`]), lost);
+  assert.ok(summary.archives.some((a) => a.sha === lost));
 });
 
 test("a prunable detached worktree has its HEAD archived before pruning", async (t) => {
@@ -325,4 +329,101 @@ test("a failed archive leaves the worktree unlocked", async (t) => {
   assert.match(outcomes(summary)["worktree:blk"], /^remove failed/);
   assert.ok(existsSync(p));
   assert.ok(!git(s.repo, ["worktree", "list", "--porcelain"]).includes("locked"));
+});
+
+// A fake /proc holding one process whose start time is `start`.
+function fakeProc(t, pid, start) {
+  const proc = mkdtempSync(path.join(os.tmpdir(), "ai-collab-prune-proc-"));
+  t.after(() => rmSync(proc, { recursive: true, force: true }));
+  mkdirSync(path.join(proc, String(pid)));
+  const fields = Array.from({ length: 50 }, (_, i) => String(i + 3));
+  fields[19] = String(start);
+  writeFileSync(path.join(proc, String(pid), "stat"), `${pid} (claude (x)) ${fields.join(" ")}\n`);
+  return proc;
+}
+
+test("isStaleClaudeLock reads the pid and start time Claude Code records", (t) => {
+  const proc = fakeProc(t, 4242, 777);
+  assert.equal(isStaleClaudeLock("claude agent agent-a1 (pid 4242 start 777)\n", proc), false);
+  assert.equal(isStaleClaudeLock("claude session plan (pid 4242 start 778)", proc), true);
+  assert.equal(isStaleClaudeLock("claude agent agent-a1 (pid 4243 start 777)", proc), true);
+  assert.equal(isStaleClaudeLock("ai-collab prune", proc), false);
+  assert.equal(isStaleClaudeLock("", proc), false);
+});
+
+function ownStart() {
+  const stat = readFileSync(`/proc/${process.pid}/stat`, "utf8");
+  return stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19];
+}
+
+test("a worktree locked by an exited Claude Code process goes; a live lock and a plain lock stay", async (t) => {
+  const s = scene(t);
+  const stale = addWorktree(s, "stale", (q) => [q, "-b", "stale", "main"]);
+  git(s.repo, ["worktree", "lock", "--reason", `claude agent agent-x (pid ${process.pid} start 1)`, stale]);
+  const live = addWorktree(s, "live", (q) => [q, "-b", "live", "main"]);
+  git(s.repo, ["worktree", "lock", "--reason", `claude agent agent-y (pid ${process.pid} start ${ownStart()})`, live]);
+  const plain = addWorktree(s, "plain", (q) => [q, "-b", "plain", "main"]);
+  git(s.repo, ["worktree", "lock", "--reason", "operator hold", plain]);
+  for (const p of [stale, live, plain]) ageWorktree(s.repo, p);
+  const summary = await pruneRepo({ env: s.env, root: s.repo, olderThanMs: WEEK, apply: true, now: NOW });
+  const got = outcomes(summary);
+  assert.equal(got["worktree:stale"], "remove");
+  assert.equal(got["worktree:live"], "locked");
+  assert.equal(got["worktree:plain"], "locked");
+  assert.ok(!existsSync(stale));
+  assert.ok(existsSync(live) && existsSync(plain));
+});
+
+test("rebuildable ignored paths and project globs allow removal; other ignored paths keep the worktree", async (t) => {
+  assert.ok(isAllowedIgnored("web/next-env.d.ts"));
+  assert.ok(isAllowedIgnored("app/.next-demo/"));
+  assert.ok(isAllowedIgnored("crate/target/"));
+  assert.ok(isAllowedIgnored("py/__pycache__/"));
+  assert.ok(!isAllowedIgnored(".env"));
+  assert.ok(!isAllowedIgnored("dist/"));
+  assert.ok(isAllowedIgnored("dist/", ["dist"]));
+  assert.ok(isAllowedIgnored("out/cov/", ["out/**"]));
+  const s = scene(t);
+  appendFileSync(path.join(s.repo, ".git", "info", "exclude"), "next-env.d.ts\ncoverage/\n");
+  const p = addWorktree(s, "gen", (q) => [q, "-b", "gen", "main"]);
+  writeFileSync(path.join(p, "next-env.d.ts"), "// generated\n");
+  mkdirSync(path.join(p, "coverage"));
+  writeFileSync(path.join(p, "coverage", "lcov.info"), "x\n");
+  ageWorktree(s.repo, p);
+  const plain = await pruneRepo({ env: s.env, root: s.repo, olderThanMs: WEEK, apply: false, now: NOW });
+  assert.equal(outcomes(plain)["worktree:gen"], "ignored outside allowlist: coverage/");
+  const globbed = await pruneRepo({ env: s.env, root: s.repo, olderThanMs: WEEK, apply: false, now: NOW, allowIgnored: ["coverage"] });
+  assert.equal(outcomes(globbed)["worktree:gen"], "remove");
+});
+
+// A settled builder with a 1 MB staged tree whose state names `root`.
+function settledBuilder(env, id, root) {
+  const dir = path.join(stateDir(env), "builders", id);
+  mkdirSync(path.join(dir, "stage", "tree"), { recursive: true });
+  writeFileSync(path.join(dir, "stage", "tree", "big.bin"), Buffer.alloc(MB, 1));
+  writeFileSync(path.join(dir, "state.json"), JSON.stringify({ id, phase: "finished", ...(root ? { root } : {}), unit: `builder-${id}` }));
+  utimesSync(path.join(dir, "state.json"), OLD / 1000, OLD / 1000);
+}
+
+test("pruneProjects prunes every project and gives each builder to the project its state names", async (t) => {
+  const a = scene(t);
+  const b = scene(t);
+  const env = a.env;
+  const wa = addWorktree(a, "wa", (q) => [q, "-b", "wa", "main"]);
+  const wb = addWorktree(b, "wb", (q) => [q, "-b", "wb", "main"]);
+  ageWorktree(a.repo, wa);
+  ageWorktree(b.repo, wb);
+  settledBuilder(env, "of-b", b.repo);
+  settledBuilder(env, "rootless", null);
+  settledBuilder(env, "elsewhere", "/nowhere/repo");
+  const total = await pruneProjects({ env, olderThanMs: WEEK, apply: false, now: NOW,
+    projects: [{ project: "a", root: a.repo }, { project: "b", root: b.repo }] });
+  const [pa, pb] = total.projects;
+  assert.deepEqual([pa.project, pb.project], ["a", "b"]);
+  assert.deepEqual(pa.summary.builders.map((x) => x.id).sort(), ["elsewhere", "rootless"]);
+  assert.deepEqual(pb.summary.builders.map((x) => x.id), ["of-b"]);
+  assert.equal(outcomes(pa.summary)["worktree:wa"], "remove");
+  assert.equal(outcomes(pb.summary)["worktree:wb"], "remove");
+  assert.equal(total.builders.length, 3);
+  assert.equal(total.reclaimedBytes, pa.summary.reclaimedBytes + pb.summary.reclaimedBytes);
 });
