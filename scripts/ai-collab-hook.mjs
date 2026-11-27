@@ -39,7 +39,7 @@ import { harnessProcess, isRunning, processStart } from "../lib/process.ts";
 import { CLAIM_SETTLE_MS, STOP_GRACE_MS, WAITER_MAX_S, runWaiter, takeWaiterSlot } from "../lib/waiter.ts";
 import { ON_DEMAND_LOADS, contextUsage, dropOnDemandFiles, readContext, recordInstructions, reportContext } from "../lib/usage.ts";
 import { activityEvents, publishActivity } from "../lib/activity.ts";
-import { compactionFields } from "../lib/compaction.mjs";
+import { compactionFields } from "../lib/compaction.ts";
 import { clearFields } from "../lib/session-events.mjs";
 import { sendReceipts, settleReceipts } from "../lib/receipts.ts";
 import { closeTerminalCards, decideApproval, decideQuestion } from "../lib/approvals.mjs";

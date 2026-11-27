@@ -3,7 +3,7 @@ import { BUILDER_HARNESSES, startBuilder } from "../builder.ts";
 import { agentDirectory, sessionDirectory, setIdentity, listSessions } from "../sessions.mjs";
 import { messageView, respond, sendAndAwait, waitForIdle, waitForMessages } from "../agents.mjs";
 import { readInbox } from "../messaging.ts";
-import { askQuestion, requestWait, waitForAnswer } from "../questions.mjs";
+import { askQuestion, requestWait, waitForAnswer } from "../questions.ts";
 import { HISTORY_DEFAULT, HISTORY_MAX, PRIORITIES, RESPOND_STATES, channelHistory, replyToOperator, sendMessage } from "../messaging.ts";
 import { storedMode } from "../mode.ts";
 import { teamStart, teamStatus } from "../teams.mjs";

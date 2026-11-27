@@ -10,7 +10,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { productionDistDir } from "./ui-build-output.mjs";
 import { configDir } from "./config.mjs";
-import { pgReachable } from "./postgres.mjs";
+import { pgReachable } from "./postgres.ts";
 import { readJson } from "./store.ts";
 import { PLUGIN_COPY_MAX_BYTES, packPluginCopy } from "./plugin-copy.ts";
 

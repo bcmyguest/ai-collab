@@ -19,7 +19,7 @@ import { MESSAGE_MAX_BYTES, latestStatuses, changeQueuedMessage, queuedMessage, 
 import { ATTACHMENT_MAX_BYTES, imageAttachment } from "../../lib/attachment.ts";
 import { IMAGE_FILE, TEXT_FILE, attachmentOf, ensureAttachment, cachedAttachment, readAttachmentFile } from "../../lib/attachment-cache.ts";
 import { publish } from "../../lib/messaging.ts";
-import { parseQuestionText } from "../../lib/questions.mjs";
+import { parseQuestionText } from "../../lib/questions.ts";
 import { readReply } from "../../lib/operator.ts";
 import { disposeSession, listSessions, sessionPlace, worktreeGone } from "../../lib/sessions.mjs";
 import { readState, statePath } from "../../lib/state.ts";
@@ -40,7 +40,7 @@ import { LIMIT_TOOL, chooseLimit, limitEndMessage, skipLimit } from "../../lib/l
 import { limitEndNotice } from "../../lib/start-limit.ts";
 import { closedProjectNames, createTeam, deleteTeam, listTeams, readProjectsFile, removeProject, setProjectClosed, teamTask } from "../../lib/teams.mjs";
 import { clearFields, modelFields, sessionHistory } from "../../lib/session-events.mjs";
-import { compactionFields } from "../../lib/compaction.mjs";
+import { compactionFields } from "../../lib/compaction.ts";
 import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern, savePattern, saveTeamText, teamTemplates, teamTextOf } from "../../lib/patterns.mjs";
 import { authorModel, authorTeam, saveAuthoredTeam } from "../../lib/catalog/author.ts";
 import { listOwned, readOwned, setNextPermission } from "../../lib/sessions/registry.ts";

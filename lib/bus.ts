@@ -1,6 +1,6 @@
 /**
  * The local message bus: the ntfy-subset HTTP API the plugin already speaks, served from this machine's
- * Postgres (lib/bus-postgres.mjs) instead of a container. Same topics, same JSON-line protocol, same
+ * Postgres (lib/bus-postgres.ts) instead of a container. Same topics, same JSON-line protocol, same
  * Bearer token, so every client (hooks, runner, UI server, tests) is unchanged; what changes is where events live.
  *
  * Endpoints (the subset lib/messaging.ts uses):
@@ -14,27 +14,61 @@
  * cache, so an AFK gap or a runner restart cannot drop an approval or a reply. No rate limits: the
  * bus is loopback-only (sandboxes arrive through host.openshell.internal) behind a shared token.
  */
-import http from "node:http";
-import { threadRoute } from "./thread-routes.mjs";
+import http, { type IncomingMessage, type OutgoingHttpHeaders } from "node:http";
+import type { AddressInfo } from "node:net";
+import { threadRoute, type ThreadStore } from "./thread-routes.ts";
 
 export const DEFAULT_RETENTION_MS = 7 * 24 * 3_600_000;
 const MESSAGE_MAX_BYTES = 64 * 1024;
 const FILE_MAX_BYTES = 16 * 1024 * 1024;
 const FILE_EXT = /\.(png|jpe?g|gif|webp|txt)$/i;
 
-const FILE_TYPES = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".txt": "text/plain; charset=utf-8" };
+// oxlint-disable-next-line quality/no-known-value-widening -- looked up by a runtime file extension
+const FILE_TYPES: Record<string, string | undefined> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".txt": "text/plain; charset=utf-8" };
 
-function fileType(name) {
+type Awaitable<T> = T | Promise<T>;
+export type BusAttachment = { name: string; type: string; size: number; url: string };
+export type BusEvent = { id: string; time: number; event: string; topic: string; message?: string; title?: string; attachment?: BusAttachment; threadId?: string; reset?: boolean };
+export type PublishInput = { topic: string; message: string; title?: string; attachment?: BusAttachment | null; threadId?: string };
+export type Since = { kind: "all" } | { kind: "none" } | { kind: "time" | "id"; value: number };
+export type StoredFile = { data: Buffer; type: string; name: string; size: number };
+
+/** The store interface the server calls; see the comment above openMemoryStore. */
+export interface BusStore {
+  kind: string;
+  publish(input: PublishInput): Awaitable<BusEvent>;
+  resolve(topics: string[], since: string): Awaitable<{ since: string; reset: boolean }>;
+  poll(topic: string, since: string): Awaitable<BusEvent[]>;
+  stream(topics: string[], since: string, send: (ev: BusEvent) => void): Awaitable<() => void>;
+  putFile(file: { name: string; data: Buffer }): Awaitable<{ file: string; type: string; size: number }>;
+  getFile(id: string): Awaitable<StoredFile | null>;
+  prune(nowSec?: number): Awaitable<{ events: number | null; files: number }>;
+  threads?: ThreadStore | null;
+  close(): Awaitable<void>;
+}
+
+/** A test hook's refusal: the server answers with it instead of serving the request. */
+export type Refusal = { status: number; body?: string; headers?: OutgoingHttpHeaders };
+export type BusHooks = {
+  onRequest?(req: IncomingMessage): Awaitable<void>;
+  fault?(req: IncomingMessage): Refusal | null | undefined;
+  onPoll?(rec: { topic: string; since: string; poll: string }): Refusal | null | undefined | void;
+  onPublish?(rec: { id: string; topic: string; message: string; title: string; auth: string; attachment?: { name: string; size: number } }): void;
+  onSubscribe?(rec: { topics: string[]; since: string }): void;
+  onFileRead?(id: string): void;
+};
+
+function fileType(name: string): string {
   const ext = String(name).slice(String(name).lastIndexOf(".")).toLowerCase();
   return FILE_TYPES[ext] || "application/octet-stream";
 }
 
 // ntfy turns the two characters \n of a query-string message into a newline; clients respell them, and the
 // bus turns them back. Kept so the wire stays identical for anything that already escapes this way.
-const unescapeQuery = (text) => String(text ?? "").replaceAll("\\n", "\n");
+const unescapeQuery = (text: string | null | undefined) => String(text ?? "").replaceAll("\\n", "\n");
 
 /** The store kind: AI_COLLAB_BUS_STORE, else defaults.json busStore, else postgres; the SQLite store is retired. */
-export function resolveBusStoreKind(env = process.env, defaults = {}) {
+export function resolveBusStoreKind(env: NodeJS.ProcessEnv = process.env, defaults: { busStore?: string } = {}): string {
   const kind = env.AI_COLLAB_BUS_STORE || defaults.busStore || "postgres";
   if (kind === "sqlite") throw new Error("bus: the SQLite store (bus.db) is retired; copy it with `ai-collab bus migrate --to postgres`, then set busStore to postgres or remove it (docs/configuration.md#bus-store)");
   if (kind !== "postgres") throw new Error(`bus: unknown store ${kind}; use postgres`);
@@ -45,12 +79,13 @@ export function resolveBusStoreKind(env = process.env, defaults = {}) {
  * "since" as clients send it: "all", a duration (90m, 12h, 3d), unix seconds (9+ digits), or an event id.
  * Returns {kind, value} where kind is all|time|id|none.
  */
-export function parseSince(since, nowSec = Math.floor(Date.now() / 1000)) {
+export function parseSince(since: unknown, nowSec: number = Math.floor(Date.now() / 1000)): Since {
   const s = String(since ?? "");
   if (s === "" || s === "all") return { kind: "all" };
   const dur = /^(\d+)(s|m|h|d)$/.exec(s);
   if (dur) {
-    const unit = { s: 1, m: 60, h: 3600, d: 86400 }[dur[2]];
+    // oxlint-disable-next-line quality/no-known-value-widening -- looked up by the runtime duration unit
+    const unit = ({ s: 1, m: 60, h: 3600, d: 86400 } as Record<string, number>)[dur[2]];
     return { kind: "time", value: nowSec - Number(dur[1]) * unit };
   }
   if (/^\d{9,}$/.test(s)) return { kind: "time", value: Number(s) };
@@ -74,15 +109,15 @@ export function parseSince(since, nowSec = Math.floor(Date.now() / 1000)) {
 
 /** Events and attachments in memory: what the test fake runs on, and enough for a throwaway bus. */
 export function openMemoryStore() {
-  const events = [];
-  const subscribers = new Set();
-  const state = { seq: 0, files: new Map() };
+  const events: BusEvent[] = [];
+  const subscribers = new Set<(ev: BusEvent) => void>();
+  const state = { seq: 0, files: new Map<string, { data: Buffer; type: string }>() };
   const store = {
     kind: "memory",
     files: state.files,
-    publish({ topic, message, title = "", attachment = null }) {
+    publish({ topic, message, title = "", attachment = null }: PublishInput): BusEvent {
       state.seq += 1;
-      const ev = {
+      const ev: BusEvent = {
         id: String(state.seq),
         time: Math.floor(Date.now() / 1000),
         event: "message",
@@ -95,13 +130,13 @@ export function openMemoryStore() {
       for (const send of subscribers) send(ev);
       return ev;
     },
-    resolve(topics, since) {
+    resolve(topics: string[], since: string) {
       const s = parseSince(since);
       if (s.kind === "all" || s.kind === "time") return { since, reset: false };
       const known = s.kind === "id" && events.some((e) => topics.includes(e.topic) && Number(e.id) === s.value);
       return known ? { since, reset: false } : { since: "all", reset: true };
     },
-    poll(topic, since) {
+    poll(topic: string, since: string): BusEvent[] {
       const all = events.filter((e) => e.topic === topic);
       const s = parseSince(since || "all");
       if (s.kind === "all") return all;
@@ -112,7 +147,7 @@ export function openMemoryStore() {
       }
       return all;
     },
-    backfill(topics, since) {
+    backfill(topics: string[], since: string): BusEvent[] {
       const s = parseSince(since);
       const all = events.filter((e) => topics.includes(e.topic));
       if (s.kind === "all") return all;
@@ -120,21 +155,21 @@ export function openMemoryStore() {
       if (s.kind === "id") return all.filter((e) => Number(e.id) > s.value);
       return [];
     },
-    subscribe(send) {
+    subscribe(send: (ev: BusEvent) => void) {
       subscribers.add(send);
       return () => subscribers.delete(send);
     },
-    stream(topics, since, send) {
+    stream(topics: string[], since: string, send: (ev: BusEvent) => void) {
       for (const ev of store.backfill(topics, since)) send(ev);
       return store.subscribe((ev) => { if (topics.includes(ev.topic)) send(ev); });
     },
-    putFile({ name, data }) {
+    putFile({ name, data }: { name: string; data: Buffer }) {
       const ext = (FILE_EXT.exec(name)?.[0] || ".bin").toLowerCase();
       const file = `f${state.files.size + 1}${ext}`;
       state.files.set(file, { data, type: fileType(name) });
       return { file, type: fileType(name), size: data.length };
     },
-    getFile(id) {
+    getFile(id: string): StoredFile | null {
       const hit = state.files.get(String(id));
       return hit ? { ...hit, name: String(id), size: hit.data.length } : null;
     },
@@ -144,8 +179,8 @@ export function openMemoryStore() {
   return store;
 }
 
-async function readBody(req, maxBytes) {
-  const chunks = [];
+async function readBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
+  const chunks: Buffer[] = [];
   let total = 0;
   for await (const chunk of req) {
     total += chunk.length;
@@ -164,7 +199,7 @@ async function readBody(req, maxBytes) {
  * (awaited first), fault(req) and onPoll(rec) may return {status, body, headers} to refuse a request, and
  * onPublish, onPoll, onSubscribe, onFileRead observe traffic. Production passes none and keeps no log.
  */
-export function createBusServer({ store, token = "", baseUrl = "", hooks = {} }) {
+export function createBusServer({ store, token = "", baseUrl = "", hooks = {} }: { store: BusStore; token?: string; baseUrl?: string; hooks?: BusHooks }) {
   const server = http.createServer(async (req, res) => {
     await hooks.onRequest?.(req);
     if (token && req.headers.authorization !== `Bearer ${token}`) {
@@ -176,11 +211,12 @@ export function createBusServer({ store, token = "", baseUrl = "", hooks = {} })
       res.writeHead(fault.status, fault.headers || {});
       return res.end(fault.body);
     }
-    const url = new URL(req.url, "http://bus.invalid");
-    const base = () => baseUrl || `http://127.0.0.1:${server.address().port}`;
+    const url = new URL(req.url as string, "http://bus.invalid");
+    const base = () => baseUrl || `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
     if (req.method === "POST" && url.pathname === "/") {
-      let body;
+      // oxlint-disable-next-line typescript/no-explicit-any -- the publish body is client JSON, checked below
+      let body: any;
       try { body = JSON.parse((await readBody(req, MESSAGE_MAX_BYTES)).toString("utf8")); } catch {
         res.writeHead(400);
         return res.end("bad json");
@@ -197,10 +233,10 @@ export function createBusServer({ store, token = "", baseUrl = "", hooks = {} })
 
     const put = /^\/([^/]+)$/.exec(url.pathname);
     if (req.method === "PUT" && put) {
-      let data;
+      let data: Buffer;
       try { data = await readBody(req, FILE_MAX_BYTES); } catch (error) {
-        res.writeHead(error.status || 400);
-        return res.end(error.message);
+        res.writeHead((error as Error & { status?: number }).status || 400);
+        return res.end((error as Error).message);
       }
       const name = url.searchParams.get("filename") || "file";
       const saved = await store.putFile({ name, data });
@@ -241,7 +277,7 @@ export function createBusServer({ store, token = "", baseUrl = "", hooks = {} })
       const cursor = await store.resolve([topic], since);
       const out = await store.poll(topic, cursor.since);
       res.writeHead(200, { "content-type": "application/x-ndjson" });
-      const line = (ev) => JSON.stringify(cursor.reset ? { ...ev, reset: true } : ev);
+      const line = (ev: BusEvent) => JSON.stringify(cursor.reset ? { ...ev, reset: true } : ev);
       const keep = out.map(line);
       keep.push(line({ id: "keepalive", time: 0, event: "keepalive", topic }));
       return res.end(`${keep.join("\n")}\n`);
@@ -251,7 +287,7 @@ export function createBusServer({ store, token = "", baseUrl = "", hooks = {} })
       const names = json[1].split(",").map(decodeURIComponent);
       const since = url.searchParams.get("since") || "";
       hooks.onSubscribe?.({ topics: names, since });
-      let cursor;
+      let cursor: { since: string; reset: boolean };
       try {
         cursor = await store.resolve(names, since);
       } catch {
@@ -263,7 +299,7 @@ export function createBusServer({ store, token = "", baseUrl = "", hooks = {} })
       let closed = false;
       // lastSeen only guards against a duplicate the store could hand us twice.
       let lastSeen = 0n;
-      const send = (ev) => {
+      const send = (ev: BusEvent) => {
         if (closed || !names.includes(ev.topic)) return;
         const id = BigInt(ev.id);
         if (id <= lastSeen) return;
@@ -281,7 +317,7 @@ export function createBusServer({ store, token = "", baseUrl = "", hooks = {} })
         unsubscribe();
       });
       // A store may await its backlog read, so a client that left meanwhile is unsubscribed on arrival.
-      let stop;
+      let stop: () => void;
       try {
         stop = await store.stream(names, cursor.since, send);
       } catch {
@@ -300,8 +336,8 @@ export function createBusServer({ store, token = "", baseUrl = "", hooks = {} })
 
   return {
     server,
-    listen: (port = 0, host = "127.0.0.1") => new Promise((resolve) => server.listen(port, host, () => resolve(`http://${host}:${server.address().port}`))),
-    close: () => new Promise((resolve) => {
+    listen: (port = 0, host = "127.0.0.1") => new Promise<string>((resolve) => server.listen(port, host, () => resolve(`http://${host}:${(server.address() as AddressInfo).port}`))),
+    close: () => new Promise<void>((resolve) => {
       server.closeAllConnections();
       server.close(() => resolve());
     }),
@@ -309,7 +345,7 @@ export function createBusServer({ store, token = "", baseUrl = "", hooks = {} })
 }
 
 /** The production bundle: an opened store (Postgres in production) plus the server in front of it. */
-export function openBus({ store, token = "", baseUrl = "" }) {
+export function openBus({ store, token = "", baseUrl = "" }: { store?: BusStore | null; token?: string; baseUrl?: string }) {
   if (!store) throw new Error("openBus: pass an opened store");
   const bus = createBusServer({ store, token, baseUrl });
   return {

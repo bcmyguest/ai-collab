@@ -4,7 +4,7 @@ A thread is the operator's main UI object: one conversation, one worktree and br
 
 ## Data model
 
-Threads live in the bus's Postgres schema (`bus` on the live machine), next to `events` and `files`. `openPostgresBusStore` (`lib/bus-postgres.mjs`) creates them on open, under the same advisory lock as the other tables, with `IF NOT EXISTS` DDL. The SQLite and memory bus stores have no threads: their `/threads` routes answer 404, and the UI shows no thread list.
+Threads live in the bus's Postgres schema (`bus` on the live machine), next to `events` and `files`. `openPostgresBusStore` (`lib/bus-postgres.ts`) creates them on open, under the same advisory lock as the other tables, with `IF NOT EXISTS` DDL. The SQLite and memory bus stores have no threads: their `/threads` routes answer 404, and the UI shows no thread list.
 
 ```mermaid
 erDiagram

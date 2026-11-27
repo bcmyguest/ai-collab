@@ -4,7 +4,7 @@ The bus token is the trust boundary. Anyone who can read a project's topics sees
 
 ## The server
 
-[`setup`](quick-start.md) installs the bus (`lib/bus.mjs`) as a systemd user service bound to `127.0.0.1:8794`; every request needs the Bearer token from `~/.config/ai-collab/bus-token` (mode 0600), and there is no anonymous access. The UI listens only on `127.0.0.1:8795`; phones reach it through Tailscale. Setup changes nothing on your network. Nothing talks to any public service.
+[`setup`](quick-start.md) installs the bus (`lib/bus.ts`) as a systemd user service bound to `127.0.0.1:8794`; every request needs the Bearer token from `~/.config/ai-collab/bus-token` (mode 0600), and there is no anonymous access. The UI listens only on `127.0.0.1:8795`; phones reach it through Tailscale. Setup changes nothing on your network. Nothing talks to any public service.
 
 ## Trust model and privacy
 

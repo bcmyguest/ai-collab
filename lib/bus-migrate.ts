@@ -9,13 +9,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { stateDir } from "./config.mjs";
-import { openPostgresBusStore } from "./bus-postgres.mjs";
-import { pgUrl } from "./postgres.mjs";
+import { openPostgresBusStore } from "./bus-postgres.ts";
+import { pgUrl } from "./postgres.ts";
 
 const BATCH = 1000;
 
+type EventRow = { id: number | bigint; topic: string; time: number; message: string; title: string; attachment: string | null };
+type FileRow = { id: string; name: string; type: string; size: number; created: number };
+export type MigrateResult = { events: number; files: number; minId: number; maxId: number; nextId: number; dryRun?: true };
+export type MigrateOptions = { env?: NodeJS.ProcessEnv; dataDir?: string; schema?: string; dryRun?: boolean; resume?: boolean };
+
 /** The bus data dir, the same resolution scripts/ai-collab-bus.mjs uses. */
-export function busDataDir(env = process.env) {
+export function busDataDir(env: NodeJS.ProcessEnv = process.env): string {
   return env.AI_COLLAB_BUS_DATA || path.join(stateDir(env), "bus");
 }
 
@@ -24,16 +29,16 @@ export function busDataDir(env = process.env) {
  * dryRun reads and reports only. resume tolerates a non-empty target and copies only ids past its max.
  * Resolves { events, files, minId, maxId, nextId } — counts of what was copied and the sequence's next value.
  */
-export async function migrateBusToPostgres({ env = process.env, dataDir = busDataDir(env), schema = "bus", dryRun = false, resume = false } = {}) {
+export async function migrateBusToPostgres({ env = process.env, dataDir = busDataDir(env), schema = "bus", dryRun = false, resume = false }: MigrateOptions = {}): Promise<MigrateResult> {
   if (!/^[a-z_][a-z0-9_]*$/.test(schema)) throw new Error(`bus migrate: invalid schema ${schema}`);
   const srcFile = path.join(dataDir, "bus.db");
   if (!fs.existsSync(srcFile)) throw new Error(`bus migrate: no SQLite store at ${srcFile}`);
   const src = new DatabaseSync(srcFile, { readOnly: true });
-  const events = src.prepare("SELECT id, topic, time, message, title, attachment FROM events ORDER BY id").all();
-  const files = src.prepare("SELECT id, name, type, size, created FROM files ORDER BY id").all();
+  const events = src.prepare("SELECT id, topic, time, message, title, attachment FROM events ORDER BY id").all() as EventRow[];
+  const files = src.prepare("SELECT id, name, type, size, created FROM files ORDER BY id").all() as FileRow[];
   src.close();
   const minId = events.length ? Number(events[0].id) : 0;
-  const maxId = events.length ? Number(events.at(-1).id) : 0;
+  const maxId = events.length ? Number((events.at(-1) as EventRow).id) : 0;
   if (dryRun) return { events: events.length, files: files.length, minId, maxId, nextId: maxId + 1, dryRun: true };
 
   const { default: pg } = await import("pg");
@@ -43,7 +48,7 @@ export async function migrateBusToPostgres({ env = process.env, dataDir = busDat
   const pool = new pg.Pool({ connectionString: url, max: 1 });
   pool.on("error", () => {}); // an idle client that dies server-side must not crash the command
   try {
-    const { rows: [target] } = await pool.query(`SELECT COUNT(*)::int AS n, COALESCE(MAX(id), 0)::bigint AS max_id FROM ${schema}.events`);
+    const { rows: [target] } = await pool.query<{ n: number; max_id: string }>(`SELECT COUNT(*)::int AS n, COALESCE(MAX(id), 0)::bigint AS max_id FROM ${schema}.events`);
     if (Number(target.n) > 0 && !resume) {
       throw new Error(`bus migrate: target ${schema}.events already has ${target.n} rows; pass --resume to copy only ids past its max`);
     }
@@ -57,7 +62,7 @@ export async function migrateBusToPostgres({ env = process.env, dataDir = busDat
         const batch = rows.slice(i, i + BATCH);
         const values = batch.map((_, j) => `($${j * 6 + 1},$${j * 6 + 2},$${j * 6 + 3},$${j * 6 + 4},$${j * 6 + 5},$${j * 6 + 6})`).join(",");
         const params = batch.flatMap((e) => [String(e.id), e.topic, e.time, e.message, e.title, e.attachment]);
-        copiedEvents += (await client.query(`INSERT INTO ${schema}.events(id, topic, time, message, title, attachment) VALUES ${values}`, params)).rowCount;
+        copiedEvents += (await client.query(`INSERT INTO ${schema}.events(id, topic, time, message, title, attachment) VALUES ${values}`, params)).rowCount as number;
       }
       let copiedFiles = 0;
       for (let i = 0; i < files.length; i += BATCH) {
@@ -65,7 +70,7 @@ export async function migrateBusToPostgres({ env = process.env, dataDir = busDat
         const values = batch.map((_, j) => `($${j * 5 + 1},$${j * 5 + 2},$${j * 5 + 3},$${j * 5 + 4},$${j * 5 + 5})`).join(",");
         const params = batch.flatMap((f) => [f.id, f.name, f.type, f.size, f.created]);
         // ON CONFLICT: a resumed copy may re-reach files rows the first pass already wrote.
-        copiedFiles += (await client.query(`INSERT INTO ${schema}.files(id, name, type, size, created) VALUES ${values} ON CONFLICT (id) DO NOTHING`, params)).rowCount;
+        copiedFiles += (await client.query(`INSERT INTO ${schema}.files(id, name, type, size, created) VALUES ${values} ON CONFLICT (id) DO NOTHING`, params)).rowCount as number;
       }
       if (rows.length) {
         await client.query(`SELECT setval(pg_get_serial_sequence('${schema}.events','id'), (SELECT MAX(id) FROM ${schema}.events))`);
@@ -73,8 +78,8 @@ export async function migrateBusToPostgres({ env = process.env, dataDir = busDat
       await client.query("COMMIT");
       // Read the sequence on this client: the pool holds one connection and it is still checked out here.
       // An empty copy skips setval, so a never-used sequence (is_called false) already points at its first id.
-      const { rows: [seq] } = await client.query(`SELECT pg_get_serial_sequence('${schema}.events','id') AS seq`);
-      const { rows: [next] } = await client.query(`SELECT CASE WHEN is_called THEN last_value + 1 ELSE last_value END AS next FROM ${seq.seq}`);
+      const { rows: [seq] } = await client.query<{ seq: string }>(`SELECT pg_get_serial_sequence('${schema}.events','id') AS seq`);
+      const { rows: [next] } = await client.query<{ next: string }>(`SELECT CASE WHEN is_called THEN last_value + 1 ELSE last_value END AS next FROM ${seq.seq}`);
       return { events: copiedEvents, files: copiedFiles, minId, maxId, nextId: Number(next.next) };
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
@@ -89,7 +94,7 @@ export async function migrateBusToPostgres({ env = process.env, dataDir = busDat
 }
 
 /** `ai-collab bus migrate --to postgres [--dry-run] [--resume]`. Returns an exit code. */
-export async function busCommand(argv = [], { env = process.env, out = process.stdout, err = process.stderr } = {}) {
+export async function busCommand(argv: string[] = [], { env = process.env, out = process.stdout, err = process.stderr }: { env?: NodeJS.ProcessEnv; out?: { write(text: string): boolean | void }; err?: { write(text: string): boolean | void } } = {}): Promise<number> {
   const usage = "usage: ai-collab bus migrate --to postgres [--dry-run] [--resume]\n";
   const [verb, ...rest] = argv;
   if (verb !== "migrate") {
@@ -118,7 +123,7 @@ export async function busCommand(argv = [], { env = process.env, out = process.s
     else out.write(`bus migrate: copied ${r.events} events, ${r.files} files, ids ${r.minId}..${r.maxId}; next id ${r.nextId}\n`);
     return 0;
   } catch (error) {
-    err.write(`ai-collab: bus migrate: ${error.message}\n`);
+    err.write(`ai-collab: bus migrate: ${(error as Error).message}\n`);
     return 1;
   }
 }
