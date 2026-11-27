@@ -206,7 +206,8 @@ async function main() {
   const storeRead = storeReadDenial(host, key, msg);
   if (storeRead && readsThroughRunCode(env)) return emit(storeRead);
   // A managed session's native subagent or shell harness start is refused (lib/subagent-guard.ts); before standsDown, so owned Cursor sessions refuse too.
-  if (argv.includes("--read-gate")) {
+  // Codex PreToolUse runs --activity only, so its shell gate runs on every Codex hook call.
+  if (argv.includes("--read-gate") || host === "codex") {
     const denied = managedDenial(host, key, msg, env, { cwd, host, session });
     if (denied) return emit(denied);
   }

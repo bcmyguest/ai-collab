@@ -79,7 +79,7 @@ function segmentHarness(segment: string): string {
 /** Whether a hook call runs a shell command that starts a harness: Claude or OpenCode Bash, Cursor beforeShellExecution. */
 export function shellHarnessStart(host: string, key: string, msg: HookMsg): boolean {
   const shell = (host === "cursor" && key === "beforeshellexecution")
-    || ((host === "claude" || host === "opencode") && key === "pretooluse" && String(msg.tool_name ?? "").toLowerCase() === "bash");
+    || ((host === "claude" || host === "codex" || host === "opencode") && key === "pretooluse" && String(msg.tool_name ?? "").toLowerCase() === "bash");
   if (!shell) return false;
   const call = hookReadCall(key, msg) as { input?: { command?: unknown } } | null;
   const command = typeof call?.input?.command === "string" ? call.input.command : "";
