@@ -4,13 +4,13 @@ import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isLive, sessionState } from "@/lib/session-state";
-import { runState } from "@/lib/activity-rows";
+import { runState, subagentModel } from "@/lib/activity-rows";
 import { agentDetail } from "@/lib/agent-detail";
 import { shortName, type Agent } from "@/lib/thread-groups";
 import { HarnessMark } from "./agent-mark";
 import { Dot, ago, short } from "./chat-shared";
 
-type Run = { id: string; run?: string; kind?: string; description?: string; steps?: number; time?: number; lastTime?: number; done?: boolean; child?: boolean };
+type Run = { id: string; agent?: string; run?: string; kind?: string; model?: string; description?: string; steps?: number; time?: number; lastTime?: number; done?: boolean; child?: boolean };
 type Selected = { level: string; session?: string; run?: string };
 export type OpenSession = (session: string, run?: string) => void;
 
@@ -85,15 +85,15 @@ function SessionItem({ agent, name, selected, now, open, children }: {
       </span>
     </button>
     {(runs.length > 0 || finished.length > 0 || kids.length > 0) && <ul aria-label={"Inside " + (name || short(agent.id))} className="ml-3 flex flex-col gap-px pl-1">
-      {runs.map(run => <RunItem key={run.id} run={run} now={now} current={current && selected.run === run.run} onOpen={() => open(agent.id, run.run)}/>)}
+      {runs.map(run => <RunItem key={run.id} run={run} parent={agent} now={now} current={current && selected.run === run.run} onOpen={() => open(agent.id, run.run)}/>)}
       {kids}
-      {finished.length > 0 && <FinishedRuns runs={finished} now={now} selected={current ? selected.run : undefined} onOpen={run => open(agent.id, run)}/>}
+      {finished.length > 0 && <FinishedRuns runs={finished} parent={agent} now={now} selected={current ? selected.run : undefined} onOpen={run => open(agent.id, run)}/>}
     </ul>}
   </li>;
 }
 
 /** Finished runs fold behind one row so a busy session does not push the threads below off screen. */
-function FinishedRuns({ runs, now, selected, onOpen }: { runs: Run[]; now: number; selected?: string; onOpen: (run?: string) => void }) {
+function FinishedRuns({ runs, parent, now, selected, onOpen }: { runs: Run[]; parent: Agent; now: number; selected?: string; onOpen: (run?: string) => void }) {
   const [open, setOpen] = useState(runs.some(run => run.run === selected));
   return <li className="flex min-w-0 flex-col">
     <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className={cn(ROW, "items-center py-0.5 text-xs text-muted-foreground max-md:py-2")}>
@@ -101,19 +101,21 @@ function FinishedRuns({ runs, now, selected, onOpen }: { runs: Run[]; now: numbe
       {runs.length} finished {runs.length === 1 ? "subagent" : "subagents"}
     </button>
     {open && <ul className="flex flex-col gap-px">
-      {runs.map(run => <RunItem key={run.id} run={run} now={now} current={selected === run.run} onOpen={() => onOpen(run.run)}/>)}
+      {runs.map(run => <RunItem key={run.id} run={run} parent={parent} now={now} current={selected === run.run} onOpen={() => onOpen(run.run)}/>)}
     </ul>}
   </li>;
 }
 
 /** One subagent run: a live dot until it finishes, its kind and task, and its step count. */
-function RunItem({ run, now, current, onOpen }: { run: Run; now: number; current: boolean; onOpen: () => void }) {
+function RunItem({ run, parent, now, current, onOpen }: { run: Run; parent: Agent; now: number; current: boolean; onOpen: () => void }) {
   const running = !run.done && runState(run, now) === "running";
+  const model = subagentModel(run, parent);
   return <li>
     <button type="button" data-run={run.run} data-running={running ? "true" : undefined} aria-current={current ? "page" : undefined} onClick={onOpen} title={run.description || run.kind}
       className={cn(ROW, "items-center py-0.5 text-xs max-md:py-2", current ? "bg-sidebar-accent text-foreground" : "text-muted-foreground")}>
       <Dot online={!run.done}/>
-      <span className="min-w-0 flex-1 truncate"><span className={running ? "text-foreground" : ""}>{run.kind || "agent"}</span>{run.description && " · " + run.description}</span>
+      <HarnessMark peer={String(parent.peer || parent.id.split("#")[0])} className="size-3.5"/>
+      <span className="min-w-0 flex-1 truncate"><span className={running ? "text-foreground" : ""}>{run.kind || "agent"}</span>{model && <span data-model> · {model}</span>}{run.description && " · " + run.description}</span>
       {(run.steps || 0) > 0 && <span className="shrink-0 tabular-nums">{run.steps}</span>}
     </button>
   </li>;

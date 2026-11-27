@@ -168,7 +168,7 @@ async function threadFixture({ cfg, root, address, label, inject, settled = 0 })
     events.push({ type: "tool_result", tool: "Grep", callId: "g" + index, input: { pattern: "radius" }, output: "hit", agent: { id: "done-" + index, type: index === 1 ? "Plan" : "Explore" } });
     events.push({ type: "tool_result", tool: "Agent", callId: "a" + index, output: JSON.stringify({ status: "completed", agentId: "done-" + index, description: task }) });
   }
-  events.push({ type: "tool_result", tool: "Agent", callId: "live", output: JSON.stringify({ status: "async_launched", agentId: "run-live", description: "Screenshot every view" }) });
+  events.push({ type: "tool_result", tool: "Agent", callId: "live", input: { subagent_type: "general-purpose", model: "sonnet", description: "Screenshot every view" }, output: JSON.stringify({ status: "async_launched", agentId: "run-live", description: "Screenshot every view" }) });
   events.push({ type: "tool_call", tool: "Bash", callId: "b1", input: { command: "node tools/shots.mjs" }, agent: { id: "run-live", type: "general-purpose" } });
   events.push({ type: "tool_result", tool: "Agent", callId: "live2", output: JSON.stringify({ status: "async_launched", agentId: "run-tabs", description: "Audit the tab order" }) });
   events.push({ type: "tool_call", tool: "Read", callId: "r1", input: { file_path: "web/app/chat-console.jsx" }, agent: { id: "run-tabs", type: "Explore" } });

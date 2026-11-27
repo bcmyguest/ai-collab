@@ -50,7 +50,7 @@ export interface ActivityEvent {
   input?: string;
   output?: string;
   system?: boolean;
-  agent?: { id: string; type: string };
+  agent?: { id: string; type: string; model?: string };
   compaction?: unknown;
   clear?: unknown;
   modelSwitch?: unknown;
@@ -71,7 +71,9 @@ export function activityEvents(host: string, key: string, msg: Record<string, un
   const events = hookEvents(host, key, msg);
   // Claude and Codex tag every hook inside a subagent with agent_id and agent_type.
   const id = typeof msg.agent_id === "string" && msg.agent_id ? msg.agent_id : "";
-  return id ? events.map(event => ({ ...event, agent: { id, type: typeof msg.agent_type === "string" ? msg.agent_type : "" } })) : events;
+  // A Claude hook's model is the parent's, so only other harnesses' subagent events carry their own model.
+  const model = host !== "claude" && typeof msg.model === "string" && msg.model ? { model: msg.model } : {};
+  return id ? events.map(event => ({ ...event, agent: { id, type: typeof msg.agent_type === "string" ? msg.agent_type : "", ...model } })) : events;
 }
 
 function hookEvents(host: string, key: string, msg: Record<string, unknown>): ActivityEvent[] {
@@ -181,7 +183,7 @@ export function fitEnvelope(base: Record<string, unknown>, fields: Record<string
 
 type ActivityEnvelope = {
   v: number; kind: string; from: string; session?: string; harness: string; ts: string; type: string;
-  system?: boolean; tool?: string; callId?: string; agent?: { id: string; type: string };
+  system?: boolean; tool?: string; callId?: string; agent?: { id: string; type: string; model?: string };
   compaction?: NonNullable<ReturnType<typeof compactionFields>>;
   clear?: NonNullable<ReturnType<typeof clearFields>>;
   modelSwitch?: NonNullable<ReturnType<typeof modelFields>>;
@@ -196,7 +198,7 @@ export function buildActivity(cfg: Cfg, harness: string, event: ActivityEvent, t
   if (event.system === true) base.system = true;
   if (event.tool) base.tool = stripControl(asText(event.tool)).slice(0, NAME_MAX);
   if (event.callId) base.callId = stripControl(asText(event.callId)).slice(0, NAME_MAX);
-  if (event.agent?.id) base.agent = { id: stripControl(event.agent.id).slice(0, NAME_MAX), type: stripControl(event.agent.type || "").slice(0, NAME_MAX) };
+  if (event.agent?.id) base.agent = { id: stripControl(event.agent.id).slice(0, NAME_MAX), type: stripControl(event.agent.type || "").slice(0, NAME_MAX), ...(event.agent.model ? { model: stripControl(event.agent.model).slice(0, NAME_MAX) } : {}) };
   const compaction = event.compaction ? compactionFields(event.compaction) : null;
   if (compaction) base.compaction = compaction;
   if (event.clear) base.clear = clearFields(event.clear);

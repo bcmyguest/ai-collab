@@ -90,6 +90,50 @@ test("a thread lists its lead, child session and both running subagents, and cou
   await row.getByText("4 working", { exact: true }).waitFor();
 });
 
+test("subagent rows show the parent's harness mark and the model, inherited when the Agent call names none", browserTest, async (t) => {
+  const { page } = await open(t, 1440, "level=project");
+  const tree = page.getByRole("list", { name: "Sessions in UI redesign" });
+  const live = tree.locator('[data-run="run-live"]');
+  const tabs = tree.locator('[data-run="run-tabs"]');
+  await live.waitFor();
+  assert.equal(await live.locator('[data-harness="claude"]').count(), 1);
+  assert.equal(await live.locator("[data-model]").innerText(), " · sonnet");
+  assert.equal(await tabs.locator("[data-model]").innerText(), " · opus-5-5 · inherited");
+});
+
+// The contrast ratio of an element's text colour on its own background, both resolved through a canvas to sRGB.
+function markContrast(el) {
+  const ctx = Object.assign(document.createElement("canvas"), { width: 1, height: 1 }).getContext("2d");
+  const lum = color => {
+    ctx.clearRect(0, 0, 1, 1);
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, 1, 1);
+    const [r, g, b] = [...ctx.getImageData(0, 0, 1, 1).data].map(v => v / 255).map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const style = getComputedStyle(el);
+  const probe = document.createElement("i");
+  probe.style.color = "var(--claude)";
+  document.body.append(probe);
+  const claude = getComputedStyle(probe).color;
+  probe.remove();
+  const [a, b] = [lum(style.color), lum(style.backgroundColor)].sort((x, y) => y - x);
+  return { tinted: style.color === claude, ratio: (a + 0.05) / (b + 0.05) };
+}
+
+test("chat message avatars take the harness tint with at least 3:1 contrast in both themes", browserTest, async (t) => {
+  const { page } = await open(t, 1440, "level=project");
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate(name => localStorage.setItem("theme", name), theme);
+    await page.reload();
+    const mark = page.locator('main [data-slot="avatar-fallback"][data-harness="claude"]').first();
+    await mark.waitFor();
+    const { tinted, ratio } = await mark.evaluate(markContrast);
+    assert.equal(tinted, true, theme + ": the avatar uses --claude");
+    assert.ok(ratio >= 3, theme + ": contrast " + ratio.toFixed(2));
+  }
+});
+
 test("threads with no live session sit under Settled, which starts collapsed once it grows long", browserTest, async (t) => {
   const { page } = await open(t, 1440, "level=project", 6);
   const active = page.locator('[data-group="active"]');

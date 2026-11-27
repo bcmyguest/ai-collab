@@ -2,18 +2,16 @@
 // Agent identity: a harness glyph in its harness tint and a short name; the raw address shows on hover or a long press.
 import { useRef, useState, type ReactNode } from "react";
 import { HarnessLogo, hasLogo } from "./logos";
-import { HARNESS_NAMES, peerOf, short } from "./chat-shared";
+import { HARNESS_NAMES, harnessTint, peerOf, short } from "./chat-shared";
 import { cn } from "@/lib/utils";
 
 const LONG_PRESS_MS = 450;
-// Literal classes so Tailwind emits them; any other peer is a generic agent.
-const TINT = { claude: "text-claude", codex: "text-codex", cursor: "text-cursor", opencode: "text-opencode" } satisfies Record<string, string>;
 const REVEAL_MS = 2500;
 
 /** The harness glyph, tinted per harness, in a small square; a peer without a logo shows its first letter. */
 export function HarnessMark({ peer, className }: { peer: string; className?: string }) {
   const name = (HARNESS_NAMES as Record<string, string>)[peer] || peer;
-  return <span data-harness={peer} title={name} className={cn("inline-grid size-4 shrink-0 place-items-center", (peer in TINT ? TINT[peer as keyof typeof TINT] : "text-agent"), className)}>
+  return <span data-harness={peer} title={name} className={cn("inline-grid size-4 shrink-0 place-items-center", harnessTint(peer) || "text-agent", className)}>
     {hasLogo(peer) ? <HarnessLogo peer={peer} className="size-3.5"/> : <span aria-label={name} className="font-mono text-xs leading-none">{peer.slice(0, 1).toUpperCase()}</span>}
   </span>;
 }

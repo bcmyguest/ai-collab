@@ -545,7 +545,7 @@ export function Console({ account }) {
               }}
             </ThreadPrimitive.Messages>}
           {ready && watching && live.map(row => <LiveRow key={row.id} row={{ ...row, seat: seatOf(data.agents, row.agent) }} open={openAddress}/>)}
-          {ready && inline && <Working rows={rows} now={now}/>}
+          {ready && inline && <Working rows={rows} now={now} agents={data.agents}/>}
           <ChatContainerScrollAnchor/>
         </ChatContainerContent>
         </ChatRuntimeProvider>

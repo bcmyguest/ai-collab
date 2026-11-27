@@ -109,7 +109,7 @@ export function groupSubagents(rows) {
   for (const row of rows) {
     if (row.subagent?.id) continue;
     // The parent's Agent tool result names the run (agentId) and its description; a foreground run's result means it ended.
-    const launch = AGENT_TOOL.test(row.tool || "") ? agentLaunch(row.type === "tool_call" ? row.result?.output : row.type === "tool_result" ? row.output : "") : null;
+    const launch = AGENT_TOOL.test(row.tool || "") ? agentLaunch(row.type === "tool_call" ? row.result?.output : row.type === "tool_result" ? row.output : "", row.input) : null;
     if (launch) {
       launches.set(row.agent + "|" + launch.id, launch);
       if (launch.done) finished.set(row.agent + "|" + launch.id, row.result?.time ?? row.time);
@@ -140,6 +140,7 @@ export function groupSubagents(rows) {
     // A step is one tool use: its call row, or its result alone when the call row never arrived.
     run.steps = run.rows.filter(row => row.type === "tool_call" || ((row.type === "tool_result" || row.type === "error") && row.tool)).length;
     run.description = launches.get(key)?.description || "";
+    run.model = launches.get(key)?.model || run.rows.find(row => row.subagent.model)?.subagent.model || "";
     const last = run.rows.findLast(row => row.tool);
     run.last = last ? { tool: last.tool, summary: summarize(last.input), time: last.time } : null;
     const end = run.rows.at(-1);
@@ -164,11 +165,19 @@ export function subagentLabel(run, now) {
 }
 
 // {id, description, done} from an Agent tool result's JSON text, or null.
-function agentLaunch(output) {
+function agentLaunch(output, input) {
   const id = typeof output === "string" ? AGENT_ID.exec(output)?.[1] : "";
   if (!id) return null;
   const description = /"description"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(output)?.[1] || "";
-  return { id, description, done: /"status"\s*:\s*"completed"/.test(output) };
+  const model = /"model"\s*:\s*"([\w.:-]{1,64})"/.exec(typeof input === "string" ? input : JSON.stringify(input ?? ""))?.[1] || "";
+  return { id, description, model, done: /"status"\s*:\s*"completed"/.test(output) };
+}
+
+/** A subagent's model: its own, else on Claude the parent's marked inherited; empty when neither is known. */
+export function subagentModel(run, parent) {
+  if (run.model || run.child) return run.model || "";
+  const peer = String(parent?.peer || (run.agent || "").split("#")[0]);
+  return peer === "claude" && parent?.model ? parent.model + " · inherited" : "";
 }
 
 /** Sessions with a running subagent run: session → count. */

@@ -21,11 +21,20 @@ export function ago(ms, now) {
 export const peerOf = address => String(address || "").split("#")[0];
 export const short = address => address?.includes("#") ? address.slice(0, address.indexOf("#") + 9) : address;
 
+// Literal classes so Tailwind emits them; any other agent peer takes the generic agent tint.
+export const HARNESS_TINT = { claude: "text-claude", codex: "text-codex", cursor: "text-cursor", opencode: "text-opencode" };
+
+/** The harness tint class for a peer: its own, the generic agent tint for another agent, none for the operator or system. */
+export function harnessTint(peer) {
+  return HARNESS_TINT[peer] || (peer && peer !== "operator" && peer !== "system" ? "text-agent" : "");
+}
+
 export function Avatar({ address, className, by }) {
   const peer = peerOf(address);
+  const tint = by ? "" : harnessTint(peer);
   const label = by ? by.slice(0, 2).toUpperCase() : peer === "operator" ? "You" : peer === "system" ? "Sys" : peer.slice(0, 2).toUpperCase();
   const fallback = !by && hasLogo(peer) ? <HarnessLogo peer={peer} className="size-[55%]"/> : label;
-  return <BaseAvatar title={address} className={cn("size-8 shrink-0 rounded-md text-xs font-medium [&_[data-slot=avatar-fallback]]:rounded-md [&_[data-slot=avatar-fallback]]:bg-muted [&_[data-slot=avatar-fallback]]:text-muted-foreground", className)}><AvatarFallback>{fallback}</AvatarFallback></BaseAvatar>;
+  return <BaseAvatar title={address} className={cn("size-8 shrink-0 rounded-md text-xs font-medium [&_[data-slot=avatar-fallback]]:rounded-md [&_[data-slot=avatar-fallback]]:bg-muted", !tint && "[&_[data-slot=avatar-fallback]]:text-muted-foreground", className)}><AvatarFallback data-harness={tint ? peer : undefined} className={tint}>{fallback}</AvatarFallback></BaseAvatar>;
 }
 
 export function Dot({ online }) {

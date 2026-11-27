@@ -6,11 +6,13 @@ import { MessageContent } from "@/components/ui/message";
 import { cn } from "@/lib/utils";
 import { groupLabel } from "@/lib/chat-turns";
 import { clearText, compactionText, modelText } from "@/lib/compaction-view";
-import { activeAgents, inputBlocks, readableText, resultLanguage, runState, subagentLabel, summarize } from "@/lib/activity-rows";
+import { activeAgents, inputBlocks, readableText, resultLanguage, runState, subagentLabel, subagentModel, summarize } from "@/lib/activity-rows";
 import { toolDiff } from "@/lib/tool-diff";
 import { elapsed } from "@/lib/thread-groups";
 import { ChoiceCard, askedQuestions } from "./cards";
 import { Counts, ToolDiff } from "./tool-diff";
+import { HarnessMark } from "./agent-mark";
+import { peerOf } from "./chat-shared";
 
 const PREVIEW_LINES = 3;
 const TOOL_ICONS = [
@@ -194,7 +196,7 @@ export function ActivityRow({ row, when, now, goRun }) {
 }
 
 /** "Working now" with each agent running: the session with an open tool call, and its running subagents. */
-export function Working({ rows, now }) {
+export function Working({ rows, now, agents = [] }) {
   const busy = activeAgents(rows, now);
   const [open, setOpen] = useState(false);
   if (!busy.length) return null;
@@ -203,7 +205,7 @@ export function Working({ rows, now }) {
   return <div role="status" className="flex min-w-0 flex-col gap-2 text-sm text-muted-foreground">
     {sessions.length > 0 && <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
       <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none"/>Working now
-      {sessions.map(item => <span key={item.key} data-agent={item.agent} className="font-mono text-xs text-foreground">{item.agent}</span>)}
+      {sessions.map(item => <span key={item.key} data-agent={item.agent} className="inline-flex items-center gap-1 font-mono text-xs text-foreground"><HarnessMark peer={peerOf(item.agent)} className="size-3.5"/>{item.agent}</span>)}
     </p>}
     {runs.length > 0 && <div className="flex min-w-0 flex-col gap-2">
       <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}
@@ -213,26 +215,29 @@ export function Working({ rows, now }) {
         <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none", open && "rotate-90")}/>
       </button>
       {open && <ul aria-label="Working subagents" className="ml-3 flex min-w-0 flex-col gap-2 border-l pl-3">
-        {runs.map(run => <li key={run.id}><WorkingRun run={run} now={now}/></li>)}
+        {runs.map(run => <li key={run.id}><WorkingRun run={run} parent={agents.find(agent => agent.id === run.agent)} now={now}/></li>)}
       </ul>}
     </div>}
   </div>;
 }
 
 /** One running subagent; it expands to its task, status, running time and newest step. */
-function WorkingRun({ run, now }) {
+function WorkingRun({ run, parent, now }) {
   const [open, setOpen] = useState(false);
+  const model = subagentModel(run, parent);
   const took = elapsed(now - (run.time || 0) * 1000);
   return <div className="flex min-w-0 flex-col gap-1" data-run={run.run}>
     <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex min-w-0 items-center gap-2 rounded-lg px-1 py-1 text-left text-sm hover:bg-accent">
       <ChevronRight className={cn("size-3.5 shrink-0 transition-transform motion-reduce:transition-none", open && "rotate-90")}/>
-      <span className="min-w-0 flex-1 truncate"><span className="text-foreground">{run.kind || "agent"}</span>{run.description && " · " + run.description}</span>
+      <HarnessMark peer={String(parent?.peer || peerOf(run.agent || ""))} className="size-3.5"/>
+      <span className="min-w-0 flex-1 truncate"><span className="text-foreground">{run.kind || "agent"}</span>{model && <span data-model> · {model}</span>}{run.description && " · " + run.description}</span>
       <span className="shrink-0 text-xs tabular-nums">{took}</span>
     </button>
     {open && <dl className="ml-6 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
       <dt>Task</dt><dd className="min-w-0 text-foreground [overflow-wrap:anywhere]">{run.description || "No task summary"}</dd>
       <dt>Status</dt><dd className="text-foreground">running · {run.steps === 1 ? "1 step" : (run.steps || 0) + " steps"}</dd>
       <dt>Running for</dt><dd className="text-foreground">{took}</dd>
+      {model && <><dt>Model</dt><dd className="text-foreground">{model}</dd></>}
       <dt>In</dt><dd className="min-w-0 truncate font-mono text-foreground">{run.agent}</dd>
       {run.last && <><dt>Last step</dt><dd className="min-w-0 truncate font-mono text-foreground">{run.last.tool} {run.last.summary}</dd></>}
     </dl>}
