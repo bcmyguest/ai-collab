@@ -25,56 +25,67 @@ const RULE = /^-\s+(.+?)\s*$/;
 // Control characters would put escape codes into an agent's prompt.
 const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 
+export interface MissionDoc {
+  v: number;
+  title: string;
+  mission: string;
+  goals: Array<{ text: string; done: boolean }>;
+  rules: string[];
+}
+
+type MissionChange = (doc: MissionDoc) => MissionDoc;
+
 /** The mission file's path for a project: MISSION.md at the registered root. Throws for an unregistered project. */
-export function missionPath(project, env = process.env) {
+export function missionPath(project: string, env: NodeJS.ProcessEnv = process.env): string {
   return join(projectRoot(project, env), MISSION_FILE);
 }
 
-function missionError(at, message) {
+function missionError(at: number | undefined, message: string): Error {
   return new Error(at ? `mission: line ${at}: ${message}` : `mission: ${message}`);
 }
 
-function checkText(text, at, what) {
+function checkText(text: string, at: number | undefined, what: string): void {
   if (!text.trim()) throw missionError(at, `${what} is empty`);
   if (text.length > LINE_MAX) throw missionError(at, `${what} is over ${LINE_MAX} characters`);
   if (CONTROL.test(text)) throw missionError(at, `${what} has a control character`);
 }
 
 /** Checks a parsed mission and returns it; throws on the first problem. */
-export function validateMission(doc) {
+export function validateMission(doc: unknown): MissionDoc {
   if (!doc || typeof doc !== "object" || Array.isArray(doc)) throw missionError(0, "expected an object");
-  checkText(typeof doc.title === "string" ? doc.title : "", 0, "title");
-  if (doc.title.length > TITLE_MAX) throw missionError(0, `title is over ${TITLE_MAX} characters`);
-  if (typeof doc.mission !== "string" || !doc.mission.trim()) throw missionError(0, "the mission prose is empty");
+  const obj = doc as Record<string, unknown>;
+  checkText(typeof obj.title === "string" ? obj.title : "", 0, "title");
+  if ((obj.title as string).length > TITLE_MAX) throw missionError(0, `title is over ${TITLE_MAX} characters`);
+  if (typeof obj.mission !== "string" || !(obj.mission as string).trim()) throw missionError(0, "the mission prose is empty");
   // Sections must exist and be well formed; either may be empty, and the tick points that out.
-  if (!Array.isArray(doc.goals)) throw missionError(0, "goals must be a list");
-  if (doc.goals.length > GOALS_MAX) throw missionError(0, `at most ${GOALS_MAX} goals`);
-  for (const goal of doc.goals) {
+  if (!Array.isArray(obj.goals)) throw missionError(0, "goals must be a list");
+  if ((obj.goals as unknown[]).length > GOALS_MAX) throw missionError(0, `at most ${GOALS_MAX} goals`);
+  for (const goal of obj.goals as Array<Record<string, unknown>>) {
     if (!goal || typeof goal !== "object" || typeof goal.text !== "string" || typeof goal.done !== "boolean") throw missionError(0, "a goal is {text, done}");
-    checkText(goal.text, 0, "a goal");
+    checkText(goal.text as string, 0, "a goal");
   }
-  if (!Array.isArray(doc.rules)) throw missionError(0, "rules must be a list");
-  if (doc.rules.length > RULES_MAX) throw missionError(0, `at most ${RULES_MAX} rules`);
-  for (const rule of doc.rules) {
+  if (!Array.isArray(obj.rules)) throw missionError(0, "rules must be a list");
+  if ((obj.rules as unknown[]).length > RULES_MAX) throw missionError(0, `at most ${RULES_MAX} rules`);
+  for (const rule of obj.rules as unknown[]) {
     if (typeof rule !== "string") throw missionError(0, "a rule is text");
-    checkText(rule, 0, "a rule");
+    checkText(rule as string, 0, "a rule");
   }
-  return { v: MISSION_VERSION, title: doc.title, mission: doc.mission, goals: doc.goals.map(({ text, done }) => ({ text, done })), rules: [...doc.rules] };
+  return { v: MISSION_VERSION, title: obj.title as string, mission: obj.mission as string, goals: (obj.goals as Array<Record<string, unknown>>).map(({ text, done }) => ({ text: text as string, done: done as boolean })), rules: [...(obj.rules as string[])] };
 }
 
 /**
  * MISSION.md as {v, title, mission, goals: [{text, done}], rules}. The mission prose runs from the title to
  * "## Goals"; a blank line there separates paragraphs and runs of them collapse to one.
  */
-export function parseMission(text) {
+export function parseMission(text: string): MissionDoc {
   if (typeof text !== "string") throw missionError(0, "expected text");
   if (text.includes("\r")) throw missionError(0, "use LF line endings, not CRLF");
   if (Buffer.byteLength(text) > MISSION_MAX_BYTES) throw missionError(0, `the file is over ${MISSION_MAX_BYTES / 1024} KB`);
   let title = "";
-  const prose = [];
-  const goals = [];
-  const rules = [];
-  const seen = new Set();
+  const prose: string[] = [];
+  const goals: Array<{ text: string; done: boolean }> = [];
+  const rules: string[] = [];
+  const seen = new Set<string>();
   let section = "mission";
   let paragraph = false;
   text.split("\n").forEach((raw, index) => {
@@ -130,7 +141,7 @@ export function parseMission(text) {
 }
 
 /** The canonical MISSION.md text: one trailing newline, no trailing spaces, goals then rules. */
-export function renderMission(doc) {
+export function renderMission(doc: MissionDoc): string {
   validateMission(doc);
   return [
     `# ${doc.title}`,
@@ -149,17 +160,17 @@ export function renderMission(doc) {
 }
 
 /** The mission file parsed, or null when it does not exist. Throws with the path when it is invalid. */
-export function readMission(file) {
+export function readMission(file: string): MissionDoc | null {
   if (!existsSync(file)) return null;
   try {
     return parseMission(readFileSync(file, "utf8"));
   } catch (error) {
-    throw new Error(`${file}: ${error.message}`);
+    throw new Error(`${file}: ${(error as Error).message}`);
   }
 }
 
 /** Validates, then writes through a temp file and rename so a reader never sees half a mission. */
-export function writeMission(file, doc) {
+export function writeMission(file: string, doc: MissionDoc): MissionDoc {
   validateMission(doc);
   mkdirSync(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
@@ -169,9 +180,9 @@ export function writeMission(file, doc) {
 }
 
 /** Reads, changes and writes the project's mission file under its lock; `change` gets the document and returns it. */
-export async function editMission(project, change, { env = process.env } = {}) {
+export async function editMission(project: string, change: MissionChange, { env = process.env }: { env?: NodeJS.ProcessEnv } = {}): Promise<MissionDoc> {
   const file = missionPath(project, env);
-  const result = await withLock(file, () => {
+  const result = await withLock<MissionDoc>(file, async () => {
     const doc = readMission(file);
     if (!doc) throw new Error(`${file}: no mission file; write one first`);
     const next = validateMission(change(doc));
@@ -187,16 +198,16 @@ export async function editMission(project, change, { env = process.env } = {}) {
  * tick instead of the operator copying it into the command. Only a harness command is touched: a plain script's
  * argv has its own meaning. A missing or invalid file leaves the command alone.
  */
-export function withMission(command, { project = "", env = process.env, log = () => {}, file = "" } = {}) {
+export function withMission(command: string[], { project = "", env = process.env, log = () => {}, file = "" }: { project?: string; env?: NodeJS.ProcessEnv; log?: (msg: string) => void; file?: string } = {}): string[] {
   if (!project || !harnessOfCommand(command)) return command;
   // `file` is the PM workspace copy. Without it the registered project root is the file.
-  let doc;
+  let doc: MissionDoc | null;
   let missionFile = file;
   try {
     missionFile = file || missionPath(project, env);
     doc = readMission(missionFile);
   } catch (error) {
-    log(`mission: ${error.message}; this tick runs without it`);
+    log(`mission: ${(error as Error).message}; this tick runs without it`);
     return command;
   }
   if (!doc) {
@@ -206,7 +217,7 @@ export function withMission(command, { project = "", env = process.env, log = ()
     return command;
   }
   // An empty section is valid but worth pointing out: the tick is the only reader.
-  const gaps = [!doc.goals.length && "no goals yet", !doc.rules.length && "no rules yet"].filter(Boolean);
+  const gaps = [!doc.goals.length && "no goals yet", !doc.rules.length && "no rules yet"].filter(Boolean) as string[];
   const block = [
     `Mission file ${MISSION_FILE}, owned and edited by the PM; keep it current.`,
     ...(file ? [`Edit ${missionFile}. The host checkout is not this workspace.`] : []),
