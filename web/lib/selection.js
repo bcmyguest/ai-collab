@@ -27,28 +27,6 @@ export function selectionHash(next = {}) {
   return params.toString();
 }
 
-// A project's own views, in the order the left rail and the phone's bottom bar show them.
-const PROJECT_VIEWS = [["project", "Chat"], ["tasks", "Tasks"], ["patterns", "Teams"]];
-
-/**
- * The links for a project's views: Chat, Tasks and Teams, scoped to that project.
- * A picked project keeps all three at every level inside it (a project view, a session, its subagents, the compaction
- * map) so the rail and the phone's bar never come and go. `level` marks the matching view current; inside a session none
- * is, because a session is not one of them. Home, the inbox and no project have no project views.
- * `counts` adds each view's badge: Tasks its task count with `waiting` tasks to decide, Teams its pattern count.
- */
-export function projectNavigation(project, level, counts = {}) {
-  if (!project || !LEVELS.some(([id]) => id === level)) return [];
-  return PROJECT_VIEWS.map(([view, label]) => ({
-    view,
-    label,
-    href: "#" + selectionHash({ project, level: view }),
-    current: view === level,
-    count: Number(counts[view]) || 0,
-    waiting: view === "tasks" ? Number(counts.waiting) || 0 : 0,
-  }));
-}
-
 /**
  * The badge counts a project's views show: every task and how many of them wait on the operator's decision, and the
  * number of patterns and teams.

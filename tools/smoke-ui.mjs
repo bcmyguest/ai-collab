@@ -152,7 +152,8 @@ async function checkComposer(page, fixture) {
   await page.goto(fixture.url + "/#project=" + project);
   const draft = page.getByRole("textbox", { name: "Message", exact: true });
   const everyone = "Everyone in " + project;
-  const direct = "Direct to " + fixture.address.slice(0, "claude#".length + 8);
+  // The fixture session takes its project's name.
+  const direct = "Direct to " + project;
   async function send(body, destination, expected) {
     await page.setViewportSize({ width: 390, height: 844 });
     await draft.fill(body);
@@ -262,57 +263,35 @@ async function checkOperatorWorkflow(page) {
   await home.getByRole("button", { name: "Open decision inbox" }).click();
   const inbox = page.getByRole("region", { name: "Decision inbox" });
   await inbox.getByRole("heading", { name: /^Waiting on you · \d+$/ }).waitFor();
-  await page.getByRole("button", { name: "Home", exact: true }).click();
-  await home.waitFor();
   await page.setViewportSize({ width: 1280, height: 900 });
-  const projectButton = page.getByRole("button", { name: /^New session in / }).first();
-  if (await projectButton.count()) {
-    const project = (await projectButton.getAttribute("aria-label")).replace(/^New session in /, "");
-    await checkProjectNav(page, { project });
-  }
+  const project = await page.getByRole("navigation", { name: "Threads" }).getByRole("button").first().textContent();
+  await checkProjectNav(page, { project });
 }
 
+// The menu reaches each project view at phone and desktop width; New thread keeps a 44px tap target on a phone.
 async function checkProjectNav(page, { project }) {
-  const views = page.getByRole("navigation", { name: "Project views" });
-  const sidebar = page.getByRole("complementary", { name: "Projects and sessions" });
+  const sidebar = page.getByRole("complementary", { name: "Projects and threads" });
+  const threads = page.getByRole("button", { name: "Threads", exact: true });
   for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
     await page.setViewportSize(viewport);
-    assert.equal(await views.count(), 0);
     const phone = viewport.width < 768;
-    if (phone) await page.getByRole("button", { name: "Projects", exact: true }).click();
-    const picker = phone ? page.getByRole("dialog", { name: "Projects" }) : sidebar;
-    await picker.getByRole("button").filter({ has: page.getByText(project, { exact: true }) }).click();
-    await views.waitFor();
-    assert.equal(await views.count(), 1);
-    const labels = ["Chat", "Tasks", "Teams"];
-    for (const label of [...labels.slice(1), labels[0]]) {
-      const link = views.getByRole("link", { name: new RegExp(`^${label}(,|$)`) });
-      await link.click();
-      await link.and(views.locator('[aria-current="page"]')).waitFor();
-      assert.equal(await views.locator('[aria-current="page"]').count(), 1);
-      await page.getByRole("heading", { name: label, exact: true, level: 1 }).waitFor();
+    await page.goto(new URL("/#home", page.url()).href);
+    if (phone) await threads.click();
+    await sidebar.getByRole("navigation", { name: "Threads" }).getByRole("button", { name: project, exact: true }).click();
+    if (phone) await threads.click();
+    const create = sidebar.getByRole("button", { name: "New thread in " + project });
+    await create.waitFor();
+    if (phone) assert.ok((await create.boundingBox()).height >= 44);
+    for (const [item, heading] of [["Tasks", "Tasks"], ["Teams", "Teams"], ["Project chat", "Chat"]]) {
+      if (phone && !(await sidebar.isVisible())) await threads.click();
+      await sidebar.getByRole("button", { name: "Menu", exact: true }).click();
+      // A click during the menu's open animation scrolls it out of view and closes it.
+      await page.getByRole("menu").evaluate(menu => Promise.all(menu.getAnimations({ subtree: true }).map(animation => animation.finished)));
+      await page.getByRole("menuitem", { name: item }).click();
+      await page.getByRole("heading", { name: heading, exact: true, level: 1 }).waitFor();
       assert.equal(new URLSearchParams(new URL(page.url()).hash.slice(1)).get("project"), project);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     }
-    const links = views.getByRole("link");
-    assert.equal(await links.count(), 3);
-    const boxes = await links.evaluateAll(nodes => nodes.map(node => {
-      const { x, y, width, height } = node.getBoundingClientRect();
-      return { x, y, width, height };
-    }));
-    for (const { width, height } of boxes) assert.ok(width >= 44 && height >= 44);
-    const navBox = await views.boundingBox();
-    if (phone) {
-      assert.ok(Math.abs(navBox.y + navBox.height - viewport.height) <= 1);
-      assert.ok(boxes.every(box => box.y === boxes[0].y));
-    } else {
-      const sidebarBox = await sidebar.boundingBox();
-      const contentBox = await page.getByRole("main").boundingBox();
-      assert.ok(sidebarBox.x + sidebarBox.width <= navBox.x && navBox.x + navBox.width <= contentBox.x);
-      assert.ok(boxes.every((box, index) => box.x === boxes[0].x && (!index || box.y > boxes[index - 1].y)));
-    }
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-    await page.getByRole("main").getByRole("button", { name: "Home", exact: true }).click();
-    await views.waitFor({ state: "hidden" });
   }
 }
 

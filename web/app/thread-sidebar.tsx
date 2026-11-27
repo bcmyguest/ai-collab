@@ -3,7 +3,7 @@
 // Rendered beside the chat on a desktop and as the whole screen on a phone.
 import { useState, type ReactNode } from "react";
 import { Check, ChevronDown, ChevronRight, GitPullRequest, Plus, Settings2 } from "lucide-react";
-import { Menu, MenuContent, MenuGroupLabel, MenuItem, MenuItemIndicator, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuSub, MenuSubContent, MenuSubTrigger, MenuTrigger } from "@ui-sdk/react/menu";
+import { Menu, MenuContent, MenuGroup, MenuGroupLabel, MenuItem, MenuItemIndicator, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuSub, MenuSubContent, MenuSubTrigger, MenuTrigger } from "@ui-sdk/react/menu";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { isLive, sessionState } from "@/lib/session-state";
@@ -150,7 +150,7 @@ function AppMenu({ data, current, navigate, counts, decisions, pause, openSchedu
       <MenuItem className={ITEM} onSelect={() => navigate({ level: "inbox" })}>
         <span className="flex-1">Decision inbox</span>{decisions > 0 && <span className="text-xs font-medium text-primary">{decisions}</span>}
       </MenuItem>
-      {current && <>
+      {current && <MenuGroup>
         <MenuGroupLabel className={LABEL}>{current}</MenuGroupLabel>
         <MenuItem className={ITEM} onSelect={() => navigate({ project: current, level: "project" })}><span className="flex-1">Project chat</span></MenuItem>
         <MenuItem className={ITEM} onSelect={() => navigate({ project: current, level: "tasks" })}>
@@ -174,14 +174,16 @@ function AppMenu({ data, current, navigate, counts, decisions, pause, openSchedu
             <MenuItem className={cn(ITEM, "text-destructive")} onSelect={() => projectAction("delete", current)}>Delete project</MenuItem>
           </MenuSubContent>
         </MenuSub>}
-      </>}
+      </MenuGroup>}
       <MenuSeparator className={SEP}/>
       <MenuItem className={ITEM} onSelect={openSchedules}><span className="flex-1">Scheduled jobs</span></MenuItem>
       {(data.closedProjects?.length || 0) > 0 && <MenuSub>
         <MenuSubTrigger className={ITEM}><span className="flex-1">Closed projects</span><span className="text-xs text-muted-foreground">{data.closedProjects?.length}</span><ChevronRight aria-hidden className="size-3.5"/></MenuSubTrigger>
         <MenuSubContent className={MENU}>
-          <MenuGroupLabel className={LABEL}>Reopen</MenuGroupLabel>
-          {data.closedProjects?.map(name => <MenuItem key={name} className={ITEM} onSelect={() => projectAction("reopen", name)}><span className="break-all">{name}</span></MenuItem>)}
+          <MenuGroup>
+            <MenuGroupLabel className={LABEL}>Reopen</MenuGroupLabel>
+            {data.closedProjects?.map(name => <MenuItem key={name} className={ITEM} onSelect={() => projectAction("reopen", name)}><span className="break-all">{name}</span></MenuItem>)}
+          </MenuGroup>
         </MenuSubContent>
       </MenuSub>}
       <MenuSub>
@@ -196,8 +198,10 @@ function AppMenu({ data, current, navigate, counts, decisions, pause, openSchedu
       </MenuSub>
       {account && signOut && <>
         <MenuSeparator className={SEP}/>
-        <MenuGroupLabel className={LABEL}>Signed in as {account}</MenuGroupLabel>
-        <MenuItem className={ITEM} onSelect={signOut}>Sign out</MenuItem>
+        <MenuGroup>
+          <MenuGroupLabel className={LABEL}>Signed in as {account}</MenuGroupLabel>
+          <MenuItem className={ITEM} onSelect={signOut}>Sign out</MenuItem>
+        </MenuGroup>
       </>}
     </MenuContent>
   </Menu>;

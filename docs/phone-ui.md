@@ -115,6 +115,8 @@ On 2026-11-21 the `ai-collab-ai-collab--activity` topic held only `tool_result` 
 
 ## Composer
 
+The line above the box names where a post goes: **Everyone in <project>**, or **Direct to <name>** with the session's short name. Hover it for the raw address.
+
 Type `@` or tap **Mention** to tag a session or harness in a post. A tagged session also gets the post in its direct chat. A tagged harness (`@codex`) gets it in each of its running sessions; with none running, the UI starts one in the project folder with the post as its first prompt, at most one start per 10 seconds. The picker matches fuzzily on address, session name, harness and model, and lists `harness:model` options: `@codex:gpt-5-codex` always starts a new session with that model, if the harness lists it (else the toast says `unknown model`). A post whose tags are **all** `harness:model` starts those sessions and reaches nobody already running: its envelope carries `startOnly`, so no hook, waiter or runner delivers it to a running session (a post that also tags a plain harness, a session or a team is an ordinary post). The toast says what each tag did. Tap a session in the sidebar (the menu on a phone) to chat directly. For a locally registered session, pending direct messages appear in **Queued messages** above the composer. **Edit** updates the text, **Cancel** removes the message from delivery and marks it **Canceled** in the thread. **Retry delivery** requests a poll at the next hook and attempts to wake an idle session. These actions use the shared local inbox state and are available until a delivery path claims the message. Tap **Reply from the composer** under a question to answer an MCP question on the broadcast topic. Mention options, the session picker, and the sidebar show when each session and harness last sent a `msg` envelope (`3m ago`, `never`), computed from history the server already holds.
 
 A tag that starts nothing says so in the chat, not only in the small note on the post. When a start is refused (the project is paused, the model is unknown, the harness is not available here, a second start inside 10 seconds, a failed spawn), ai-collab posts a system message from the operator address in the chat you wrote in, for example `@cursor:grok-4.7-medium did not start: New work is paused for this project. Resume new work to start it.` In the project chat it carries `startOnly`, so no running agent reads it. When a tag-started session ends with a usage-limit or plan-limit error and no reply, the same kind of message names the harness and the reset time if the error gives one (`@codex:gpt-6.2-sol ended without a reply: Limit reached · codex:gpt-6.2-sol · resets 13:14.`). It reads the session's log with the shared classifier in `lib/limits.ts` (`lib/start-limit.mjs`); it starts no fallback, and the limit fallback chain is unchanged. The watcher lives in the UI process, so a UI restart while the session runs drops that notice.
@@ -375,12 +377,10 @@ The session header shows a model picker for runner-owned Claude sessions. While 
 
 ## Task board
 
-**Tasks** is one of the project's three views, beside **Chat** and **Teams**, in the left rail on a computer and the
-bottom bar on a phone (see [Project views](#project-views-the-rail-and-the-phones-bar)) — not a link tucked in the
-SESSIONS header. It opens `#project=<name>&level=tasks` and lists every task in the project's store as a status board
+**Tasks** is one of the project's views in the sidebar's **Menu** (see [Project views](#project-views-the-menu)). It opens `#project=<name>&level=tasks` and lists every task in the project's store as a status board
 (open, decided, building, review, blocked, done) with a Board / Graph switch and a status filter. An old
 `#project=<name>&level=project&tab=tasks` link still opens it. The link's badge shows the tasks waiting on your decision,
-amber, or the project's whole task count when none wait, and its board reads the same project stream as the chat, so the
+or the project's whole task count when none wait, and its board reads the same project stream as the chat, so the
 store's own file watch keeps it current.
 
 The board scrolls in its own container rather than growing the page, so it never makes the body jump as cards resize. A
@@ -462,11 +462,13 @@ Privacy: the server encrypts each payload end to end for the subscribed browser 
 
 ## Sidebar, projects, and notifications
 
+A working thread shows how long its turn has run, timed from the turn's first prompt (`turnStartAt` in the snapshot). A harness that reports no prompt falls back to its oldest open tool call. A thread's diff panel adds untracked, non-ignored files as new files, at most 200 files of up to 512 KiB each, and leaves the git index untouched.
+
 A session row shows **N running** when it has running subagents, and the session header shows the same count. Subagent runs nest under their session in the sidebar; a run idle for more than 30 minutes (`IDLE_HIDE_MS` in `web/lib/subagent-state.js`) sits behind **Show N idle**. A subagent that resumes after its stop counts as running again on its next row.
 
 The session view's **Working now** line names each agent running now: the session with an open tool call (`harness#label (session)`) and each running subagent (`<kind> subagent in <address>`). The activity data carries no model name, so the line shows no `:model`. Timeline groups and texts show the address of the agent that produced them.
 
-Each project has a **⋯** menu. **Close** hides the project from the sidebar and Home; **Closed projects** lists them with **Reopen**. A closed project is a `"closed": true` flag on its `projects.json` entry. **Delete** asks first and removes the entry only; repo files, worktrees and bus history stay. The UI hides a deleted project until it restarts. Projects found by auto-join have no entry, so they cannot be closed or deleted here.
+**Menu → Project actions** holds **Request an outcome**, **Close** and **Delete** for the picked project. **Close** hides the project from the sidebar and Home; **Closed projects** lists them with **Reopen**. A closed project is a `"closed": true` flag on its `projects.json` entry. **Delete** asks first and removes the entry only; repo files, worktrees and bus history stay. The UI hides a deleted project until it restarts. Projects found by auto-join have no entry, so they cannot be closed or deleted here.
 
 **Scheduled** lists the runner's schedules read-only: name, interval, command, last run, next run; tap a job for its recent runs. With no runner socket it shows **runner offline**.
 
@@ -480,38 +482,30 @@ Notifications carry a link: the `click` field, built from `AI_COLLAB_UI_URL` (`l
 
 The UI uses [shadcn/ui](https://ui.shadcn.com/docs) components with Tailwind CSS v4, and [assistant-ui](https://www.assistant-ui.com) (`@assistant-ui/react`, `@assistant-ui/react-markdown`) for the chat thread: an external-store runtime in `web/components/chat/thread.jsx` feeds the feed's thread entries (chat messages interleaved with activity rows), and bubbles render through `MessagePrimitive` with assistant-ui's maintained markdown text primitive. The prompt-kit `prompt-input` is gone; the composer is a plain form. The prompt-kit scroll wrappers (`chat-container`, `scroll-button`) remain for the feed's scroll container, and `message.jsx` keeps only `MessageContent`, the bubble the cards and activity rows render outside a chat message. `web/app/shadcn.css` vendors the shadcn style's Tailwind variants. Code is highlighted with [shiki](https://shiki.style/guide/regex-engines#javascript-regexp-engine) through `CodeBlockCode`: fenced blocks in chat Markdown, tool inputs (a shell command as bash, other input as JSON), and tool results whose language is clear (a diff, shell output, a read file by extension, JSON). Shiki loads on first use with its JavaScript regex engine, which needs no `'wasm-unsafe-eval'` in the CSP, and fetches each of its 12 languages (js, ts, jsx, tsx, json, bash, python, diff, markdown, yaml, css, html) on demand. Light and dark colours follow the theme. Only expanded blocks are highlighted, and blocks over 20 KB stay plain text. The theme defaults to dark; the header toggle switches to light or the system setting.
 
-## Project views: the rail and the phone's bar
+## Project views: the menu
 
-Picking a project gives it exactly one navigation for its three views — **Chat**, **Tasks** and **Teams** — and the same
-three links on every screen size, from `projectNavigation` in `web/lib/selection.js` and the `ProjectNav` component
-(`web/app/project-nav.jsx`):
+The sidebar (**Projects and threads**, `web/app/thread-sidebar.tsx`) lists projects on Home and a project's threads once
+one is picked. On a computer it sits left of the main column; on a phone it fills the screen, and the **Threads** button
+in the main column's header opens it. A picked project adds **New thread in <project>** at the top of its thread list, a
+44 px tap target on a phone.
 
-| Screen | Where the three views sit |
+The **Menu** button at the foot of the sidebar holds everything that is not a thread:
+
+| Group | Items |
 |---|---|
-| Computer (from `md`, 768 px) | A vertical rail down the left edge, right of the projects sidebar: an icon over a label per view. |
-| Phone | A tab bar under the composer, above the home indicator's safe area. |
+| Always | **Decision inbox**, with the count of decisions waiting |
+| The picked project | **Project chat**, **Tasks** (the tasks waiting on your decision, or the whole task count), **Teams** (the pattern count), **All sessions**, **Compaction map**, **Pause new work** or **Resume new work**, **Project actions** |
+| Always | **Scheduled jobs**, **Closed projects**, **Theme**, **Sign out** |
 
-Both show the same links, icons, order and highlight, so the operator never has to look somewhere else for them. Each
-link is at least 44 × 44 CSS pixels. Each link's badge is the view's own count: **Tasks** shows the tasks waiting on your
-decision in amber, falling back to the project's whole task count when none wait, and **Teams** shows the patterns and
-teams.
-
-The three views are one level deeper than the projects sidebar, which no longer repeats them: a project's sessions,
-scheduled jobs and agents stay in the sidebar, and the rail beside it picks which view the main column shows. Once a
-project is picked, both the rail and the phone's bar keep the same three links at every level inside it — a project view,
-a session, its subagents, the compaction map — so the navigation never comes and goes. Inside a session none of the three
-is highlighted, because a session is not one of them; the header's back arrow, the same step on every view, returns to
-the project's Chat from a session and to Home from a project view. **Home** and the **Decision inbox** are not a project's
-views and have no rail.
-
-Switching views keeps each view's state: a chat draft, a task filter, a pattern scroll position. Each view is its own
-hash (`level=project|tasks|patterns`), so Back, Forward and a reload all land on the same view, and only the current view
-is highlighted.
+A dot on the Menu button shows that decisions wait. Each view is its own hash (`level=project|tasks|patterns`), so Back,
+Forward and a reload land on the same view. `projectViewCounts` in `web/lib/selection.js` computes the badge counts.
 
 ## Project navigation deploy smoke
 
-1. At a 390 × 844 phone viewport, open a project. Tap **Chat**, **Tasks**, and **Teams** in the bottom bar. Confirm each opens in the same project, only the current view is highlighted, and each link measures at least 44 × 44 CSS pixels.
-2. Type a draft in Chat and pick a status filter in Tasks. Switch to Teams, then return to Chat and Tasks to confirm both values are restored. Scroll the task board and the patterns list. Confirm the bar stays visible and the chat composer remains usable above it.
-3. Repeat on desktop with the sidebar visible. Open a task detail or a pattern from its view, reload, then use browser Back and Forward. Confirm the project and highlighted view match the URL.
+`node tools/smoke-ui.mjs --project-nav` runs steps 1 and 3 against a fixture.
+
+1. At a 390 × 844 phone viewport, open a project from **Threads**. Confirm **New thread** measures at least 44 CSS pixels tall. Open **Menu** and pick **Tasks**, **Teams** and **Project chat** in turn. Confirm each opens in the same project and the page never scrolls sideways.
+2. Type a draft in Chat and pick a status filter in Tasks. Switch to Teams, then return to Chat and Tasks to confirm both values are restored.
+3. Repeat on desktop with the sidebar visible. Open a task detail or a pattern from its view, reload, then use browser Back and Forward. Confirm the project and view match the URL.
 4. Open Home and a session. Confirm Home still lists projects and the session still offers its timeline and subagent views.
 5. Switch between a project chat and a session timeline twice. The second switch to each shows its rows and cards without a "Loading…" pause, and new messages that arrived while away appear once the stream reconnects.
