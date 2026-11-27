@@ -27,6 +27,7 @@ import { MAX_ATTEMPTS } from "../lib/delivery.ts";
 import { sessionIdleState } from "../lib/idle.mjs";
 import { opencodeRequest } from "../lib/opencode-api.mjs";
 import { BUILDER_START_TIMEOUT_MS, builderPaths, builderResumePrompt, stoppedBuilder, ownedBuilder, stageOwnedBuilder, claimOwnedBuilder, finishOwnedBuilder, markOwnedBuilderFailed } from "../lib/builder.ts";
+import { pickedWorktree } from "../lib/sessions/git-refs.ts";
 import { PROMPT_MAX_CHARS, childEnv, checkPrompt, claudePermissionFor, findExecutable, modelShape, projectRoot, worktreeNames } from "../lib/start.mjs";
 import { parseCodeMode, resolveCodeMode } from "../lib/code-mode.mjs";
 import { openTasks } from "../lib/tasks.mjs";
@@ -378,12 +379,13 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   }
 
   // The folder a session runs in: the project root, a fresh worktree, or (OpenShell) a worktree the sandbox syncs.
-  async function placeCwd(project, harness, place, patternRun) {
+  async function placeCwd(project, harness, place, patternRun, pick = {}) {
     let root;
     try { root = projectRoot(project, env); } catch (error) { fail(400, error.message); }
     if (place === "folder") return root;
     const adapter = adapterOf(harness);
     if (!(adapter.capabilities.places ?? ["folder", "worktree"]).includes(place)) fail(400, `${harness} owned sessions cannot use place ${place} yet`);
+    if (pick.existing) return pick.existing;
     const base = patternRun ? { name: "team-" + patternRun, branch: "team/" + patternRun } : worktreeNames(harness, now());
     const gitFile = findExecutable("git", childEnv(env).PATH);
     if (!gitFile) fail(500, "git is not installed");
@@ -393,11 +395,23 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     for (let attempt = 0; attempt < WORKTREE_ATTEMPTS; attempt++) {
       const suffix = attempt === 0 || patternRun ? "" : "-" + randomBytes(3).toString("hex");
       const cwd = join(root, ".claude", "worktrees", base.name + suffix);
-      code = await git(gitFile, ["-C", root, "worktree", "add", "-b", base.branch + suffix, cwd], { cwd: root, env: childEnv(env) });
+      code = await git(gitFile, ["-C", root, "worktree", "add", "-b", pick.branch ?? base.branch + suffix, cwd, ...(pick.base ? [pick.base] : [])], { cwd: root, env: childEnv(env) });
       if (code === 0) return cwd;
       if (patternRun) break;
     }
     fail(500, `git worktree add exited ${code}`);
+  }
+
+  // A picked base (resolved to a sha), new branch or existing worktree, checked against the project's git; worktree starts only.
+  async function startPick(project, place, given) {
+    const named = Object.values(given).some((value) => value !== undefined && value !== null && value !== "");
+    if (!named) return {};
+    if (place !== "worktree") fail(400, "base, branch and worktreePath need place worktree");
+    let root;
+    try { root = projectRoot(project, env); } catch (error) { fail(400, error.message); }
+    const picked = await pickedWorktree(root, given, childEnv(env));
+    if (picked.error) fail(400, picked.error);
+    return picked;
   }
 
   /**
@@ -427,7 +441,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
 
   // The durable session workflow: place → open → claim, then one run.send/run.wait pair per input until closed.
   async function sessionWorkflow(wf, input) {
-    const { project, harness, place, permissionMode, model, codeMode, taskId, patternRun, builder, continuation, managed, parent, spawn } = input;
+    const { project, harness, place, permissionMode, model, codeMode, taskId, patternRun, builder, continuation, managed, parent, spawn, pick } = input;
     managedByWorkflow.set(wf.id, managed === true);
     // Fields a managed or spawned session adds to its owned record; none for an operator start.
     const family = { ...(managed ? { managed: true } : {}), ...(parent ? { parent } : {}), ...(spawn ? { spawn } : {}) };
@@ -445,7 +459,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       await wf.step("builder.fail", () => finishOwnedBuilder(builder, null, 1, env, log, staged.failed));
       return { ended: staged.failed };
     }
-    const cwd = await wf.step("place", () => builder?.worktree ?? continuation?.worktree ?? placeCwd(project, harness, place, patternRun));
+    const cwd = await wf.step("place", () => builder?.worktree ?? continuation?.worktree ?? placeCwd(project, harness, place, patternRun, pick));
     const opened = await wf.step("open", async () => {
       // An adapter that starts its child before returning (Claude) calls beforeStart with the native id: the owned record exists first.
       let openingLabel;
@@ -897,7 +911,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   durable.register("session", sessionWorkflow);
 
   /** Starts an owned session; resolves {status:"started", session, nativeId, workflowId, detail}. */
-  async function start({ project, harness, prompt, model, place: named, permissionMode, claudePermission, codeMode, taskId, builder: builderId, system = true, managed: managedInput, parent, spawn } = {}, patternRun, continuation) {
+  async function start({ project, harness, prompt, model, place: named, permissionMode, claudePermission, codeMode, taskId, builder: builderId, system = true, managed: managedInput, parent, spawn, base: pickBase, branch: pickBranch, worktreePath } = {}, patternRun, continuation) {
     if (!configs.has(project)) fail(400, "Unknown project");
     const spawned = spawn === true;
     const depth = spawned ? spawnDepth(configs.get(project), parent) : 0;
@@ -909,6 +923,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       fail(409, `spawn_agent runs ${harness} children in OpenShell with full access, and OpenShell is not installed on the runner host (set AI_COLLAB_OPENSHELL_BIN or install openshell)`);
     }
     if (!PLACES.includes(place)) fail(400, "Unknown start place");
+    const pick = await startPick(project, place, { base: pickBase, branch: pickBranch, worktreePath });
     // OpenShell is the boundary: every harness there runs with approvals off, whatever mode the caller named.
     // An unnamed Claude start takes the configured claudePermissionMode when it names a runner mode.
     // Team, pattern and continuation starts default to auto; an instance setting replaces the team or configured one.
@@ -961,7 +976,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     const timeout = builder ? BUILDER_START_TIMEOUT_MS : startTimeoutMs;
     let run = null;
     try {
-      run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, system: Boolean(builder || patternRun) || system !== false, ...(continuation ? { continuation } : {}), ...(builder ? { builder } : {}), ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), codeMode: resolveCodeMode(codeMode, env), ...(managed ? { managed: true } : {}), ...(spawned ? { parent, spawn: { depth } } : {}) });
+      run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, system: Boolean(builder || patternRun) || system !== false, ...(continuation ? { continuation } : {}), ...(builder ? { builder } : {}), ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...(Object.keys(pick).length ? { pick } : {}), codeMode: resolveCodeMode(codeMode, env), ...(managed ? { managed: true } : {}), ...(spawned ? { parent, spawn: { depth } } : {}) });
       if (builder) watchBuilderFailure(workflowId, run);
       const ended = run.then((out) => fail(502, `${harness} session ended at once: ${out?.ended || "no reason"}`));
       ended.catch(() => {});

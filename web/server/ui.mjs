@@ -31,9 +31,10 @@ import { readContext } from "../../lib/usage.mjs";
 import { parseCommand } from "../lib/slash-commands.js";
 import { startModes } from "../lib/start-mode.js";
 import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } from "../../lib/approvals.mjs";
-import { START_HARNESSES, availableHarnesses, availablePlaces, claudePermissionFor, defaultStartPlace, openshellHarnesses, openshellRunner, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
+import { START_HARNESSES, availableHarnesses, availablePlaces, claudePermissionFor, defaultStartPlace, findExecutable, openshellHarnesses, openshellRunner, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
 import { codeModeDefault } from "../../lib/code-mode.mjs";
 import { cleanName } from "../../lib/sessions/registry.ts";
+import { REF_NAME_MAX, gitRunner, listBranches, listWorktrees, pickedWorktree, prHead } from "../../lib/sessions/git-refs.ts";
 import { listModels } from "../../lib/models.mjs";
 import { LIMIT_TOOL, chooseLimit, limitEndMessage, skipLimit } from "../../lib/limit-alert.ts";
 import { limitEndNotice } from "../../lib/start-limit.mjs";
@@ -102,6 +103,8 @@ const IMPORTANT_PREFIX = "IMPORTANT, the agent waits for this answer: ";
 const PUSH_ACTIONS = ["key", "subscribe", "test"];
 // A review diff is plain text in one response; past this it is a download, not a phone view.
 const DIFF_MAX_BYTES = 4 * 1024 * 1024;
+const REF_KINDS = ["branches", "worktrees"];
+const PR_QUERY = /^#([1-9][0-9]{0,6})$/;
 // A question or approval reply the UI sent for a signed-in user names them in its reply title.
 const REPLY_TITLE = /^Reply from operator \(([^)]+)\)$/;
 const encoder = new TextEncoder();
@@ -243,6 +246,11 @@ function outcomes(events) {
     if (e?.kind === "approval-end" && APPROVAL_ID.test(e.id) && END_REASONS.includes(e.reason) && !ends.has(e.id)) ends.set(e.id, e.reason);
   }
   return { ends, replies, senders };
+}
+
+// The base, branch and worktreePath a start names; empty values count as unnamed.
+function pickOf(given) {
+  return Object.fromEntries(Object.entries(given).filter(([, value]) => value !== undefined && value !== null && value !== ""));
 }
 
 function reject(status, message) {
@@ -1488,6 +1496,32 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     }
   }
 
+  // Branches or worktrees of the project checkout for the start toolbar, filtered and capped here; "#123" adds that PR's head.
+  async function refs(request) {
+    try {
+      caller(request);
+      if (hosted) reject(403, "Branches are unavailable in hosted mode");
+      const query = new URL(request.url).searchParams;
+      const project = projectFor(query.get("project"));
+      const kind = query.get("kind") ?? "branches";
+      if (!REF_KINDS.includes(kind)) reject(400, "kind must be branches or worktrees");
+      const q = (query.get("q") ?? "").trim();
+      if (q.length > REF_NAME_MAX) reject(400, "The search is too long");
+      const root = taskRoot(project);
+      if (!root) reject(409, "The project checkout is unavailable");
+      const gitFile = findExecutable("git", env.PATH);
+      if (!gitFile) reject(409, "git is not installed");
+      const run = gitRunner(gitFile, env);
+      if (kind === "worktrees") return json(200, await listWorktrees(run, root, { query: q }));
+      const ghFile = findExecutable("gh", env.PATH);
+      const pr = PR_QUERY.exec(q);
+      const listed = await listBranches(run, root, { query: pr ? "" : q });
+      return json(200, { ...listed, gh: Boolean(ghFile), pr: ghFile && pr ? await prHead(ghFile, run, root, Number(pr[1]), env) : null });
+    } catch (err) {
+      return json(err.status || 400, { error: err.message });
+    }
+  }
+
   async function handle(request, action) {
     try {
       if (request.method !== "POST" || !ACTIONS.includes(action)) reject(404, "Unknown route");
@@ -1499,7 +1533,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       if (!upload && contentType !== "application/json") reject(415, "JSON required");
       if (action === "history") return history(request, by, await payload(request));
       const { input, attachment } = upload ? await imagePayload(request) : { input: await payload(request) };
-      const { project: name, paused, target, body, queueAction, question, mode, level: alertLevel, id, status: taskStatus, decision, answers, harness, prompt, place, worktree, openshell, urgent, sendAnyway, model, startMode, codeMode, permission, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText, commit, submission, note: reviewNote, taskId } = input;
+      const { project: name, paused, target, body, queueAction, question, mode, level: alertLevel, id, status: taskStatus, decision, answers, harness, prompt, place, worktree, openshell, base, branch, worktreePath, urgent, sendAnyway, model, startMode, codeMode, permission, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText, commit, submission, note: reviewNote, taskId } = input;
       // Merges one PR whose checks are green at the head the operator reviewed, then starts deploy detached.
       if (action === "land") {
         const number = input.number;
@@ -1718,6 +1752,14 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (named !== undefined && !startPlaces(project).includes(named)) reject(400, "That start place is not available for this project");
         const where = named ?? defaultStartPlace(startPlaces(project), harness, env);
         if (where === "openshell" && !openshellHarnesses(env).includes(harness)) reject(400, `${harness} cannot start in OpenShell yet; pick Folder or Worktree`);
+        const pick = pickOf({ base, branch, worktreePath });
+        if (Object.keys(pick).length && where !== "worktree") reject(400, "base, branch and worktreePath need place worktree");
+        if (Object.keys(pick).length) {
+          const root = taskRoot(project);
+          if (!root) reject(409, "The project checkout is unavailable");
+          const picked = await pickedWorktree(root, pick, env);
+          if (picked.error) reject(400, picked.error);
+        }
         const checked = checkPrompt(prompt);
         if (checked.error) reject(400, checked.error);
         const chosen = model === undefined || model === null || model === "" ? undefined : model;
@@ -1752,12 +1794,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         }
         if (launch === startSession && harness === "claude" && codeMode === true) {
           const result = await runner({ socket: runnerSocket(env), timeoutMs: 120_000 })
-            .start({ project: name, harness, prompt: checked.text, place: where, permissionMode: "supervised", codeMode: true, system: false, ...(chosen !== undefined ? { model: chosen } : {}) })
+            .start({ project: name, harness, prompt: checked.text, place: where, permissionMode: "supervised", codeMode: true, system: false, ...pick, ...(chosen !== undefined ? { model: chosen } : {}) })
             .catch(() => reject(503, "The session runner is unavailable"));
           if (result.status !== 201) reject(result.status, result.body.error || "The runner refused the start");
           return json(201, result.body);
         }
-        return json(201, await start(cfg, { harness, prompt: checked.text, env, place: where, mode: chosenMode, ...(permissionChosen !== undefined ? { claudePermission: permissionChosen } : {}), ...(chosen !== undefined ? { model: chosen } : {}), ...(typeof codeMode === "boolean" ? { codeMode } : {}) }));
+        return json(201, await start(cfg, { harness, prompt: checked.text, env, place: where, mode: chosenMode, ...(Object.keys(pick).length ? { pick } : {}), ...(permissionChosen !== undefined ? { claudePermission: permissionChosen } : {}), ...(chosen !== undefined ? { model: chosen } : {}), ...(typeof codeMode === "boolean" ? { codeMode } : {}) }));
       }
       // A queued message is already on ntfy: the urgent marker makes the recipient's next hook poll at once.
       if (action === "nudge") {
@@ -1991,6 +2033,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     events,
     schedules,
     reviewDiff,
+    refs,
     file,
     handle,
     land: landApi,
