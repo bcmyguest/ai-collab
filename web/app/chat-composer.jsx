@@ -253,7 +253,9 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
           <div id="composer-destination" aria-live="polite" title={recipients.join(", ") || undefined} className="max-h-[20dvh] overflow-y-auto break-words px-3 pt-1 text-xs font-medium text-muted-foreground">
             {destination}
           </div>
-          <ComposerPrimitive.Input ref={textarea} id="composer" aria-label="Message" aria-describedby="composer-destination" placeholder={placeholder} disabled={busy}
+          <ComposerPrimitive.Input ref={textarea} id="composer" aria-label="Message" aria-describedby="composer-destination" placeholder={placeholder}
+            // readOnly, not disabled, while busy: a disabled textarea drops focus and closes the phone keyboard.
+            readOnly={busy} aria-disabled={disabled || undefined} aria-busy={posting || undefined}
             submitMode={coarse ? "none" : "enter"} cancelOnEscape={false}
             unstable_focusOnRunStart={false} unstable_focusOnScrollToBottom={false} unstable_focusOnThreadSwitched={false}
             onChange={event => change(event.target.value)}
