@@ -1051,12 +1051,14 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       answer = JSON.stringify(answers);
       if (answer.length > ANSWER_MAX_CHARS || !parseChoice(approval.questions, answer)) reject(400, "Answer every question");
     } else {
-      if (!["allow", "deny"].includes(decision as string)) reject(400, "Decision must be allow or deny");
+      // "always" allows the tool kind for the rest of a runner-owned Cursor session (lib/approvals.ts replyDecision).
+      if (!["allow", "always", "deny"].includes(decision as string)) reject(400, "Decision must be allow, always or deny");
+      if (decision === "always" && !(approval.owned && approval.harness === "cursor")) reject(400, "Always is offered only for runner-owned Cursor sessions");
       answer = decision;
     }
     if (approval.tool === LIMIT_TOOL) return answerLimit(project, approval, answer);
     await publishDecision(project, id, `reply ${id} ${answer}`, by, value => replyDecision(approval, value));
-    return { sent: true, status: approval.questions ? "Answer sent" : decision === "allow" ? "Allow sent" : "Deny sent" };
+    return { sent: true, status: approval.questions ? "Answer sent" : decision === "allow" ? "Allow sent" : decision === "always" ? "Allow for this session sent" : "Deny sent" };
   }
 
   // A limit card's pick: "Wait for reset" acknowledges; a replacement starts a session (lib/limit-alert.ts chooseLimit). No bus reply: no hook waits.

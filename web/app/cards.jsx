@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Check, CircleHelp, ShieldQuestion, SkipForward, SquareTerminal, X } from "lucide-react";
+import { Check, CheckCheck, CircleHelp, ShieldQuestion, SkipForward, SquareTerminal, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MessageContent } from "@/components/ui/message";
@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ChoiceList, ChoiceSummary } from "@/components/ui/choice-list";
 import { Input } from "@ui-sdk/react/input";
 import { cn } from "@/lib/utils";
-import { BLOCKING_LABEL, IN_TERMINAL, SKIPPED, approvalOutcome, isBlocking, approvalSurfaceId, questionText, questionSurfaceId, terminalHint } from "@/lib/a2ui";
+import { ALWAYS_LABEL, BLOCKING_LABEL, IN_TERMINAL, SKIPPED, approvalOutcome, offersSessionGrant, isBlocking, approvalSurfaceId, questionText, questionSurfaceId, terminalHint } from "@/lib/a2ui";
 import { CARD, Surface } from "@/components/a2ui/surface";
 import { ConfirmButton } from "./pattern-graph";
 
@@ -100,6 +100,7 @@ export function LegacyApprovalCard({ approval, now, disabled, act }) {
     {open && terminal ? <p className="flex items-center gap-1.5 text-xs font-medium text-primary"><SquareTerminal className="size-3.5 shrink-0"/>{IN_TERMINAL}<span className="font-normal text-muted-foreground">· {terminalHint(approval.mode)}</span></p>
       : open ? <div className="flex gap-2">
       <Button size="sm" className="rounded-md" disabled={disabled} onClick={() => act({ id: approval.id, decision: "allow" })}><Check/>Allow</Button>
+      {offersSessionGrant(approval) && <Button size="sm" variant="outline" className="rounded-md" disabled={disabled} onClick={() => act({ id: approval.id, decision: "always" })}><CheckCheck/>{ALWAYS_LABEL}</Button>}
       <Button size="sm" variant="outline" className="rounded-md" disabled={disabled} onClick={() => act({ id: approval.id, decision: "deny" })}><X/>Deny</Button>
     </div> : <p className="text-xs text-muted-foreground" data-outcome={approval.state}>{outcome}{approval.by && " · " + approval.by}</p>}
   </div>;

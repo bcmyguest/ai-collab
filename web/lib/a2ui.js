@@ -36,6 +36,10 @@ export function approvalOutcome(approval, now) {
   return "";
 }
 
+export const ALWAYS_LABEL = "Always for this session";
+// Only the runner's Cursor adapter remembers a session grant (decision "always"); other cards keep Allow and Deny.
+export const offersSessionGrant = approval => approval.owned === true && approval.harness === "cursor" && !approval.questions;
+
 export const approvalSurfaceId = id => "approval-" + id;
 export const questionSurfaceId = question => "question-" + question;
 
@@ -80,8 +84,10 @@ function permissionOps(approval, open, outcome, terminal) {
   const children = titleRow(components, "Permission · " + approval.tool, badgeOf(approval, open));
   if (approval.summary) { components.push(text("summary", approval.summary)); children.push("summary"); }
   if (open && !terminal) {
-    components.push({ id: "actions", component: "Row", children: ["allow", "deny"], justify: "end" });
+    const always = offersSessionGrant(approval);
+    components.push({ id: "actions", component: "Row", children: always ? ["allow", "always", "deny"] : ["allow", "deny"], justify: "end" });
     components.push(...button("allow", "Allow", "primary", "decide", { id: approval.id, decision: "allow" }));
+    if (always) components.push(...button("always", ALWAYS_LABEL, "default", "decide", { id: approval.id, decision: "always" }));
     components.push(...button("deny", "Deny", "default", "decide", { id: approval.id, decision: "deny" }));
     children.push("actions");
   } else {
@@ -207,7 +213,7 @@ export function surfaceAnswer(userAction) {
   const context = userAction?.context;
   if (!context || typeof context !== "object" || Array.isArray(context) || typeof userAction.surfaceId !== "string") return null;
   if (typeof context.id === "string" && HEX12.test(context.id) && userAction.surfaceId === approvalSurfaceId(context.id)) {
-    if (userAction.name === "decide" && ["allow", "deny"].includes(context.decision)) return { kind: "approval", id: context.id, decision: context.decision };
+    if (userAction.name === "decide" && ["allow", "always", "deny"].includes(context.decision)) return { kind: "approval", id: context.id, decision: context.decision };
     if (userAction.name === "answer" && Array.isArray(context.picks) && context.picks.every(strings) && strings(context.other)) {
       return { kind: "approval", id: context.id, picks: context.picks, other: context.other };
     }
