@@ -51,7 +51,7 @@ export function patternFromTeam(team: DotTeam) {
   };
 }
 
-/** Re-attaches the DOT-only fields validatePattern drops (count, skill, fallback, code_mode, kind, max_visits); defaults stay out of the shape. */
+/** Re-attaches the DOT-only fields validatePattern drops (count, skill, fallback, code_mode, kind, max_visits, landing); defaults stay out of the shape. */
 export function withExtras(checked: Pattern, team: DotTeam): Pattern {
   const roles: Role[] = checked.roles.map((role, index) => {
     const node = team.nodes[index];
@@ -64,7 +64,7 @@ export function withExtras(checked: Pattern, team: DotTeam): Pattern {
     };
   });
   const handoffs: Handoff[] = checked.handoffs.map((handoff, index) => (team.edges[index].kind === "pair" ? handoff : { ...handoff, kind: team.edges[index].kind }));
-  return { ...checked, roles, handoffs, ...(team.maxVisits ? { maxVisits: team.maxVisits } : {}), ...(team.permission ? { permission: team.permission } : {}) };
+  return { ...checked, roles, handoffs, ...(team.maxVisits ? { maxVisits: team.maxVisits } : {}), ...(team.permission ? { permission: team.permission } : {}), ...(team.landing ? { landing: team.landing } : {}) };
 }
 
 /** A validated pattern as the input of a team.dot file. */
@@ -73,6 +73,7 @@ export function teamFromPattern(pattern: Pattern): DotTeamInput {
     name: pattern.name,
     description: pattern.description ?? "",
     maxVisits: pattern.maxVisits ?? null,
+    ...(pattern.landing ? { landing: pattern.landing } : {}),
     nodes: pattern.roles.map((role) => ({
       id: role.id,
       agent: role.model ? `${role.harness}:${role.model}` : role.harness,
