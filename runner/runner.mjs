@@ -19,7 +19,7 @@ import { replyDecision, APPROVAL_ID } from "../lib/approvals.mjs";
 import { formatInbox } from "../lib/format.mjs";
 import { attachmentOf, cacheAttachmentsWithin, localizedAttachment } from "../lib/attachment-cache.ts";
 import { streamEvents } from "../lib/messaging.ts";
-import { handOff } from "../lib/stop.mjs";
+import { handedOff, handOff } from "../lib/stop.mjs";
 import { listSessions, recordSession } from "../lib/sessions.mjs";
 import { claudeConfirmedSince, claudeSnapshot, claudeWindowMs } from "../lib/claude-socket.mjs";
 import { ackTracker, busyWithPush, direct, holdRunning, PUSHED, pushSession, readDispatchLedger, readySession, writeDispatchLedger } from "../lib/deliver-push.mjs";
@@ -674,7 +674,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     probe: (session) => (session.harness === "opencode" ? openCodeActive() : null),
     ready: async (session, active, project) => readySession(session, active, { env, idle: sessionIdleState, cfg: configs.get(project) ?? null }),
     held: (session, scfg) => holdRunning(session, scfg),
-    handOff: (scfg, messages) => handOff(scfg, messages, { via: "push" }),
+    handOff: (scfg, messages) => handOff(scfg, messages),
+    handedOff: (scfg, id) => handedOff(scfg, id),
     busy: async (session, active) => busyWithPush(session, active),
     reserve: (scfg, ids, { owner, allowSeen = false }) => reserveOwned(scfg, ids, { owner, allowSeen, ttlMs: reserveTtlMs }),
     release: (scfg, ids, owner) => releaseOwned(scfg, ids, owner),
