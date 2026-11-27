@@ -63,6 +63,7 @@ import { fallbackName, sessionCounts, shownOnline, visibleWake, waitingOn } from
 import { createHostedUi } from "./hosted.ts";
 import { createAuth, type Auth } from "./auth.ts";
 import { createHub } from "./hub.ts";
+import { sendToThread } from "../../lib/thread-channels.ts";
 import { createPush, notice, type Notice } from "./push.ts";
 import { createDispatcher } from "./dispatch.ts";
 import { runnerClient, runnerUp } from "../../runner/client.ts";
@@ -2036,6 +2037,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         && startOnlyMentions(text, cfg.peers, [...Object.keys(listTeams(cfg, env)), ...Object.keys(listPatterns(cfg, env))]);
       const notes: string[] = [];
       let wake;
+      let channelSent: Set<string> | null = null;
       try {
         if (urgent !== undefined && typeof urgent !== "boolean") reject(400, "urgent must be true or false");
         if (!reply?.quoted && replyTo !== undefined && replyTo !== null && replyTo !== ""
@@ -2053,7 +2055,15 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         // An operator message sent in a thread carries its id (docs/threads.md).
         const thread = action === "send" && input.thread ? input.thread : undefined;
         if (thread !== undefined && (typeof thread !== "string" || !THREAD_ID.test(thread))) reject(400, "Invalid thread");
-        for (const to of destinations) {
+        if (input.channel !== undefined && typeof input.channel !== "boolean") reject(400, "channel must be true or false");
+        // A composer post in an open thread goes to everyone listening there (docs/threads.md "Thread channels"); #task tags keep their owners.
+        if (thread && input.channel === true && !tagged.length) {
+          const envelopeReply = reply?.replyTo ? { replyTo: reply.replyTo } : (!reply?.quoted && typeof replyTo === "string" && replyTo ? { replyTo } : {});
+          const posted = await sendToThread(operator, `thread:${thread}`, text, { ...(project.threads?.channels ? { client: project.threads.channels } : {}), onPublished: project.hub.record, attachment, urgent: urgent === true, ...envelopeReply, ...(by ? { by } : {}) });
+          channelSent = new Set(posted.delivered);
+          notes.push(`Thread: ${posted.delivered.length} listening`);
+          if (channelSent.has(target)) wake = wakeAgent(project, target, listSessions(cfg).find(item => item.id === target));
+        } else for (const to of destinations) {
           const direct = action === "send" && to.includes("#");
           const envelopeReply = reply?.replyTo && (to === target || destinations.size === 1) ? { replyTo: reply.replyTo }
             : (!reply?.quoted && replyTo !== undefined && replyTo !== null && replyTo !== "" && to === target ? { replyTo } : {});
@@ -2072,7 +2082,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const result = () => notes.length ? { ...confirmed, status: "Sent", detail: notes.join(" · ") } : confirmed;
       if (hosted || action !== "send") return json(201, result());
       const complete = async () => {
-        notes.push(...await routeMentions(project, text, primary, by, destinations, attachment));
+        notes.push(...await routeMentions(project, text, primary, by, channelSent ?? destinations, attachment));
         return result();
       };
       if (request.headers.get("accept") === SEND_CONFIRMATION) {

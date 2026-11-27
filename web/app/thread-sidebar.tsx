@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { isLive, sessionState } from "@/lib/session-state";
 import { COLLAPSED, GROUPS, SETTLED_OPEN, elapsed, shortName, threadGroups, threadSession, unthreaded, workingTime, type Agent, type GroupId, type Thread, type ThreadRow } from "@/lib/thread-groups";
 import { AgentName, HarnessMark } from "./agent-mark";
-import { SessionTree, missingSession, workingCount, type OpenSession } from "./thread-sessions";
+import { SessionTree, missingSession, workingCount, type ListenSession, type OpenSession } from "./thread-sessions";
 import { Dot, ago } from "./chat-shared";
 import { Logo } from "./logo";
 import { TasksStrip } from "./tasks-strip";
@@ -26,7 +26,7 @@ export type SidebarProps = {
   newThread: (project: string) => void; projectAction: (path: string, name: string) => void;
   counts: { tasks: number; waiting: number; patterns: number }; decisions: number;
   pause: () => void; openSchedules: () => void; signOut?: () => void; account?: string;
-  controls?: ReactNode; openTasks?: () => void;
+  controls?: ReactNode; openTasks?: () => void; listen?: ListenSession;
 };
 
 const MENU = "z-50 min-w-56 rounded-xl bg-popover p-1 text-sm text-popover-foreground shadow-raised outline-none";
@@ -79,7 +79,9 @@ function PrBadges({ prs }: { prs?: Thread["prs"] }) {
 }
 
 /** One thread: waiting mark, title, its age or working time, harness marks and PRs, then every session it holds. */
-function ThreadItem({ row, all, selected, now, navigate, project }: { row: ThreadRow; all: Agent[]; selected: Selected; now: number; navigate: Navigate; project: string }) {
+function ThreadItem({ row, all, selected, now, navigate, project, listen, disabled }: {
+  row: ThreadRow; all: Agent[]; selected: Selected; now: number; navigate: Navigate; project: string; listen?: ListenSession; disabled?: boolean;
+}) {
   const open = selected.level === "session" && Boolean(selected.session) && (row.sessions || []).includes(selected.session || "");
   const target = threadSession(row, row.agents);
   const working = workingTime(row, now);
@@ -118,7 +120,8 @@ function ThreadItem({ row, all, selected, now, navigate, project }: { row: Threa
         <ChevronDown aria-hidden className={cn("size-3.5 transition-transform motion-reduce:transition-none", shut && "-rotate-90")}/>
       </button>}
     </div>
-    {sessions.length > 0 && !shut && <SessionTree sessions={sessions} all={all} label={"Sessions in " + (row.title || row.id)} title={row.title} selected={selected} now={now} open={openRun}/>}
+    {sessions.length > 0 && !shut && <SessionTree sessions={sessions} all={all} label={"Sessions in " + (row.title || row.id)} title={row.title} selected={selected} now={now} open={openRun}
+      listen={listen ? { thread: row, set: listen, disabled } : undefined}/>}
   </li>;
 }
 
@@ -268,7 +271,7 @@ export function ThreadSidebar(props: SidebarProps) {
         </li>)}
       </ul> : <>
         {GROUPS.map(([id, label]) => <Group key={id} id={id} label={label} rows={groups[id].length}>
-          {groups[id].map(row => <ThreadItem key={row.id} row={row} all={all} selected={selected} now={now} navigate={navigate} project={current}/>)}
+          {groups[id].map(row => <ThreadItem key={row.id} row={row} all={all} selected={selected} now={now} navigate={navigate} project={current} listen={props.listen} disabled={disabled}/>)}
         </Group>)}
         <Group id="sessions" label={threads.length ? "Sessions outside threads" : "Sessions"} rows={live.length}>{live.map(sessionRow)}</Group>
         <Group id="inactive" label="Inactive sessions" rows={idle.length}>{idle.map(sessionRow)}</Group>

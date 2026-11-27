@@ -14,6 +14,7 @@ import type pg from "pg";
 import { DEFAULT_RETENTION_MS, parseSince, type BusEvent, type PublishInput } from "./bus.ts";
 import { PG_CONNECT_TIMEOUT_MS } from "./postgres.ts";
 import { THREAD_ID, createThreadStore, migrateThreads } from "./threads.ts";
+import { createThreadChannelStore, migrateThreadChannels } from "./thread-channel-store.ts";
 
 const PUBLISH_LOCK = 7306457; // pg_advisory_xact_lock key: publishes commit in id order
 const SCHEMA_LOCK = 7306458; // serializes CREATE ... IF NOT EXISTS across processes
@@ -87,6 +88,7 @@ export async function openPostgresBusStore({ url, filesDir, retentionMs = DEFAUL
         created BIGINT NOT NULL
       )`);
       await migrateThreads(client, schema);
+      await migrateThreadChannels(client, schema);
       await client.query("COMMIT");
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
@@ -148,6 +150,7 @@ export async function openPostgresBusStore({ url, filesDir, retentionMs = DEFAUL
   const store = {
     kind: "postgres",
     threads: createThreadStore({ pool, schema }),
+    threadChannels: createThreadChannelStore({ pool, schema }),
     async publish({ topic, message, title = "", attachment = null, threadId = null }: Omit<PublishInput, "threadId"> & { threadId?: string | null }): Promise<BusEvent> {
       const time = Math.floor(Date.now() / 1000);
       const client = await pool.connect();

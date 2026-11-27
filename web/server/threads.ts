@@ -4,15 +4,16 @@ import { listProjects } from "../../lib/config.ts";
 import { listOwned, listSessions, type SessionCfg } from "../../lib/sessions/registry.ts";
 import { threadClient, type ThreadClientConfig } from "../../lib/thread-routes.ts";
 import { THREAD_ID, threadSessionsOf } from "../../lib/threads.ts";
+import { channelClient, type ChannelClient } from "../../lib/thread-channel-store.ts";
 
 const SYNC_DELAY_MS = 1000;
-const OPS = ["list", "get", "create", "rename", "status", "pin", "attach-pr", "detach-pr", "move-session"];
+const OPS = ["list", "get", "create", "rename", "status", "pin", "attach-pr", "detach-pr", "move-session", "listen"];
 const TITLE_WORDS = 8;
 
 // oxlint-disable-next-line typescript/no-explicit-any -- threads and op inputs are JSON from the bus and the browser
 type Json = any;
 type ThreadsCfg = SessionCfg & ThreadClientConfig & { root?: string };
-type ThreadClient = ReturnType<typeof threadClient>;
+type ThreadClient = ReturnType<typeof threadClient> & Partial<ChannelClient>;
 
 function reject(status: number, message: string): never {
   throw Object.assign(new Error(message), { status });
@@ -23,8 +24,17 @@ export function promptTitle(prompt: unknown): string {
   return String(prompt || "").replace(/\s+/g, " ").trim().split(" ").slice(0, TITLE_WORDS).join(" ").slice(0, 80);
 }
 
+/** Each thread with its stored listening settings, `listeners: [{session, listening}]`; unchanged when they are unknown. */
+function withListeners(threads: Json[], listeners: Json[] | null | undefined): Json[] {
+  if (!Array.isArray(listeners)) return threads;
+  return threads.map(thread => ({
+    ...thread,
+    listeners: listeners.filter(l => l.thread === thread.id).map(l => ({ session: l.session, listening: l.listening })),
+  }));
+}
+
 /** Threads of one project: list() is the cached snapshot value; sync() posts unassigned sessions to the bus. */
-export function projectThreads(cfg: ThreadsCfg, { env = process.env, broadcast = () => {}, client = threadClient(cfg), delayMs = SYNC_DELAY_MS }: {
+export function projectThreads(cfg: ThreadsCfg, { env = process.env, broadcast = () => {}, client = { ...threadClient(cfg), ...channelClient(cfg) }, delayMs = SYNC_DELAY_MS }: {
   env?: NodeJS.ProcessEnv; broadcast?: () => void; client?: ThreadClient; delayMs?: number;
 } = {}) {
   let threads: Json[] = [];
@@ -35,9 +45,10 @@ export function projectThreads(cfg: ThreadsCfg, { env = process.env, broadcast =
 
   async function refresh(): Promise<void> {
     try {
-      const next = await client.list(cfg.project);
-      if (!Array.isArray(next)) return;
+      const listed = await client.list(cfg.project);
+      if (!Array.isArray(listed)) return;
       available = true;
+      const next = withListeners(listed, await client.listeners?.(cfg.project).catch(() => null));
       if (JSON.stringify(next) !== JSON.stringify(threads)) {
         threads = next;
         broadcast();
@@ -125,11 +136,20 @@ export function projectThreads(cfg: ThreadsCfg, { env = process.env, broadcast =
           reject(404, "Unknown session");
         }
         result = await client.moveSession(id, input.session);
+      } else if (op === "listen") {
+        if (input.on !== true && input.on !== false && input.on !== null) reject(400, "on must be true, false or null");
+        if (!client.setListening) reject(503, "Threads need the postgres bus store");
+        if (!listSessions(cfg).some(session => session.id === input.session) && !listOwned(cfg).some(record => record.address === input.session)) {
+          reject(404, "Unknown session");
+        }
+        result = await client.setListening(id, input.session, input.on);
       }
     }
     await refresh();
     return result;
   }
 
-  return { list: () => threads, refresh, sync, startIn, claim, handle, close: () => clearTimeout(timer) };
+  // channels: the bus client a thread-channel post resolves its listeners with, or null when the store has none.
+  const channels = client.channel && client.setListening && client.messages && client.listeners ? client as ChannelClient : null;
+  return { list: () => threads, refresh, sync, startIn, claim, handle, channels, close: () => clearTimeout(timer) };
 }

@@ -24,7 +24,7 @@ type Sleep = (ms: number, signal?: AbortSignal) => Promise<void>;
 export type MessageView = InboxMessage & { answer_with: string };
 export type AwaitedReply = { status: "replied"; reply: MessageView | InboxMessage; messages: InboxMessage[] } | { status: "pending"; note: string };
 /** A sent message, plus the reply or a pending note when the send waited. */
-export type SendResult = { sent: boolean; to: string; id?: string } & ({ status?: undefined } | AwaitedReply);
+export type SendResult = { sent: boolean; to: string; id?: string; delivered?: string[] } & ({ status?: undefined } | AwaitedReply);
 export type IdleOutcome = { status: "idle" | "ended" | "timeout"; address: string };
 
 /** A claimed message as tool output: the body cleaned and capped, plus how to answer it. */
@@ -62,8 +62,10 @@ export async function sendAndAwait(cfg: Cfg, to: string, body: string, { awaitSe
 } = {}): Promise<SendResult> {
   assertWaitSeconds(awaitSeconds);
   const target = to === "*" ? "all" : to;
+  // A thread post reaches many sessions as copies, so no single reply answers it.
+  if (awaitSeconds && target.startsWith("thread:")) throw new Error("await_reply needs a direct message, not a thread post");
   const sent = await sendMessage(cfg, target, body, { urgent, replyTo, attachment, priority, expectReply });
-  const out = { sent: true, to: target, ...(sent.id ? { id: sent.id } : {}) };
+  const out = { sent: true, to: target, ...(sent.id ? { id: sent.id } : {}), ...("delivered" in sent ? { delivered: sent.delivered as string[] } : {}) };
   if (!awaitSeconds) return out;
   if (!sent.id) return { ...out, status: "pending", note: "the bus returned no message id, so no reply can be matched." };
   return { ...out, ...await awaitReply(cfg, sent.id, { awaitSeconds, signal, claim, wait }) };

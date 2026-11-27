@@ -7,7 +7,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { MAX_BODY_CHARS, MESSAGE_MAX_BYTES, SESSION_LABEL, isGithubLogin, isValidName, statusTopic, inboxTopic, broadcastTopic, type loadConfig } from "./config.ts";
+import { MAX_BODY_CHARS, MESSAGE_MAX_BYTES, SESSION_LABEL, isGithubLogin, isValidName, statusTopic, inboxTopic, broadcastTopic, threadTopic, type loadConfig } from "./config.ts";
 import { deepLink } from "./deep-link.ts";
 import { alertPriority, readAlertLevel } from "./alerts.ts";
 import { parsePhoneReply, parseQuestionText } from "./questions.ts";
@@ -79,7 +79,7 @@ export type WaitOptions<T> = {
 export type ReadOptions = { peek?: boolean; strict?: boolean; limit?: number; accept?: (m: InboxMessage) => boolean; receipts?: boolean; settle?: boolean; claim?: Claim };
 export type SendOptions = {
   operatorThread?: boolean; system?: boolean; replyTo?: string; attachment?: AttachmentInput; urgent?: boolean; state?: string; by?: string;
-  mentionedIn?: string; forSubagent?: string; forTeam?: string; priority?: string; expectReply?: boolean; startOnly?: boolean; threadId?: string; onPublished?: (ev: TransportEvent) => void;
+  mentionedIn?: string; forSubagent?: string; forTeam?: string; priority?: string; expectReply?: boolean; startOnly?: boolean; threadId?: string; channelOf?: string; onPublished?: (ev: TransportEvent) => void;
 };
 // A file path, or an image held in memory under a file name.
 export type AttachmentInput = string | { filename: string; data: Buffer };
@@ -413,9 +413,16 @@ export async function publishStatus(cfg: Cfg, { event, harness }: { event: strin
  * system marks text ai-collab's own machinery sends (a compaction request, a pattern-run notice) under the operator's
  * address: it reaches the operator's own reply routes, but readers show the sender as "system", not as the operator.
  * startOnly marks a project-chat post that only starts sessions, so no running session takes it.
+ * A thread:<id> target posts to the thread channel (lib/thread-channels.ts); channelOf marks one of its copies.
  */
-export async function sendMessage(cfg: Cfg, target: string, body: string, { operatorThread, system, replyTo, attachment, urgent, state, by, mentionedIn, forSubagent, forTeam, priority, expectReply, startOnly, threadId, onPublished }: SendOptions = {}) {
+export async function sendMessage(cfg: Cfg, target: string, body: string, options: SendOptions = {}) {
   if (!cfg.enabled) throw new Error(`disabled: ${cfg.reason}`);
+  if (String(target).startsWith("thread:")) {
+    const { sendToThread } = await import("./thread-channels.ts");
+    return sendToThread(cfg, target, body, options);
+  }
+  let { urgent } = options;
+  const { operatorThread, system, replyTo, attachment, state, by, mentionedIn, forSubagent, forTeam, priority, expectReply, startOnly, threadId, channelOf, onPublished } = options;
   const [peer, session, ...extra] = String(target).split("#");
   if (!isValidName(peer) || extra.length || (session !== undefined && (peer === "all" || !SESSION_LABEL.test(session)))) {
     throw new Error(`invalid peer name "${target}"`);
@@ -442,7 +449,8 @@ export async function sendMessage(cfg: Cfg, target: string, body: string, { oper
   if (expectReply === true && (peer === "all" || priority === "fyi")) throw new Error("expect_reply needs a direct, non-fyi message");
   if (startOnly !== undefined && typeof startOnly !== "boolean") throw new Error("start_only must be true or false");
   if (startOnly === true && peer !== "all") throw new Error("start_only needs the project chat");
-  if (threadId !== undefined && (cfg.peer !== "operator" || !THREAD_ID.test(threadId))) throw new Error("threadId must be a thread id on an operator message");
+  if (channelOf !== undefined && (!MESSAGE_ID.test(channelOf) || !session || threadId === undefined)) throw new Error("channelOf needs a thread copy to a session");
+  if (threadId !== undefined && ((cfg.peer !== "operator" && channelOf === undefined) || !THREAD_ID.test(threadId))) throw new Error("threadId must be a thread id on an operator message");
   if (priority === "urgent") urgent = true;
   const sent = await sendEnvelope(cfg, topic, {
     to: peer, ...(session ? { toSession: session } : {}), ts: new Date().toISOString(), body,
@@ -459,9 +467,20 @@ export async function sendMessage(cfg: Cfg, target: string, body: string, { oper
     ...(forSubagent ? { forSubagent } : {}),
     ...(forTeam ? { forTeam } : {}),
     ...(threadId ? { threadId } : {}),
-  }, { attachment, onPublished, threadId });
+    ...(channelOf ? { channel: channelOf } : {}),
+  }, { attachment, onPublished, ...(threadId && !channelOf ? { threadId } : {}) });
   if (urgent === true) markUrgent(cfg, String(target));
   return sent;
+}
+
+/** Publishes a thread-channel post once on its thread topic with events.thread_id set; nothing reads that topic for delivery. */
+export async function publishThreadPost(cfg: Cfg, threadId: string, body: string, { attachment, by }: { attachment?: AttachmentInput; by?: string } = {}) {
+  if (!THREAD_ID.test(threadId)) throw new Error("invalid thread id");
+  if (body.length > MAX_BODY_CHARS) throw new Error(`message is over ${MAX_BODY_CHARS} characters`);
+  return sendEnvelope(cfg, threadTopic(cfg.project, threadId), {
+    to: `thread:${threadId}`, ts: new Date().toISOString(), body, threadId,
+    ...(cfg.peer === "operator" && isGithubLogin(by) ? { by } : {}),
+  }, { attachment, threadId });
 }
 
 function urgentFile(cfg: Cfg, target: string): string {
@@ -753,6 +772,7 @@ function applyEvents(cfg: Cfg, state: InboxState, fetched: Fetched, { inbox, all
         ...(m.from === "operator" && typeof m.mentionedIn === "string" && MENTIONED_IN.test(m.mentionedIn) ? { mentionedIn: m.mentionedIn } : {}),
         ...(m.from === "operator" && typeof m.forSubagent === "string" && SUBAGENT_RUN.test(m.forSubagent) ? { forSubagent: m.forSubagent } : {}),
         ...(m.from === "operator" && typeof m.forTeam === "string" && TEAM_NAME.test(m.forTeam) ? { forTeam: m.forTeam } : {}),
+        ...(typeof m.channel === "string" && MESSAGE_ID.test(m.channel) && typeof m.threadId === "string" && THREAD_ID.test(m.threadId) ? { thread: m.threadId } : {}),
         // A screenshot travels as an attachment; local_path appears once this machine has the file cached.
         ...(attachment ? { attachment: localizedAttachment(cfg, attachment) } : {}),
       }, state);

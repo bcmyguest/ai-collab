@@ -56,6 +56,8 @@ export const broadcastTopic = (project: string) => `ai-collab-${project}--to--al
 export const receiptsTopic = (project: string) => `ai-collab-${project}--receipts`;
 // Hook activity stream; never read by claimInbox and never rendered as chat.
 export const activityTopic = (project: string) => `ai-collab-${project}--activity`;
+// A thread channel's posts (docs/threads.md "Thread channels"); delivery reads the inboxes, never this topic.
+export const threadTopic = (project: string, threadId: string) => `ai-collab-${project}--th-${threadId.replace(/^th_/, "")}`;
 
 function intEnv(raw: string | undefined, fallback: number, min: number, max: number): number {
   const n = Number.parseInt(raw ?? "", 10);

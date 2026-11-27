@@ -262,7 +262,9 @@ export function Console({ account }) {
   // The session's ⋯ menu opens its raw activity: every tool call, unfolded.
   const openRaw = node => navigate({ project: node.project, level: "session", harness: node.harness || peerOf(node.id), session: node.id, tab: "raw" });
   const placeholder = composeTask ? `Message about #${composeTask}…` : "Write a message…";
+  const currentThread = level === "session" && selected.session ? (data.threads || []).find(item => (item.sessions || []).includes(selected.session)) : undefined;
   const routing = { project, target, session: level === "session" && Boolean(target), tasks: data.tasks?.tasks || [],
+    thread: currentThread ? { id: currentThread.id, title: currentThread.title } : null,
     peers: data.projects.find(item => item.id === project)?.peers || [],
     patterns: data.patterns || [], hosted: data.hosted };
   // A session command: resolves true only when the session ran it or the compaction was requested (the composer clears).
@@ -351,7 +353,6 @@ export function Console({ account }) {
     if (done && path !== "reopen" && name === (selected.project || data.project)) navigate({ level: "home" });
   }
   const anyWaiting = data.projects.some(project => project.waiting > 0);
-  const currentThread = level === "session" && selected.session ? (data.threads || []).find(item => (item.sessions || []).includes(selected.session)) : undefined;
   const panel = level === "session" && selected.session && PANEL.includes(selected.tab) ? selected.tab : "";
   const setPanel = tab => navigate({ ...selected, project, tab, run: "" });
   // The board's props, shared by the Tasks level and the panel's Tasks tab.
@@ -374,7 +375,9 @@ export function Console({ account }) {
   const openTasks = () => level === "session" && selected.session ? setPanel("tasks") : level === "project" ? setProjectPanel(true) : navigate({ project, level: "tasks" });
   const threadProps = {
     data, selected, now, navigate, ready, disabled: working, counts: viewCounts, decisions: data.decisions?.length || 0, openTasks,
-    newThread: newSession, projectAction, openSchedules: () => setSchedulesOpen(true), account: account.user?.login, signOut: account.user ? signOut : undefined,
+    newThread: newSession, projectAction,
+    listen: (thread, session, on) => action("thread", { op: "listen", thread, session, on }, on ? "Listening" : "Muted"),
+    openSchedules: () => setSchedulesOpen(true), account: account.user?.login, signOut: account.user ? signOut : undefined,
     pause: () => action("project-pause", { paused: !paused }, paused ? "New work resumed" : "New work paused"),
     controls: <>
       <AfkToggle mode={data.mode || "off"} disabled={!ready || working} set={mode => action("afk", { mode }, "AFK " + mode)}/>
@@ -573,7 +576,8 @@ export function Console({ account }) {
           // Project chat never runs commands: a leading / there is ordinary chat.
           if (command && level === "session" && selected.session) return runCommand(body);
           const composeHash = composeTask && location.hash;
-          const sent = await action("send", { target, body, ...(sendAnyway ? { sendAnyway: true } : {}), ...(urgent ? { urgent: true } : {}), ...(replyTo ? { replyTo: replyTo.id, quote: { sender: replyTo.sender, body: replyTo.body } } : {}) }, "Sent", image);
+          // In an open thread the post goes to the thread channel (docs/threads.md "Thread channels").
+          const sent = await action("send", { target, body, ...(currentThread ? { thread: currentThread.id, channel: true } : {}), ...(sendAnyway ? { sendAnyway: true } : {}), ...(urgent ? { urgent: true } : {}), ...(replyTo ? { replyTo: replyTo.id, quote: { sender: replyTo.sender, body: replyTo.body } } : {}) }, "Sent", image);
           if (sent === true && requested === route.current) {
             setReplyTo(null); stick.current?.scrollToBottom();
             if (composeHash && location.hash === composeHash) navigate({ project, level: "project" });

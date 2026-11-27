@@ -41,15 +41,21 @@ export function messageDestinations(text, target, listTasks) {
 export function composerDestination(routing) {
   if (!routing.target) return "Pick a session first";
   const { project, agents } = routing;
-  const { destinations, direct, starts, invocations, startOnly } = composerRoute(routing);
+  const { destinations, direct, starts, invocations, startOnly, channel } = composerRoute(routing);
   const shortAddress = address => address.replace(/(#[a-f0-9]{8})[a-f0-9]{8}(?=\/|$)/, "$1");
   const named = address => (!address.includes("/") && shortName(agents.find(agent => agent.id === address))) || shortAddress(address);
   const labels = [];
+  if (channel) labels.push("Everyone listening in " + (routing.thread.title || "this thread"));
   if (destinations.has("all")) labels.push(startOnly ? "Project chat in " + project : "Everyone in " + project);
   if (direct.size) labels.push("Direct to " + [...direct].map(named).join(", "));
   if (starts.length) labels.push("Start " + starts.join(", "));
   if (invocations.length) labels.push("Run " + invocations.join(", "));
   return labels.join(" · ");
+}
+
+/** True when the composer posts to the open thread's channel: a thread is open and no #task tag routes the post. */
+export function composerChannel(routing) {
+  return Boolean(routing.target) && composerRoute(routing).channel;
 }
 
 /** The session addresses a post goes to directly, for the destination line's title. */
@@ -58,15 +64,17 @@ export function composerRecipients(routing) {
 }
 
 function composerRoute({
-  target, text, tasks, peers, agents, teams, patterns, startable, models, hosted, quoted,
+  target, text, tasks, peers, agents, teams, patterns, startable, models, hosted, quoted, thread,
 }) {
-  const { destinations } = messageDestinations(text, target, () =>
+  const { tagged, destinations } = messageDestinations(text, target, () =>
     tasks.map(task => task.inferredOwner ? { ...task, owner: "" } : task));
+  // In an open thread the post goes to the thread channel; the selected session is a listener, not a direct target.
+  const channel = Boolean(thread?.id) && !hosted && !tagged.length;
   const names = [...teams.map(team => team.id), ...patterns.map(pattern => pattern.name)];
   const [primary] = destinations;
   const startOnly = !hosted && !quoted && destinations.size === 1 && destinations.has("all")
     && startOnlyMentions(text, peers, names);
-  const direct = new Set([...destinations].filter(to => to !== "all"));
+  const direct = new Set(channel ? [] : [...destinations].filter(to => to !== "all"));
   const starts = [];
   if (!hosted) {
     const sessions = agents.filter(agent => agent.registered);
@@ -92,5 +100,5 @@ function composerRoute({
       invocations.push(...mentionedTeams(text, teams.map(team => team.id)));
     }
   }
-  return { destinations, direct, starts, invocations: [...new Set(invocations)], startOnly };
+  return { destinations, direct, starts, invocations: [...new Set(invocations)], startOnly, channel };
 }

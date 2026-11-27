@@ -17,6 +17,7 @@
 import http, { type IncomingMessage, type OutgoingHttpHeaders } from "node:http";
 import type { AddressInfo } from "node:net";
 import { threadRoute, type ThreadStore } from "./thread-routes.ts";
+import { threadChannelRoute, type ThreadChannelStore } from "./thread-channel-store.ts";
 
 export const DEFAULT_RETENTION_MS = 7 * 24 * 3_600_000;
 const MESSAGE_MAX_BYTES = 64 * 1024;
@@ -44,6 +45,7 @@ export interface BusStore {
   getFile(id: string): Awaitable<StoredFile | null>;
   prune(nowSec?: number): Awaitable<{ events: number | null; files: number }>;
   threads?: ThreadStore | null;
+  threadChannels?: ThreadChannelStore | null;
   close(): Awaitable<void>;
 }
 
@@ -329,6 +331,7 @@ export function createBusServer({ store, token = "", baseUrl = "", hooks = {} }:
       return;
     }
 
+    if (await threadChannelRoute(store, req, res, url)) return;
     if (await threadRoute(store, req, res, url)) return;
     res.writeHead(404);
     res.end();

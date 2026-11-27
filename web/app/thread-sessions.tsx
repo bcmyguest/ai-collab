@@ -1,18 +1,24 @@
 "use client";
 // A thread's sessions in the sidebar: lead, children and subagent runs, live or finished; gone sessions stay and open their history.
 import { useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { Bell, BellOff, ChevronRight } from "lucide-react";
+import { Toggle } from "@ui-sdk/react/toggle";
 import { cn } from "@/lib/utils";
 import { isLive, sessionState } from "@/lib/session-state";
 import { runState, subagentModel } from "@/lib/activity-rows";
 import { agentDetail } from "@/lib/agent-detail";
 import { shortName, type Agent } from "@/lib/thread-groups";
+import { listens, threadRole } from "../../lib/thread-listening";
 import { HarnessMark } from "./agent-mark";
 import { Dot, ago, short } from "./chat-shared";
 
 type Run = { id: string; agent?: string; run?: string; kind?: string; model?: string; description?: string; steps?: number; time?: number; lastTime?: number; done?: boolean; child?: boolean };
 type Selected = { level: string; session?: string; run?: string };
 export type OpenSession = (session: string, run?: string) => void;
+export type ListenSession = (thread: string, session: string, on: boolean) => void;
+/** The thread a tree belongs to, for the listening toggles: its members and stored settings. */
+export type ListenThread = { id: string; title?: string; sessions?: string[]; listeners?: { session: string; listening: boolean }[] };
+type Listen = { thread: ListenThread; set: ListenSession; disabled?: boolean };
 
 const ROW = "flex w-full min-w-0 items-start gap-2 rounded-lg px-2 text-left hover:bg-sidebar-accent";
 
@@ -44,21 +50,21 @@ export function workingCount(sessions: Agent[], all: Agent[], now: number): numb
 }
 
 /** The sessions under a thread, children nested under their parent; every row opens its session. */
-export function SessionTree({ sessions, all, label, title, selected, now, open }: {
-  sessions: Agent[]; all: Agent[]; label: string; title?: string; selected: Selected; now: number; open: OpenSession;
+export function SessionTree({ sessions, all, label, title, selected, now, open, listen }: {
+  sessions: Agent[]; all: Agent[]; label: string; title?: string; selected: Selected; now: number; open: OpenSession; listen?: Listen;
 }) {
   const listed = new Set(sessions.map(agent => agent.id));
   const roots = sessions.filter(agent => !agent.parent || !listed.has(String(agent.parent)));
   const childrenOf = (id: string) => all.filter(agent => agent.parent === id && agent.id !== id);
-  const node = (agent: Agent, depth: number): React.ReactNode => <SessionItem key={agent.id} agent={agent} name={agent.missing ? agent.peer + " session " + agent.id.split("#")[1]?.slice(0, 6) : shortName(agent, title)} selected={selected} now={now} open={open}>
+  const node = (agent: Agent, depth: number): React.ReactNode => <SessionItem key={agent.id} agent={agent} name={agent.missing ? agent.peer + " session " + agent.id.split("#")[1]?.slice(0, 6) : shortName(agent, title)} selected={selected} now={now} open={open} listen={listen}>
     {depth < 3 && childrenOf(agent.id).map(child => node(child, depth + 1))}
   </SessionItem>;
   return <ul aria-label={label} className="ml-3 flex flex-col gap-px pl-1">{roots.map(agent => node(agent, 0))}</ul>;
 }
 
 /** One session: live dot, harness mark, name, its state, "model · where", then its subagent runs and children. */
-function SessionItem({ agent, name, selected, now, open, children }: {
-  agent: Agent; name: string; selected: Selected; now: number; open: OpenSession; children?: React.ReactNode;
+function SessionItem({ agent, name, selected, now, open, listen, children }: {
+  agent: Agent; name: string; selected: Selected; now: number; open: OpenSession; listen?: Listen; children?: React.ReactNode;
 }) {
   const state = sessionState(agent, now);
   const live = sessionLive(agent, now);
@@ -68,6 +74,7 @@ function SessionItem({ agent, name, selected, now, open, children }: {
   const finished = (agent.finishedSubagents || []) as Run[];
   const kids = Array.isArray(children) ? children.filter(Boolean) : [];
   return <li className="flex min-w-0 flex-col">
+    <div className="flex min-w-0 items-start">
     <button type="button" data-session={agent.id} data-gone={agent.gone ? "true" : undefined} aria-current={current ? "page" : undefined} onClick={() => open(agent.id)}
       title={agent.gone ? "Ended: opens its history" : agent.id}
       className={cn(ROW, "py-1 max-md:py-2", current ? "bg-sidebar-accent font-medium text-foreground" : "text-muted-foreground", agent.gone && "opacity-70")}>
@@ -84,12 +91,28 @@ function SessionItem({ agent, name, selected, now, open, children }: {
         {detail && <span className="min-w-0 truncate text-xs text-muted-foreground" title={detail}>{detail}</span>}
       </span>
     </button>
+    {listen && !agent.gone && <ListenToggle agent={agent} name={name || short(agent.id)} listen={listen}/>}
+    </div>
     {(runs.length > 0 || finished.length > 0 || kids.length > 0) && <ul aria-label={"Inside " + (name || short(agent.id))} className="ml-3 flex flex-col gap-px pl-1">
       {runs.map(run => <RunItem key={run.id} run={run} parent={agent} now={now} current={current && selected.run === run.run} onOpen={() => open(agent.id, run.run)}/>)}
       {kids}
       {finished.length > 0 && <FinishedRuns runs={finished} parent={agent} now={now} selected={current ? selected.run : undefined} onOpen={run => open(agent.id, run)}/>}
     </ul>}
   </li>;
+}
+
+/** The bell beside a session: on, every thread post reaches it; off, only posts that @mention it (docs/threads.md "Thread channels"). */
+function ListenToggle({ agent, name, listen }: { agent: Agent; name: string; listen: Listen }) {
+  const { thread, set, disabled } = listen;
+  const setting = thread.listeners?.find(item => item.session === agent.id)?.listening;
+  const member = (thread.sessions || []).includes(agent.id);
+  const on = listens({ role: threadRole(agent.parent), member, listening: setting ?? null });
+  const hint = (on ? "Listening: every post in " : "Muted: only @mentions in ") + (thread.title || "this thread") + (setting === undefined ? " (default)" : "");
+  return <Toggle aria-label={"Listen to thread posts: " + name} title={hint} pressed={on} disabled={disabled} data-listen={agent.id}
+    onPressedChange={next => set(thread.id, agent.id, next)}
+    className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground data-pressed:text-foreground data-disabled:opacity-50 max-md:mt-0 max-md:size-11">
+    {on ? <Bell aria-hidden className="size-3.5"/> : <BellOff aria-hidden className="size-3.5"/>}
+  </Toggle>;
 }
 
 /** Finished runs fold behind one row so a busy session does not push the threads below off screen. */

@@ -134,9 +134,25 @@ export async function phoneFixture({ homeSessions = false, inactive = false, kan
 /** A thread store held in memory: the fixture's threads, read-only apart from what the UI asks. */
 function memoryThreads(list) {
   const find = id => list.find(thread => thread.id === id) || list[0];
+  const settings = new Map();
   return {
     list: async () => list, sync: async () => ({}), get: async id => find(id), create: async () => list[0], update: async id => find(id),
     moveSession: async id => find(id), attachPr: async id => find(id), detachPr: async id => find(id),
+    // Thread channels (docs/threads.md): listening settings kept in memory, keyed "thread session".
+    channel: async id => {
+      const thread = find(id);
+      const members = (thread.sessions || []).map(session => ({ session, member: true, listening: settings.get(thread.id + " " + session) ?? null }));
+      const others = [...settings].filter(([key]) => key.startsWith(thread.id + " ") && !(thread.sessions || []).includes(key.split(" ")[1]))
+        .map(([key, listening]) => ({ session: key.split(" ")[1], member: false, listening }));
+      return { thread: { id: thread.id, project: thread.project, title: thread.title, leadSession: thread.leadSession || null }, sessions: [...members, ...others] };
+    },
+    setListening: async (id, session, on) => {
+      if (on === null) settings.delete(id + " " + session);
+      else settings.set(id + " " + session, on);
+      return { thread: id, session, listening: on };
+    },
+    messages: async () => ({ events: [], more: false }),
+    listeners: async () => [...settings].map(([key, listening]) => ({ thread: key.split(" ")[0], session: key.split(" ")[1], listening })),
   };
 }
 
