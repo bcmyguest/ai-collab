@@ -235,7 +235,7 @@ const env = { PATH: process.env.PATH, HOME: home, CODEX_HOME: join(home, ".codex
 Object.assign(process.env, env);
 const operator = loadConfig({ ...env, AI_COLLAB_PEER: "operator" });
 const refuse = async () => { throw new Error("disabled in the demo"); };
-// The UI's real push payloads (web/server/push.mjs notice) drawn as a phone notification banner instead of sent.
+// The UI's real push payloads (web/server/push.ts notice) drawn as a phone notification banner instead of sent.
 const pings = { show: async () => {}, shown: [] };
 const notifier = { notify: async (key, payload) => { pings.shown.push(payload); await pings.show(payload); }, publicKey: () => "", subscribe() {}, unsubscribe: () => false, subscriptions: () => [], send: refuse };
 const server = await startNext(createUi({ projects: [operator], env, control: refuse, start: refuse, setMode: refuse, push: notifier }));

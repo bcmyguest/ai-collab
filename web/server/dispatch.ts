@@ -16,13 +16,13 @@ import { backoffMs, MAX_ATTEMPTS, nextAction, REDELIVER_MS, TTL_MS } from "../..
 import { PUSHED, busyWithPush, direct, holdRunning, pushSession, readySession, runCommand } from "../../lib/deliver-push.ts";
 import { formatInbox } from "../../lib/format.ts";
 import { sessionIdleState } from "../../lib/idle.ts";
-import { claimInbox, ATTACHMENT_BUDGET_MS, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery, reservedMessage } from "../../lib/messaging.ts";
+import { claimInbox, ATTACHMENT_BUDGET_MS, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery, reservedMessage, type TransportEvent } from "../../lib/messaging.ts";
 import { cacheAttachmentsWithin } from "../../lib/attachment-cache.ts";
 import { pollCached } from "../../lib/messaging.ts";
 import { handOff } from "../../lib/stop.ts";
 import { opencodeRequest } from "../../lib/opencode-api.ts";
 import { readReceipts } from "../../lib/receipts.ts";
-import { listSessions } from "../../lib/sessions.mjs";
+import { listSessions } from "../../lib/sessions/registry.ts";
 import { writeState } from "../../lib/state.ts";
 
 export { MAX_ATTEMPTS, REDELIVER_MS, TTL_MS };
@@ -32,11 +32,24 @@ const ANSWERS_MAX = 5000;
 // An undelivered message has no record here yet: no start for the TTL, no redelivery schedule.
 const FIRST_PUSH = { firstAt: null, pushes: 0, dueAt: null };
 
-function ledgerFile(cfg) {
+// oxlint-disable-next-line typescript/no-explicit-any -- project configs, session records and messages are JSON from their stores
+type Json = any;
+/** Delivery counts of one pass. */
+export type Counts = { delivered: number; redelivered: number; dropped: number };
+type LedgerEntry = { address: string; from?: string; firstAt: number; lastAt: number; attempts: number; message: Json };
+type Ledger = Record<string, LedgerEntry>;
+type Backoff = { failures: number; firstAt: number; nextAt: number };
+type Outcome = "delivered" | "failed" | "held" | "pending";
+type DispatchOptions = {
+  projects: () => Json[]; run?: typeof runCommand; opencode?: typeof opencodeRequest; idle?: typeof sessionIdleState; now?: () => number;
+  env?: NodeJS.ProcessEnv; claim?: typeof claimInbox; claude?: Json; skip?: () => boolean | Promise<boolean>;
+};
+
+function ledgerFile(cfg: Json): string {
   return join(cfg.stateDir, cfg.project, "dispatch.json");
 }
 
-function readLedger(cfg) {
+function readLedger(cfg: Json): Ledger {
   try {
     const s = JSON.parse(readFileSync(ledgerFile(cfg), "utf8"));
     return s.entries && typeof s.entries === "object" ? s.entries : {};
@@ -45,7 +58,7 @@ function readLedger(cfg) {
   }
 }
 
-function writeLedger(cfg, entries) {
+function writeLedger(cfg: Json, entries: Ledger): void {
   writeState(ledgerFile(cfg), { entries });
 }
 
@@ -58,22 +71,22 @@ function writeLedger(cfg, entries) {
 export function createDispatcher({
   projects, run = runCommand, opencode = opencodeRequest, idle = sessionIdleState, now = Date.now, env = process.env, claim = claimInbox,
   claude = undefined, skip = () => false,
-} = {}) {
-  let timer = null;
+}: DispatchOptions = {} as DispatchOptions) {
+  let timer: NodeJS.Timeout | undefined;
   let running = false;
-  const reads = new Map();
-  const answers = new Map();
-  const cursors = new Map();
-  const backoff = new Map();
+  const reads = new Map<string, Set<string>>();
+  const answers = new Map<string, Set<string>>();
+  const cursors = new Map<string, string>();
+  const backoff = new Map<string, Backoff>();
   // Per (session, id) of an unconfirmed push: whether the whole range written after that push holds the message.
-  const rechecks = new Map();
-  const watchers = new Set();
+  const rechecks = new Map<string, () => boolean>();
+  const watchers = new Set<Promise<void>>();
 
-  const slot = (session, id) => `${session.id}\n${id}`;
-  const cooling = (session, id) => (backoff.get(slot(session, id))?.nextAt ?? 0) > now();
+  const slot = (session: Json, id: string): string => `${session.id}\n${id}`;
+  const cooling = (session: Json, id: string): boolean => (backoff.get(slot(session, id))?.nextAt ?? 0) > now();
 
   // Records a failed attempt for each id; the next attempt waits backoffMs, and the first failure starts the TTL.
-  function failed(session, ids) {
+  function failed(session: Json, ids: string[]): void {
     for (const id of ids) {
       const prev = backoff.get(slot(session, id));
       const failures = (prev?.failures ?? 0) + 1;
@@ -82,12 +95,12 @@ export function createDispatcher({
   }
 
   // Whether a message whose pushes have failed is past the TTL: it is no longer pushed, and stays for the hooks.
-  function expired(session, id) {
+  function expired(session: Json, id: string): boolean {
     const entry = backoff.get(slot(session, id));
     return entry?.firstAt !== undefined && nextAction({ firstAt: entry.firstAt, pushes: 0, dueAt: null }, now(), { acked: false, busy: false, ready: true }) === "expired";
   }
 
-  function forget(session, ids) {
+  function forget(session: Json, ids: string[]): void {
     for (const id of ids) {
       backoff.delete(slot(session, id));
       rechecks.delete(slot(session, id));
@@ -95,15 +108,15 @@ export function createDispatcher({
   }
 
   // Delivers text to one session through its harness's API. Resolves {status}: "delivered", "unsent" or "unconfirmed" (Claude only).
-  function push(session, text, { urgent, ids }) {
+  function push(session: Json, text: string, { urgent, ids }: { urgent: boolean; ids: string[] }) {
     return pushSession(session, text, { urgent, ids }, { env, run, opencode, ...(claude ? { claude } : {}) });
   }
 
   // Keeps the reservation while a late confirmation is watched, then marks the messages delivered or releases them.
   // A release keeps a whole-range check per id, run before the message is pushed again.
-  function watchLate(session, scfg, ids, result) {
-    const job = result.watch()
-      .then((ok) => {
+  function watchLate(session: Json, scfg: Json, ids: string[], result: Json): void {
+    const job: Promise<void> = result.watch()
+      .then((ok: boolean) => {
         if (ok) return markDelivered(scfg, ids);
         for (const id of ids) rechecks.set(slot(session, id), () => result.confirmedSince?.(id) ?? false);
         return releaseDelivery(scfg, ids);
@@ -114,7 +127,7 @@ export function createDispatcher({
   }
 
   // Pushes reserved messages and settles the reservation. Resolves "delivered", "failed", "held" or "pending" (watched).
-  async function dispatchIds(session, scfg, text, { urgent, ids, messages }) {
+  async function dispatchIds(session: Json, scfg: Json, text: string, { urgent, ids, messages }: { urgent: boolean; ids: string[]; messages: Json[] }): Promise<Outcome> {
     // A Stop hook that started since the ready check delivers the messages: hand them to it (read every second) and mark
     // them, so the inbox copy is hidden. A failed hand-off releases them for the next tick.
     if (holdRunning(session, scfg)) {
@@ -143,18 +156,18 @@ export function createDispatcher({
 
   // The text a session receives. An attachment is cached first, so the session reads this machine's copy
   // instead of downloading the file from the bus again. The sender-identity paragraph is SessionStart only.
-  const textFor = async (scfg, messages) => {
-    const shown = await cacheAttachmentsWithin(scfg, messages, { budgetMs: ATTACHMENT_BUDGET_MS });
+  const textFor = async (scfg: Json, messages: Json[]): Promise<string> => {
+    const shown: Json[] = await cacheAttachmentsWithin(scfg, messages, { budgetMs: ATTACHMENT_BUDGET_MS });
     return formatInbox(shown, { session: scfg.session, peer: scfg.peer });
   };
 
   // Claude takes a socket message in any state, when its gate is open and no Stop hook holds it; Codex waits for an idle session; OpenCode takes a queued or steering prompt in any state.
-  function ready(session, active, cfg) {
+  function ready(session: Json, active: Set<string> | null, cfg: Json) {
     return readySession(session, active, { env, idle, cfg });
   }
 
   // Folds new receipts and replies to this ledger's messages into reads and answers.
-  async function refreshAcks(cfg, entries) {
+  async function refreshAcks(cfg: Json, entries: Ledger): Promise<void> {
     const topics = new Set([receiptsTopic(cfg.project), broadcastTopic(cfg.project)]);
     for (const e of Object.values(entries)) {
       topics.add(inboxTopic(cfg.project, e.address.split("#")[0]));
@@ -162,26 +175,26 @@ export function createDispatcher({
     }
     for (const topic of topics) {
       const key = `${cfg.project}\n${topic}`;
-      let events;
+      let events: TransportEvent[];
       try { events = await pollCached(cfg, topic, cursors.get(key) || "all"); } catch { continue; }
       if (events.some((e) => e.reset)) process.stderr.write(`ai-collab: bus replayed ${topic} from the oldest event (unknown cursor)\n`);
-      if (events.length) cursors.set(key, events.at(-1).id);
+      if (events.length) cursors.set(key, (events.at(-1) as TransportEvent).id);
       if (topic === receiptsTopic(cfg.project)) { readReceipts(events, reads); continue; }
       for (const ev of events) {
         const m = parseEnvelope(ev.message);
         if (m?.kind !== "msg" || typeof m.replyTo !== "string" || typeof m.session !== "string") continue;
         if (!answers.has(m.replyTo)) answers.set(m.replyTo, new Set());
-        answers.get(m.replyTo).add(`${m.from}#${m.session}`);
+        (answers.get(m.replyTo) as Set<string>).add(`${m.from}#${m.session}`);
       }
     }
   }
 
-  const acked = (id, address) => Boolean(reads.get(id)?.has(address) || answers.get(id)?.has(address));
+  const acked = (id: string, address: string): boolean => Boolean(reads.get(id)?.has(address) || answers.get(id)?.has(address));
 
-  async function pushProject(cfg, active) {
-    const counts = { delivered: 0, redelivered: 0, dropped: 0 };
+  async function pushProject(cfg: Json, active: Set<string> | null): Promise<Counts> {
+    const counts: Counts = { delivered: 0, redelivered: 0, dropped: 0 };
     const entries = readLedger(cfg);
-    const sessions = listSessions(cfg).filter((s) => PUSHED.has(s.harness) && s.online);
+    const sessions: Json[] = listSessions(cfg).filter((s) => PUSHED.has(s.harness) && s.online);
     for (const session of sessions) {
       if (nextAction(FIRST_PUSH, now(), { acked: false, busy: false, ready: await ready(session, active, cfg) }) !== "push") continue;
       const scfg = { ...cfg, peer: session.peer, session: session.session };
@@ -193,7 +206,7 @@ export function createDispatcher({
       if (!candidates.length) continue;
       // Reserve before the push so the waiter's claim cannot take the same messages.
       const owned = new Set(await reserveDelivery(scfg, candidates.map((m) => m.id)));
-      const waiting = candidates.filter((m) => owned.has(m.id)).map(m => reservedMessage(scfg, m)).filter(Boolean);
+      const waiting = candidates.filter((m) => owned.has(m.id)).map(m => reservedMessage(scfg, m)).filter((m) => m !== null);
       if (!waiting.length) continue;
       // A message released after an unconfirmed push is checked over the whole range first: a late confirmation settles it.
       const late = waiting.filter((m) => rechecks.get(slot(session, m.id))?.());
@@ -251,8 +264,8 @@ export function createDispatcher({
     return counts;
   }
 
-  async function tick() {
-    const total = { delivered: 0, redelivered: 0, dropped: 0 };
+  async function tick(): Promise<Counts> {
+    const total: Counts = { delivered: 0, redelivered: 0, dropped: 0 };
     if (running || await Promise.resolve().then(skip).catch(() => false)) return total;
     running = true;
     try {
@@ -261,7 +274,7 @@ export function createDispatcher({
       for (const cfg of projects()) {
         if (!cfg.enabled) continue;
         const counts = await pushProject(cfg, active).catch(() => null);
-        for (const key of Object.keys(total)) total[key] += counts?.[key] ?? 0;
+        for (const key of Object.keys(total) as (keyof Counts)[]) total[key] += counts?.[key] ?? 0;
       }
     } finally {
       running = false;
@@ -279,7 +292,7 @@ export function createDispatcher({
     },
     close() {
       clearInterval(timer);
-      timer = null;
+      timer = undefined;
     },
   };
 }

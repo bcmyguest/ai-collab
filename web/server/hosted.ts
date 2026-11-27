@@ -1,16 +1,21 @@
 import { join } from "node:path";
 import { isGithubLogin } from "../../lib/config.ts";
+import type { Auth } from "./auth.ts";
 
-function error(status, message) {
+// oxlint-disable-next-line typescript/no-explicit-any -- project configs and UI instances are passed through to createUi
+type Json = any;
+type HostedOptions = { auth: Auth; projects: Json[]; stateDir: string; origin: string; createUi: (options: Json) => Json };
+
+function error(status: number, message: string): Response {
   return Response.json({ error: message }, { status, headers: { "cache-control": "no-store" } });
 }
 
 // Each UI instance sees only one owner's projects, including its implicit default,
 // Home, archives, attachments and actions that broadcast to every visible project.
-export function createHostedUi({ auth, projects, stateDir, origin, createUi }) {
-  const groups = new Map();
-  const credentials = new Map();
-  const names = new Set();
+export function createHostedUi({ auth, projects, stateDir, origin, createUi }: HostedOptions) {
+  const groups = new Map<string, Json[]>();
+  const credentials = new Map<string, string>();
+  const names = new Set<string>();
   for (const cfg of projects) {
     if (!isGithubLogin(cfg.owner) || !cfg.token) throw new Error("Hosted projects require an owner and a dedicated bus token");
     const owner = cfg.owner.toLowerCase();
@@ -21,10 +26,10 @@ export function createHostedUi({ auth, projects, stateDir, origin, createUi }) {
     names.add(cfg.project);
     credentials.set(cfg.token, owner);
     if (!groups.has(owner)) groups.set(owner, []);
-    groups.get(owner).push({ ...cfg, owner, stateDir: join(stateDir, "hosted", owner) });
+    (groups.get(owner) as Json[]).push({ ...cfg, owner, stateDir: join(stateDir, "hosted", owner) });
   }
-  const instances = new Map();
-  function call(request, method, ...args) {
+  const instances = new Map<string, Json>();
+  function call(request: Request | undefined, method: string, ...args: Json[]): Json {
     const caller = request && auth.user(request);
     if (!caller) return error(401, "Sign in with GitHub");
     const login = caller.login.toLowerCase();
@@ -36,15 +41,15 @@ export function createHostedUi({ auth, projects, stateDir, origin, createUi }) {
     return method === "file" ? instance.file(args[0], request) : instance[method](request, ...args);
   }
 
-  const unavailable = request => auth.user(request)
+  const unavailable = (request: Request): Response => auth.user(request)
     ? error(404, "Unavailable in hosted mode")
     : error(401, "Sign in with GitHub");
 
   return {
     auth: auth.route,
-    events: request => call(request, "events"),
-    handle: (request, action) => call(request, "handle", action),
-    file: (name, request) => call(request, "file", name),
+    events: (request: Request) => call(request, "events"),
+    handle: (request: Request, action: Json) => call(request, "handle", action),
+    file: (name: string, request: Request) => call(request, "file", name),
     push: unavailable,
     schedules: unavailable,
     close() {
