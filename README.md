@@ -45,7 +45,8 @@ Then open the UI on your phone: [Quick start](https://bcmyguest.github.io/ai-col
 | [Phone UI](https://bcmyguest.github.io/ai-collab/phone-ui/) | Home, chat, task tags, activity, starting sessions, push |
 | [AFK mode](https://bcmyguest.github.io/ai-collab/afk/) | Progress posts and phone questions while you are away |
 | [Approvals and questions](https://bcmyguest.github.io/ai-collab/approvals/) | Permission prompts answered from the phone |
-| [Landing from the phone](docs/phone-ui.md#landing-from-the-phone) | `ai-collab land request` opens a PR; the Land panel merges green PRs; `ai-collab deploy` updates the host |
+| [Landing from the phone](docs/phone-ui.md#landing-from-the-phone) | `ai-collab land finish` opens a draft PR with proof, or a review packet without GitHub; the Land panel merges green PRs; `ai-collab deploy` updates the host |
+| [Landing policy](docs/teams.md#landing-policy) | A team's `landing` attribute picks PR, packet or branch; agents never push `main` |
 | [Builders](docs/builders.md) | One agent per task in OpenShell, with `oncebitten` checks when installed on the host |
 | [Teams and patterns](docs/teams.md) | Define roles and handoffs in DOT and verify their transitions with local traces |
 | [Agents starting agents](docs/messaging.md#agents-starting-agents) | `spawn_agent` (or `ai-collab spawn`) starts a child of any harness that reports to its parent after each run |
@@ -53,7 +54,7 @@ Then open the UI on your phone: [Quick start](https://bcmyguest.github.io/ai-col
 | [Architecture diagrams](docs/architecture-diagrams.md) | What is off-the-shelf, what is home-grown, and where the network boundaries are |
 | [Security model](https://bcmyguest.github.io/ai-collab/security/) | What is sent and what is trusted |
 | [Troubleshooting](https://bcmyguest.github.io/ai-collab/troubleshooting/) | Known limits and fixes |
-| [Development](https://bcmyguest.github.io/ai-collab/development/) | Tests, CI, releases, the demo |
+| [Development](https://bcmyguest.github.io/ai-collab/development/) | Tests, CI, releases, the demo, `npm run land` for maintainers |
 | [AG-UI design](docs/ag-ui.md) | Event protocol and migration |
 
 The docs source is [`docs/`](docs/); [`site/`](site/) builds it.

@@ -107,16 +107,25 @@ Run `./setup_prek.sh` once. It installs [prek](https://github.com/j178/prek) (th
 
 Rerun `scripts/install-git-hooks.sh` after the hook changes.
 
-The PM lands builder branches with `ai-collab merge start <branch>...` on the host. The command fetches `origin/main`, merges the requested branches in order in a fresh worktree, and runs `npm ci` and `npm test` with isolated `HOME`, `CODEX_HOME`, and `TMPDIR`. After the gate passes, it pushes the tested commit, verifies the remote tip, attempts `git pull --ff-only` in `/home/b/ai-collab`, and cleans up the merge worktree. When that pull succeeds, it runs `npm run build -- --deploy-and-verify` in the host checkout, which builds the UI, restarts `ai-collab-ui`, and verifies it. When the pull is skipped, it does not deploy the stale checkout and prints why. A refusal after worktree creation reports the retained worktree path. Once npm starts, the refusal also includes the path to a log with stdout and stderr from each npm step.
+### Land a branch on main
 
-### Merge gate triage
+Landing on `main` and deploying are developer tools for this repository, not `ai-collab` commands. From your own terminal on the Linux host, in `/home/b/ai-collab` on `main`:
 
-- **Branch moved past the submitted commit.** Review the current builder tip before submitting it for landing. The gate checks the expected tip before creating a worktree.
-- **Branch does not merge cleanly.** The gate attempts to abort the failed merge and retains the worktree with any earlier successful merges from the batch. Give the coordinator the worktree path and failed branch. After resolving the conflict, rerun the isolated host gate on the resulting commit before pushing.
-- **npm missing or install failed.** Check the PM service's Node installation and PATH. The gate prefers npm bundled with Node and can resolve mise's Node before replacing HOME. Read the `npm ci` output for registry, dependency, or lockfile errors. If temporary directory creation fails, check that the service can write to `/dev/shm`.
-- **Tests failed or modified tracked files.** Inspect the npm output and retained worktree. Fix the failing test or the step that changes tracked files, then rerun the host gate for the corrected commit. Builder tests serve as a preflight.
-- **Push or remote verification failed.** Fetch and inspect `origin/main` before retrying. A verification failure can follow a successful push if another update advances the remote. If the tested commit is already in the remote history, it has landed. Otherwise, rebuild and retest against the current remote tip.
-- **Host pull skipped.** The remote push has been verified. The UI deploy does not run. Use the reported Git error to diagnose the host checkout and preserve local edits while reconciling it.
+```sh
+npm run land -- <branch>
+```
+
+`tools/land.mjs` fetches `origin/main`, rebases the local branch onto it in a scratch worktree under `~/.cache/ai-collab-land/`, and runs the gate there with isolated `HOME`, `CODEX_HOME` and `TMPDIR`: `npm ci`, `npm run typecheck`, `npm run lint`, `npm test`. On green it pushes the rebased commit to `origin/main` with a plain push (a moved `origin/main` rejects it), checks the remote tip with `ls-remote`, removes the worktree, and runs `ai-collab deploy` in the host checkout, which pulls `--ff-only`, builds and restarts the services (see [Landing from the phone](phone-ui.md#ai-collab-deploy)). It prints one line, `land: landed <sha> (<branch>) on main` or `land: refused: <reason>`, and leaves the local branch untouched.
+
+The script refuses to run off Linux and inside an agent session (`AI_COLLAB_SESSION` set). Agents finish branch work with `ai-collab land finish` instead (see [Teams and patterns](teams.md#landing-policy)).
+
+### Land gate triage
+
+- **Branch does not rebase cleanly.** The rebase is aborted and the worktree kept; the script names it. Rebase the branch onto `origin/main` yourself and rerun.
+- **A gate step failed.** The refusal names the step and the gate log under `~/.cache/ai-collab-land/gate-*/`, which keeps stdout and stderr of every step. Nothing was pushed.
+- **The gate changed the commit or tracked files.** Fix the step that writes tracked files, then rerun.
+- **Push or remote verification failed.** Fetch and inspect `origin/main`. If the rebased commit is already in its history, it landed; otherwise rerun against the new tip.
+- **Deploy failed.** `main` was pushed. Read the `ai-collab deploy` line and rerun `ai-collab deploy` on the host once fixed.
 
 To land other work by hand, use a worktree:
 
