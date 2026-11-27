@@ -6,7 +6,7 @@
 <img src="demo.gif" alt="AI Collab demo on a phone" width="390" />
 </p>
 
-The peer hooks and MCP server need only Node 22.18+ (builtin `fetch`). The operator UI uses Next.js with shadcn/ui, Tailwind CSS, and prompt-kit. Remote Claude compaction uses the Claude Agent SDK.
+The peer hooks and MCP server need only Node 24+ (builtin `fetch`). The operator UI uses Next.js with shadcn/ui, Tailwind CSS, and prompt-kit. Remote Claude compaction uses the Claude Agent SDK.
 
 **Learn more**
 
