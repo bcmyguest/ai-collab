@@ -493,6 +493,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
         const result = await cutRun(s, runId, reason);
         return builder ? { ...result, resumeBuilder: true } : result;
       };
+      // A spawned child reports each run inside its steps, so the step sequence (the DBOS golden) is unchanged.
+      const reports = Boolean(s.record.spawn && s.record.parent);
       const sent = await wf.step("run.send", async () => {
         try {
           const handle = await liveHandle(s, staged);
@@ -510,13 +512,16 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
           s.record.status = "idle";
           save(s);
           await enqueuePublish(s, () => publishEvent(s.cfg, harness, { type: EventType.CUSTOM, name: ERROR, value: `input not delivered: ${error.message}` }));
+          if (reports) await reportToParent(s, { outcome: "error", message: `input not delivered: ${error.message}` });
           return { error: error.message };
         }
-      }, { onCut: () => cut(null, "runner restarted before the harness accepted the input") });
+      }, { onCut: async () => {
+        const done = await cut(null, "runner restarted before the harness accepted the input");
+        if (reports) await reportToParent(s, { outcome: "interrupted" });
+        return done;
+      } });
       if (!sent.runId && !builder) continue;
       const interrupted = () => cut(sent.runId, "runner restarted");
-      // A spawned child reports each finished run inside run.wait, so the step sequence (the DBOS golden) is unchanged.
-      const reports = Boolean(s.record.spawn && s.record.parent);
       const finished = sent.runId && await wf.step("run.wait", async () => {
         const done = builder && !s.live ? await interrupted() : await waitRun(s, sent.runId);
         if (reports) await reportToParent(s, done);

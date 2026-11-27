@@ -186,3 +186,51 @@ test("a spawn that times out is cancelled, so no child runs and the cap stays fr
   assert.equal(adapter.calls.filter((c) => c.op === "send").length, 1, "only the parent's prompt was sent");
   for (let i = 0; i < 4; i++) assert.equal((await runner.start(spawnInput(`child ${i}`))).status, "started");
 }, { startTimeoutMs: 150 }));
+
+// Wraps each opened handle's send so a prompt starting with `prefix` meets `onSend` instead of the fake harness.
+function interceptSend(adapter, prefix, onSend) {
+  const open = adapter.open.bind(adapter);
+  adapter.open = async (...args) => {
+    const handle = await open(...args);
+    const send = handle.send.bind(handle);
+    handle.send = (message) => (message.text.startsWith(prefix) ? onSend(message) : send(message));
+    return handle;
+  };
+}
+
+test("a prompt the harness never accepts reports the error to the parent", (t) => withRunner(t, async ({ fake, runner, adapter }) => {
+  interceptSend(adapter, "undeliverable", async () => { throw new Error("harness gone"); });
+  await runner.start(spawnInput("undeliverable brief"));
+  const sent = await until(() => reports(fake).length && reports(fake), "report");
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].body, /finished \(error\)/);
+  assert.match(sent[0].body, /input not delivered: harness gone/);
+}));
+
+test("a restart before the harness accepts the prompt reports interrupted", async (t) => {
+  const fake = await startFakeNtfy();
+  t.after(() => fake.close());
+  const ctx = setup(t, fake);
+  const adapter = createFakeAdapter({ harness: "codex" });
+  // The stalled send settles only once the stop has begun, as a killed harness's would.
+  let kill = null;
+  interceptSend(adapter, "stall", () => new Promise((_resolve, reject) => { kill = reject; }));
+  const first = makeRunner(ctx, adapter);
+  await first.boot();
+  PARENT = (await first.start({ project: "demo", harness: "codex", prompt: "parent" })).session;
+  await first.start(spawnInput("stall before accepting"));
+  await until(() => kill, "stalled send");
+  const stopping = first.stop();
+  kill(new Error("harness killed"));
+  await stopping;
+  const second = makeRunner(ctx, createFakeAdapter({ harness: "codex" }));
+  try {
+    await second.boot();
+    await second.settle();
+    const sent = await until(() => reports(fake).length && reports(fake), "report");
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].body, /finished \(interrupted\)/);
+  } finally {
+    await second.stop();
+  }
+});
