@@ -11,7 +11,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { broadcastTopic } from "./config.mjs";
+import { broadcastTopic } from "./config.ts";
 import { cleanQuestions, fitApprovalEnvelope, text, type CleanQuestion } from "./approval-card.ts";
 import { publish, streamEvents, type Cfg } from "./messaging.ts";
 import { deepLink } from "./deep-link.ts";

@@ -1,5 +1,5 @@
 /** Pattern shape: validation, the team.dot round trip, and legacy rosters read as patterns. No file access. */
-import { isValidName } from "../config.mjs";
+import { isValidName } from "../config.ts";
 import { START_HARNESSES, modelShape } from "../start.mjs";
 import { parseHarnessModel } from "../harness.ts";
 import { DOT_PROMPT_MAX, DotError, type DotTeam, type DotTeamInput } from "./dot.ts";

@@ -1,6 +1,6 @@
 // The UI server's side of threads (docs/threads.md): a cached list per project, sync of new sessions, and POST /api/thread.
 import { isAbsolute, sep } from "node:path";
-import { listProjects } from "../../lib/config.mjs";
+import { listProjects } from "../../lib/config.ts";
 import { listOwned, listSessions } from "../../lib/sessions.mjs";
 import { threadClient } from "../../lib/thread-routes.ts";
 import { THREAD_ID, threadSessionsOf } from "../../lib/threads.ts";

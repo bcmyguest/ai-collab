@@ -1,6 +1,6 @@
 // Phone alert level: which notifications buzz. Messages always arrive; a level silences the rest with wire priority 1.
 import { join } from "node:path";
-import { configDir } from "./config.mjs";
+import { configDir } from "./config.ts";
 import { readJson, writeJson } from "./store.ts";
 
 export const ALERT_LEVELS: string[] = ["all", "questions-and-direct", "questions", "none"];

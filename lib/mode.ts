@@ -7,11 +7,11 @@ import { alertPriority, readAlertLevel } from "./alerts.ts";
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { broadcastTopic, isGithubLogin, listProjects, loadConfig } from "./config.mjs";
+import { broadcastTopic, isGithubLogin, listProjects, loadConfig } from "./config.ts";
 import { pollCached, publish, type Cfg, type TransportEvent } from "./messaging.ts";
 import { readState, statePath, withLock, writeState } from "./state.ts";
 import type { StateConfig } from "./store.ts";
-import { encodeEnvelope, parseWireEnvelope } from "./agui.mjs";
+import { encodeEnvelope, parseWireEnvelope } from "./agui.ts";
 // oxlint-disable-next-line typescript/no-explicit-any -- state and envelope JSON; validMode checks each field
 type Json = any;
 
@@ -28,7 +28,7 @@ export const DEFAULT_MODE: Readonly<Mode> = Object.freeze({ mode: "off", ts: 0 }
 const HISTORY = "12h"; // policy window: a mode older than this no longer describes the operator
 // The mode this machine last read for the project, beside its sessions, so a session with no record of its own knows it.
 const PROJECT_MODE_FILE = "operator-mode.json";
-export { MACHINE_PREFIXES, WAKE_ENV, WAKE_PROMPT, machinePrompt, operatorPrompt } from "./machine-prompt.mjs";
+export { MACHINE_PREFIXES, WAKE_ENV, WAKE_PROMPT, machinePrompt, operatorPrompt } from "./machine-prompt.ts";
 
 type ModeReadOptions = { poll?: (cfg: Cfg, topic: string, since: string) => Promise<Array<{ message: string }>> };
 

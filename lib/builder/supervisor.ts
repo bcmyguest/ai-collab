@@ -6,7 +6,7 @@ import type { ChildProcess } from "node:child_process";
 import type { openDurable } from "../durable.ts";
 import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { autoDefaults } from "../config.mjs";
+import { autoDefaults } from "../config.ts";
 import { projectRoot, PROMPT_MAX_CHARS, modelShape } from "../start.mjs";
 import { runnerRequest, runnerSocket } from "../runner-request.ts";
 import { RUN_ID } from "../pattern-runs.mjs";

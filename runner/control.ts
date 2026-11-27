@@ -3,8 +3,8 @@ import http, { type IncomingMessage, type Server } from "node:http";
 import net from "node:net";
 import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { dirname } from "node:path";
-import { SESSION_LABEL } from "../lib/config.mjs";
-import { HARNESSES } from "./contract.mjs";
+import { SESSION_LABEL } from "../lib/config.ts";
+import { HARNESSES } from "./contract.ts";
 
 export const MAX_REQUEST_BYTES = 64 * 1024;
 const VERSION = 1;

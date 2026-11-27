@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { stateDir } from "../config.mjs";
+import { stateDir } from "../config.ts";
 import { FALLBACK_MODEL } from "../harness.ts";
 
 export const CLI_SCRIPT = fileURLToPath(new URL("../../scripts/ai-collab.mjs", import.meta.url));

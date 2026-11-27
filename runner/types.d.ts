@@ -53,7 +53,7 @@ export interface OpenOptions {
   patternRun?: string;
   model?: string;
   permissionMode: PermissionMode;
-  // The harness settings for permissionMode, from PERMISSION_TABLE in runner/contract.mjs.
+  // The harness settings for permissionMode, from PERMISSION_TABLE in runner/contract.ts.
   permission: Record<string, unknown>;
   place: Place;
   // Child environment: lib/sessions/launch.ts childEnv plus AI_COLLAB_OWNED=<harness> (and AI_COLLAB_MANAGED=1 for a managed Claude or Codex session).

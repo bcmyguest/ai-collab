@@ -1,6 +1,6 @@
 import { EventType } from "@ag-ui/core";
 import { parseSSEStream, runHttpRequest } from "@ag-ui/client";
-import { parseEvent, projectEvent } from "../../lib/agui.mjs";
+import { parseEvent, projectEvent } from "../../lib/agui.ts";
 import { A2UI_ACTIVITY } from "./a2ui.js";
 
 export const ACTIVITY_BATCH = "ai-collab.activity-batch";

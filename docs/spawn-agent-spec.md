@@ -214,7 +214,7 @@ Add to the destructure: `managed`, `parent`, `spawn`.
 
 When `spawn === true`:
 
-1. `parent` must match `parentAddress({ AI_COLLAB_PARENT: parent })` (`lib/config.mjs:224`), else `fail(400, "Invalid parent address")`.
+1. `parent` must match `parentAddress({ AI_COLLAB_PARENT: parent })` (`lib/config.ts:224`), else `fail(400, "Invalid parent address")`.
 2. Depth: if the parent is an owned session (`sessions.get(parent)`), `depth = (parent.record.spawn?.depth ?? 0) + 1`. Otherwise `depth = 1`. If `depth > SPAWN_MAX_DEPTH`, `fail(409, "spawn depth limit reached")`.
 3. Children: count `sessions` values with `record.parent === parent && record.spawn && record.status !== "ended"`. At `SPAWN_MAX_CHILDREN` or more, `fail(429, "this session already has 4 live spawned agents")`.
 4. The start gap at line 864 skips spawns: change the guard to `!patternRun && !builder && !spawn`. The child cap bounds the rate.

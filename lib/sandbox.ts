@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { autoDefaults } from "./config.mjs";
+import { autoDefaults } from "./config.ts";
 
 export type Env = NodeJS.ProcessEnv;
 export type Run = { code: number | null; stdout: string; stderr: string };

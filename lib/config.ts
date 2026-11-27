@@ -23,53 +23,63 @@ const NAME_RE = /^(?=.{1,24}$)[a-z0-9]+(?:-[a-z0-9]+)*$/;
 // A GitHub login: 1-39 letters, digits and single inner hyphens; the "by" field of UI-sent envelopes.
 const GITHUB_LOGIN = /^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}$/i;
 
-export function sessionLabel(id) {
+// oxlint-disable-next-line typescript/no-explicit-any -- defaults.json and projects.json entries are user JSON read field by field
+type Json = any;
+/** A loaded, valid-or-not session config (enabled says whether it can talk to the bus). */
+export type LoadedConfig = {
+  url: string; token: string; owner?: string; project: string; peer: string; peers: string[]; session: string; stateDir: string;
+  timeoutMs: number; pollIntervalMs: number; afkWaitS: number; stopCap: number; stopPollMs: number; importantMaxS: number; approvalS: number;
+  activity: boolean; wire: "agui" | "legacy"; enabled: boolean; reason: string; auto?: true; root?: string; parent?: string;
+};
+export type DisabledConfig = { enabled: false; reason: string };
+
+export function sessionLabel(id: unknown): string {
   return typeof id === "string" && id
     ? createHash("sha256").update(id).digest("hex").slice(0, 16)
     : "";
 }
 
-export function isValidName(name) {
+export function isValidName<T>(name: T): name is T & string {
   return typeof name === "string" && name.length <= 24 && NAME_RE.test(name);
 }
 
-export function isGithubLogin(login) {
+export function isGithubLogin<T>(login: T): login is T & string {
   return typeof login === "string" && GITHUB_LOGIN.test(login);
 }
 
 // Topics are project-scoped, use only [a-z0-9-], and stay within ntfy's 64-char limit
 // (worst case: 10 + 24 + 6 + 24 = 64).
-export const statusTopic = (project) => `ai-collab-${project}--status`;
-export const inboxTopic = (project, peer) => `ai-collab-${project}--to--${peer}`;
-export const broadcastTopic = (project) => `ai-collab-${project}--to--all`;
+export const statusTopic = (project: string) => `ai-collab-${project}--status`;
+export const inboxTopic = (project: string, peer: string) => `ai-collab-${project}--to--${peer}`;
+export const broadcastTopic = (project: string) => `ai-collab-${project}--to--all`;
 // Read receipts for delivered messages; never read by claimInbox and never rendered as chat.
-export const receiptsTopic = (project) => `ai-collab-${project}--receipts`;
+export const receiptsTopic = (project: string) => `ai-collab-${project}--receipts`;
 // Hook activity stream; never read by claimInbox and never rendered as chat.
-export const activityTopic = (project) => `ai-collab-${project}--activity`;
+export const activityTopic = (project: string) => `ai-collab-${project}--activity`;
 
-function intEnv(raw, fallback, min, max) {
+function intEnv(raw: string | undefined, fallback: number, min: number, max: number): number {
   const n = Number.parseInt(raw ?? "", 10);
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, n));
 }
 
-export function configDir(env = process.env) {
+export function configDir(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(env.XDG_CONFIG_HOME || path.join(env.HOME || homedir(), ".config"), "ai-collab");
 }
 
 /** The state directory: AI_COLLAB_STATE_DIR, else $XDG_STATE_HOME/ai-collab. */
-export function stateDir(env = process.env) {
+export function stateDir(env: NodeJS.ProcessEnv = process.env): string {
   return env.AI_COLLAB_STATE_DIR || path.join(env.XDG_STATE_HOME || path.join(env.HOME || homedir(), ".local", "state"), "ai-collab");
 }
 
 /** defaults.json: url, tokenFile, peers and other settings shared by every auto-joined git repo; null when absent. */
-export function autoDefaults(env = process.env) {
+export function autoDefaults(env: NodeJS.ProcessEnv = process.env): Json {
   const value = readJson(path.join(configDir(env), "defaults.json"));
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
 /** Whether the host deploys origin/main on a timer: AI_COLLAB_AUTO_DEPLOY when set, else defaults.json autoDeploy; off by default. */
-export function autoDeployEnabled(env = process.env) {
+export function autoDeployEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   if (env.AI_COLLAB_AUTO_DEPLOY !== undefined && env.AI_COLLAB_AUTO_DEPLOY !== "") return /^(1|true|on|yes)$/i.test(env.AI_COLLAB_AUTO_DEPLOY.trim());
   return autoDefaults(env)?.autoDeploy === true;
 }
@@ -78,36 +88,36 @@ export function autoDeployEnabled(env = process.env) {
 export const START_DEFAULT = formatHarnessModel({ harness: "cursor", model: FALLBACK_MODEL });
 
 /** The new-session default as {harness, model} from defaults.json's startDefault ("harness:model"), else START_DEFAULT. */
-export function startDefaultSetting(env = process.env) {
+export function startDefaultSetting(env: NodeJS.ProcessEnv = process.env) {
   const parsed = parseHarnessModel(autoDefaults(env)?.startDefault);
   return parsed?.model ? parsed : parseHarnessModel(START_DEFAULT);
 }
 
 // Built-in place for a new session when the caller names none; defaults.json's startPlace replaces it.
 export const START_PLACE = "openshell";
-const START_PLACE_NAMES = ["folder", "worktree", "openshell"];
+const START_PLACE_NAMES: unknown[] = ["folder", "worktree", "openshell"];
 
 /** The configured start place: defaults.json startPlace when it names folder, worktree or openshell, else START_PLACE. */
-export function startPlaceSetting(env = process.env) {
+export function startPlaceSetting(env: NodeJS.ProcessEnv = process.env): string {
   const value = autoDefaults(env)?.startPlace;
   return START_PLACE_NAMES.includes(value) ? value : START_PLACE;
 }
 
 /** The configured Claude permission mode as {mode}: defaults.json claudePermissionMode ("default" when absent), else {error}. */
-export function claudePermissionSetting(env = process.env) {
+export function claudePermissionSetting(env: NodeJS.ProcessEnv = process.env) {
   const value = autoDefaults(env)?.claudePermissionMode ?? "default";
   const error = claudePermissionError(value);
   return error ? { error: `defaults.json ${error}` } : { mode: value };
 }
 
 /** A folder name as a project name: lowercase, other runs become one hyphen, at most 24 chars; "" when nothing is left. */
-export function projectName(folder) {
+export function projectName(folder: string): string {
   const name = String(folder).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 24).replace(/^-+|-+$/g, "");
   return isValidName(name) ? name : "";
 }
 
 /** The main working tree of the git repo holding cwd (a linked worktree resolves to its main repo), or "". */
-export function gitRoot(cwd) {
+export function gitRoot(cwd: string): string {
   for (let dir = path.resolve(cwd); ; dir = path.dirname(dir)) {
     const dotGit = path.join(dir, ".git");
     try {
@@ -121,8 +131,8 @@ export function gitRoot(cwd) {
 }
 
 /** Repository identity shared by worktrees and checkouts with the same origin. */
-function originIdentity(root) {
-  let origin;
+function originIdentity(root: string): string {
+  let origin: string;
   try {
     origin = execFileSync("git", ["config", "--local", "--get", "remote.origin.url"], {
       cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 2000,
@@ -140,7 +150,7 @@ function originIdentity(root) {
   return path.resolve(root, origin);
 }
 
-function autoProjectName(root, origin) {
+function autoProjectName(root: string, origin: string): string {
   if (!origin) return projectName(path.basename(root));
   const name = projectName(path.basename(origin).replace(/\.git$/, "").slice(0, 11)) || "repo";
   const hash = createHash("sha256").update(origin).digest("hex").slice(0, 12);
@@ -148,26 +158,26 @@ function autoProjectName(root, origin) {
 }
 
 /** Entries of projects.json with an absolute root; [] when the file is missing or invalid. */
-function explicitProjects(env) {
+function explicitProjects(env: NodeJS.ProcessEnv): Json[] {
   const projects = readJson(path.join(configDir(env), "projects.json"));
   return Array.isArray(projects)
-    ? projects.filter((project) => typeof project?.root === "string" && path.isAbsolute(project.root))
+    ? projects.filter((project: Json) => typeof project?.root === "string" && path.isAbsolute(project.root))
     : [];
 }
 
 /** projects.json entries, then auto-joined repos (recorded by their sessions) not shadowed by a projects.json name. */
-export function listProjects(env = process.env) {
+export function listProjects(env: NodeJS.ProcessEnv = process.env): Json[] {
   const explicit = explicitProjects(env);
   const defaults = autoDefaults(env);
   if (!defaults) return explicit;
   const taken = new Set(explicit.map((p) => p.project));
   const dir = path.join(stateDir(env), "auto-projects");
-  let files = [];
+  let files: string[] = [];
   try { files = readdirSync(dir).filter((f) => f.endsWith(".json")).sort(); } catch { /* none yet */ }
   const registeredOrigins = new Set(explicit.map((p) => originIdentity(p.root)).filter(Boolean));
-  const auto = [];
+  const auto: Json[] = [];
   for (const file of files) {
-    const { root } = readJson(path.join(dir, file)) || {};
+    const { root }: Json = readJson(path.join(dir, file)) || {};
     const project = file.slice(0, -5);
     if (typeof root !== "string" || !path.isAbsolute(root) || taken.has(project)) continue;
     const origin = originIdentity(root);
@@ -178,7 +188,7 @@ export function listProjects(env = process.env) {
   return [...explicit, ...auto];
 }
 
-function projectSettings(env, cwd) {
+function projectSettings(env: NodeJS.ProcessEnv, cwd: string): Json {
   try {
     const current = path.resolve(cwd);
     const explicit = explicitProjects(env);
@@ -209,7 +219,7 @@ function projectSettings(env, cwd) {
  * parent's shell environment, so a session never takes AI_COLLAB_SESSION from it (hooks know their own session),
  * and a child (AI_COLLAB_PARENT set) takes its harness as its peer name instead of an inherited AI_COLLAB_PEER.
  */
-export function ownEnv(env, host) {
+export function ownEnv(env: NodeJS.ProcessEnv, host: string): NodeJS.ProcessEnv {
   const out = { ...env };
   // Cursor's agent shell exports its conversation ID, so a harness started from it names its Cursor parent.
   if (!out.AI_COLLAB_PARENT && host && host !== "cursor" && out.CURSOR_CONVERSATION_ID) out.AI_COLLAB_PARENT = `cursor#${sessionLabel(out.CURSOR_CONVERSATION_ID)}`;
@@ -221,13 +231,13 @@ export function ownEnv(env, host) {
 }
 
 /** The address of the agent that started this one (AI_COLLAB_PARENT), or "" when unset or malformed. */
-export function parentAddress(env) {
+export function parentAddress(env: NodeJS.ProcessEnv): string {
   const value = String(env.AI_COLLAB_PARENT || "").trim();
   const [peer, label, ...extra] = value.split("#");
   return isValidName(peer) && peer !== "all" && SESSION_LABEL.test(label || "") && !extra.length ? value : "";
 }
 
-export function loadConfig(env = process.env, { cwd = process.cwd(), host = "", session = "" } = {}) {
+export function loadConfig(env: NodeJS.ProcessEnv = process.env, { cwd = process.cwd(), host = "", session = "" }: { cwd?: string; host?: string; session?: string } = {}): LoadedConfig | DisabledConfig {
   const settings = projectSettings(env, cwd);
   let token = env.AI_COLLAB_TOKEN;
   if (token === undefined && !env.AI_COLLAB_URL && typeof settings.tokenFile === "string" && path.isAbsolute(settings.tokenFile)) {
@@ -238,7 +248,7 @@ export function loadConfig(env = process.env, { cwd = process.cwd(), host = "", 
     }
   }
   const label = session || env.AI_COLLAB_SESSION || sessionLabel(env.CURSOR_CONVERSATION_ID);
-  const cfg = {
+  const cfg: LoadedConfig = {
     url: String(env.AI_COLLAB_URL || settings.url || DEFAULT_URL).trim().replace(/\/+$/, ""),
     token: String(token || "").trim(),
     ...(!settings.auto && isGithubLogin(settings.owner) && !env.AI_COLLAB_PROJECT ? { owner: settings.owner.toLowerCase() } : {}),
@@ -261,7 +271,7 @@ export function loadConfig(env = process.env, { cwd = process.cwd(), host = "", 
     ...(settings.auto && !env.AI_COLLAB_PROJECT ? { auto: true, root: settings.root } : {}),
   };
 
-  const problems = [];
+  const problems: string[] = [];
   if (!cfg.project || !cfg.peer) problems.push("set AI_COLLAB_PROJECT and AI_COLLAB_PEER to enable");
   if (cfg.project && !isValidName(cfg.project)) {
     problems.push("AI_COLLAB_PROJECT must be 1-24 chars of a-z, 0-9 and single hyphens");
@@ -292,9 +302,9 @@ export function loadConfig(env = process.env, { cwd = process.cwd(), host = "", 
 }
 
 /** One config per projects.json entry, loaded from that entry's root; per-session env vars are ignored. */
-export function loadProjects(env = process.env, { host = "" } = {}) {
+export function loadProjects(env: NodeJS.ProcessEnv = process.env, { host = "" }: { host?: string } = {}): LoadedConfig[] {
   const { AI_COLLAB_PROJECT, AI_COLLAB_PEER, AI_COLLAB_PEERS, AI_COLLAB_SESSION, ...shared } = env;
-  const found = new Map();
+  const found = new Map<string, LoadedConfig>();
   for (const entry of listProjects(env)) {
     if (!isValidName(entry.project)) continue;
     const cfg = loadConfig(shared, { cwd: entry.root, host });

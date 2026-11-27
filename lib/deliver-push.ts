@@ -3,13 +3,13 @@
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { receiptsTopic } from "./config.mjs";
+import { receiptsTopic } from "./config.ts";
 import { claudeTarget, deliverToClaude, type ClaudePush } from "./claude-socket.ts";
 import { nativeSessionId, harnessEnv } from "./sessions/control.ts";
 import { parseEnvelope, type Cfg, type TransportEvent } from "./messaging.ts";
 import { sessionIdleState, type IdleState } from "./idle.ts";
 import { pollCached } from "./messaging.ts";
-import { opencodeRequest } from "./opencode-api.mjs";
+import { opencodeRequest } from "./opencode-api.ts";
 import { readReceipts } from "./receipts.ts";
 import { argv, type Command } from "./harness.ts";
 import { writeState } from "./state.ts";

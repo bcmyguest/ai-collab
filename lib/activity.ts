@@ -4,15 +4,15 @@
  * control and bidi characters and truncated so each message stays under the 4095-byte wire limit;
  * a larger tool result also travels whole as a .txt attachment.
  */
-import { activityTopic } from "./config.mjs";
+import { activityTopic } from "./config.ts";
 import { publish, querySafe, type Cfg } from "./messaging.ts";
 import { stripControl } from "./format.ts";
 import { textAttachment } from "./attachment.ts";
 import { MESSAGE_MAX_BYTES } from "./messaging.ts";
 import { machinePrompt } from "./mode.ts";
-import { envelopeToEvent } from "./agui.mjs";
+import { envelopeToEvent } from "./agui.ts";
 import { compactionFields } from "./compaction.ts";
-import { clearFields, modelFields } from "./session-events.mjs";
+import { clearFields, modelFields } from "./session-events.ts";
 import { classifyLimit } from "./limits.ts";
 
 export const ACTIVITY_MAX_BYTES = MESSAGE_MAX_BYTES;

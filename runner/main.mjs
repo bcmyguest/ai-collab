@@ -3,9 +3,9 @@
 import { mkdirSync, realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
-import { loadProjects, stateDir, autoDefaults, autoDeployEnabled } from "../lib/config.mjs";
+import { loadProjects, stateDir, autoDefaults, autoDeployEnabled } from "../lib/config.ts";
 import { autoDeployEntry } from "../lib/land.mjs";
-import { HARNESSES } from "./contract.mjs";
+import { HARNESSES } from "./contract.ts";
 import { openWorkflows } from "../lib/workflows.ts";
 import { pgUrl } from "../lib/postgres.ts";
 import { createRunner } from "./runner.mjs";

@@ -7,7 +7,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import { parseArgs, type ParseArgsOptionsConfig } from "node:util";
-import { sessionLabel } from "./config.mjs";
+import { sessionLabel } from "./config.ts";
 import { sessionOfCommand } from "./schedule-session.ts";
 import { READ_PATHS, claudeSource, codexSource, cursorSource, journalSource, opencodeSource, taskStoreSource } from "./analyze-sources.ts";
 import type { Source, SourceResult, SourceWindow, ScheduleRun, TaskItem, TokenCounts, Turn } from "./analyze-sources.ts";

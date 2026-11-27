@@ -1,10 +1,10 @@
 // OpenCode 2 adapter: drives the registered OpenCode service over HTTP and reads its shared /api/event SSE stream.
 import { randomUUID } from "node:crypto";
 import { EventType } from "@ag-ui/core";
-import { sessionLabel } from "../../lib/config.mjs";
-import { opencodeRequest, serviceEndpoint } from "../../lib/opencode-api.mjs";
+import { sessionLabel } from "../../lib/config.ts";
+import { opencodeRequest, serviceEndpoint } from "../../lib/opencode-api.ts";
 import { OPENCODE_NO_SUBAGENTS } from "../../lib/subagent-guard.ts";
-import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, PERMISSION_TABLE } from "../contract.mjs";
+import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, PERMISSION_TABLE } from "../contract.ts";
 
 const NO_SERVICE = "OpenCode service is not running (no loopback url in its service.json)";
 const RETRY_MS = 2000;

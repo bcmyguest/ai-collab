@@ -3,7 +3,7 @@
  * Every row comes from the real system: hook processes with fake payloads, lib/inbox.mjs sendMessage, the
  * Next.js UI. Selectors use roles, labels and text; optional beats (approval card, Home) are skipped when absent.
  */
-import { broadcastTopic } from "../../lib/config.mjs";
+import { broadcastTopic } from "../../lib/config.ts";
 
 const PROMPT = ["@cl", "@claude", " build a small calculator app; ", "@co", "@codex", " write its tests"];
 const CALC_SOURCE = `<output aria-label="Display">0</output>

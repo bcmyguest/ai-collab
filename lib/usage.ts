@@ -9,8 +9,8 @@ import { alertPriority, readAlertLevel } from "./alerts.ts";
  * (InstructionsLoaded hook: file_path, memory_type, load_reason).
  */
 import { closeSync, fstatSync, openSync, readFileSync, readSync } from "node:fs";
-import { encodeEnvelope } from "./agui.mjs";
-import { broadcastTopic } from "./config.mjs";
+import { encodeEnvelope } from "./agui.ts";
+import { broadcastTopic } from "./config.ts";
 import { publish, type Cfg } from "./messaging.ts";
 import { writeState, statePath, withLock } from "./state.ts";
 // oxlint-disable-next-line typescript/no-explicit-any -- hook payloads and transcript JSONL; each field is checked before use

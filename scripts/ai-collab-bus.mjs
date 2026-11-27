@@ -6,7 +6,7 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import path from "node:path";
-import { configDir, listProjects, loadProjects, stateDir } from "../lib/config.mjs";
+import { configDir, listProjects, loadProjects, stateDir } from "../lib/config.ts";
 import { DEFAULT_RETENTION_MS, openBus, resolveBusStoreKind } from "../lib/bus.ts";
 import { openPostgresBusStore } from "../lib/bus-postgres.ts";
 import { pgPasswordFile, pgReachable, pgUrl } from "../lib/postgres.ts";

@@ -5,7 +5,7 @@ import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { clipProgress, openTasks, reviewPacket, STATUSES } from "../tasks.mjs";
 import { cleanBuilders } from "../builder-clean.ts";
-import { loadConfig } from "../config.mjs";
+import { loadConfig } from "../config.ts";
 import { task } from "../task-cli.ts";
 import { WORK } from "../sandbox.ts";
 import { BUILDER_HARNESSES, BASE_REF, GIT_TIMEOUT_MS, readState, updateState, oneLine } from "./state.ts";

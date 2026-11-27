@@ -12,7 +12,7 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, re
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { agentHarness } from "../lib/agent-guard.ts";
-import { listProjects, stateDir } from "../lib/config.mjs";
+import { listProjects, stateDir } from "../lib/config.ts";
 import { builderPolicy, replayable, parseRecordedCall, sharedLibs, toolSources } from "../lib/builder.ts";
 import { projectOfFolder } from "../lib/schedule-session.ts";
 import { destroyOwnedSandboxes, execArgv, executables, gitIn, HOME_IN, hostTokenFile, labelArgs, landBranch, must, NTFY_TOKEN_IN, OUT, runTool, sandboxCapRefusal, sandboxLabels, SANDBOX, stageAndUpload, TOOLS, UPLOAD_TIMEOUT_MS, WORK } from "../lib/sandbox.ts";

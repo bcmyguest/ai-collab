@@ -1,4 +1,4 @@
-import { pairCompactions } from "../../lib/session-events.mjs";
+import { pairCompactions } from "../../lib/session-events.ts";
 export { pairCompactions };
 
 // Compaction rows as timeline text: "Compacted · auto · 182k → 31k · 4 files dropped".

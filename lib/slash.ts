@@ -5,9 +5,9 @@
  * workspace, and a registry ID that matches the session label.
  */
 import { isAbsolute } from "node:path";
-import { sessionLabel } from "./config.mjs";
+import { sessionLabel } from "./config.ts";
 import { nativeSessionId } from "./sessions/control.ts";
-import { opencodeRequest } from "./opencode-api.mjs";
+import { opencodeRequest } from "./opencode-api.ts";
 import { commandSupport } from "../web/lib/slash-commands.js";
 import { claudePermissionError } from "./harness.ts";
 import { bypassRefusal } from "./sessions/launch.ts";

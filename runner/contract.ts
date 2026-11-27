@@ -2,6 +2,9 @@
 import { EventType } from "@ag-ui/core";
 import { EventSchema } from "@ag-ui/core/schemas";
 
+// oxlint-disable-next-line typescript/no-explicit-any -- events and permission settings are adapter JSON checked field by field
+type Json = any;
+
 export const HARNESSES = ["claude", "codex", "cursor", "opencode"];
 export const PERMISSION_MODES = ["supervised", "accept-edits", "auto", "full-access"];
 export const PLACES = ["folder", "worktree", "openshell"];
@@ -20,7 +23,8 @@ export const RESOLVE_REASONS = ["allowed", "denied", "answered", "cancelled"];
 export const STATE_PATHS = ["/contextTokens", "/contextWindow", "/model", "/permissionMode"];
 
 // Codex values follow T3 Code (MIT, Copyright (c) 2026 T3 Tools Inc.), CodexAdapterV2.ts L751-L800 at 5935157.
-export const PERMISSION_TABLE = {
+// oxlint-disable-next-line quality/no-known-value-widening -- looked up by a runtime harness or mode name
+export const PERMISSION_TABLE: Record<string, Record<string, Json>> = {
   claude: {
     supervised: { permissionMode: "default" },
     "accept-edits": { permissionMode: "acceptEdits" },
@@ -47,37 +51,39 @@ export const PERMISSION_TABLE = {
   },
 };
 
-export const DEFAULT_PERMISSION = { claude: "auto", codex: "auto", cursor: "supervised", opencode: "supervised" };
+// oxlint-disable-next-line quality/no-known-value-widening -- looked up by a runtime harness or mode name
+export const DEFAULT_PERMISSION: Record<string, string> = { claude: "auto", codex: "auto", cursor: "supervised", opencode: "supervised" };
 export const OPENSHELL_PERMISSION = "full-access";
 // The runner mode each Claude --permission-mode value names; dontAsk and plan have no runner mode.
-export const CLAUDE_CLI_MODES = { default: "supervised", acceptEdits: "accept-edits", auto: "auto", bypassPermissions: "full-access" };
+// oxlint-disable-next-line quality/no-known-value-widening -- looked up by a runtime harness or mode name
+export const CLAUDE_CLI_MODES: Record<string, string> = { default: "supervised", acceptEdits: "accept-edits", auto: "auto", bypassPermissions: "full-access" };
 export const APPROVAL_TIMEOUT_MIN = 30;
 const APPROVAL_TIMEOUT_MAX_MIN = 12 * 60;
 
 /** The mode a session starts in when the caller names none: full-access in OpenShell, else the harness default. */
-export const defaultPermission = (harness, place = "folder") => (place === "openshell" ? OPENSHELL_PERMISSION : DEFAULT_PERMISSION[harness]);
+export const defaultPermission = (harness: string, place: string = "folder"): string => (place === "openshell" ? OPENSHELL_PERMISSION : DEFAULT_PERMISSION[harness]);
 
 /** The runner mode for a Claude --permission-mode value, or null when the runner has none for it. */
-export const runnerModeOfClaude = (flag) => (Object.hasOwn(CLAUDE_CLI_MODES, flag) ? CLAUDE_CLI_MODES[flag] : null);
+export const runnerModeOfClaude = (flag: string): string | null => (Object.hasOwn(CLAUDE_CLI_MODES, flag) ? CLAUDE_CLI_MODES[flag] : null);
 
 /** Milliseconds an owned approval waits before the runner denies it: AI_COLLAB_APPROVAL_TIMEOUT_MIN (default 30, at most 12 h, the ntfy cache window). */
-export function approvalTimeoutMs(env = process.env) {
+export function approvalTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
   const minutes = Number(env.AI_COLLAB_APPROVAL_TIMEOUT_MIN);
   return (Number.isFinite(minutes) && minutes > 0 ? Math.min(minutes, APPROVAL_TIMEOUT_MAX_MIN) : APPROVAL_TIMEOUT_MIN) * 60_000;
 }
 
 /** The settings a harness gets for a mode, or an error string when the pair is not allowed. */
-export function permissionSettings(harness, mode, place = "folder") {
+export function permissionSettings(harness: string, mode: string, place: string = "folder"): { error: string; settings?: undefined } | { settings: Json; error?: undefined } {
   const settings = PERMISSION_TABLE[harness]?.[mode];
   if (!settings) return { error: `${harness} has no permission mode ${mode}` };
   if (settings.requiresPlace && settings.requiresPlace !== place) return { error: `${harness} ${mode} runs only in ${settings.requiresPlace}` };
   return { settings };
 }
 
-const isText = (value) => typeof value === "string" && value.length > 0;
+const isText = (value: unknown): value is string => typeof value === "string" && value.length > 0;
 
 /** Null for a supported AG-UI event with the fields the runner uses. */
-export function eventProblem(e) {
+export function eventProblem(e: Json): string | null | undefined {
   if (!e || typeof e !== "object" || !EVENT_TYPES.includes(e.type)) return "unknown event type";
   if (!EventSchema.safeParse(e).success) return "invalid AG-UI event";
   if (e.subagentRunId !== undefined && !isText(e.subagentRunId)) return "bad subagent run ID";
@@ -101,14 +107,14 @@ export function eventProblem(e) {
     case EventType.STEP_FINISHED:
       return isText(e.stepName) ? null : "stepName required";
     case EventType.STATE_DELTA:
-      return e.delta.length && e.delta.every(op => ["add", "replace", "remove"].includes(op.op) && STATE_PATHS.includes(op.path))
+      return e.delta.length && e.delta.every((op: Json) => ["add", "replace", "remove"].includes(op.op) && STATE_PATHS.includes(op.path))
         ? null : "delta must patch known paths";
     case EventType.CUSTOM:
       return customProblem(e);
   }
 }
 
-function customProblem({ name, value }) {
+function customProblem({ name, value }: Json): string | null {
   if (name === NOTICE || name === ERROR) return isText(value) ? null : "event text required";
   if (name === LIMIT) return isText(value?.harness) ? null : "invalid limit";
   if (name === APPROVAL_REQUESTED) {

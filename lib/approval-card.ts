@@ -2,8 +2,8 @@
  * Approval cards on the wire: question cleaning and the size fit every card goes through. A leaf module, so the
  * approval, question and limit-alert modules can share it without importing one another.
  */
-import { encodeEnvelope } from "./agui.mjs";
-import { MESSAGE_MAX_BYTES } from "./config.mjs";
+import { encodeEnvelope } from "./agui.ts";
+import { MESSAGE_MAX_BYTES } from "./config.ts";
 import { stripControl } from "./format.ts";
 // oxlint-disable-next-line typescript/no-explicit-any -- harness question JSON; each field is checked before use
 type Json = any;

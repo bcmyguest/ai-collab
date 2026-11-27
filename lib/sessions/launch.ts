@@ -3,9 +3,9 @@ import { execFile, spawn, type ChildProcess, type SpawnOptions } from "node:chil
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync } from "node:fs";
 import { basename, delimiter, isAbsolute, join, resolve, sep } from "node:path";
 import { ALLOW_HOST_AGENT_ENV, hostAgentRefusal } from "../agent-guard.ts";
-import { claudePermissionSetting, listProjects, sessionLabel, startPlaceSetting } from "../config.mjs";
-import { REQUIRE_RUN_CODE_ENV, resolveCodeMode } from "../code-mode.mjs";
-import { SYSTEM_PROMPT_ENV } from "../machine-prompt.mjs";
+import { claudePermissionSetting, listProjects, sessionLabel, startPlaceSetting } from "../config.ts";
+import { REQUIRE_RUN_CODE_ENV, resolveCodeMode } from "../code-mode.ts";
+import { SYSTEM_PROMPT_ENV } from "../machine-prompt.ts";
 import { recordedMode, WAKE_ENV } from "../mode.ts";
 import { isProjectPaused, PROJECT_PAUSED } from "../project-pause.ts";
 import { runnerSocket } from "../runner-request.ts";

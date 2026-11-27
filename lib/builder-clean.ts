@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { stateDir } from "./config.mjs";
+import { stateDir } from "./config.ts";
 
 export const BUILDER_DIR_CAP = 50;
 export const BUILDER_LIVE_CAP = 2;

@@ -2,7 +2,7 @@
 // Typed sources: sdk.d.ts (Claude SDK 0.3.330). Text patterns are UNVERIFIED: no type or source here names them.
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { autoDefaults, stateDir } from "./config.mjs";
+import { autoDefaults, stateDir } from "./config.ts";
 import { FALLBACK_MODEL, HARNESSES, modelShape, parseHarnessModel } from "./harness.ts";
 import { readJson, withLock, writeJson } from "./store.ts";
 

@@ -1,25 +1,30 @@
 /** Clear and model switch in one model, beside compaction (lib/compaction.ts); both ride the activity row's own field. */
 import { COMPACTION_HISTORY_MAX, compactionFields } from "./compaction.ts";
 
-const count = value => (Number.isSafeInteger(value) && value >= 0 ? value : undefined);
+// oxlint-disable-next-line typescript/no-explicit-any -- activity rows are bus JSON validated field by field
+type Json = any;
+export type ClearFields = { tokensBefore?: number; tokensAfter: 0 };
+export type ModelFields = { from: string; to: string };
+
+const count = (value: unknown): number | undefined => (Number.isSafeInteger(value) && (value as number) >= 0 ? value as number : undefined);
 const MODEL_MAX = 128;
-const model = value => (typeof value === "string" && value.trim() && value.length <= MODEL_MAX ? value.trim() : undefined);
+const model = (value: unknown): string | undefined => (typeof value === "string" && value.trim() && value.length <= MODEL_MAX ? value.trim() : undefined);
 
 /** {tokensBefore?, tokensAfter: 0}: a clear empties the context, so the after count is 0 by definition. */
-export function clearFields({ tokensBefore } = {}) {
+export function clearFields({ tokensBefore }: { tokensBefore?: unknown } = {}): ClearFields {
   const before = count(tokensBefore);
   return { ...(before === undefined ? {} : { tokensBefore: before }), tokensAfter: 0 };
 }
 
 /** {from, to} model names, or null when either is missing. */
-export function modelFields({ from, to } = {}) {
+export function modelFields({ from, to }: { from?: unknown; to?: unknown } = {}): ModelFields | null {
   const [a, b] = [model(from), model(to)];
   return a && b ? { from: a, to: b } : null;
 }
 
 // The run a row belongs to: its agent, and its subagent run when it has one.
-const runOf = row => `${row.agent || ""}|${row.subagent?.id || ""}`;
-const fill = (finished, started) => {
+const runOf = (row: Json): string => `${row.agent || ""}|${row.subagent?.id || ""}`;
+const fill = (finished: Json, started: Json): Json => {
   const out = { ...finished };
   if (out.tokensBefore === undefined && started.tokensBefore !== undefined) out.tokensBefore = started.tokensBefore;
   if (out.filesDropped === undefined && started.filesDropped !== undefined) out.filesDropped = started.filesDropped;
@@ -28,10 +33,10 @@ const fill = (finished, started) => {
 
 /** Each finished or failed compaction takes the fields of the started one before it in its run; that started row is dropped.
  *  Rows without a compaction (clears, model switches, texts) do not break a pair. */
-export function pairCompactions(rows) {
-  const open = new Map();
-  const consumed = new Set();
-  const fixed = new Map();
+export function pairCompactions(rows: Json[]): Json[] {
+  const open = new Map<string, number>();
+  const consumed = new Set<number>();
+  const fixed = new Map<number, Json>();
   rows.forEach((row, i) => {
     const compaction = row.compaction;
     if (!compaction) return;
@@ -47,8 +52,8 @@ export function pairCompactions(rows) {
 }
 
 /** Per agent, its last {max} session events as {at (ms), kind, ...fields}, oldest first. kind: compaction, clear or model. */
-export function sessionHistory(items, max = COMPACTION_HISTORY_MAX) {
-  const perAgent = new Map();
+export function sessionHistory(items: Json[], max: number = COMPACTION_HISTORY_MAX): Map<string, Json[]> {
+  const perAgent = new Map<string, Json[]>();
   for (const item of items) {
     const row = rowOf(item);
     if (!row) continue;
@@ -56,7 +61,7 @@ export function sessionHistory(items, max = COMPACTION_HISTORY_MAX) {
     list.push(row);
     perAgent.set(item.agent, list);
   }
-  const byAgent = new Map();
+  const byAgent = new Map<string, Json[]>();
   for (const [agent, rows] of perAgent) {
     const entries = pairCompactions(rows).map(entryOf);
     byAgent.set(agent, entries.slice(-max));
@@ -65,7 +70,7 @@ export function sessionHistory(items, max = COMPACTION_HISTORY_MAX) {
 }
 
 // An activity item as a row with its fields validated; null for items that are not session events.
-function rowOf(item) {
+function rowOf(item: Json): Json {
   // A subagent's compaction belongs to its run, not the parent's history.
   if (item.subagent) return null;
   const base = { id: item.id, time: item.time, agent: item.agent };
@@ -82,7 +87,7 @@ function rowOf(item) {
 }
 
 // A history entry: {id, at (ms), kind, ...fields}.
-function entryOf(row) {
+function entryOf(row: Json): Json {
   const at = row.time * 1000;
   if (row.type === "compact") return { id: row.id, at, kind: "compaction", ...row.compaction };
   if (row.type === "clear") return { id: row.id, at, kind: "clear", ...row.clear };

@@ -9,7 +9,7 @@
  *   - Codex 0.171.0 has the feature flag `features.code_mode` ("under development"); `-c features.code_mode=true`
  *     and the app-server's thread/start `config` both accept it.
  */
-import { autoDefaults } from "./config.mjs";
+import { autoDefaults } from "./config.ts";
 import { CODEX_CODE_MODE_KEY, codexCodeModeArgs, codexRequiredRunCodeArgs, REQUIRE_RUN_CODE_ENV } from "./harness.ts";
 
 export { CODEX_CODE_MODE_KEY, codexCodeModeArgs, codexRequiredRunCodeArgs, REQUIRE_RUN_CODE_ENV };
@@ -19,7 +19,7 @@ export const CODE_MODE_HARNESSES = ["claude", "codex"];
 export const CLAUDE_CODE_MODE_ENV = "CLAUDE_CODE_EXPERIMENTAL_CODE_MODE";
 
 /** A code-mode value as a boolean: true/false, "on"/"off", "true"/"false", "1"/"0"; undefined for anything else. */
-export function parseCodeMode(value) {
+export function parseCodeMode(value: unknown): boolean | undefined {
   if (value === true || value === false) return value;
   const text = typeof value === "string" ? value.trim().toLowerCase() : "";
   if (["on", "true", "1", "yes"].includes(text)) return true;
@@ -28,21 +28,21 @@ export function parseCodeMode(value) {
 }
 
 /** The global setting: defaults.json "codeMode" when it parses, else CODE_MODE_DEFAULT. */
-export function codeModeDefault(env = process.env) {
+export function codeModeDefault(env: NodeJS.ProcessEnv = process.env): boolean {
   return parseCodeMode(autoDefaults(env)?.codeMode) ?? CODE_MODE_DEFAULT;
 }
 
 /** The setting for one start: its own value when given, else the global one. */
-export function resolveCodeMode(value, env = process.env) {
+export function resolveCodeMode(value: unknown, env: NodeJS.ProcessEnv = process.env): boolean {
   return parseCodeMode(value) ?? codeModeDefault(env);
 }
 
 /** Claude flag settings that turn code mode on or off; the only layer a headless run reads it from. */
-export function claudeCodeModeSettings(on) {
+export function claudeCodeModeSettings(on: boolean) {
   return { env: { [CLAUDE_CODE_MODE_ENV]: on ? "1" : "0" } };
 }
 
 /** The `config` override a Codex app-server thread/start or thread/resume takes. */
-export function codexThreadConfig(on) {
+export function codexThreadConfig(on: unknown) {
   return { [CODEX_CODE_MODE_KEY]: on === true };
 }

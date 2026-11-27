@@ -1,7 +1,7 @@
 /** Team files: one team.dot per team, in <root>/.ai-collab/teams/<name>/ or <config>/ai-collab/teams/<name>/. The folder name is the team name. */
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { configDir, isValidName } from "../config.mjs";
+import { configDir, isValidName } from "../config.ts";
 import { readJson, withLockSync, writeFileAtomic, writeJson } from "../store.ts";
 
 const TEAM_FILE = "team.dot";

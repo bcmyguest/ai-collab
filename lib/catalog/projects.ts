@@ -1,6 +1,6 @@
 /** projects.json: the registered projects with their teams and patterns. Every write holds the projects.json lock. */
 import { join } from "node:path";
-import { configDir } from "../config.mjs";
+import { configDir } from "../config.ts";
 import { readJson, withLockSync, writeJson } from "../store.ts";
 import type { Pattern, ProjectEntry } from "./records.ts";
 

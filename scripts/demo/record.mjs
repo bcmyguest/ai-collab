@@ -41,7 +41,7 @@ process.env.CODEX_HOME = join(home, ".codex");
 
 const { chromium } = await import("playwright-core");
 const { startFakeNtfy } = await import(join(ROOT, "test/helpers/fake-ntfy.mjs"));
-const { loadConfig, sessionLabel } = await import(join(ROOT, "lib/config.mjs"));
+const { loadConfig, sessionLabel } = await import(join(ROOT, "lib/config.ts"));
 const { claimInbox, replyToOperator, sendMessage } = await import(join(ROOT, "lib/inbox.mjs"));
 const { createUi, installUi } = await import(join(ROOT, "web/server/ui.mjs"));
 const { scenario } = await import("./scenario.mjs");

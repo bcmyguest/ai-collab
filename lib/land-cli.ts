@@ -2,8 +2,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { broadcastTopic, stateDir } from "./config.mjs";
-import { checkoutBranch, deployLink, dbosVersion, dirty, inFlight, installUnits, pointLink, readLink, resolveSource, unitsInstalled } from "./deploy-tree.mjs";
+import { broadcastTopic, stateDir } from "./config.ts";
+import { checkoutBranch, deployLink, dbosVersion, dirty, inFlight, installUnits, pointLink, readLink, resolveSource, unitsInstalled } from "./deploy-tree.ts";
 import { AUTO_DEPLOY_TIMEOUT_MS, HOST_CHECKOUT, SERVICES, deployHost, execRun, finishBranch, mergeNode, npmCommand, readLastDeploy, requestLand, restartServices, writeLastDeploy } from "./land.mjs";
 import { operatorConfigs } from "./mode.ts";
 import { publish } from "./messaging.ts";

@@ -1,16 +1,16 @@
 // Publishes runner activity as AG-UI and sends status, approvals, receipts and alerts on their existing topics.
 import { contentToText, EventType } from "@ag-ui/core";
-import { broadcastTopic } from "../lib/config.mjs";
+import { broadcastTopic } from "../lib/config.ts";
 import { approvalEnd } from "../lib/operator.ts";
 import { publish } from "../lib/messaging.ts";
 import { publishStatus } from "../lib/messaging.ts";
 import { publishActivity } from "../lib/activity.ts";
 import { compactionFields } from "../lib/compaction.ts";
-import { modelFields } from "../lib/session-events.mjs";
+import { modelFields } from "../lib/session-events.ts";
 import { approvalMessage, cleanQuestions } from "../lib/approvals.ts";
 import { sendReceipts } from "../lib/receipts.ts";
 import { reportContext } from "../lib/usage.ts";
-import { APPROVAL_TIMEOUT_MIN, ERROR, NOTICE } from "./contract.mjs";
+import { APPROVAL_TIMEOUT_MIN, ERROR, NOTICE } from "./contract.ts";
 
 // A card's expiresAt is when the runner denies it (AI_COLLAB_APPROVAL_TIMEOUT_MIN); this is the default wait.
 const DEFAULT_APPROVAL_MS = APPROVAL_TIMEOUT_MIN * 60_000;

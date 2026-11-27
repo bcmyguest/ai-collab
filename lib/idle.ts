@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { activeOpencodeSessions } from "./opencode-api.mjs";
+import { activeOpencodeSessions } from "./opencode-api.ts";
 
 const IDLE_EVENTS = new Set(["Stop", "SessionStart", "SessionEnd"]);
 
