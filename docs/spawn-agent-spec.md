@@ -1,6 +1,6 @@
 # spawn_agent and native-subagent blocking: implementation spec
 
-Status: spec only, nothing implemented. Written 2026-11-26 against `main` at `81129778`, rebased onto `b981d36e` (family and job moved to `.ts`).
+Status: approved; the operator answered the open questions on 2026-11-27 (see [Operator answers](#operator-answers)). Written 2026-11-26 against `main` at `81129778`, rebased onto `b981d36e` (family and job moved to `.ts`).
 Operator decisions of 2026-11-27, with decision 3 as revised:
 
 1. A new tool, `spawn_agent(harness, model, brief, worktree?)`, on MCP (`lib/surfaces/ops.ts`) and the CLI (`lib/cli.mjs`), built on the runner. It does not extend `builder_start`.
@@ -220,6 +220,7 @@ When `spawn === true`:
 4. The start gap at line 864 skips spawns: change the guard to `!patternRun && !builder && !spawn`. The child cap bounds the rate.
 5. Force `managed = true`.
 6. Add `parent` and `spawn: { depth }` to the `startWorkflow` input (line 872).
+7. Permission mode: a spawn that names none defaults to `auto` where the adapter supports it (Claude through the scoped `claudePermission: "auto"` path, Codex), else the harness default (answer 6).
 
 ### B4. Workflow, `runner/runner.mjs` `sessionWorkflow`
 
@@ -270,7 +271,7 @@ The envelope is the standard direct message from `sendMessage` (`lib/messaging.t
 
 The UI's message list and the parent's `inbox` show it as any agent message. Readers wrap agent messages with the `UNTRUSTED` note; the report is untrusted text from the child.
 
-Each finished run sends one report, including runs a parent's follow-up `send` triggers. A child that gets three follow-ups sends four reports. See open question 1.
+Each finished run sends one report, including runs a parent's follow-up `send` triggers. A child that gets three follow-ups sends four reports (answer 1).
 
 ### B6. How the parent wakes
 
@@ -291,7 +292,7 @@ Add no new op. The parent already has two:
 - `wait` (`lib/surfaces/ops.ts:220`, default `until=message`) returns the report when it arrives.
 - `wait until=idle:<child>` returns `idle`, `ended` or `timeout` (`lib/agents.mjs:89` `waitForIdle`).
 
-The `spawn_agent` description and its `note` name both. See open question 2 for a dedicated `wait_for_agent`.
+The `spawn_agent` description and its `note` name both. There is no `wait_for_agent` (answer 2).
 
 ### B8. MCP op, `lib/surfaces/ops.ts`
 
@@ -313,13 +314,13 @@ Insert after `team_start` (line ~275):
       worktree: { type: "boolean", default: false, description: "Start the child in a new git worktree instead of the project folder." },
     },
   },
-  surfaces: ["mcp", "code"],
+  surfaces: ["mcp"],
   needsSession: true,
   handler: (args, { cfg, env }) => spawnAgent(cfg, passJs({ harness: args.harness, model: args.model, brief: args.brief, worktree: args.worktree === true }), passJs({ env })),
 },
 ```
 
-Take the model pattern from the runner's `MODEL` regex (`runner/runner.mjs`, constants 43-73) instead of the one above if they differ. Whether `"code"` belongs in `surfaces` decides whether `run_code` programs can spawn; see open question 3. Leave `listing` and `available` unset so every host sees the op; `lib/tool-api.mjs` `listed(env)` filters only `builder_start`.
+Take the model pattern from the runner's `MODEL` regex (`runner/runner.mjs`, constants 43-73) instead of the one above if they differ. `surfaces` is `["mcp"]` only: `run_code` programs cannot spawn (answer 3). Leave `listing` and `available` unset so every host sees the op; `lib/tool-api.mjs` `listed(env)` filters only `builder_start`.
 
 ### B9. CLI, `lib/cli.mjs`
 
@@ -332,7 +333,7 @@ ai-collab spawn <harness[:model]> [--model <id>] [--worktree] (--brief <text> | 
 1. USAGE (lines 34-~110): one line after the `team` lines: `  spawn <harness[:model]> --brief <text>|--brief-file <path|-> [--model <id>] [--worktree]   start a child agent that reports back`.
 2. Dispatch (lines ~385-400): `case "spawn"` parses flags with `node:util` `parseArgs` (the pattern in `lib/builder/cli.ts` `parseStart`), reads stdin for `--brief-file -`, loads cfg the way `send` does, calls `spawnAgent`, and prints `started <address> (<harness>, <cwd>)`.
 3. Exit 2 on a usage error; exit 1 when the runner refuses (print its `error`).
-4. Add `spawn` to the run_code-first mapping (lines ~237-256) only if B8 adds `"code"`.
+4. `spawn` stays out of the run_code-first mapping (lines ~237-256): it is not a read and not on the code surface.
 
 ### B10. Steer agents to spawn_agent, `lib/family.ts`
 
@@ -409,7 +410,7 @@ Adapter tests, in new files beside the existing ones:
 Manual checks the implementer runs once and records in the MR:
 
 - N1. `codex debug prompt-input -c agents.enabled=false -c features.multi_agent_v2=false "hi"` → no `spawn_agent` tool.
-- N2. Codex app-server: `thread/start` with `config: {"agents.enabled": false}`, then inspect the thread's tool list. If the tools remain, see open question 5.
+- N2. Codex app-server: `thread/start` with `config: {"agents.enabled": false}`, then inspect the thread's tool list. If the tools remain, managed threads run on the second app-server (answer 5).
 - N3. OpenCode: `POST /api/session` with `permissions`, then `GET /api/session/<id>` shows the rule.
 - N4. Claude: `claude --bg --settings '<json>' "use the Agent tool to list files"` refuses the Agent tool.
 - N5. `OPENCODE_CONFIG_CONTENT='{"permission":{"subagent":"deny"}}' opencode run --format json "use a subagent"` refuses the subagent, both with the service up and with it down.
@@ -424,7 +425,6 @@ The operator applies these as a patch. Regenerate goldens with `UPDATE_SURFACE_G
 |---|---|
 | `test/golden/surfaces/mcp-ai-collab.json` | New `spawn_agent` tool |
 | `test/golden/surfaces/mcp-ai-collab-run-code-first.json` | Same |
-| `test/golden/surfaces/mcp-ai-collab-code.json` | Only if B8 adds `"code"` |
 | `test/golden/surfaces/cli.json` | USAGE line for `spawn` (`help`, `--help`, `bogus-command` cases) |
 | `test/mcp.test.mjs:39` | Tool-name list gains `spawn_agent` after `team_start` |
 | `test/surfaces-ops.test.mjs` | If it counts ops or lists names |
@@ -453,12 +453,15 @@ Before writing the patch, run `grep -ln "patternReply\|childHint\|thread/start\|
 - `docs/teams.md` "Enforcement" (line 66): native subagents are off for team and pattern members.
 - `README.md` and `CLAUDE.md`: one line each for `spawn_agent`.
 
-## Open questions for the operator
+## Operator answers
 
-1. **Reports:** one per finished run (this spec), or only the first run?
-2. **Explicit wait:** is `wait` plus `wait until=idle:` enough, or add a `wait_for_agent(address, seconds)` op that returns the child's latest report?
-3. **run_code:** may `run_code` programs call `spawn_agent` (B8 `"code"` surface)?
-4. **Limits:** 4 live children per parent and depth 2, with spawns exempt from the 10 s start gap. Keep these numbers?
-5. **Codex fallback:** if test N2 shows the per-thread `config` leaves the subagent tools on, run a second `codex app-server` with `-c agents.enabled=false` for managed threads, or accept the hook-free gap for runner-owned Codex?
-6. **Permission mode:** spawned OpenCode and Cursor children default to `supervised` (`runner/contract.mjs` `DEFAULT_PERMISSION`), which sends approvals to the phone. Keep that, or default spawns to `auto`?
-7. **Shell starts:** refuse harness starts from a managed session's shell (B11 step 3), or only steer agents away through `childHint`?
+The operator answered the open questions on 2026-11-27:
+
+1. **Reports:** one report after every finished run of the child, not only the first.
+2. **Explicit wait:** `wait` (and `wait until=idle:<child>`) is enough. Add no `wait_for_agent`.
+3. **run_code:** `run_code` programs may not spawn. `spawn_agent` is a direct MCP tool only (`surfaces: ["mcp"]`).
+4. **Limits:** 4 live children per parent, depth 2, and spawns are exempt from the 10 s start gap.
+5. **Codex fallback:** if the per-thread `config` cannot turn Codex's own subagents off, managed sessions run on a second `codex app-server` started with `-c agents.enabled=false -c features.multi_agent_v2=false`.
+6. **Permission mode:** the operator skipped this question, so the standing rule applies: team members run in auto mode. Spawned children default to `auto`. This is a default, not a fixed rule; change it in `runner/runner.mjs` `start`. The runner has no `auto` mode for OpenCode or Cursor (`runner/contract.mjs` `PERMISSION_TABLE`), so those children take the mode a team member of that harness gets today (`supervised` on the host).
+7. **Shell starts:** a harness started from the shell inside a managed session is refused (B11 step 3).
+8. **Blocking:** the parent does not block. `spawn_agent` returns the child's address at once.
