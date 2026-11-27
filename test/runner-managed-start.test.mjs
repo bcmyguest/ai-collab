@@ -51,7 +51,7 @@ function checkingAdapter(ctx) {
   const checks = [];
   const check = (phase, nativeId, env) => {
     const where = { cwd: ctx.root, host: "codex", session: sessionLabel(nativeId) };
-    checks.push({ phase, env, allowed: managedStartAllowed(env, where, HARNESS), disk: readOwned(ctx.cfg, sessionLabel(nativeId))?.status ?? null });
+    checks.push({ phase, env, allowed: managedStartAllowed(env, HARNESS), disk: readOwned(ctx.cfg, sessionLabel(nativeId))?.status ?? null });
   };
   const open = adapter.open.bind(adapter);
   adapter.open = async (options, context) => {
@@ -96,7 +96,7 @@ test("a managed open, owned wake and adopted wake pass SessionStart; a grandchil
     // The record on disk is live before the harness resumes, so the SessionStart check sees what the runner holds.
     assert.deepEqual(checks.filter((c) => c.phase === "resume").map((c) => c.disk), ["idle", "idle"]);
     for (const { env } of checks) {
-      assert.equal(managedStartAllowed(env, { cwd: ctx.root, host: "codex", session: sessionLabel("grandchild") }, GRANDCHILD), false);
+      assert.equal(managedStartAllowed(env, GRANDCHILD), false);
     }
   } finally {
     await runner.stop();

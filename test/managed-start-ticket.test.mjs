@@ -58,19 +58,21 @@ test("a ticket binds to the first harness process; another process with the inhe
   const ticket = mintManagedTicket(env);
   const managed = { ...env, [MANAGED_ENV]: "1", [MANAGED_TICKET_ENV]: ticket };
   const parent = { pid: 100, start: "7" };
-  assert.equal(managedStartAllowed(managed, where("41111111-2222-3333-4444-555555555555"), parent), true);
-  assert.equal(managedStartAllowed(managed, where("51111111-2222-3333-4444-555555555555"), parent), true, "a second thread of the same app-server");
-  assert.equal(managedStartAllowed(managed, where("61111111-2222-3333-4444-555555555555"), { pid: 101, start: "9" }), false);
-  assert.equal(managedStartAllowed({ ...managed, [MANAGED_TICKET_ENV]: "0".repeat(32) }, where("71111111-2222-3333-4444-555555555555"), parent), false, "an unknown ticket");
-  assert.equal(managedStartAllowed({ ...managed, [MANAGED_TICKET_ENV]: "../x" }, where("71111111-2222-3333-4444-555555555555"), parent), false, "a malformed ticket");
+  assert.equal(managedStartAllowed(managed, parent), true);
+  assert.equal(managedStartAllowed(managed, parent), true, "a second thread of the same app-server");
+  assert.equal(managedStartAllowed(managed, { pid: 101, start: "9" }), false);
+  assert.equal(managedStartAllowed({ ...managed, [MANAGED_TICKET_ENV]: "0".repeat(32) }, parent), false, "an unknown ticket");
+  assert.equal(managedStartAllowed({ ...managed, [MANAGED_TICKET_ENV]: "../x" }, parent), false, "a malformed ticket");
 });
 
-test("a live owned record authorizes a managed start without a ticket", (t) => {
+test("a managed start without a ticket is refused even when the session has a live owned record", (t) => {
   const env = setup(t);
   const id = "81111111-2222-3333-4444-555555555555";
   const label = sessionLabel(id);
-  writeOwned(loadConfig(env, where(id)), { v: 1, label, address: `claude#${label}`, harness: "claude", nativeId: id, project: "demo", managed: true, status: "starting" });
-  assert.equal(managedStartAllowed({ ...env, [MANAGED_ENV]: "1" }, where(id), { pid: 5, start: "1" }), true);
+  writeOwned(loadConfig(env, where(id)), { v: 1, label, address: `claude#${label}`, harness: "claude", nativeId: id, project: "demo", managed: true, status: "idle" });
+  // A grandchild that unset the ticket and resumes its parent's session id.
+  assert.equal(managedStartAllowed({ ...env, [MANAGED_ENV]: "1" }, { pid: 5, start: "1" }), false);
+  assert.equal(managedStartAllowed({ ...env, [MANAGED_ENV]: "1", [MANAGED_TICKET_ENV]: "0".repeat(32) }, { pid: 5, start: "1" }), false, "a ticket with no file");
 });
 
 test("noSubagentEnv mints a ticket for every managed start", (t) => {
@@ -113,10 +115,10 @@ test("an owned session binds its ticket, so a grandchild with the inherited env 
   const label = sessionLabel(id);
   writeOwned(loadConfig(env, where(id)), { v: 1, label, address: `claude#${label}`, harness: "claude", nativeId: id, project: "demo", managed: true, status: "idle" });
   const child = { ...env, [MANAGED_ENV]: "1", [MANAGED_TICKET_ENV]: mintManagedTicket(env) };
-  assert.equal(managedStartAllowed(child, where(id), { pid: 5, start: "1" }), true);
-  assert.equal(managedStartAllowed(child, where(id), { pid: 5, start: "1" }), true, "the same harness starts again (resume, compact)");
-  assert.equal(managedStartAllowed(child, where("a1111111-2222-3333-4444-555555555555"), { pid: 6, start: "1" }), false);
-  assert.equal(managedStartAllowed(child, where(id), { pid: 6, start: "1" }), false, "a grandchild resuming the owned session");
+  assert.equal(managedStartAllowed(child, { pid: 5, start: "1" }), true);
+  assert.equal(managedStartAllowed(child, { pid: 5, start: "1" }), true, "the same harness starts again (resume, compact)");
+  assert.equal(managedStartAllowed(child, { pid: 6, start: "1" }), false);
+  assert.equal(managedStartAllowed(child, { pid: 6, start: "1" }), false, "a grandchild resuming the owned session");
 });
 
 test("minting prunes tickets whose harness process has exited and keeps those of a running one", (t) => {

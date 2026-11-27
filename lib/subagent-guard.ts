@@ -88,24 +88,18 @@ function readOwner(path: string): { pid: number; start: string | null } | undefi
 
 /**
  * Whether a SessionStart may proceed: unmanaged, or a ticket this harness process owns (the first start binds it).
- * Without a usable ticket, a live owned record for the session still allows it; a ticket bound to another process never does.
+ * Every managed start mints one (noSubagentEnv), so a managed env without a ticket file is refused, owned record or not.
  */
-export function managedStartAllowed(env: Env, where: { cwd: string; host: string; session: string }, proc: { pid: number; start: string | null }): boolean {
-  if (!managedEnv(env)) return true;
-  const owned = ticketOwner(env, proc);
-  if (owned !== null) return owned;
-  const cfg = loadConfig(env, where);
-  if (!cfg.enabled || !("stateDir" in cfg)) return false;
-  const record = readOwned(cfg, where.session) as { status?: unknown } | null;
-  return Boolean(record && record.status !== "ended");
+export function managedStartAllowed(env: Env, proc: { pid: number; start: string | null }): boolean {
+  return !managedEnv(env) || ticketOwner(env, proc);
 }
 
-// Whether proc owns env's ticket, binding it on first use; null when env has no ticket file to bind.
-function ticketOwner(env: Env, proc: { pid: number; start: string | null }): boolean | null {
+// Whether proc owns env's ticket, binding it on first use.
+function ticketOwner(env: Env, proc: { pid: number; start: string | null }): boolean {
   const ticket = env[MANAGED_TICKET_ENV] ?? "";
-  if (!TICKET.test(ticket)) return null;
+  if (!TICKET.test(ticket)) return false;
   const dir = join(stateDir(env), "managed-tickets");
-  try { readFileSync(join(dir, `${ticket}.json`)); } catch { return null; }
+  try { readFileSync(join(dir, `${ticket}.json`)); } catch { return false; }
   const owner = JSON.stringify({ pid: proc.pid, start: proc.start });
   const bound = join(dir, `${ticket}.bound`);
   try {
