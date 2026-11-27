@@ -9,15 +9,15 @@ import { createHash } from "node:crypto";
 import { parseArgs } from "node:util";
 import { sessionLabel } from "./config.mjs";
 import { sessionOfCommand } from "./schedule-session.mjs";
-import { READ_PATHS, claudeSource, codexSource, cursorSource, journalSource, opencodeSource, taskStoreSource } from "./analyze-sources.ts";
+import { READ_PATHS, claudeSource, codexSource, cursorSource, journalSource, opencodeSource, taskStoreSource, TokenCounts, Turn, ScheduleRun, TaskItem, Source, SourceResult } from "./analyze-sources.ts";
 import { encodeTraceRequest } from "./analyze-otlp.mjs";
 
 export const DEFAULT_CUTOVER = "2026-11-23T03:15:00Z";
 export const DEFAULT_PARTIAL = "2026-11-23T02:30:00Z";
 export const DEFAULT_TZ = "America/Toronto";
-export const HARNESSES = ["claude", "codex", "cursor", "opencode"];
-export const ROLES = ["pm", "builder", "interactive", "subagent"];
-const PERIODS = ["before", "partial", "after"];
+export const HARNESSES = ["claude", "codex", "cursor", "opencode"] as const;
+export const ROLES = ["pm", "builder", "interactive", "subagent"] as const;
+const PERIODS = ["before", "partial", "after"] as const;
 const TOP_AGENTS = 15;
 
 export const USAGE = `usage: ai-collab analyze run-code [--since ISO] [--until ISO] [--cutover ISO] [--partial ISO|none] [--agent SELECTOR]...
@@ -33,14 +33,14 @@ export const USAGE = `usage: ai-collab analyze run-code [--since ISO] [--until I
 
 // Official list prices in USD per million tokens (docs/research/api-cost-estimate-2026-11-22.md).
 // Claude: [input, 5-minute cache write, 1-hour cache write, cache read, output].
-const CLAUDE = {
+const CLAUDE: Record<string, [number, number, number, number, number]> = {
   "claude-opus-5-5": [4, 5, 8, 0.2, 20], "claude-sonnet-5-5": [2, 2.5, 4, 0.1, 10],
   "claude-fable-5-2": [8, 10, 16, 0.2, 40], "claude-fable-5-1": [10, 12.5, 20, 0.25, 50],
 };
-const HAIKU_LOW = [0.1, 0.125, 0.2, 0.01, 0.5];
-const HAIKU_HIGH = [0.5, 0.625, 1, 0.05, 2.5];
+const HAIKU_LOW = [0.1, 0.125, 0.2, 0.01, 0.5] as const;
+const HAIKU_HIGH = [0.5, 0.625, 1, 0.05, 2.5] as const;
 // OpenAI: [short, long (> 272K input)] each [input, cached input, output].
-const OPENAI = {
+const OPENAI: Record<string, [[number, number, number], [number, number, number]]> = {
   "gpt-6-astra": [[10, 1, 50], [20, 2, 75]], "gpt-6-sol": [[2, 0.2, 10], [4, 0.4, 15]], "gpt-6-luna": [[0.1, 0.01, 0.5], [0.2, 0.02, 0.75]],
   "gpt-6.1-sol": [[2, 0.1, 10], [4, 0.2, 15]], "gpt-6.1-terra": [[1, 0.05, 5], [2, 0.1, 7.5]], "gpt-6.2-astra": [[8, 0.4, 40], [16, 0.8, 60]],
   "gpt-6.2-sol": [[2, 0.1, 10], [4, 0.2, 15]], "gpt-5.6-sol": [[4, 0.4, 20], [8, 0.8, 30]], "gpt-5.6-terra": [[2, 0.2, 12], [4, 0.4, 18]],
@@ -48,8 +48,88 @@ const OPENAI = {
 };
 const BUILDER_CWD = /\/ai-collab-wt-|\/\.local\/state\/ai-collab\/builders\/|^\/sandbox(?:\/|$)/;
 
+/** Token counts for one turn's usage data. */
+interface Token {
+  input: number;
+  cacheWrite: number;
+  cacheRead: number;
+  output: number;
+}
+
+/** Call counts for one aggregated row. */
+interface CallCounts {
+  turns: number;
+  usageTurns: number;
+  calls: number;
+  reads: Record<string, number>;
+  refusals: { mcp: number; cli: number };
+  runCodeErrors: number;
+  tok: Token;
+  readTurns: Token & { n: number };
+  plainTurns: Token & { n: number };
+  usd: number;
+  pricedTurns: number;
+}
+
+/** Cutover instants for period classification. */
+interface CutPoints {
+  cutover: number;
+  partial: number | null;
+}
+
+/** Selectors for agent filtering. */
+interface Selector {
+  type: "address" | "harness" | "role";
+  value: string;
+}
+
+/** Annotated turn with agent, role, period and week attached. */
+interface AnnotatedTurn {
+  agent: string;
+  harness: string;
+  model: string;
+  role: string;
+  period: string;
+  week: string;
+  ts: number;
+  calls: { name: string; path: string | null; refused: boolean; failed: boolean }[];
+  tok: TokenCounts | null;
+}
+
+/** Context for annotate(). */
+interface AnnotateContext {
+  cut: CutPoints;
+  tz: string;
+  pmLabels: Set<string>;
+  selectors: Selector[];
+}
+
+/** Options for renderReport(). */
+interface RenderReportOptions {
+  cut: CutPoints;
+  tz: string;
+  since: number | null;
+  until: number | null;
+  scheduleRuns?: ScheduleRun[];
+  tasks: TaskItem[] | null;
+  notes: string[];
+  generated: string;
+  selectors: Selector[];
+  sources: string[];
+  latest: number | null;
+}
+
+/** I/O interface for analyze(). */
+interface AnalyzeIo {
+  env?: NodeJS.ProcessEnv;
+  stdout?: { write(msg: string): void };
+  stderr?: { write(msg: string): void };
+  journal?: (win: { since?: number; until?: number }) => string;
+  sources?: Source[];
+}
+
 /** List-price USD for one turn's tokens, or null when the model has no published price. */
-export function priceTurn(harness, model, tok) {
+export function priceTurn(harness: string, model: string, tok: TokenCounts | null): number | null {
   if (!tok) return null;
   const { input, cw5, cw1, cacheRead, output } = tok;
   if (harness === "claude") {
@@ -65,13 +145,13 @@ export function priceTurn(harness, model, tok) {
 }
 
 /** before / partial / after for a timestamp in ms; cut = {partial: ms|null, cutover: ms}. */
-export function periodOf(ts, { partial, cutover }) {
+export function periodOf(ts: number, { partial, cutover }: { partial: number | null; cutover: number }): string {
   if (ts >= cutover) return "after";
   return partial != null && partial < cutover && ts >= partial ? "partial" : "before";
 }
 
 /** ISO 8601 week (YYYY-Www) of a timestamp in a time zone. */
-export function isoWeek(ts, tz) {
+export function isoWeek(ts: number, tz: string): string {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(ts).map((p) => [p.type, p.value]));
   const d = new Date(Date.UTC(+parts.year, +parts.month - 1, +parts.day));
   const day = d.getUTCDay() || 7;
@@ -81,7 +161,7 @@ export function isoWeek(ts, tz) {
 }
 
 /** pm: a session a schedule resumes; subagent: spawned by another session; builder: a builder worktree or sandbox cwd. */
-export function classifyRole({ native, cwd, sub }, { pmLabels }) {
+export function classifyRole({ native, cwd, sub }: { native: string; cwd: string; sub: boolean }, { pmLabels }: { pmLabels: Set<string> }): string {
   if (sub) return "subagent";
   if (pmLabels.has(sessionLabel(native))) return "pm";
   return BUILDER_CWD.test(cwd || "") ? "builder" : "interactive";
@@ -90,17 +170,17 @@ export function classifyRole({ native, cwd, sub }, { pmLabels }) {
 const ADDRESS = /^(claude|codex|cursor|opencode)#[0-9a-f]{16}$/;
 
 /** --agent values to selectors; throws on an unknown one. */
-export function parseSelectors(values) {
+export function parseSelectors(values: string[]): Selector[] {
   return values.map((v) => {
     if (ADDRESS.test(v)) return { type: "address", value: v };
-    if (HARNESSES.includes(v)) return { type: "harness", value: v };
-    if (ROLES.includes(v)) return { type: "role", value: v };
+    if (HARNESSES.includes(v as typeof HARNESSES[number])) return { type: "harness", value: v };
+    if (ROLES.includes(v as typeof ROLES[number])) return { type: "role", value: v };
     throw new Error(`bad agent selector "${v}": use harness#<16 hex>, ${HARNESSES.join("|")} or ${ROLES.join("|")}`);
   });
 }
 
 /** Selectors of one kind are alternatives; every kind present must match. */
-export function matchesSelectors(row, selectors) {
+export function matchesSelectors(row: { agent: string; harness: string; role: string }, selectors: Selector[]): boolean {
   const field = { address: row.agent, harness: row.harness, role: row.role };
   for (const type of new Set(selectors.map((s) => s.type))) {
     if (!selectors.some((s) => s.type === type && s.value === field[type])) return false;
@@ -109,8 +189,8 @@ export function matchesSelectors(row, selectors) {
 }
 
 /** Turns with agent, role, period and week attached, filtered by the selectors. */
-export function annotate(turns, { cut, tz, pmLabels, selectors }) {
-  const out = [];
+export function annotate(turns: Turn[], { cut, tz, pmLabels, selectors }: AnnotateContext): AnnotatedTurn[] {
+  const out: AnnotatedTurn[] = [];
   for (const t of turns) {
     const a = { ...t, agent: `${t.harness}#${sessionLabel(t.native)}`, role: classifyRole(t, { pmLabels }), period: periodOf(t.ts, cut), week: isoWeek(t.ts, tz) };
     if (matchesSelectors(a, selectors)) out.push(a);
@@ -118,43 +198,42 @@ export function annotate(turns, { cut, tz, pmLabels, selectors }) {
   return out;
 }
 
-const zeroTok = () => ({ n: 0, input: 0, cacheRead: 0, output: 0 });
-const emptyRow = (key = {}) => ({
+const zeroTok = (): Token & { n: number } => ({ n: 0, input: 0, cacheRead: 0, output: 0 });
+const emptyRow = (key: Record<string, unknown> = {}): CallCounts => ({
   ...key, turns: 0, usageTurns: 0, calls: 0,
   reads: Object.fromEntries([...READ_PATHS, "bypass_read"].map((p) => [p, 0])),
   refusals: { mcp: 0, cli: 0 }, runCodeErrors: 0,
   tok: { input: 0, cacheWrite: 0, cacheRead: 0, output: 0 },
   readTurns: zeroTok(), plainTurns: zeroTok(), usd: 0, pricedTurns: 0,
 });
-const addTok = (a, b) => { for (const k of Object.keys(a)) a[k] += b[k]; };
+const addTok = (a: Token, b: Token): void => { for (const k of Object.keys(a)) a[k] += b[k]; };
 
-function addRow(a, b) {
+function addRow(a: CallCounts, b: CallCounts): void {
   for (const k of ["turns", "usageTurns", "calls", "runCodeErrors", "usd", "pricedTurns"]) a[k] += b[k];
   for (const k of Object.keys(a.reads)) a.reads[k] += b.reads[k];
   addTok(a.refusals, b.refusals); addTok(a.tok, b.tok); addTok(a.readTurns, b.readTurns); addTok(a.plainTurns, b.plainTurns);
-  return a;
 }
 
 /** Group rows by a key function; each group sums the rows it holds. */
-export function groupRows(rows, keyOf) {
-  const groups = new Map();
+export function groupRows(rows: CallCounts[], keyOf: (r: CallCounts) => Record<string, unknown>): CallCounts[] {
+  const groups = new Map<string, CallCounts>();
   for (const r of rows) {
     const key = keyOf(r);
     const k = JSON.stringify(key);
     if (!groups.has(k)) groups.set(k, emptyRow(key));
-    addRow(groups.get(k), r);
+    addRow(groups.get(k)!, r);
   }
   return [...groups.values()];
 }
 
 /** One row per agent x harness x model x role x period x week. */
-export function aggregate(turns, ctx) {
-  const rows = new Map();
+export function aggregate(turns: Turn[], ctx: AnnotateContext): CallCounts[] {
+  const rows = new Map<string, CallCounts>();
   for (const t of annotate(turns, ctx)) {
     const key = { agent: t.agent, harness: t.harness, model: t.model, role: t.role, period: t.period, week: t.week };
     const k = Object.values(key).join("|");
     if (!rows.has(k)) rows.set(k, emptyRow(key));
-    const r = rows.get(k);
+    const r = rows.get(k)!;
     r.turns += 1;
     r.calls += t.calls.length;
     let reads = false;
@@ -176,21 +255,21 @@ export function aggregate(turns, ctx) {
   return [...rows.values()];
 }
 
-const n = (x) => Math.round(x).toLocaleString("en-US");
-const per = (sum, count) => count ? n(sum / count) : "-";
-const ratio = (sum, count) => count ? (sum / count).toFixed(2) : "-";
-const usdCell = (r) => !r.usageTurns ? "no usage data" : r.pricedTurns === 0 ? "unpriced" : `$${r.usd.toFixed(2)}${r.pricedTurns < r.usageTurns ? "*" : ""}`;
-const table = (head, body) => [`| ${head.join(" | ")} |`, `|${head.map((_, i) => i < 1 ? "---" : "---:").join("|")}|`, ...body.map((r) => `| ${r.join(" | ")} |`)].join("\n");
-const order = (a, b) => PERIODS.indexOf(a) - PERIODS.indexOf(b);
-const readCalls = (r) => READ_PATHS.reduce((s, p) => s + r.reads[p], 0);
-const pct = (xs, p) => xs.length ? [...xs].sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(p * xs.length))] : 0;
-const sec = (ms) => `${(ms / 1000).toFixed(1)}s`;
-const iso = (ms) => new Date(ms).toISOString().replace(".000Z", "Z");
+const n = (x: number): string => Math.round(x).toLocaleString("en-US");
+const per = (sum: number, count: number): string => count ? n(sum / count) : "-";
+const ratio = (sum: number, count: number): string => count ? (sum / count).toFixed(2) : "-";
+const usdCell = (r: CallCounts): string => !r.usageTurns ? "no usage data" : r.pricedTurns === 0 ? "unpriced" : `$${r.usd.toFixed(2)}${r.pricedTurns < r.usageTurns ? "*" : ""}`;
+const table = (head: string[], body: string[][]): string => [`| ${head.join(" | ")} |`, `|${head.map((_, i) => i < 1 ? "---" : "---:").join("|")}|`, ...body.map((r) => `| ${r.join(" | ")} |`)].join("\n");
+const order = (a: string, b: string): number => PERIODS.indexOf(a) - PERIODS.indexOf(b);
+const readCalls = (r: CallCounts): number => READ_PATHS.reduce((s: number, p: string) => s + r.reads[p], 0);
+const pct = (xs: number[], p: number): number => xs.length ? [...xs].sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(p * xs.length))] : 0;
+const sec = (ms: number): string => `${(ms / 1000).toFixed(1)}s`;
+const iso = (ms: number): string => new Date(ms).toISOString().replace(".000Z", "Z");
 
 /** The markdown report for aggregated rows. */
-export function renderReport(rows, { cut, tz, since, until, scheduleRuns = [], tasks = null, notes = [], generated, selectors = [], sources = [], latest = null }) {
+export function renderReport(rows: CallCounts[], { cut, tz, since, until, scheduleRuns = [], tasks = null, notes = [], generated, selectors = [], sources = [], latest = null }: RenderReportOptions): string {
   const present = PERIODS.filter((p) => rows.some((r) => r.period === p));
-  const out = [`# Impact of run_code reads, generated ${generated}`, ""];
+  const out: string[] = [`# Impact of run_code reads, generated ${generated}`, ""];
   out.push("Measured from local harness logs. Periods split at the cutover instants below; every figure counts only what the logs record.", "");
   out.push(`- Cutover (CLI and MCP reads both enforced): ${iso(cut.cutover)}`);
   out.push(`- Partial marker (MCP reads enforced, CLI reads not yet): ${cut.partial != null && cut.partial < cut.cutover ? iso(cut.partial) : "none"}`);
@@ -202,7 +281,7 @@ export function renderReport(rows, { cut, tz, since, until, scheduleRuns = [], t
   out.push("");
 
   out.push("## Headline by period", "");
-  const head = (rs) => groupRows(rs, (r) => ({ period: r.period })).sort((a, b) => order(a.period, b.period));
+  const head = (rs: CallCounts[]) => groupRows(rs, (r) => ({ period: r.period })).sort((a, b) => order(a.period, b.period));
   out.push(table(["Period", "Turns", "MCP reads", "CLI reads", "run_code", "run_read_code", "Bypass reads", "MCP refused", "CLI refused", "run_code failures", "Calls/turn", "Tokens", "List $"],
     head(rows).map((r) => [r.period, n(r.turns), r.reads.mcp_read, r.reads.cli_read, r.reads.run_code, r.reads.run_read_code, r.reads.bypass_read, r.refusals.mcp, r.refusals.cli, r.runCodeErrors, ratio(r.calls, r.turns), n(r.tok.input + r.tok.cacheWrite + r.tok.cacheRead + r.tok.output), usdCell(r)])), "");
   out.push("Tokens sum uncached input, cache writes, cache reads and output over turns with usage data. List $ prices only turns whose model has a published price; `*` marks a partly priced group.", "");
@@ -230,7 +309,7 @@ export function renderReport(rows, { cut, tz, since, until, scheduleRuns = [], t
 
   out.push("## Per-agent (top by tokens)", "");
   const agents = groupRows(rows, (r) => ({ agent: r.agent, harness: r.harness, role: r.role }));
-  const total = (r) => r.tok.input + r.tok.cacheWrite + r.tok.cacheRead + r.tok.output;
+  const total = (r: CallCounts): number => r.tok.input + r.tok.cacheWrite + r.tok.cacheRead + r.tok.output;
   agents.sort((a, b) => total(b) - total(a) || b.turns - a.turns);
   out.push(table(["Agent", "Harness", "Role", "Models", "Turns", "Tokens", "MCP", "CLI", "run_code", "run_read_code", "Bypass", "Refused", "List $"],
     agents.slice(0, TOP_AGENTS).map((r) => [r.agent, r.harness, r.role, [...new Set(rows.filter((x) => x.agent === r.agent && x.role === r.role).map((x) => x.model))].join(", "), n(r.turns), n(total(r)), r.reads.mcp_read, r.reads.cli_read, r.reads.run_code, r.reads.run_read_code, r.reads.bypass_read, r.refusals.mcp + r.refusals.cli, usdCell(r)])), "");
@@ -238,10 +317,10 @@ export function renderReport(rows, { cut, tz, since, until, scheduleRuns = [], t
 
   out.push("## Runner schedule runs (wall time)", "");
   if (scheduleRuns.length) {
-    const g = new Map();
+    const g = new Map<string, ScheduleRun[]>();
     for (const r of scheduleRuns) {
       const k = `${r.name}|${periodOf(r.ts, cut)}`;
-      (g.get(k) || g.set(k, []).get(k)).push(r);
+      (g.get(k) || g.set(k, [])).push(r);
     }
     out.push(table(["Schedule", "Period", "Runs", "Failed", "Median", "p90", "Mean"],
       [...g.entries()].map(([k, rs]) => [...k.split("|"), rs]).sort((a, b) => a[0].localeCompare(b[0]) || order(a[1], b[1])).map(([name, period, rs]) => {
@@ -254,7 +333,7 @@ export function renderReport(rows, { cut, tz, since, until, scheduleRuns = [], t
   if (tasks) {
     out.push("## Task store throughput", "");
     const done = tasks.filter((t) => t.status === "done" && Number.isFinite(t.updated));
-    out.push(table(["Period", "Tasks last updated as done"], present.map((p) => [p, done.filter((t) => periodOf(t.updated, cut) === p).length])), "");
+    out.push(table(["Period", "Tasks last updated as done"], present.map((p) => [p, done.filter((t) => periodOf(t.updated as number, cut) === p).length])), "");
     out.push("A task's last update time stands for its completion time; later edits move it.", "");
   }
 
@@ -272,10 +351,11 @@ export function renderReport(rows, { cut, tz, since, until, scheduleRuns = [], t
   return out.join("\n") + "\n";
 }
 
-function spanOf(t) {
+function spanOf(t: AnnotatedTurn): { traceId: string; spanId: string; parentSpanId?: string; name: string; startMs: number; endMs: number; attrs: Record<string, string | number> } {
   const id = createHash("sha256").update(`${t.agent}|${t.ts}|${t.model}`).digest("hex");
-  const attrs = {
-    "openinference.span.kind": "LLM", "llm.model_name": t.model, "session.id": t.agent, "ai_collab.agent": t.agent, "ai_collab.harness": t.harness, "ai_collab.role": t.role,
+  const attrs: Record<string, string | number> = {
+    "openinference.span.kind": "LLM", "llm.model_name": t.model, "session.id": t.agent, "ai_collab.agent": t.agent, "ai_collab.harness": t.harness,
+    "ai_collab.role": t.role,
     "ai_collab.period": t.period, "ai_collab.tool_calls": t.calls.length,
     "ai_collab.read_calls": t.calls.filter((c) => READ_PATHS.includes(c.path)).length, "ai_collab.bypass_reads": t.calls.filter((c) => c.path === "bypass_read").length,
     "ai_collab.refused": t.calls.filter((c) => c.refused).length,
@@ -285,7 +365,7 @@ function spanOf(t) {
 }
 
 /** POST turns as OTLP spans in batches; returns the number sent. */
-export async function exportOtlp(turns, url, { project = "ai-collab-run-code-impact", batch = 500, fetchImpl = fetch } = {}) {
+export async function exportOtlp(turns: AnnotatedTurn[], url: string, { project = "ai-collab-run-code-impact", batch = 500, fetchImpl = fetch }: { project?: string; batch?: number; fetchImpl?: typeof fetch } = {}): Promise<number> {
   let sent = 0;
   for (let i = 0; i < turns.length; i += batch) {
     const body = encodeTraceRequest(turns.slice(i, i + batch).map(spanOf), { project });
@@ -298,24 +378,24 @@ export async function exportOtlp(turns, url, { project = "ai-collab-run-code-imp
 
 const VALUE_FLAGS = ["since", "until", "cutover", "partial", "out", "jsonl", "tz", "otlp-export", "phoenix-project", "schedules"];
 const OPTIONS = {
-  help: { type: "boolean", short: "h" },
-  agent: { type: "string", multiple: true, default: [] },
-  ...Object.fromEntries(VALUE_FLAGS.map((name) => [name, { type: "string" }])),
+  help: { type: "boolean" as const, short: "h" },
+  agent: { type: "string" as const, multiple: true as const, default: [] as string[] },
+  ...Object.fromEntries(VALUE_FLAGS.map((name) => [name, { type: "string" as const }])),
 };
 
-function parseFlags(args) {
+function parseFlags(args: string[]): { agents: string[]; [flag: string]: string | string[] | boolean } {
   const { values: { agent, ...rest } } = parseArgs({ args, options: OPTIONS, strict: true });
   return { ...rest, agents: agent };
 }
 
-const instant = (value, flag) => {
+const instant = (value: string, flag: string): number => {
   const ms = Date.parse(value);
   if (!Number.isFinite(ms)) throw new Error(`${flag} must be an ISO timestamp, got "${value}"`);
   return ms;
 };
 
-function pmLabelsOf(file) {
-  const labels = new Set();
+function pmLabelsOf(file: string): Set<string> {
+  const labels = new Set<string>();
   if (!existsSync(file)) return labels;
   try {
     for (const s of JSON.parse(readFileSync(file, "utf8"))) {
@@ -328,56 +408,56 @@ function pmLabelsOf(file) {
 }
 
 /** Entry point. io: {env, stdout, stderr, journal (journalctl override), sources (replace the defaults)}. */
-export async function analyze(args, io = {}) {
+export async function analyze(args: string[], io: AnalyzeIo = {}): Promise<number> {
   const env = io.env || process.env;
   const out = io.stdout || process.stdout;
   const err = io.stderr || process.stderr;
-  let o;
-  let selectors;
-  let cut;
-  let win;
+  let o: { agents: string[]; [flag: string]: string | string[] | boolean };
+  let selectors: Selector[];
+  let cut: CutPoints;
+  let win: { since: number | null; until: number | null };
   try {
     o = parseFlags(args);
     if (o.help) { out.write(`${USAGE}\n`); return 0; }
-    selectors = parseSelectors(o.agents);
-    const cutover = instant(o.cutover || DEFAULT_CUTOVER, "--cutover");
-    const partial = o.partial === "none" ? null : instant(o.partial || DEFAULT_PARTIAL, "--partial");
+    selectors = parseSelectors(o.agents as string[]);
+    const cutover = instant(o.cutover as string || DEFAULT_CUTOVER, "--cutover");
+    const partial = o.partial === "none" ? null : instant(o.partial as string || DEFAULT_PARTIAL, "--partial");
     cut = { cutover, partial };
-    win = { since: o.since ? instant(o.since, "--since") : null, until: o.until ? instant(o.until, "--until") : null };
-    new Intl.DateTimeFormat("en-CA", { timeZone: o.tz || DEFAULT_TZ });
+    win = { since: o.since ? instant(o.since as string, "--since") : null, until: o.until ? instant(o.until as string, "--until") : null };
+    new Intl.DateTimeFormat("en-CA", { timeZone: o.tz as string || DEFAULT_TZ });
   } catch (e) {
-    err.write(`ai-collab: ${e.message}\n${USAGE}\n`);
+    err.write(`ai-collab: ${(e as Error).message}\n${USAGE}\n`);
     return 2;
   }
   const home = env.HOME || homedir();
-  const tz = o.tz || DEFAULT_TZ;
+  const tz = o.tz as string || DEFAULT_TZ;
   const sources = io.sources || [claudeSource({ home }), codexSource({ home }), opencodeSource({ home }), cursorSource({ home }), journalSource({ run: io.journal }), taskStoreSource({ home })];
-  const turns = [];
-  const scheduleRuns = [];
-  let tasks = null;
-  const notes = [];
+  const turns: Turn[] = [];
+  const scheduleRuns: ScheduleRun[] = [];
+  let tasks: TaskItem[] | null = null;
+  const notes: string[] = [];
   for (const s of sources) {
-    let r;
-    try { r = await s.load(win); } catch (e) { notes.push(`source ${s.name} failed: ${e.message}`); continue; }
+    let r: SourceResult;
+    try { r = await s.load(win); } catch (e) { notes.push(`source ${s.name} failed: ${(e as Error).message}`); continue; }
     turns.push(...(r.turns || []));
     scheduleRuns.push(...(r.scheduleRuns || []));
     if (r.tasks) tasks = r.tasks;
     for (const x of r.notes || []) if (!notes.includes(x)) notes.push(x);
   }
   const pmLabels = pmLabelsOf(env.AI_COLLAB_SCHEDULES || join(home, ".config/ai-collab/schedules.json"));
-  const ctx = { cut, tz, pmLabels, selectors };
+  const ctx: AnnotateContext = { cut, tz, pmLabels, selectors };
   const rows = aggregate(turns, ctx);
   const generated = new Date().toISOString().slice(0, 10);
   const md = renderReport(rows, { ...ctx, ...win, scheduleRuns, tasks, notes, generated, latest: turns.reduce((m, t) => Math.max(m, t.ts), 0) || null, sources: sources.map((s) => s.name) });
-  const file = o.out || join("docs/research", `run-code-impact-${generated}.md`);
+  const file = o.out as string || join("docs/research", `run-code-impact-${generated}.md`);
   if (file === "-") out.write(md);
   else { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, md); err.write(`ai-collab: wrote ${file}\n`); }
-  if (o.jsonl) { mkdirSync(dirname(o.jsonl), { recursive: true }); writeFileSync(o.jsonl, rows.map((r) => JSON.stringify(r)).join("\n") + (rows.length ? "\n" : "")); err.write(`ai-collab: wrote ${o.jsonl} (${rows.length} rows)\n`); }
+  if (o.jsonl) { mkdirSync(dirname(o.jsonl as string), { recursive: true }); writeFileSync(o.jsonl as string, rows.map((r) => JSON.stringify(r)).join("\n") + (rows.length ? "\n" : "")); err.write(`ai-collab: wrote ${o.jsonl} (${rows.length} rows)\n`); }
   if (o["otlp-export"]) {
     try {
-      const sent = await exportOtlp(annotate(turns, ctx), o["otlp-export"], { project: o["phoenix-project"] });
+      const sent = await exportOtlp(annotate(turns, ctx), o["otlp-export"] as string, { project: o["phoenix-project"] as string });
       err.write(`ai-collab: exported ${sent} spans to ${o["otlp-export"]}\n`);
-    } catch (e) { err.write(`ai-collab: ${e.message}\n`); return 1; }
+    } catch (e) { err.write(`ai-collab: ${(e as Error).message}\n`); return 1; }
   }
   return 0;
 }
