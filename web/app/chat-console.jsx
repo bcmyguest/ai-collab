@@ -2,15 +2,14 @@
 // The console shell: hash routing, the header for each level, the streamed screen (via useStream),
 // pull-to-refresh, scroll memory, and the wiring from every action to its /api call.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Activity, ArrowLeft, Bot, CornerLeftUp, Menu, Minimize2, RotateCw, Square } from "lucide-react";
+import { ArrowLeft, CornerLeftUp, PanelRight, RotateCw } from "lucide-react";
 import { ThreadPrimitive, getExternalStoreMessages } from "@assistant-ui/react";
-import { Avatar } from "./chat-shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatContainerContent, ChatContainerRoot, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
 import { ScrollButton } from "@/components/ui/scroll-button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { contextMeter, filesRead } from "@/lib/context-view";
 import { agentDetail } from "@/lib/agent-detail";
@@ -21,9 +20,8 @@ import { LandReviews } from "./land-reviews";
 import { DeployedBanner, Land } from "./land-panel";
 import { OutcomeRequest } from "./outcomes";
 import { TaskBoard } from "./tasks";
-import { ProjectNav } from "./project-nav";
 import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
-import { projectNavigation, projectViewCounts, selectionHash } from "@/lib/selection";
+import { projectViewCounts, selectionHash } from "@/lib/selection";
 import { agentName } from "@/lib/sidebar";
 import { sessionState } from "@/lib/session-state";
 import { ActivityRow, Working } from "./activity";
@@ -41,7 +39,12 @@ import { ChatRuntimeProvider } from "@/components/chat/thread";
 import { ago, peerOf, seatOf, short } from "./chat-shared";
 import { api, selection, signOut, streamOf } from "./chat-api";
 import { useStream } from "./chat-stream";
-import { AfkToggle, Sidebar, ThemeToggle } from "./chat-sidebar";
+import { AfkToggle } from "./chat-sidebar";
+import { ThreadSidebar } from "./thread-sidebar";
+import { SessionPanel } from "./session-panel";
+import { AgentName } from "./agent-mark";
+import { ScheduledJobs } from "./scheduled";
+import { shortName } from "@/lib/thread-groups";
 import { ChatMessage, CompletionRow, LiveRow, QueueRow } from "./chat-message";
 import { Composer, modelsOf, useModels } from "./chat-composer";
 
@@ -50,6 +53,9 @@ const PULL_MAX_PX = 110;
 const TICK_MS = 1000;
 // The composer's runtime only sends; the thread list has its own runtime.
 const NO_ENTRIES = [];
+// The panel tabs a session hash can name; "activity" alone means the chat with no panel.
+const PANEL = ["diff", "pr", "subagents", "raw"];
+const WIDE = "(min-width: 768px)";
 
 // The session's context: tokens used (with the window and a warning when the harness reported one) and its files.
 function ContextChip({ context, rows }) {
@@ -86,23 +92,17 @@ function ContextChip({ context, rows }) {
   </>;
 }
 
-function ZoomControls({ data, selected, now, navigate, compact }) {
-  const project = selected.project || data.project;
-  // A picked project's own views are the rail beside the sidebar (the bottom bar on a phone), so the header keeps only
-  // the session's views. A project has none, and an empty header row would only add a gap.
-  if (!(selected.level === "session" && selected.session) && !compact) return null;
-  return <div className="flex flex-wrap items-center gap-2">
-    {/* Projects and sessions live in the sidebar (the menu on a phone); the header keeps only the session views. */}
-    {selected.level === "session" && selected.session && (selected.tab === "raw"
-      ? <Button variant="outline" size="sm" className="h-9 rounded-md" onClick={() => navigate({ ...selected, project, tab: "activity", run: "" })}><ArrowLeft/>Timeline</Button>
-      : <Tabs value={selected.tab} onValueChange={tab => navigate({ ...selected, project, tab, run: "" })}>
-        <TabsList aria-label="Session view" className="h-9">
-          <TabsTrigger value="activity" className="px-3"><Activity/>Timeline</TabsTrigger>
-          <TabsTrigger value="subagents" className="px-3"><Bot/>Subagents</TabsTrigger>
-        </TabsList>
-      </Tabs>)}
-    {compact}
-  </div>;
+/** True from md up, where the sidebar, chat and panel sit side by side. */
+function useWide() {
+  const [wide, setWide] = useState(true);
+  useEffect(() => {
+    const query = window.matchMedia(WIDE);
+    const sync = () => setWide(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+  return wide;
 }
 
 export function Console({ account }) {
@@ -114,7 +114,10 @@ export function Console({ account }) {
   const [pullSide, setPullSide] = useState("top");
   const [outcomeProject, setOutcomeProject] = useState("");
   const [outcomeError, setOutcomeError] = useState("");
+  // A deep link lands on its content; the header back button opens the thread list.
   const [navOpen, setNavOpen] = useState(false);
+  const [schedulesOpen, setSchedulesOpen] = useState(false);
+  const wide = useWide();
   const [notice, setNotice] = useState("");
   const [question, setQuestion] = useState("");
   const [replyTo, setReplyTo] = useState(null);
@@ -302,7 +305,9 @@ export function Console({ account }) {
     const to = selected.window?.to;
     return Number.isSafeInteger(from) && Number.isSafeInteger(to) ? activity.filter(row => row.time * 1000 >= from && row.time * 1000 <= to) : activity;
   }, [activity, selected.window]);
-  const rows = useMemo(() => watching || inline || subagents ? groupSubagents(activityRows(windowRows)) : raw ? activityRows(windowRows) : [], [watching, inline, subagents, raw, windowRows]);
+  const rows = useMemo(() => watching || inline ? groupSubagents(activityRows(windowRows)) : [], [watching, inline, windowRows]);
+  // The raw panel keeps every tool call as its own row.
+  const rawRows = useMemo(() => raw ? activityRows(windowRows) : [], [raw, windowRows]);
   const goRun = row => navigate({ project, level: "session", harness: peerOf(row.agent), session: row.agent, tab: "subagents", run: row.run });
   // Answers whose card is listed show in the card, so their bubbles stay out of both threads.
   const queue = level === "session" && ready ? data.messages.filter(item => item.queued && item.to === target) : [];
@@ -318,8 +323,7 @@ export function Console({ account }) {
   const live = useMemo(() => watching ? liveRows(turns, rows, now) : [], [turns, rows, watching, now]);
   const thread = useMemo(() => inline ? chatThread(scoped, rows, selected.session)
     : watching ? projectThread(visible, turns)
-    : raw ? rows.map(activity => ({ activity }))
-    : visible.map(message => ({ message })), [visible, scoped, turns, rows, inline, watching, raw, selected.session]);
+    : visible.map(message => ({ message })), [visible, scoped, turns, rows, inline, watching, selected.session]);
   const newSession = id => { setCreating(id); if (id !== project || level !== "project") navigate({ project: id, level: "project" }); else setNavOpen(false); };
   async function startSession(payload) {
     try { return await api("start", { project, ...payload }); } catch (err) { return { status: "failed", detail: err.message }; }
@@ -340,22 +344,33 @@ export function Console({ account }) {
     const done = await action(path, { project: name }, path === "close" ? "Closed" : path === "reopen" ? "Reopened" : "Deleted");
     if (done && path !== "reopen" && name === (selected.project || data.project)) navigate({ level: "home" });
   }
-  const sidebarProps = {
-    inactiveOpen, onInactiveToggle: rememberInactive, data, selected, now, navigate, newSession, disabled: working,
-    dispose: node => action("dispose", { project: node.project, target: node.id }, "Disposed"), openRaw, projectAction,
-    openHash: hash => { setNavOpen(false); location.hash = hash.slice(1); },
-  };
   const anyWaiting = data.projects.some(project => project.waiting > 0);
-  // A picked project keeps its three views at every level inside it, so one list feeds the rail and the phone's bar.
-  const navLinks = projectNavigation(project, level, viewCounts);
+  const currentThread = level === "session" && selected.session ? (data.threads || []).find(item => (item.sessions || []).includes(selected.session)) : undefined;
+  const panel = level === "session" && selected.session && PANEL.includes(selected.tab) ? selected.tab : "";
+  const setPanel = tab => navigate({ ...selected, project, tab, run: "" });
+  const threadProps = {
+    data, selected, now, navigate, ready, disabled: working, counts: viewCounts, decisions: data.decisions?.length || 0,
+    newThread: newSession, projectAction, openSchedules: () => setSchedulesOpen(true), account: account.user?.login, signOut: account.user ? signOut : undefined,
+    pause: () => action("project-pause", { paused: !paused }, paused ? "New work resumed" : "New work paused"),
+    controls: <>
+      <AfkToggle mode={data.mode || "off"} disabled={!ready || working} set={mode => action("afk", { mode }, "AFK " + mode)}/>
+      {/* Before the first state frame the bell shows this browser's last choice. */}
+      <NotifyToggle level={data.alerts} levelDisabled={!ready || working} setLevel={level => action("alerts", { level }, "Alerts set")}/>
+    </>,
+  };
+  // The session's display name: a set_identity name, else a few words of its title, else the thread's.
+  const sessionName = level === "session" ? identity || shortName(agent, currentThread?.title) || short(selected.session) : "";
+  // A phone shows one screen at a time: the thread list, or the chat with its panel as a sheet.
+  const listScreen = !wide && navOpen;
   return <SurfaceContext.Provider value={{ surfaces, submit: payload => action("a2ui", payload, "Sent"), disabled: !ready || working }}><div className="flex h-dvh w-full overflow-hidden">
-    <aside aria-label="Projects and sessions" className="hidden w-72 shrink-0 border-r bg-sidebar text-sidebar-foreground md:block"><Sidebar {...sidebarProps}/></aside>
-    <ProjectNav links={navLinks} rail/>
-    <Sheet open={navOpen} onOpenChange={setNavOpen}>
-      <SheetContent side="left" className="w-[85vw] max-w-80 bg-sidebar p-0">
-        <SheetTitle className="sr-only">Projects</SheetTitle>
-        <SheetDescription className="sr-only">Pick a project or a session</SheetDescription>
-        <Sidebar {...sidebarProps}/>
+    <aside aria-label="Projects and threads" className={cn("shrink-0 border-r bg-sidebar text-sidebar-foreground", listScreen ? "flex w-full" : "hidden w-72 md:flex")}>
+      <div className="min-w-0 flex-1"><ThreadSidebar {...threadProps}/></div>
+    </aside>
+    <Sheet open={schedulesOpen} onOpenChange={setSchedulesOpen}>
+      <SheetContent side={wide ? "right" : "bottom"} className="max-h-dvh overflow-y-auto p-0 max-md:max-h-[85dvh]">
+        <SheetTitle className="sr-only">Scheduled jobs</SheetTitle>
+        <SheetDescription className="sr-only">Scheduled jobs of the runner, read-only</SheetDescription>
+        <div className="pt-4"><ScheduledJobs project={level === "home" || inbox ? "" : project} openRun={hash => { setSchedulesOpen(false); setNavOpen(false); location.hash = hash.slice(1); }}/></div>
       </SheetContent>
     </Sheet>
     <OutcomeRequest project={outcomeProject} close={() => setOutcomeProject("")} disabled={working} error={outcomeError}
@@ -369,71 +384,59 @@ export function Console({ account }) {
         } catch (err) { setOutcomeError(err.message); }
         finally { setWorking(false); }
       }}/>
-    <main className="flex min-w-0 flex-1 flex-col">
-      <header className="sticky top-0 z-10 flex flex-col gap-2 border-b bg-background/85 px-3 py-2 backdrop-blur supports-backdrop-filter:bg-background/70">
-        <DeployedBanner deployed={data.deployed}/>
-        <div className={cn("flex items-center gap-2", level === "session" && "flex-wrap")}>
-          <Button variant="ghost" size="icon" className="relative md:hidden" aria-label="Projects" aria-expanded={navOpen} onClick={() => setNavOpen(true)} title={anyWaiting ? "Sessions waiting on you" : undefined}>
-            <Menu/>{anyWaiting && <span aria-hidden className="absolute right-1.5 top-1.5 size-2.5 rounded-full bg-primary ring-2 ring-background"/>}
-          </Button>
-          {/* Back one level, the same step on every view: a session (or its compactions) returns to its project's chat, and
-              a project view returns to Home. The rail's own links do the sideways moves between the project's views. */}
-          {(!home || inbox) && <Button variant="ghost" size="icon" aria-label={level === "session" || level === "compactions" ? "Back to " + project : "Home"} title={level === "session" || level === "compactions" ? "Back to the " + project + " chat" : "Home: every project's sessions"}
-            onClick={() => navigate(level === "session" || level === "compactions" ? { project, level: "project" } : { level: "home" })}><ArrowLeft/></Button>}
-          {level === "session" && selected.session && <Avatar address={selected.session} className="size-8 shrink-0"/>}
-          <div className="min-w-0 flex-1">
-            {level === "session" ? <>
-              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                <h1 className="min-w-0 truncate text-lg font-semibold leading-tight" title={title}>{title}</h1>
-                {agent && <StateChip state={sessionState(agent, now)}/>}
-                {agent && <RunningCount runs={agent.subagents} now={now}/>}
-              </div>
-              <p className="truncate text-xs text-muted-foreground" title={selected.session}>
-                {raw ? "Raw activity · " + project : project + " · session"}
-                {identity && sessionLabel && sessionLabel !== identity && " · " + sessionLabel}
-              </p>
-            </> : <>
-              <p className="truncate text-xs text-muted-foreground">{home ? "All projects" : project ? "Project · " + project : "Project"}</p>
-              <h1 className="truncate text-base font-semibold leading-tight">{title}</h1>
-            </>}
-            {level === "session" && agent?.parent && <button type="button" data-tap onClick={() => openAddress(agent.parent)} title={"Started by " + agent.parent}
-              aria-label={"Back to parent " + agent.parent} className="flex max-w-full items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:underline">
-              <CornerLeftUp className="size-3.5 shrink-0"/><span className="truncate">Back to parent {short(agent.parent)}</span></button>}
-          </div>
-          <div className={cn("flex shrink-0 items-center gap-2", level === "session" && "max-sm:w-full max-sm:justify-end")}>
-            <AfkToggle mode={data.mode || "off"} disabled={!ready || working} set={mode => action("afk", { mode }, "AFK " + mode)}/>
-            {/* Before the first state frame the bell shows this browser's last choice. */}
-            <NotifyToggle level={data.alerts} levelDisabled={!ready || working} setLevel={level => action("alerts", { level }, "Alerts set")}/>
-            <ThemeToggle/>
-          </div>
+    <main className={cn("min-w-0 flex-1 flex-col", listScreen ? "hidden" : "flex")}>
+      <DeployedBanner deployed={data.deployed}/>
+      <header className="flex min-h-12 shrink-0 items-center gap-2 border-b px-3 py-1.5">
+        {/* A phone goes back to the thread list; the list is always beside the chat from md up. */}
+        <Button variant="ghost" size="icon" className="relative -ml-1 md:hidden" aria-label="Threads" onClick={() => setNavOpen(true)} title={anyWaiting ? "Sessions waiting on you" : undefined}>
+          <ArrowLeft/>{anyWaiting && <span aria-hidden className="absolute right-1.5 top-1.5 size-2 rounded-full bg-primary"/>}
+        </Button>
+        <div className="min-w-0 flex-1">
+          {level === "session" ? <>
+            <div className="flex min-w-0 items-center gap-2">
+              <h1 className="min-w-0 truncate text-base font-semibold" title={selected.session}>
+                {selected.session ? <AgentName address={selected.session} name={sessionName}/> : title}
+              </h1>
+              {agent && <StateChip state={sessionState(agent, now)}/>}
+              {agent && <RunningCount runs={agent.subagents} now={now}/>}
+            </div>
+            <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground">
+              <span className="truncate">{currentThread?.title && currentThread.title !== sessionName ? currentThread.title : project}</span>
+              {level === "session" && agent?.parent && <button type="button" data-tap onClick={() => openAddress(agent.parent)} title={"Started by " + agent.parent}
+                aria-label={"Back to parent " + agent.parent} className="flex min-w-0 items-center gap-1 underline-offset-2 hover:underline">
+                <CornerLeftUp className="size-3.5 shrink-0"/><span className="truncate">parent {short(agent.parent)}</span></button>}
+            </p>
+          </> : <>
+            <p className="truncate text-xs text-muted-foreground">{home ? "All projects" : project ? "Project · " + project : "Project"}</p>
+            <h1 className="truncate text-base font-semibold leading-tight">{title}</h1>
+          </>}
         </div>
-        {account.user && <p className="-mt-1 truncate text-right text-xs text-muted-foreground" data-account={account.user.login}>
-          signed in as <span className="font-medium text-foreground" title={account.user.name || undefined}>{account.user.login}</span>
-          {" · "}<button type="button" data-tap className="underline-offset-2 hover:underline" onClick={signOut}>sign out</button></p>}
-        {level === "project" && ready && !data.hosted && !missing && <div className="flex items-center gap-2">
-          {paused && <Badge variant="secondary">New work paused</Badge>}
-          <Button variant="outline" size="sm" disabled={working}
-            onClick={() => action("project-pause", { paused: !paused }, paused ? "New work resumed" : "New work paused")}>{paused ? "Resume new work" : "Pause new work"}</Button>
+        {level === "project" && paused && <Badge variant="secondary">New work paused</Badge>}
+        {level === "session" && agent?.session && <div className="flex shrink-0 items-center gap-1">
+          {agent.modelControl && modelsOf(models, "claude").length > 0 && <select
+            aria-label="Claude model" className="h-8 w-28 truncate rounded-md border bg-background px-2 text-sm max-md:hidden"
+            value={agent.modelControl.current} disabled={!ready || working || agent.modelControl.busy}
+            onChange={event => action("model", { target: selected.session, model: event.target.value }, "Model switched")}>
+            <option value="" disabled>Default model</option>
+            {Array.from(new Set([agent.modelControl.current, ...modelsOf(models, "claude")])).filter(Boolean)
+              .map(model => <option key={model} value={model}>{model}</option>)}
+          </select>}
+          <span className="max-sm:hidden"><ContextChip context={agent.context || {}} rows={rows.filter(row => row.agent === agent.id)}/></span>
+          <SessionMenu node={{ ...agent, project }} disabled={working} map={() => navigate({ project, level: "compactions" })} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}
+            raw={openRaw} label={"Session actions for " + selected.session} detailsAction={<>
+              <DropdownMenuItem disabled={!ready || working} onSelect={() => action("compact", { target: selected.session }, "Compaction requested")}>Compact</DropdownMenuItem>
+              {agent.online && ["codex", "opencode"].includes(agent.peer) && <DropdownMenuItem disabled={!ready || working}
+                onSelect={() => action("interrupt", { target: selected.session }, "Interrupt requested")}>Interrupt</DropdownMenuItem>}
+            </>}/>
         </div>}
-        {level === "session" && selected.session && <ZoomControls data={data} selected={selected} now={now} navigate={navigate}
-          compact={level === "session" && agent?.session && <span className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            {agent.modelControl && modelsOf(models, "claude").length > 0 && <select
-              aria-label="Claude model" className="h-9 w-28 truncate rounded-md border bg-background px-2 text-sm"
-              value={agent.modelControl.current} disabled={!ready || working || agent.modelControl.busy}
-              onChange={event => action("model", { target: selected.session, model: event.target.value }, "Model switched")}>
-              <option value="" disabled>Default model</option>
-              {Array.from(new Set([agent.modelControl.current, ...modelsOf(models, "claude")])).filter(Boolean)
-                .map(model => <option key={model} value={model}>{model}</option>)}
-            </select>}
-            <ContextChip context={agent.context || {}} rows={rows.filter(row => row.agent === agent.id)}/>
-            {agent.online && ["codex", "opencode"].includes(agent.peer) && <Button variant="outline" size="sm" className="h-9 rounded-md" aria-label="Interrupt" disabled={!ready || working}
-              onClick={() => action("interrupt", { target: selected.session }, "Interrupt requested")}><Square/>Interrupt</Button>}
-            <SessionMenu node={{ ...agent, project }} disabled={working} map={() => navigate({ project, level: "compactions" })} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}
-              raw={openRaw} label={"Session actions for " + selected.session}/>
-            <Button variant="outline" size="sm" className="h-9 rounded-md" aria-label="Compact" disabled={!ready || working}
-              onClick={() => action("compact", { target: selected.session }, "Compaction requested")}><Minimize2/>Compact</Button></span>}/>}
+        {level === "session" && selected.session && <Button variant={panel ? "secondary" : "ghost"} size="icon" aria-label={panel ? "Close panel" : "Open panel"} aria-pressed={Boolean(panel)}
+          title="Diff, PR, activity and raw" onClick={() => setPanel(panel ? "activity" : "diff")}><PanelRight/></Button>}
       </header>
-      <div className={cn("flex flex-col gap-2 px-3 empty:hidden", composing && "min-h-0 flex-1 justify-center pb-[20vh]")}>
+      <div className={cn("flex flex-col gap-2 px-3 empty:hidden", composing && "min-h-0 flex-1 justify-end pb-3")}>
+        {composing && <div className="mx-auto w-full max-w-3xl px-1 pb-2">
+          <h2 className="text-xl font-semibold">New thread</h2>
+          <p className="text-sm text-muted-foreground">Describe the work. The agent starts in <span className="font-medium text-foreground">{project}</span> where the toolbar below points.</p>
+        </div>}
         {composing && <NewAgentComposer key={project + ":" + (data.startable || []).join(",")} project={project} startable={data.startable || []} places={data.startPlaces || ["folder"]} startPlace={data.startPlace || "folder"} sandboxHarnesses={data.openshellHarnesses || []}
           startDefault={data.startDefault} codeModeDefault={data.codeModeDefault !== false} agents={data.agents} models={models} disabled={!ready} start={startSession} close={() => setCreating("")} open={openAddress}/>}
         {agent?.wake?.status && <div className="mx-auto mt-2 flex w-full max-w-3xl flex-wrap items-center gap-2 rounded-xl border bg-muted/50 px-3 py-2 text-sm">
@@ -467,7 +470,7 @@ export function Console({ account }) {
         open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatContainerRoot key={inbox ? "inbox" : home ? "home" : "conversation"} initial={home ? false : "instant"} contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
         <ChatRuntimeProvider key={requested} entries={thread} operator={data.operator}>
         <ChatContainerContent key={requested} className="mx-auto w-full max-w-3xl gap-5 px-3 py-4">
-          {!ready && (home || listing || subagents || compactions) && !loadError && <p className="py-16 text-center text-sm text-muted-foreground">Loading sessions…</p>}
+          {!ready && (home || listing || compactions) && !loadError && <p className="py-16 text-center text-sm text-muted-foreground">Loading sessions…</p>}
           {ready && (home || listing) && <>
             {home && data.unavailable?.length > 0 && <p role="alert" className="text-xs text-destructive">Unavailable: {data.unavailable.join(", ")}</p>}
             {home && !inbox && data.projects.filter(item => item.paused).map(item =>
@@ -491,13 +494,9 @@ export function Console({ account }) {
               skip={payload => action("skip", payload, "Skipped")}/>}
           </>}
           {ready && compactions && <CompactionMap agents={data.agents || []} now={now}/>}
-          {ready && subagents && <SubagentList rows={rows} session={selected.session} run={selected.run} when={at => ago(at, now)} now={now}
-            childRuns={(agent?.subagents || []).filter(run => run.child)} openChild={child => navigate({ project, level: "session", harness: child.kind, session: child.id })}
-            back={() => navigate({ ...selected, project, tab: "activity", run: "" })}
-            pick={run => navigate({ ...selected, project, tab: "subagents", run })}/>}
-          {!home && !listing && !subagents && (!ready || (thread.length + live.length === 0 && (raw || queue.length === 0))) && <p className="py-16 text-center text-sm text-muted-foreground">
-            {ready ? (raw ? "No activity yet." : "No messages yet.") : loadError ? "" : watching ? "Loading project chat…" : "Loading conversation…"}</p>}
-          {ready && !home && !listing && !subagents && <ThreadPrimitive.Messages>
+          {!home && !listing && (!ready || (thread.length + live.length === 0 && queue.length === 0)) && <p className="py-16 text-center text-sm text-muted-foreground">
+            {ready ? "No messages yet." : loadError ? "" : watching ? "Loading project chat…" : "Loading conversation…"}</p>}
+          {ready && !home && !listing && <ThreadPrimitive.Messages>
               {({ message }) => {
                 const [entry] = getExternalStoreMessages(message) || [];
                 if (!entry) return null;
@@ -550,7 +549,13 @@ export function Console({ account }) {
           return sent;
         }}/>
       </ChatRuntimeProvider>}
-      <ProjectNav links={navLinks}/>
     </main>
+    {panel && <SessionPanel wide={wide} tab={panel} setTab={setPanel} close={() => setPanel("activity")} project={project} thread={currentThread}
+      activity={ready ? <SubagentList rows={rows} session={selected.session} run={selected.run} when={at => ago(at, now)} now={now}
+        childRuns={(agent?.subagents || []).filter(run => run.child)} openChild={child => navigate({ project, level: "session", harness: child.kind, session: child.id })}
+        back={() => navigate({ ...selected, project, tab: "subagents", run: "" })}
+        pick={run => navigate({ ...selected, project, tab: "subagents", run })}/> : <p className="py-8 text-center text-sm text-muted-foreground">Loading activity…</p>}
+      raw={rawRows.length ? <ul className="flex flex-col gap-3">{rawRows.map(row => <li key={row.id}><ActivityRow row={row} when={at => ago(at, now)} now={now} goRun={goRun}/></li>)}</ul>
+        : <p className="py-8 text-center text-sm text-muted-foreground">{ready ? "No activity yet." : "Loading activity…"}</p>}/>}
   </div></SurfaceContext.Provider>;
 }
