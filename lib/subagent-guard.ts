@@ -100,6 +100,8 @@ function ticketOwner(env: Env, proc: { pid: number; start: string | null }): boo
   if (!TICKET.test(ticket)) return false;
   const dir = join(stateDir(env), "managed-tickets");
   try { readFileSync(join(dir, `${ticket}.json`)); } catch { return false; }
+  // No /proc (macOS, Windows): the harness process cannot be identified, so the ticket file alone decides.
+  if (proc.start === null) return true;
   const owner = JSON.stringify({ pid: proc.pid, start: proc.start });
   const bound = join(dir, `${ticket}.bound`);
   try {
