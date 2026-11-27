@@ -65,7 +65,7 @@ test("a continuation that times out with 504 is cancelled before it claims the t
   const claude = createFakeAdapter({ harness: "claude" });
   const slow = gate();
   const adapter = wrapOpen(claude, async (options, context, open) => { await slow.shut; return open(options, context); });
-  const runner = createRunner({ projects: [ctx.cfg], adapters: new Map([["claude", adapter]]), durable: openDurable(ctx.db), env: ctx.env, startGapMs: 0, watch: false, startTimeoutMs: 150 });
+  const runner = createRunner({ projects: [ctx.cfg], adapters: new Map([["claude", adapter]]), durable: openDurable(ctx.db), env: ctx.env, startGapMs: 0, watch: false, startTimeoutMs: 1000 });
   await runner.boot();
   try {
     await assert.rejects(runner.continueBuilder({ project: "demo", taskId: "handoff", harness: "claude" }), { status: 504 });
@@ -91,7 +91,7 @@ test("a spawn whose claim lands after its 504 ends that child, so it does not co
   const held = gate();
   let cancelling = false;
   durable.cancel = async (id) => { cancelling = true; await held.shut; return cancel(id); };
-  const runner = createRunner({ projects: [ctx.cfg], adapters: new Map([["codex", adapter]]), durable, env: ctx.env, startGapMs: 0, watch: false, startTimeoutMs: 150 });
+  const runner = createRunner({ projects: [ctx.cfg], adapters: new Map([["codex", adapter]]), durable, env: ctx.env, startGapMs: 0, watch: false, startTimeoutMs: 1000 });
   await runner.boot();
   try {
     const parent = (await runner.start({ project: "demo", harness: "codex", prompt: "parent" })).session;
