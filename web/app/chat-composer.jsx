@@ -10,7 +10,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/utils";
 import { fuzzyRank } from "@/lib/fuzzy";
 import { commandFor, matchCommands } from "@/lib/slash-commands";
-import { composerDestination } from "@/lib/message-routing";
+import { composerDestination, composerRecipients } from "@/lib/message-routing";
 import { quotedReply, usableReplyId } from "@/lib/reply-quote";
 import { patternMentionTargets } from "@/lib/mentions";
 import { quoteText } from "@/lib/quote";
@@ -94,9 +94,9 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
   const image = images[0];
   const canSend = Boolean(text || image);
   const command = !image && routing.session && commandFor(text, picked.current) !== null;
-  const destination = command ? "Command for " + short(routing.target)
-    : composerDestination({ ...routing, agents, teams, startable, models, quoted,
-      text: quoted ? quotedReply(text, replying) : text });
+  const route = { ...routing, agents, teams, startable, models, quoted, text: quoted ? quotedReply(text, replying) : text };
+  const destination = command ? "Command for " + short(routing.target) : composerDestination(route);
+  const recipients = command ? [routing.target] : composerRecipients(route);
   const sendName = command ? destination
     : "Send · " + destination;
 
@@ -224,7 +224,7 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
           className={cn("cursor-text rounded-3xl border bg-card p-2 shadow-sm focus-within:ring-2 focus-within:ring-ring/50", busy && "cursor-not-allowed opacity-60")}>
           {image && <ImageDraft file={image} disabled={busy} remove={() => { selectImages([]); focus(); }}/>}
           {imageError && <p role="alert" className="px-3 text-sm text-destructive">{imageError}</p>}
-          <div id="composer-destination" aria-live="polite" className="max-h-[20dvh] overflow-y-auto break-words px-3 pt-1 text-xs font-medium text-muted-foreground">
+          <div id="composer-destination" aria-live="polite" title={recipients.join(", ") || undefined} className="max-h-[20dvh] overflow-y-auto break-words px-3 pt-1 text-xs font-medium text-muted-foreground">
             {destination}
           </div>
           <ComposerPrimitive.Input ref={textarea} id="composer" aria-label="Message" aria-describedby="composer-destination" placeholder={placeholder} disabled={busy}

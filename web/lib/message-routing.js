@@ -1,4 +1,5 @@
 import { taskTags } from "./task-tags.js";
+import { shortName } from "./thread-groups.ts";
 
 const MENTION = /(^|[^\w#-])@([a-z0-9-]{1,24}(?:#[a-f0-9]{16}(?:\/[A-Za-z0-9_-]{1,64})?|:[A-Za-z0-9][A-Za-z0-9._/-]{0,119})?)(?![\w-])/g;
 
@@ -36,17 +37,35 @@ export function messageDestinations(text, target, listTasks) {
   return { tagged, destinations: new Set(tagged.length ? tagged.map(task => task.owner || "all") : [target]) };
 }
 
-export function composerDestination({
-  project, target, text, tasks, peers, agents, teams, patterns, startable, models, hosted, quoted,
+/** The composer's destination line: where a post goes, naming each direct session by its short name. */
+export function composerDestination(routing) {
+  if (!routing.target) return "Pick a session first";
+  const { project, agents } = routing;
+  const { destinations, direct, starts, invocations, startOnly } = composerRoute(routing);
+  const shortAddress = address => address.replace(/(#[a-f0-9]{8})[a-f0-9]{8}(?=\/|$)/, "$1");
+  const named = address => (!address.includes("/") && shortName(agents.find(agent => agent.id === address))) || shortAddress(address);
+  const labels = [];
+  if (destinations.has("all")) labels.push(startOnly ? "Project chat in " + project : "Everyone in " + project);
+  if (direct.size) labels.push("Direct to " + [...direct].map(named).join(", "));
+  if (starts.length) labels.push("Start " + starts.join(", "));
+  if (invocations.length) labels.push("Run " + invocations.join(", "));
+  return labels.join(" · ");
+}
+
+/** The session addresses a post goes to directly, for the destination line's title. */
+export function composerRecipients(routing) {
+  return routing.target ? [...composerRoute(routing).direct] : [];
+}
+
+function composerRoute({
+  target, text, tasks, peers, agents, teams, patterns, startable, models, hosted, quoted,
 }) {
-  if (!target) return "Pick a session first";
   const { destinations } = messageDestinations(text, target, () =>
     tasks.map(task => task.inferredOwner ? { ...task, owner: "" } : task));
   const names = [...teams.map(team => team.id), ...patterns.map(pattern => pattern.name)];
   const [primary] = destinations;
   const startOnly = !hosted && !quoted && destinations.size === 1 && destinations.has("all")
     && startOnlyMentions(text, peers, names);
-  const shortAddress = address => address.replace(/(#[a-f0-9]{8})[a-f0-9]{8}(?=\/|$)/, "$1");
   const direct = new Set([...destinations].filter(to => to !== "all"));
   const starts = [];
   if (!hosted) {
@@ -66,16 +85,12 @@ export function composerDestination({
       }
     }
   }
-  const labels = [];
-  if (destinations.has("all")) labels.push(startOnly ? "Project chat in " + project : "Everyone in " + project);
-  if (direct.size) labels.push("Direct to " + [...direct].map(shortAddress).join(", "));
-  if (starts.length) labels.push("Start " + starts.join(", "));
+  const invocations = [];
   if (!hosted) {
-    const invocations = mentionedTeams(text, patterns.filter(pattern => !pattern.legacy).map(pattern => pattern.name));
+    invocations.push(...mentionedTeams(text, patterns.filter(pattern => !pattern.legacy).map(pattern => pattern.name)));
     if (primary === "all" && startable.includes("claude")) {
       invocations.push(...mentionedTeams(text, teams.map(team => team.id)));
     }
-    if (invocations.length) labels.push("Run " + [...new Set(invocations)].join(", "));
   }
-  return labels.join(" · ");
+  return { destinations, direct, starts, invocations: [...new Set(invocations)], startOnly };
 }

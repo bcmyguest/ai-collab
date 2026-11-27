@@ -63,7 +63,7 @@ export function ChatMessage({ message, operator, me, now, replyFrom, open, act, 
   const go = () => open(sender);
   // A reply to an agent prefills its address so the mention routes the reply to that session.
   const prefill = openable ? "@" + sender + " " : "";
-  // The asking agent's avatar and name, the header row of an A2UI card.
+  // The asking agent's avatar and name, the header row of an approval card; a question card leaves them to the message header.
   const cardHead = <><Avatar address={sender} by={other} className="size-6 text-xs"/><span className="truncate" title={sender}>{name || short(sender)}</span></>;
   return <MessagePrimitive.Root data-message-id={message.id} className={cn("flex max-w-full gap-3", outgoing && "flex-row-reverse")}
     onClick={event => { const tag = event.target.closest?.("[data-mention]"); if (tag) open(tag.textContent.replace(/^@/, "").split(/[:/]/)[0]); }}>
@@ -86,7 +86,7 @@ export function ChatMessage({ message, operator, me, now, replyFrom, open, act, 
       </div>
       {message.quote && <Quote quote={message.quote} label={short(message.quote.sender)}/>}
       {message.kind === "Approval" ? <ApprovalCard approval={message.approval} now={now} disabled={disabled} act={act} skip={skip} head={cardHead}/>
-        : message.kind === "Question" && message.question ? <QuestionCard question={message.question} body={withMentions(message.body)} taskLinks={taskLinks} answer={message.answer} by={message.answeredBy} skipped={message.skipped} disabled={disabled} onAnswer={body => answer(message.question, body)} skip={skip} head={cardHead}/>
+        : message.kind === "Question" && message.question ? <QuestionCard question={message.question} body={withMentions(message.body)} taskLinks={taskLinks} answer={message.answer} by={message.answeredBy} skipped={message.skipped} disabled={disabled} onAnswer={body => answer(message.question, body)} skip={skip}/>
         : (message.body || !message.attachment) && <BubbleContext.Provider value={bubble}>
           <div className={cn("bubble max-w-full rounded-2xl px-3.5 py-2 text-base leading-relaxed shadow-xs [overflow-wrap:anywhere]",
         outgoing ? "rounded-tr-md border border-primary/25 bg-primary/10 text-foreground" : "rounded-tl-md border bg-card text-card-foreground",
