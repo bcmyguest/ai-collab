@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// ai-collab-bus entry: the local message bus that replaces the ntfy container.
+// ai-collab-bus entry: the local message bus.
 // Reads url/token from defaults.json (or AI_COLLAB_BUS_* env), serves Postgres-backed events on loopback,
-// and prunes past retention hourly. Sandboxes reach it through host.openshell.internal, same as ntfy.
+// and prunes past retention hourly. Sandboxes reach it through host.openshell.internal.
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";

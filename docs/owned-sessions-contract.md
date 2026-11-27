@@ -62,7 +62,7 @@ The operator asked for DBOS-style durable execution: workflows and steps are che
 
 **Pick: the minimal layer.** DBOS would add a Postgres server to a single-user machine to run a single-process runner with a few concurrent sessions. The minimal layer keeps DBOS's names (`startWorkflow`, `step`, `recv`, `send`, `recover`), so if Postgres ever arrives, porting means swapping `runner/durable.mjs` for DBOS and wrapping the session workflow with `DBOS.registerWorkflow`. Costs: we own the layer's correctness (covered by `test/runner-durable.test.mjs`), and it has no queues, scheduler or workflow UI.
 
-Since then Postgres arrived for the bus store, and `lib/workflows.ts` runs the same interface on DBOS Transact (`@dbos-inc/dbos-sdk` pinned to 5.7.0) when `defaults.json` sets `"workflowEngine": "dbos"`. The SQLite log, now `lib/durable.ts` (`runner/durable.mjs` re-exports it), stays the code default. See [DBOS workflow engine](configuration.md#dbos-workflow-engine).
+Since then Postgres arrived for the bus store, and `lib/workflows.ts` runs the same interface on DBOS Transact (`@dbos-inc/dbos-sdk` pinned to 5.7.0) when `defaults.json` sets `"workflowEngine": "dbos"`. The SQLite log, now `lib/durable.ts`, stays the code default. See [DBOS workflow engine](configuration.md#dbos-workflow-engine).
 
 ### Log schema (`runner.db`)
 
@@ -84,7 +84,7 @@ One workflow per owned session, id `session-<uuid>`, name `session`, input `{pro
 | `place` | Resolves the project root; for `worktree`, runs `git worktree add -b ai-collab/<harness>-<stamp>` under `.claude/worktrees/` | returns the cwd; never adds a second worktree | re-executes |
 | `open` | `adapter.open(options, ctx)`; records `{nativeId}` | returns `nativeId`; there is no live handle until the next input | the workflow ends: "the runner stopped while the session opened" |
 | `claim` | Writes `owned/<label>.json` (status `idle`) | skipped; the record is read from disk | re-executes (idempotent) |
-| *(not a step)* | Registry entry (`lib/sessions.mjs` `recordSession`, pid = runner); "owned session started" notice on the first run only | runs again, so the registry shows the restarted runner's pid | |
+| *(not a step)* | Registry entry (`lib/sessions/registry.ts` `recordSession`, pid = runner); "owned session started" notice on the first run only | runs again, so the registry shows the restarted runner's pid | |
 | `recv:input` | Waits for durable `input` messages and takes them all as one run (texts joined by a blank line, message ids merged); `{close:true}` ends the loop | returns the recorded batch | not checkpointed until consumed, so nothing is lost |
 | `run.send` | `liveHandle()` (resumes when needed), `handle.send(input)` → `{runId}`, then read receipts | returns `{runId}` | `onCut`: the run is marked interrupted ("runner restarted before the harness accepted the input"); **not resent** |
 | `run.wait` | Waits for `RUN_FINISHED` or `RUN_ERROR` with that `runId` | returns the outcome | `onCut` marks the run interrupted |
@@ -107,7 +107,7 @@ The first prompt is the first input; the loop starts with it, not with `recv`.
 
 ### Scheduled workflows
 
-`scheduled(name, {everyMs}, fn)` in `runner/durable.mjs` registers a DBOS-style scheduled workflow (DBOS `@DBOS.scheduled`). Each tick is a workflow named `scheduled:<name>` with id `<name>@<scheduledTime ISO>`, and `fn(scheduledTime, actualTime, wf)` runs in it. Ticks align to the Unix epoch: a 30-minute schedule fires at :00 and :30 UTC. Cron is not supported.
+`scheduled(name, {everyMs}, fn)` in `lib/durable.ts` registers a DBOS-style scheduled workflow (DBOS `@DBOS.scheduled`). Each tick is a workflow named `scheduled:<name>` with id `<name>@<scheduledTime ISO>`, and `fn(scheduledTime, actualTime, wf)` runs in it. Ticks align to the Unix epoch: a 30-minute schedule fires at :00 and :30 UTC. Cron is not supported.
 
 | Case | Result |
 |---|---|
@@ -342,7 +342,7 @@ Standard subagent attribution uses `subagentRunId`. The optional `metadata.aiCol
 
 ### Envelope details
 
-Activity and control events publish through: `publishActivity` (`lib/activity.mjs`, one 1.5 s deadline per batch, clipping to 4,095 bytes), `publishStatus` (`lib/inbox.mjs`), `sendReceipts` (`lib/receipts.ts`) and `publish` (`lib/transport.mjs`) for approvals. The sender is `from: <harness>, session: <label>`, the same as a hook in that session, so `web/server/ui.ts` (`activityItem`, `approvalEntry`, `outcomes`, `agents`) renders owned rows, cards and presence without change. Publishes for one session are serialized, so rows keep their order.
+Activity and control events publish through: `publishActivity` (`lib/activity.ts`, one 1.5 s deadline per batch, clipping to 4,095 bytes), `publishStatus` (`lib/messaging.ts`), `sendReceipts` (`lib/receipts.ts`) and `publish` (`lib/messaging.ts`) for approvals. The sender is `from: <harness>, session: <label>`, the same as a hook in that session, so `web/server/ui.ts` (`activityItem`, `approvalEntry`, `outcomes`, `agents`) renders owned rows, cards and presence without change. Publishes for one session are serialized, so rows keep their order.
 
 - **Approval card:** `lib/approvals.ts` `approvalMessage` publishes the usual card fields plus `owned: true` in the configured wire format. The runner, not the adapter, makes the 12-hex `id` and maps it to the adapter's `interruptId`. `expiresAt` is `ts` + `AI_COLLAB_APPROVAL_TIMEOUT_MIN` minutes (default 30, at most 720). The runner denies an unanswered card at that time and ends it with `denied`. The UI's existing Allow / Deny publishes `reply <id> allow|deny` (or the answers as JSON) on the broadcast topic; the runner streams that topic and calls `handle.respond`. Ends: `allowed`, `denied` (operator or timeout), `answered`, `cancelled` (run ended, session closed, or runner restarted).
 - **Read receipts:** published when `handle.send` or `handle.steer` resolves, for the bus ids the input carried.
@@ -356,7 +356,7 @@ Activity and control events publish through: `publishActivity` (`lib/activity.mj
 | Label | `sessionLabel(nativeId)`: first 16 hex of SHA-256 (`lib/config.ts`), the same label hooks compute from the same id |
 | Address | `<harness>#<label>`, for example `codex#3f2a9c0d1e4b5a69`; peer name = harness name |
 | Owned record | `$AI_COLLAB_STATE_DIR/<project>/owned/<label>.json`, written by `lib/sessions/registry.ts` `writeOwned` (0600 file, 0700 dir); shape `OwnedRecord` in `runner/types.d.ts` |
-| Registry entry | `$AI_COLLAB_STATE_DIR/<project>/registry/<address>.json` via `lib/sessions.mjs` `recordSession`, with `pid`/`pidStart` = the runner, `event: "owned"`; `list_agents`, `list_sessions` and the UI's agent list read it unchanged. At session end the entry is rewritten without a pid, so it shows offline |
+| Registry entry | `$AI_COLLAB_STATE_DIR/<project>/registry/<address>.json` via `lib/sessions/registry.ts` `recordSession`, with `pid`/`pidStart` = the runner, `event: "owned"`; `list_agents`, `list_sessions` and the UI's agent list read it unchanged. At session end the entry is rewritten without a pid, so it shows offline |
 | Workflow | `OwnedRecord.workflowId` = `session-<uuid>` in `runner.db` |
 | Managed and spawn fields | `managed: true` for team, pattern, builder and spawned sessions (adapters turn native subagents off, and keep them off on resume); `parent` (the spawning address) and `spawn: {depth}` for a `spawn_agent` child, which reports each run to `parent` inside the `run.send` (undelivered or cut) or `run.wait` step. The runner takes `managed` from the session workflow's durable input, never from this file, which the session itself can write. `managed` is cooperative, not a security boundary: an agent with a shell can still start a harness the gates miss |
 
@@ -443,7 +443,7 @@ Cursor's `full-access` needs OpenShell. For the other harnesses the runner refus
 
 `runner/adapters/cursor.mjs`. One `<cursor cli> acp` child per owned session (stdio, newline-delimited JSON-RPC 2.0), spawned in the session's cwd, or inside an OpenShell sandbox. The adapter does not share one ACP child across sessions, so each child's environment is its own. `shutdown()` kills the children still tracked.
 
-Argv: `<cursor cli> acp`, plus `--force` for full-access, plus `--model <m>` when a model is named. Outside OpenShell, `--force` is refused. The binary is `agent` when the first PATH directory holding either name has it, else `cursor-agent` (`cursorBinary` in `lib/start.mjs`); `agent 2026.11.22-e9042b2` is installed here, and `~/.local/bin/cursor-agent` is the same symlink.
+Argv: `<cursor cli> acp`, plus `--force` for full-access, plus `--model <m>` when a model is named. Outside OpenShell, `--force` is refused. The binary is `agent` when the first PATH directory holding either name has it, else `cursor-agent` (`cursorBinary` in `lib/harness.ts`); `agent 2026.11.22-e9042b2` is installed here, and `~/.local/bin/cursor-agent` is the same symlink.
 
 | Capability | Status | Evidence |
 |---|---|---|
@@ -558,7 +558,7 @@ entry points, see [Live OpenShell bootstrap smoke](sandbox-smoke.md).
 |---|---|
 | `runner/types.d.ts` | Adapter interface, events, records |
 | `runner/contract.ts` | Harness, mode and event constants; `PERMISSION_TABLE`; `eventProblem` |
-| `runner/durable.mjs` | Re-exports `lib/durable.ts`: the SQLite workflow/step/message log and `scheduled` ticks; `lib/workflows.ts` picks it or DBOS |
+| `lib/durable.ts` | The SQLite workflow/step/message log and `scheduled` ticks; `lib/workflows.ts` picks it or DBOS |
 | `runner/schedules.ts` | `schedules.json` loader and the scheduled command step |
 | `lib/schedule-session.ts` | The registered session a schedule's command resumes, and the project a schedule's folder names |
 | `runner/lock.ts` | Single-instance lock (`runner.lock` beside `runner.db`) |
@@ -571,7 +571,7 @@ entry points, see [Live OpenShell bootstrap smoke](sandbox-smoke.md).
 | `runner/adapters/claude.ts` | Claude adapter: Agent SDK `query()` with an input queue, `canUseTool` → approval cards |
 | `runner/adapters/opencode.ts` | OpenCode adapter: local OpenCode 2 HTTP service and its `/api/event` SSE stream |
 | `runner/adapters/cursor.mjs` | Cursor adapter: ACP over stdio, optional OpenShell sandbox (staged CLI, auth, worktree sync) |
-| `lib/sandbox.ts` | OpenShell lifecycle shared by adapters and builders: ensure, upload, download, delete, and the argv builders (`runner/sandbox.mjs` re-exports it) |
+| `lib/sandbox.ts` | OpenShell lifecycle shared by adapters and builders: ensure, upload, download, delete, and the argv builders |
 | `test/runner-adapter-cursor.test.mjs`, `test/helpers/fake-cursor-agent.mjs`, `test/helpers/fake-openshell.mjs` | Cursor adapter tests; fake ACP child and fake openshell |
 | `test/cursor-sandbox.test.mjs`, `test/runner-sandbox.test.mjs` | Sandbox staging (CLI tree, auth, worktree round trip, release on failure) and the sandbox module's argv and lifecycle |
 | `runner/delivery.ts` | Delivery workflow: reserve, push, confirm, mark or release, expect-reply redelivery |

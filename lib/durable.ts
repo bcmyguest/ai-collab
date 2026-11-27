@@ -367,7 +367,7 @@ export function openDurable(file: string, { now = Date.now }: { now?: () => numb
         return w.id;
       });
     },
-    /** Queues a durable message; dedupe (e.g. an ntfy event id) drops repeats. Returns false for a repeat. */
+    /** Queues a durable message; dedupe (e.g. a bus event id) drops repeats. Returns false for a repeat. */
     send(workflowId: string, topic: string, value: Json, { dedupe = null }: { dedupe?: string | null } = {}) {
       const { changes } = q.msgInsert.run(workflowId, topic, json(value), dedupe, now());
       if (changes) wake(workflowId);

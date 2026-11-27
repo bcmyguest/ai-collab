@@ -1,4 +1,4 @@
-// Runner core: one durable "session" workflow per owned session; control calls and ntfy input become durable messages.
+// Runner core: one durable "session" workflow per owned session; control calls and bus input become durable messages.
 import { isProjectPaused, PROJECT_PAUSED } from "../lib/project-pause.ts";
 import { adaptSqlite } from "../lib/workflows.ts";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -63,7 +63,7 @@ export const MANUAL_RUN_GAP_MS = 10_000;
 export const WAKE = "wake";
 // How often the runner looks for direct messages to live sessions that have no delivery workflow yet.
 export const PUMP_MS = 5000;
-// Steps and messages of finished workflows older than the ntfy cache window (at most 720 min) are pruned hourly;
+// Steps and messages of finished workflows older than 12 h (an operator-run ntfy server's longest cache window) are pruned hourly;
 // the workflow row stays as a tombstone.
 export const PRUNE_AFTER_MS = 12 * 3_600_000;
 const PRUNE_EVERY_MS = 3_600_000;
@@ -78,7 +78,7 @@ export const WAKE_SEND_BACKOFF_MAX_MS = 4000;
 const SEEN_WITHIN_MS = 7 * 24 * 3_600_000;
 const CONFIRM_POLL_MS = 500;
 const WAKE_TOPIC = "wake";
-// Longest pause, in pump ticks, after a tick that met a 429 from ntfy.
+// Longest pause, in pump ticks, after a tick that met a 429 from the bus URL (only an operator-run ntfy server rate-limits).
 const PUMP_BACKOFF_MAX_TICKS = 6;
 const STREAM_RETRY_MAX_MS = 30_000;
 const TEXT_MAX = 4000;
@@ -1355,7 +1355,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     return s.switchingModel;
   }
 
-  /** Changes an owned session's permission mode; reached only through the control socket, never through ntfy or MCP. */
+  /** Changes an owned session's permission mode; reached only through the control socket, never through the bus or MCP. */
   async function setMode(address: string, mode: Json) {
     const named = PERMISSION_MODES.includes(mode) ? mode : runnerModeOfClaude(mode) ?? mode;
     const s = find(address);
@@ -1440,7 +1440,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     return { status: s.record.status === "ended" ? "ended" : "closing" };
   }
 
-  /** Re-runs PENDING session workflows from the durable log (restart rules), then watches ntfy. */
+  /** Re-runs PENDING session workflows from the durable log (restart rules), then watches the bus. */
   async function boot() {
     // Scheduled ticks recover too, but only session workflows hold the boot until they claim.
     const isSession = async (id: Json) => (await durable.status(id))?.name === "session";
@@ -1490,7 +1490,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     });
   }
 
-  // An ntfy event: a phone reply to an owned approval, or a message for an owned session.
+  // A bus event: a phone reply to an owned approval, or a message for an owned session.
   async function onNtfy(cfg: Json, topic: Json, ev: Json) {
     const reply = parsePhoneReply(ev.message || "");
     if (reply && topic === broadcastTopic(cfg.project)) {

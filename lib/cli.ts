@@ -37,7 +37,7 @@ import { runnerRequest, runnerSocket } from "./runner-request.ts";
 export const USAGE = `usage: ai-collab <command>
   setup [--agent claude,codex,cursor,opencode] [--port N] [--no-ui]
                               install the local message bus, the plugin for each agent (default: every one on PATH) and the UI service
-  postgres <up|down|status>   manage the local Postgres the DBOS workflow engine uses (docker compose, loopback only)
+  postgres <up|down|status>   manage the local Postgres the message bus and the DBOS workflow engine use (docker compose, loopback only)
   bus migrate --to postgres [--dry-run] [--resume]
                               copy the SQLite bus store into Postgres with the original ids (--dry-run prints counts, --resume continues a partial copy)
   peers                       list AI_COLLAB_PEERS with the last status each reported

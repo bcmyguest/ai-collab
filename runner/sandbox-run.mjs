@@ -3,7 +3,7 @@
 // entries with "sandbox": true run through it. Usage: sandbox-run.mjs --name N --cwd DIR [--project P] -- <argv...>
 //
 // Staging follows lib/builder.ts: a clone of cwd's branch, node, git, the ai-collab CLI and the harness install go
-// in by upload; ntfy is reachable at host.openshell.internal:8794; the clone comes back by download, uncommitted work
+// in by upload; the bus is reachable at host.openshell.internal:8794; the clone comes back by download, uncommitted work
 // becomes one commit, and new commits land on branch sandbox/<name>-<stamp> in cwd's repository. The sandbox is
 // deleted at the end, also after a timeout (SIGTERM from the schedule).
 import { spawn } from "node:child_process";
@@ -115,7 +115,7 @@ export async function stage({ cwd, project, harness, dir, env, log }) {
   const ntfy = { url: NTFY, ...(token ? { tokenFile: NTFY_TOKEN_IN } : {}) };
   writeFileSync(join(config, "defaults.json"), `${JSON.stringify({ ...ntfy, peers: "claude,codex,cursor,opencode" }, null, 2)}\n`);
   if (project) writeFileSync(join(config, "projects.json"), `${JSON.stringify([{ root: workdir, project, ...ntfy }], null, 2)}\n`);
-  // The ai-collab MCP server, so set_identity, send_to_all and ask_question reach the operator over ntfy.
+  // The ai-collab MCP server, so set_identity, send_to_all and ask_question reach the operator over the bus.
   const mcp = { command: NODE_IN, args: [`${APP_IN}/scripts/ai-collab-mcp.mjs`], env: { ...(project ? { AI_COLLAB_PROJECT: project } : {}), AI_COLLAB_PEER: harness } };
   if (harness === "cursor") { mkdirSync(join(home, ".cursor"), { recursive: true }); writeFileSync(join(home, ".cursor", "mcp.json"), `${JSON.stringify({ mcpServers: { "ai-collab": mcp } }, null, 2)}\n`); }
   if (harness === "claude") writeFileSync(join(home, ".claude.json"), `${JSON.stringify({ mcpServers: { "ai-collab": { type: "stdio", ...mcp } } }, null, 2)}\n`);

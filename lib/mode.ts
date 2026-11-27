@@ -40,7 +40,7 @@ export function parseMode(raw: unknown): Mode | null {
   return { mode: m.mode, ts: m.ts };
 }
 
-/** Latest mode in a list of ntfy events (oldest first); a tie goes to the later event. */
+/** Latest mode in a list of bus events (oldest first); a tie goes to the later event. */
 export function latestMode(events: Array<{ message: string }>, start: Mode | null = null): Mode | null {
   let best = start;
   for (const ev of events) {

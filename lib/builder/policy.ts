@@ -80,7 +80,7 @@ export function harnessCommand({ harness, model, brief, workdir, launcher, build
   return [command[0], ...command[1]];
 }
 
-/** The sandbox policy (JSON is YAML): the harness's API hosts and the host's ntfy port, for the named binaries only. */
+/** The sandbox policy (JSON is YAML): the harness's API hosts and the host's bus port, for the named binaries only. */
 export function builderPolicy({ harness, binaries, ntfyBinaries = [] }: { harness: string; binaries: string[]; ntfyBinaries?: string[] }) {
   // Cursor and OpenCode keep their own TLS: through the TLS-terminating proxy Zen refuses free models (measured 2026-11-22).
   const apiEndpoint = (host: string) => TLS_PASSTHROUGH.includes(harness)

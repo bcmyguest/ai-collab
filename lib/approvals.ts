@@ -1,6 +1,6 @@
 /**
  * Phone approvals: a permission prompt (or Claude's AskUserQuestion) turned into a question on the broadcast topic
- * that the operator answers from the UI or the ntfy app, only while AFK mode is on or quiet.
+ * that the operator answers from the UI or the phone, only while AFK mode is on or quiet.
  * Claude's AskUserQuestion is asked in PreToolUse (decideQuestion): a phone answer returns permissionDecision "allow" with updatedInput.answers.
  * In mode off (Claude and Codex) the hook publishes the same fields as {kind:"approval-view", mode:"terminal"}, a view-only card, returns
  * no decision at once, and a later hook event of that session closes it with reason "terminal".
@@ -74,7 +74,7 @@ export function approvalRequest(host: string | undefined, key: string | undefine
   return { tool, summary: inputSummary(msg.tool_input), input: msg.tool_input };
 }
 
-/** The approval envelope within ntfy's limit; null if it cannot fit. */
+/** The approval envelope within the wire message cap (MESSAGE_MAX_BYTES); null if it cannot fit. */
 export function approvalMessage(cfg: Cfg, host: string, req: Omit<ApprovalRequest, "input">, { id, expiresAt, ts = new Date().toISOString(), view = false, owned = false }: { id: string; expiresAt: number; ts?: string; view?: boolean; owned?: boolean }): string | null {
   // A view-only card has its own kind, so readers that answer "approval" envelopes never offer Allow / Deny for it.
   const kind = view ? "approval-view" : "approval";
@@ -240,7 +240,7 @@ export async function decideApproval(cfg: Cfg, {
   if (!cfg.enabled || !req || cfg.approvalS <= 0) return none;
   // The PreToolUse hook already put this AskUserQuestion on the phone (decideQuestion).
   if (req.questions && askedByPreTool(cfg, input.tool_use_id)) return none;
-  // Cursor fires this before every shell command, so it reads the mode recorded locally instead of polling ntfy.
+  // Cursor fires this before every shell command, so it reads the mode recorded locally instead of polling the bus.
   // Cursor publishes no card either way (it is not a terminal host), so its default off claims nothing about AFK.
   const base = await Promise.resolve(mode(cfg)).catch(() => null);
   if (base?.mode === "off") {
