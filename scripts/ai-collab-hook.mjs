@@ -142,7 +142,7 @@ async function deliver(cfg, host, event, msg, key) {
       await publishStatus(cfg, { event: "hold", harness: host });
       noteHeld(cfg);
     };
-    const decision = await decideStop(cfg, { host, input: msg, onHold });
+    const decision = await decideStop(cfg, { host, input: msg, onHold, marked: stopMarked });
     // A message or an answer ends the hold: the session works again.
     if (decision.action === "continue" && WORK_AFTER_HOLD.has(decision.why) && takeHeld(cfg)) {
       await publishStatus(cfg, { event: "start", harness: host }).catch(() => {});
@@ -198,6 +198,8 @@ async function rewake(cfg, host, msg) {
 }
 
 let traced = null;
+// Set once main() has written this Stop hook's marker; deliver() then leaves the marker to the exit handler.
+let stopMarked = false;
 
 async function main() {
   const argv = process.argv.slice(2);
@@ -238,7 +240,10 @@ async function main() {
   if (standsDown(cfg, { label: session })) return emit(neutral(host, key));
   if (argv.includes("--rewake")) return rewake(cfg, host, msg);
   // Marked before the session record and context report, so the rewake waiter yields from this hook's first moment.
-  if (key === "stop" && !activityOnly && !(typeof msg.agent_id === "string" && msg.agent_id)) process.once("exit", markStopRunning(cfg));
+  if (key === "stop" && !activityOnly && !(typeof msg.agent_id === "string" && msg.agent_id)) {
+    process.once("exit", markStopRunning(cfg));
+    stopMarked = true;
+  }
 
   // Started first and awaited last, so delivery never waits on it.
   const events = key === "precompact" || key === "sessionend" ? stampContext(cfg, activityEvents(host, key, msg)) : activityEvents(host, key, msg);

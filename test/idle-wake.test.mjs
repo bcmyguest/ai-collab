@@ -29,7 +29,7 @@ async function setup(t) {
   const operator = loadConfig(peerEnv(fake, { peer: "operator", AI_COLLAB_PEERS: "claude,bob", AI_COLLAB_STATE_DIR: env.AI_COLLAB_STATE_DIR }));
   fake.inject(ALL, JSON.stringify({ v: 1, kind: "mode", from: "operator", mode: "on", ts: Date.now() }));
   await claimInbox(cfg);
-  return { env, cfg, operator };
+  return { env, cfg, operator, fake };
 }
 
 function runHook(env, args, input) {
@@ -126,6 +126,25 @@ test("the hold status gives way to start when the held Stop hook continues with 
   const r = await hook;
   assert.match(r.out, /go on/);
   assert.equal(await lastStatus(cfg), "start");
+});
+
+test("the Stop hook keeps its marker after the hold decides, until the process exits", { timeout: 30000 }, async (t) => {
+  const { env, cfg, operator, fake } = await setup(t);
+  await requestWait(cfg);
+  // The hook awaits its start publish after decideStop returns, so the marker is sampled while that request is open.
+  let markedAtStart = null;
+  const push = fake.state.publishes.push.bind(fake.state.publishes);
+  fake.state.publishes.push = (rec) => {
+    if (markedAtStart === null && /event\\?"\s*:\s*\\?"start/.test(JSON.stringify(rec))) markedAtStart = stopHookRunning(cfg);
+    return push(rec);
+  };
+  const hook = runHook(env, ["--host", "claude"], { hook_event_name: "Stop", session_id: SESSION_ID, cwd: "/tmp", stop_hook_active: false });
+  for (let i = 0; i < 50 && await lastStatus(cfg) !== "hold"; i++) await delay(100);
+  await sendMessage(operator, `claude#${LABEL}`, "carry on", { operatorThread: true });
+  const r = await hook;
+  assert.match(r.out, /carry on/);
+  assert.equal(markedAtStart, true, "the marker outlives decideStop");
+  assert.equal(stopHookRunning(cfg), false, "the marker is gone once the hook exits");
 });
 
 test("the hold status gives way to start on the session's next tool call", { timeout: 20000 }, async (t) => {
