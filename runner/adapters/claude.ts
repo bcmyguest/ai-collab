@@ -10,6 +10,11 @@ import { claudeCodeModeSettings } from "../../lib/code-mode.ts";
 import { CLAUDE_SUBAGENT_TOOLS } from "../../lib/subagent-guard.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, LIMIT, PERMISSION_MODES, permissionSettings } from "../contract.ts";
 
+import type { Decision, SessionContext, UserInput } from "../types.d.ts";
+
+// oxlint-disable-next-line typescript/no-explicit-any -- harness protocol frames, session records and runner requests are JSON
+type Json = any;
+
 // Env marker on the CLI child; hooks stand down by the owned record, this names the harness that spawned the child.
 export const OWNED_ENV = "AI_COLLAB_OWNED";
 const ASK_QUESTION = "AskUserQuestion";
@@ -18,11 +23,11 @@ const COMPACT_MS = 5 * 60_000;
 
 /** A push-based async iterable: the SDK reads user messages from it, and end() closes it. */
 export function inputQueue() {
-  const items = [];
-  let wake = null;
+  const items: Json[] = [];
+  let wake: Json = null;
   let ended = false;
   return {
-    push(message) { items.push(message); wake?.(); wake = null; },
+    push(message: Json) { items.push(message); wake?.(); wake = null; },
     end() { ended = true; wake?.(); wake = null; },
     async *[Symbol.asyncIterator]() {
       for (;;) {
@@ -34,19 +39,19 @@ export function inputQueue() {
   };
 }
 
-const textOf = (content) => (typeof content === "string" ? content
+const textOf = (content: Json) => (typeof content === "string" ? content
   : (Array.isArray(content) ? content.filter((b) => b?.type === "text").map((b) => b.text).join("\n") : ""));
 
 /** A one-line description of a tool call for the approval card. */
-export function summarize(toolName, input) {
+export function summarize(toolName: string, input: Json) {
   if (typeof input?.command === "string") return input.command;
   if (typeof input?.file_path === "string") return `${toolName} ${input.file_path}`;
   return `${toolName} ${JSON.stringify(input ?? {}).slice(0, 500)}`;
 }
 
 /** An SDKUserMessage carrying the input's text and images. */
-async function userMessage(input, priority) {
-  const images = await Promise.all((input.images || []).map(async (image) => ({
+async function userMessage(input: UserInput, priority?: Json) {
+  const images = await Promise.all((input.images || []).map(async (image: Json) => ({
     type: "image",
     source: { type: "base64", media_type: image.mime, data: (await readFile(image.path)).toString("base64") },
   })));
@@ -55,14 +60,14 @@ async function userMessage(input, priority) {
 }
 
 /** Starts one session's query and message pump; attach() awaits the handshake before the handle is used. */
-function startSession({ query, ctx, nativeId, cwd, model, permission, env, resume, codeMode, managed }) {
+function startSession({ query, ctx, nativeId, cwd, model, permission, env, resume, codeMode, managed }: Json) {
   const threadId = `claude#${sessionLabel(nativeId)}`;
   const inputs = inputQueue();
   const pending = new Map();
   const toolNames = new Map();
   // Watchers for an in-flight compact(), fed every message before the run/approval branches.
-  const compactWatch = new Set();
-  let run = null;
+  const compactWatch = new Set<(msg: Json) => void>();
+  let run: Json = null;
   let closed = false;
   let ended = false;
 
@@ -72,7 +77,7 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
       cwd,
       env: { ...env, [OWNED_ENV]: "claude", AI_COLLAB_PARENT: threadId },
       permissionMode: permission.permissionMode,
-      canUseTool: (toolName, input, extra) => canUseTool(toolName, input, extra),
+      canUseTool: (toolName: string, input: UserInput, extra: Json) => canUseTool(toolName, input, extra),
       ...(model ? { model } : {}),
       // A managed session has no native subagents; ai-collab spawn_agent replaces them.
       ...(managed ? { disallowedTools: [...CLAUDE_SUBAGENT_TOOLS] } : {}),
@@ -83,7 +88,7 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
   });
 
   // Settles one approval: the SDK gets the decision, and the card gets its resolution event once.
-  function settle(interruptId, decision, value) {
+  function settle(interruptId: string, decision: Json, value: Json) {
     const card = pending.get(interruptId);
     if (!card) return;
     pending.delete(interruptId);
@@ -92,13 +97,13 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
     card.resolve(decision);
   }
 
-  function cancelPending(status) {
+  function cancelPending(status: Json) {
     for (const interruptId of [...pending.keys()]) {
       settle(interruptId, { behavior: "deny", message: "the run was cancelled" }, { status, reason: "cancelled" });
     }
   }
 
-  function finishRun({ error }) {
+  function finishRun({ error }: { error?: string }) {
     const finished = run;
     run = null;
     if (!finished) return;
@@ -106,7 +111,7 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
     else ctx.emit({ type: EventType.RUN_FINISHED, threadId, runId: finished.runId, outcome: { type: finished.cancelled ? "cancelled" : "success" } });
   }
 
-  function canUseTool(toolName, input, { signal, toolUseID }) {
+  function canUseTool(toolName: string, input: Json, { signal, toolUseID }: Json) {
     const interruptId = randomUUID();
     const question = toolName === ASK_QUESTION;
     ctx.emit({
@@ -124,7 +129,7 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
   }
 
   // The operator's answer to an approval card, by interruptId; an unknown id is ignored.
-  function respond(interruptId, decision) {
+  function respond(interruptId: string, decision: Decision) {
     const card = pending.get(interruptId);
     if (!card) return;
     if (decision.behavior !== "allow") {
@@ -136,12 +141,12 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
     settle(interruptId, { behavior: "allow", updatedInput }, { status: "resolved", reason });
   }
 
-  function onMessage(msg) {
+  function onMessage(msg: Json) {
     // A compaction in flight sees the boundary and status messages before anything else claims them.
     if (compactWatch.size) for (const watch of [...compactWatch]) watch(msg);
     const attribution = msg.parent_tool_use_id ? { subagentRunId: msg.parent_tool_use_id } : {};
     if (msg.type === "assistant") {
-      msg.message.content.forEach((block, index) => {
+      msg.message.content.forEach((block: Json, index: Json) => {
         if (block.type === "text" && block.text) {
           ctx.emit({ type: EventType.TEXT_MESSAGE_CHUNK, messageId: `${msg.uuid}:${index}`, role: "assistant", delta: block.text, ...attribution });
         } else if (block.type === "tool_use") {
@@ -173,10 +178,10 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
   }
 
   // Owns the query's lifetime: a failed or exited process ends the open run with RUN_ERROR.
-  (async () => {
+  void (async () => {
     try {
       for await (const msg of q) onMessage(msg);
-    } catch (error) {
+    } catch (error: Json) {
       if (!closed) ctx.log(`claude query failed: ${error.message}`);
       if (!closed && run) finishRun({ error: `claude session failed: ${error.message}` });
     } finally {
@@ -191,7 +196,7 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
 
   const handle = {
     nativeId,
-    async send(input) {
+    async send(input: UserInput) {
       if (closed || ended) throw new Error("the claude session has ended");
       if (run) throw new Error("claude: a run is already running");
       const runId = randomUUID();
@@ -203,13 +208,13 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
           input: { threadId, runId, tools: [], context: [], messages: [{ id: `${runId}:input`, role: "user", content: input.text }] },
         });
         inputs.push(message);
-      } catch (error) {
+      } catch (error: Json) {
         run = null;
         throw error;
       }
       return { runId };
     },
-    async steer(input) {
+    async steer(input: UserInput) {
       if (!run) throw new Error("claude: no run to steer");
       inputs.push(await userMessage(input, "now"));
     },
@@ -219,7 +224,7 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
       cancelPending("cancelled");
       await q.interrupt();
     },
-    async setModel(model) {
+    async setModel(model: Json) {
       if (closed || ended) throw new Error("the claude session has ended");
       if (run || compactWatch.size) throw new Error("claude: wait for the current operation to finish before switching models");
       await q.setModel(model);
@@ -233,7 +238,7 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
       const boundary = new Promise((resolve, reject) => {
         const timer = setTimeout(() => { stop(); reject(new Error("compaction timed out")); }, COMPACT_MS);
         function stop() { clearTimeout(timer); compactWatch.delete(watch); }
-        const watch = (msg) => {
+        const watch = (msg: Json) => {
           if (msg.type === "system" && msg.subtype === "compact_boundary") {
             stop();
             const meta = msg.compact_metadata ?? {};
@@ -251,10 +256,10 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
       inputs.push({ type: "user", message: { role: "user", content: "/compact" }, parent_tool_use_id: null });
       return boundary;
     },
-    async respond(interruptId, decision) {
+    async respond(interruptId: string, decision: Decision) {
       respond(interruptId, decision);
     },
-    async setPermissionMode(mode) {
+    async setPermissionMode(mode: Json) {
       const { settings, error } = permissionSettings("claude", mode);
       if (error) throw new Error(error);
       await q.setPermissionMode(settings.permissionMode);
@@ -283,7 +288,7 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
 }
 
 /** Waits for the CLI handshake within handshakeMs, so a missing, unauthenticated or hung CLI fails at open or resume. */
-async function attach(session, label, handshakeMs) {
+async function attach(session: Json, label: string, handshakeMs: Json) {
   let timer;
   try {
     await Promise.race([
@@ -292,7 +297,7 @@ async function attach(session, label, handshakeMs) {
         timer = setTimeout(() => reject(new Error(`no response from the CLI within ${handshakeMs / 1000} s`)), handshakeMs);
       }),
     ]);
-  } catch (error) {
+  } catch (error: Json) {
     await session.handle.close();
     throw new Error(`${label} failed to start: ${error.message}`);
   } finally {
@@ -302,7 +307,7 @@ async function attach(session, label, handshakeMs) {
 }
 
 /** Runs a query with no prompt, reads its initialization result, then closes it. */
-async function probe(query, options, read) {
+async function probe(query: Json, options: Json, read: Json) {
   const inputs = inputQueue();
   const q = query({ prompt: inputs, options });
   try {
@@ -321,13 +326,13 @@ export function createClaudeAdapter({ query = sdkQuery, handshakeMs = HANDSHAKE_
   return {
     harness: "claude",
     capabilities: { steer: true, images: true, resume: "transcript", permissionModes: PERMISSION_MODES },
-    async available(childVars) {
+    async available(childVars: Json) {
       const path = findExecutable("claude", childEnv(childVars).PATH);
       return path ? { ok: true, detail: path } : { ok: false, detail: "claude is not on PATH" };
     },
     // The session id is chosen here, so the native id is known before the first prompt.
     // options.beforeStart(nativeId) runs before the CLI child starts, so its owned record stands down the child's hooks.
-    async open(options, ctx) {
+    async open(options: Json, ctx: SessionContext) {
       const nativeId = randomUUID();
       await options.beforeStart?.(nativeId);
       const session = startSession({
@@ -335,7 +340,7 @@ export function createClaudeAdapter({ query = sdkQuery, handshakeMs = HANDSHAKE_
       });
       return attach(session, "claude session", handshakeMs);
     },
-    async resume(record, ctx, childVars) {
+    async resume(record: Json, ctx: SessionContext, childVars: Json) {
       // A /permission value is the SDK mode for this resume; without one the runner's mode for the record stands.
       const { settings: runnerSettings } = permissionSettings("claude", record.permissionMode, record.place);
       const settings = record.claudePermission ? { permissionMode: record.claudePermission } : runnerSettings;
@@ -344,11 +349,11 @@ export function createClaudeAdapter({ query = sdkQuery, handshakeMs = HANDSHAKE_
       });
       return attach(session, "claude resume", handshakeMs);
     },
-    async listModels(childVars) {
-      return probe(query, { env: childEnv(childVars) }, (init) => init.models.map((m) => ({ id: m.value, label: m.displayName })));
+    async listModels(childVars: Json) {
+      return probe(query, { env: childEnv(childVars) }, (init: Json) => init.models.map((m: Json) => ({ id: m.value, label: m.displayName })));
     },
-    async listCommands(cwd, childVars) {
-      return probe(query, { cwd, env: childEnv(childVars) }, (init) => init.commands.map((c) => ({
+    async listCommands(cwd: string, childVars: Json) {
+      return probe(query, { cwd, env: childEnv(childVars) }, (init: Json) => init.commands.map((c: Json) => ({
         name: c.name, ...(c.description ? { description: c.description } : {}), ...(c.argumentHint ? { argumentHint: c.argumentHint } : {}),
       })));
     },

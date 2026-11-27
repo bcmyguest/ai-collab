@@ -6,6 +6,11 @@ import { opencodeRequest, serviceEndpoint } from "../../lib/opencode-api.ts";
 import { OPENCODE_NO_SUBAGENTS } from "../../lib/subagent-guard.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, PERMISSION_TABLE } from "../contract.ts";
 
+import type { Decision, SessionContext, UserInput } from "../types.d.ts";
+
+// oxlint-disable-next-line typescript/no-explicit-any -- harness protocol frames, session records and runner requests are JSON
+type Json = any;
+
 const NO_SERVICE = "OpenCode service is not running (no loopback url in its service.json)";
 const RETRY_MS = 2000;
 const PARENT_DEPTH = 8;
@@ -13,34 +18,34 @@ const ASK_FALLBACK = "permission";
 const enc = encodeURIComponent;
 
 /** The auto-reply actions of a mode (PERMISSION_TABLE.opencode), empty for a mode without them. */
-export const autoReplyFor = (mode) => PERMISSION_TABLE.opencode[mode]?.autoReply ?? [];
+export const autoReplyFor = (mode: Json) => PERMISSION_TABLE.opencode[mode]?.autoReply ?? [];
 
 /** {providerID, modelID} for a "provider/model" name, else undefined. */
-export function modelRef(model) {
+export function modelRef(model: Json) {
   const at = typeof model === "string" ? model.indexOf("/") : -1;
   return at > 0 && at < model.length - 1 ? { providerID: model.slice(0, at), modelID: model.slice(at + 1) } : undefined;
 }
 
-const autoReplies = (actions, action) => actions.includes("*") || actions.includes(action);
-const threadOf = (sessionID) => `opencode#${sessionLabel(sessionID)}`;
-const summaryOf = (req) => (typeof req.message === "string" && req.message) || (Array.isArray(req.resources) ? req.resources.map(String).join(" ") : "");
-const contentText = (content) => (typeof content === "string" ? content : JSON.stringify(content ?? ""));
-const errorText = (data) => (typeof data.error === "string" && data.error) || data.error?.message || data.message || "OpenCode run failed";
+const autoReplies = (actions: Json, action: Json) => actions.includes("*") || actions.includes(action);
+const threadOf = (sessionID: string) => `opencode#${sessionLabel(sessionID)}`;
+const summaryOf = (req: Json) => (typeof req.message === "string" && req.message) || (Array.isArray(req.resources) ? req.resources.map(String).join(" ") : "");
+const contentText = (content: Json) => (typeof content === "string" ? content : JSON.stringify(content ?? ""));
+const errorText = (data: Json) => (typeof data.error === "string" && data.error) || data.error?.message || data.message || "OpenCode run failed";
 // The HTTP status a provider error carries, from the error itself or the event data; undefined when neither names one.
-const statusOf = (data) => {
+const statusOf = (data: Json) => {
   const raw = data.status ?? data.statusCode ?? data.error?.status ?? data.error?.statusCode ?? data.error?.data?.statusCode;
   const status = Number(raw);
   return Number.isInteger(status) && status > 0 ? status : undefined;
 };
 // OpenCode 2.2.6 Session.Info has no status: idle once time.idle is set and not older than time.busy.
-const isIdle = (session) => typeof session?.time?.idle === "number" && (typeof session.time.busy !== "number" || session.time.idle >= session.time.busy);
-const sleep = (ms, signal) => new Promise((resolve) => {
+const isIdle = (session: Json) => typeof session?.time?.idle === "number" && (typeof session.time.busy !== "number" || session.time.idle >= session.time.busy);
+const sleep = (ms: Json, signal: Json) => new Promise<void>((resolve) => {
   const timer = setTimeout(resolve, ms);
   signal.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
 });
 
 /** The `data:` payload of each event in an SSE body. */
-export async function* sseData(body) {
+export async function* sseData(body: Json) {
   const decoder = new TextDecoder();
   let buffer = "";
   let data = [];
@@ -68,20 +73,20 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
   const inflight = new Set(); // approval ids being auto-replied
   const answering = new Set(); // approval ids whose reply POST is in flight
   const owners = new Map(); // child session id -> owned session id, or null when no owned session sits above it
-  let stream = null; // {ac}: the one /api/event subscription every session shares
+  let stream: Json = null; // {ac}: the one /api/event subscription every session shares
 
   const service = () => serviceEndpoint(env);
 
-  async function call(method, path, body) {
+  async function call(method: Json, path: Json, body?: Json) {
     const r = await opencodeRequest(method, path, { body, env });
     if (!r.ok) throw new Error(`OpenCode ${method} ${path} failed: ${r.error}`);
     return r.body;
   }
 
   // The session that asked: a subagent child of an owned session asks under its own id.
-  const askerOf = (s, req) => (typeof req.sessionID === "string" && req.sessionID ? req.sessionID : s.sessionID);
+  const askerOf = (s: Json, req: Json) => (typeof req.sessionID === "string" && req.sessionID ? req.sessionID : s.sessionID);
 
-  function surface(s, req) {
+  function surface(s: Json, req: Json) {
     pending.set(req.id, { sessionID: askerOf(s, req), owner: s.sessionID, action: String(req.action || ASK_FALLBACK) });
     s.ctx.emit({
       type: EventType.CUSTOM, name: APPROVAL_REQUESTED,
@@ -90,7 +95,7 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
   }
 
   // An ask the mode auto-answers gets `once`; a failed auto-reply falls back to an approval card.
-  function ask(s, req) {
+  function ask(s: Json, req: Json) {
     if (!req?.id || pending.has(req.id) || inflight.has(req.id) || answering.has(req.id)) return;
     if (!autoReplies(s.autoReply, req.action)) return surface(s, req);
     inflight.add(req.id);
@@ -101,13 +106,13 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
 
   // Answers an open approval; the entry leaves `pending` first so the reply event does not resolve it twice.
   // `answering` keeps a resync from raising a second card while the reply is in flight.
-  async function answer(id, body) {
+  async function answer(id: Json, body: Json) {
     const entry = pending.get(id);
     pending.delete(id);
     answering.add(id);
     try {
       await call("POST", `/api/session/${enc(entry.sessionID)}/permission/${enc(id)}/reply`, body);
-    } catch (error) {
+    } catch (error: Json) {
       pending.set(id, entry);
       throw error;
     } finally {
@@ -116,11 +121,11 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
   }
 
   // The execution id of a session.execution.* event; "" when the event carries none.
-  const executionOf = (data) => String(data.executionID ?? "");
+  const executionOf = (data: Json) => String(data.executionID ?? "");
   // Once our execution has started, only its completion ends the run. Before that, a completion ends it (existing test).
-  const ours = (s, data) => Boolean(s.run) && (!s.run.started || s.run.execution === executionOf(data));
+  const ours = (s: Json, data: Json) => Boolean(s.run) && (!s.run.started || s.run.execution === executionOf(data));
 
-  function runStarted(s, data) {
+  function runStarted(s: Json, data: Json) {
     const run = s.run;
     if (!run || run.started) return;
     run.started = true;
@@ -132,14 +137,14 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
   }
 
   // Ends the run this handle started; executions it did not start emit nothing.
-  function endRun(s, toEvent) {
+  function endRun(s: Json, toEvent: Json) {
     const run = s.run;
     if (!run) return;
     s.run = null;
     s.ctx.emit(toEvent(run.runId));
   }
 
-  function toolResult(s, data, failed) {
+  function toolResult(s: Json, data: Json, failed: Json) {
     if (!s.run) return;
     s.ctx.emit({
       type: EventType.TOOL_CALL_RESULT, toolCallId: data.callID, messageId: `${data.callID}:result`, role: "tool",
@@ -148,7 +153,7 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
     });
   }
 
-  function replied(data) {
+  function replied(data: Json) {
     const entry = pending.get(data.requestID);
     if (!entry) return;
     pending.delete(data.requestID);
@@ -160,7 +165,7 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
 
   // The owned session above a child session, found through the parentID chain of the service, walked from `start`.
   // Resolves the owner id, null when no owned session sits above, or undefined when a lookup failed (not cached).
-  async function parentOwner(start) {
+  async function parentOwner(start: Json) {
     let id = start;
     for (let depth = 0; depth < PARENT_DEPTH; depth++) {
       const r = await opencodeRequest("GET", `/api/session/${enc(id)}`, { env });
@@ -173,7 +178,7 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
   }
 
   // The owned session above a child session; undefined when none is owned. Each child is looked up once per adapter.
-  async function ownerOf(sessionID, parentID) {
+  async function ownerOf(sessionID: string, parentID: Json) {
     if (!owners.has(sessionID)) {
       const found = await parentOwner(parentID ?? sessionID);
       if (found === undefined) return undefined;
@@ -182,7 +187,7 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
     return sessions.get(owners.get(sessionID) ?? "");
   }
 
-  function dispatch(event) {
+  function dispatch(event: Json) {
     const data = event?.data ?? {};
     if (event?.type === "permission.replied") return replied(data);
     // An ask from a subagent child is handled for the owned session; the event may name no parentID, so the service tells.
@@ -197,13 +202,13 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
       case "permission.asked": return ask(s, data);
       case "session.execution.started": return runStarted(s, data);
       case "session.execution.succeeded":
-        return ours(s, data) && endRun(s, (runId) => ({ type: EventType.RUN_FINISHED, threadId: s.threadId, runId, outcome: { type: "success" } }));
+        return ours(s, data) && endRun(s, (runId: string) => ({ type: EventType.RUN_FINISHED, threadId: s.threadId, runId, outcome: { type: "success" } }));
       case "session.execution.interrupted":
-        return ours(s, data) && endRun(s, (runId) => ({ type: EventType.RUN_FINISHED, threadId: s.threadId, runId, outcome: { type: "cancelled" } }));
+        return ours(s, data) && endRun(s, (runId: string) => ({ type: EventType.RUN_FINISHED, threadId: s.threadId, runId, outcome: { type: "cancelled" } }));
       case "session.execution.failed": {
         // The provider's HTTP status rides in the RUN_ERROR metadata, so lib/limits.ts can classify a bare 429 (UNVERIFIED field names).
         const status = statusOf(data);
-        return ours(s, data) && endRun(s, (runId) => ({ type: EventType.RUN_ERROR, message: errorText(data), metadata: { aiCollab: { runId, ...(status ? { status } : {}) } } }));
+        return ours(s, data) && endRun(s, (runId: string) => ({ type: EventType.RUN_ERROR, message: errorText(data), metadata: { aiCollab: { runId, ...(status ? { status } : {}) } } }));
       }
       case "session.text.ended":
         if (s.run) s.ctx.emit({ type: EventType.TEXT_MESSAGE_CHUNK, messageId: data.assistantMessageID, role: "assistant", delta: String(data.text ?? "") });
@@ -229,12 +234,12 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
       if (s.run) {
         const status = await opencodeRequest("GET", `/api/session/${enc(s.sessionID)}`, { env });
         if (status.ok && isIdle(status.body?.data)) {
-          endRun(s, (runId) => ({ type: EventType.RUN_ERROR, message: "the OpenCode run ended while the event stream was down", metadata: { aiCollab: { runId } } }));
+          endRun(s, (runId: string) => ({ type: EventType.RUN_ERROR, message: "the OpenCode run ended while the event stream was down", metadata: { aiCollab: { runId } } }));
         }
       }
       const r = await opencodeRequest("GET", `/api/session/${enc(s.sessionID)}/permission`, { env });
       if (!r.ok || !Array.isArray(r.body?.data)) continue;
-      const listed = new Set(r.body.data.map((req) => req?.id));
+      const listed = new Set(r.body.data.map((req: Json) => req?.id));
       for (const [id, entry] of [...pending]) {
         if (entry.owner !== s.sessionID || entry.sessionID !== s.sessionID || listed.has(id) || answering.has(id)) continue;
         pending.delete(id);
@@ -251,7 +256,7 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
     listen(ac).catch(() => {});
   }
 
-  async function listen(ac) {
+  async function listen(ac: Json) {
     const { signal } = ac;
     while (!signal.aborted && sessions.size) {
       try {
@@ -265,7 +270,7 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
         for await (const data of sseData(res.body)) {
           try { dispatch(JSON.parse(data)); } catch { /* a malformed event is skipped */ }
         }
-      } catch (error) {
+      } catch (error: Json) {
         if (signal.aborted) break;
         for (const s of sessions.values()) s.ctx.log(`OpenCode event stream: ${error.message}; reconnecting`);
       }
@@ -275,30 +280,30 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
     if (stream?.ac === ac) stream = null;
   }
 
-  function attach(sessionID, ctx, autoReply) {
+  function attach(sessionID: string, ctx: SessionContext, autoReply: Json) {
     const s = { sessionID, ctx, threadId: threadOf(sessionID), autoReply, run: null, tools: new Map() };
     sessions.set(sessionID, s);
     ensureStream();
     return handleFor(s);
   }
 
-  function handleFor(s) {
+  function handleFor(s: Json) {
     const path = `/api/session/${enc(s.sessionID)}`;
     return {
       nativeId: s.sessionID,
-      async send(input) {
+      async send(input: UserInput) {
         if (s.run) throw new Error("a run is already running");
         const run = { runId: randomUUID(), text: input.text, started: false };
         s.run = run;
         try {
           await call("POST", `${path}/prompt`, { text: input.text, delivery: "queue", resume: true });
-        } catch (error) {
+        } catch (error: Json) {
           if (s.run === run) s.run = null;
           throw error;
         }
         return { runId: run.runId };
       },
-      async steer(input) {
+      async steer(input: UserInput) {
         await call("POST", `${path}/prompt`, { text: input.text, delivery: "steer", resume: true });
       },
       async interrupt() {
@@ -316,14 +321,14 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
         await call("POST", `${path}/compact`, {});
         return {};
       },
-      async respond(interruptId, decision) {
+      async respond(interruptId: string, decision: Decision) {
         const entry = pending.get(interruptId);
         if (!entry || entry.owner !== s.sessionID) throw new Error("no open OpenCode approval with that id");
         if (decision.answers) throw new Error("OpenCode approvals take allow or deny, not answers");
         const body = decision.behavior === "allow" ? { decision: "once" } : { decision: "reject", message: decision.message };
         await answer(interruptId, body);
       },
-      async setPermissionMode(mode) {
+      async setPermissionMode(mode: Json) {
         if (!PERMISSION_TABLE.opencode[mode]) throw new Error(`OpenCode has no permission mode ${mode}`);
         s.autoReply = autoReplyFor(mode);
         for (const [id, entry] of [...pending]) {
@@ -352,7 +357,7 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
       const r = await opencodeRequest("GET", "/api/info", { env });
       return r.ok ? { ok: true } : { ok: false, detail: r.error };
     },
-    async open(options, ctx) {
+    async open(options: Json, ctx: SessionContext) {
       const model = modelRef(options.model);
       // A managed session's own permission rules deny native subagents; the shared service config stays untouched.
       const created = await call("POST", "/api/session", { location: { directory: options.cwd }, ...(model ? { model } : {}), ...(options.managed ? { permissions: [...OPENCODE_NO_SUBAGENTS] } : {}) });
@@ -360,21 +365,21 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
       if (typeof id !== "string" || !id) throw new Error("OpenCode created no session");
       return attach(id, ctx, options.permission?.autoReply ?? []);
     },
-    async resume(record, ctx) {
+    async resume(record: Json, ctx: SessionContext) {
       await call("GET", `/api/session/${enc(record.nativeId)}`);
       if (record.managed) await call("PATCH", `/api/session/${enc(record.nativeId)}`, { permissions: [...OPENCODE_NO_SUBAGENTS] });
       return attach(record.nativeId, ctx, autoReplyFor(record.permissionMode));
     },
     async listModels() {
       const body = await call("GET", "/api/model");
-      return (Array.isArray(body?.data) ? body.data : []).flatMap((m) => {
+      return (Array.isArray(body?.data) ? body.data : []).flatMap((m: Json) => {
         const modelID = m?.id ?? m?.modelID;
         return typeof m?.providerID === "string" && typeof modelID === "string" ? [{ id: `${m.providerID}/${modelID}` }] : [];
       });
     },
     async listCommands() {
       const body = await call("GET", "/api/command");
-      return (Array.isArray(body?.data) ? body.data : []).flatMap((c) =>
+      return (Array.isArray(body?.data) ? body.data : []).flatMap((c: Json) =>
         typeof c?.name === "string" ? [{ name: c.name, ...(typeof c.description === "string" ? { description: c.description } : {}) }] : []);
     },
     async shutdown() {

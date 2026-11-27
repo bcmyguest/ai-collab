@@ -1,6 +1,6 @@
 /**
  * spawn_agent: a session starts a child agent of any harness through the runner and gets its address at once.
- * The child runs managed (native subagents off) and messages its parent after every finished run (runner/runner.mjs
+ * The child runs managed (native subagents off) and messages its parent after every finished run (runner/runner.ts
  * reportToParent). docs/spawn-agent-spec.md Part B.
  */
 import { modelShape, parseHarnessModel } from "./harness.ts";

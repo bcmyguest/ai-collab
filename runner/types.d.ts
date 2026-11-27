@@ -140,5 +140,5 @@ export interface Adapter {
   shutdown(): Promise<void>;
 }
 
-// Default export of runner/adapters/<harness>.mjs.
+// Default export of runner/adapters/<harness>.ts (cursor.mjs until its ACP client lands).
 export type AdapterFactory = (options: { env: Record<string, string>; stateDir: string }) => Adapter;

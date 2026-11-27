@@ -57,7 +57,7 @@ export interface DeliveryInput {
 }
 
 /**
- * Builds the workflow function over deps (injectable; the live set is in runner/runner.mjs):
+ * Builds the workflow function over deps (injectable; the live set is in runner/runner.ts):
  *   now(); scfgOf(project, session); sessionOf(project, address) -> live session or null; probe?(session) -> live-set probe, once per poll;
  *   ready(session, probe, project) -> bool; held?(session, scfg) -> bool (a Stop hook holds the session, so the push waits);
  *   handOff?(scfg, messages) (writes the messages to the session's hand-off file for that hold, lib/stop.ts; a handed message counts as delivered);

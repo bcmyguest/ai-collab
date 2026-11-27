@@ -11,6 +11,11 @@ import { codexThreadConfig } from "../../lib/code-mode.ts";
 import { CODEX_NO_SUBAGENT_ARGS } from "../../lib/subagent-guard.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, NOTICE, PERMISSION_MODES, permissionSettings } from "../contract.ts";
 
+import type { Decision, SessionContext, UserInput } from "../types.d.ts";
+
+// oxlint-disable-next-line typescript/no-explicit-any -- harness protocol frames, session records and runner requests are JSON
+type Json = any;
+
 export const APP_SERVER_ARGS = ["app-server", "-c", "thread_unload_delay_secs=0"];
 const DEFAULT_COMMAND = { file: "codex", args: APP_SERVER_ARGS, version: ["--version"] };
 const REQUEST_MS = 60_000;
@@ -25,50 +30,50 @@ const APPROVAL_TOOL = {
 const FAILED_STATUS = ["failed", "declined"];
 
 /** Thread-level settings for a mode: approval policy, reviewer and the sandbox mode name `thread/start` takes. */
-const threadPolicy = (settings) => ({
+const threadPolicy = (settings: Json) => ({
   approvalPolicy: settings.approvalPolicy,
   approvalsReviewer: settings.approvalsReviewer,
-  sandbox: SANDBOX_MODE[settings.sandboxPolicy.type],
+  sandbox: SANDBOX_MODE[settings.sandboxPolicy.type as keyof typeof SANDBOX_MODE],
 });
 
 /** Inside OpenShell the sandbox is the boundary: Codex runs with no approvals and full access to the sandbox. */
-export const openshellPermission = (settings) => ({ ...settings, approvalPolicy: "never", sandboxPolicy: { type: "dangerFullAccess" } });
+export const openshellPermission = (settings: Json) => ({ ...settings, approvalPolicy: "never", sandboxPolicy: { type: "dangerFullAccess" } });
 
 /** Turn-level settings for a mode: the same policy with the sandbox as an object, as `turn/start` takes it. */
-const turnPolicy = (settings) => ({
+const turnPolicy = (settings: Json) => ({
   approvalPolicy: settings.approvalPolicy,
   approvalsReviewer: settings.approvalsReviewer,
   sandboxPolicy: settings.sandboxPolicy,
 });
 
 /** The thread `config` override for a session's code-mode setting; none when the setting is unknown (older records). */
-const threadConfig = (codeMode) => (typeof codeMode === "boolean" ? { config: codexThreadConfig(codeMode) } : {});
+const threadConfig = (codeMode: Json) => (typeof codeMode === "boolean" ? { config: codexThreadConfig(codeMode) } : {});
 
-const userInput = (input) => [{ type: "text", text: input.text, text_elements: [] }];
-const text = (value) => (typeof value === "string" ? value : "");
+const userInput = (input: UserInput) => [{ type: "text", text: input.text, text_elements: [] }];
+const text = (value: Json) => (typeof value === "string" ? value : "");
 
-function startServer(pool, env) {
+function startServer(pool: Json, env: Json) {
   const { file, args } = pool.command;
   const child = spawn(file, args, { env: { ...env, AI_COLLAB_OWNED: "codex" }, stdio: ["pipe", "pipe", "ignore"], shell: false });
   child.stdin.on("error", () => {});
-  const server = { child, pool, nextId: 0, pending: new Map(), sessions: new Map(), exited: false };
-  server.write = (message) => child.stdin.write(`${JSON.stringify(message)}\n`);
-  server.request = (method, params) => new Promise((resolve, reject) => {
+  const server: Json = { child, pool, nextId: 0, pending: new Map(), sessions: new Map(), exited: false };
+  server.write = (message: Json) => child.stdin.write(`${JSON.stringify(message)}\n`);
+  server.request = (method: Json, params: Json) => new Promise((resolve, reject) => {
     const id = ++server.nextId;
     const timer = setTimeout(() => {
       server.pending.delete(id);
-      const error = new Error(`codex ${method} timed out`);
+      const error: Error & { timedOut?: boolean } = new Error(`codex ${method} timed out`);
       error.timedOut = true;
       reject(error);
     }, pool.requestMs);
     server.pending.set(id, {
-      resolve: (value) => { clearTimeout(timer); resolve(value); },
-      reject: (error) => { clearTimeout(timer); reject(error); },
+      resolve: (value: Json) => { clearTimeout(timer); resolve(value); },
+      reject: (error: Json) => { clearTimeout(timer); reject(error); },
     });
     server.write({ id, method, params });
   });
-  server.reply = (id, result) => server.write({ id, result });
-  server.fail = (id, message) => server.write({ id, error: { code: METHOD_NOT_FOUND, message } });
+  server.reply = (id: Json, result: Json) => server.write({ id, result });
+  server.fail = (id: Json, message: Json) => server.write({ id, error: { code: METHOD_NOT_FOUND, message } });
   createInterface({ input: child.stdout }).on("line", (line) => route(server, line));
   child.once("error", () => onExit(server));
   child.once("close", () => onExit(server));
@@ -76,12 +81,12 @@ function startServer(pool, env) {
 }
 
 /** Starts the shared child and runs `initialize`; one child serves every thread of the runner. */
-async function connectServer(pool, env) {
+async function connectServer(pool: Json, env: Json) {
   const server = startServer(pool, env);
   pool.booting = server; // shutdown kills a child that has not finished its handshake
   try {
     await server.request("initialize", { clientInfo: CLIENT, capabilities: { experimentalApi: true } });
-  } catch (error) {
+  } catch (error: Json) {
     server.child.kill();
     throw error;
   } finally {
@@ -91,7 +96,7 @@ async function connectServer(pool, env) {
   return server;
 }
 
-function currentServer(pool, env) {
+function currentServer(pool: Json, env: Json) {
   if (pool.server && !pool.server.exited) return pool.server;
   pool.starting ??= connectServer(pool, env)
     .then((server) => { pool.server = server; return server; })
@@ -99,7 +104,7 @@ function currentServer(pool, env) {
   return pool.starting;
 }
 
-function route(server, line) {
+function route(server: Json, line: Json) {
   let message;
   try { message = JSON.parse(line); } catch { return; }
   if (message.method !== undefined && message.id !== undefined) return onServerRequest(server, message);
@@ -116,7 +121,7 @@ function route(server, line) {
   else waiter.resolve(message.result);
 }
 
-function onExit(server) {
+function onExit(server: Json) {
   if (server.exited) return;
   server.exited = true;
   if (server.pool.server === server) server.pool.server = null;
@@ -135,7 +140,7 @@ function onExit(server) {
 }
 
 // Settles the session's in-flight compact(): resolves with its token counts, or rejects with the reason.
-function settleCompact(session, error) {
+function settleCompact(session: Json, error?: Json) {
   const wait = session.compactWait;
   if (!wait) return;
   session.compactWait = null;
@@ -144,14 +149,14 @@ function settleCompact(session, error) {
 }
 
 // A compaction turn's first token count is its before, the last its after.
-function compactTokens(session, usage) {
+function compactTokens(session: Json, usage: Json) {
   const tokens = usage?.last?.totalTokens;
   if (!Number.isSafeInteger(tokens)) return;
   if (session.compactWait.before === null) session.compactWait.before = tokens;
   else session.compactWait.after = tokens;
 }
 
-function onNotification(server, { method, params }) {
+function onNotification(server: Json, { method, params }: Json) {
   const session = server.sessions.get(params?.threadId);
   if (!session) return;
   // A compaction turn: its own turn lifecycle, not a prompt run, so it never opens a RUN.
@@ -177,7 +182,7 @@ function onNotification(server, { method, params }) {
   }
 }
 
-function turnStarted(session, turn) {
+function turnStarted(session: Json, turn: Json) {
   session.turnId = turn.id;
   const { emit } = session.ctx;
   emit({
@@ -186,7 +191,7 @@ function turnStarted(session, turn) {
   });
 }
 
-async function completeTurn(session, turn) {
+async function completeTurn(session: Json, turn: Json) {
   const server = session.server;
   // Codex 0.171 only exposes experimentalRawEvents on thread/start. After
   // resume, read the portion of the native rollout appended during this turn.
@@ -209,14 +214,14 @@ async function completeTurn(session, turn) {
           input.destroy();
         }
       }
-    } catch (error) {
+    } catch (error: Json) {
       session.ctx.log(`could not read Codex code calls: ${error.message}`);
     }
   }
   if (server && session.server === server) turnCompleted(session, turn);
 }
 
-function turnCompleted(session, turn) {
+function turnCompleted(session: Json, turn: Json) {
   if (turn.status !== "completed" && turn.status !== "interrupted" && turn.status !== "failed") return;
   session.turnId = null;
   session.codeCalls.clear();
@@ -229,7 +234,7 @@ function turnCompleted(session, turn) {
   session.ctx.emit({ type: EventType.RUN_FINISHED, threadId: session.address, runId: turn.id, outcome: { type } });
 }
 
-function itemCompleted(session, item) {
+function itemCompleted(session: Json, item: Json) {
   const { emit } = session.ctx;
   switch (item.type) {
     case "agentMessage":
@@ -246,7 +251,7 @@ function itemCompleted(session, item) {
   }
 }
 
-function codeItem(session, item) {
+function codeItem(session: Json, item: Json) {
   const id = item?.call_id;
   if (!session.turnId || typeof id !== "string") return;
   if (item.type === "custom_tool_call" && item.name === "exec" && typeof item.input === "string") {
@@ -255,13 +260,13 @@ function codeItem(session, item) {
     session.ctx.emit({ type: EventType.TOOL_CALL_CHUNK, toolCallId: id, toolCallName: "exec", delta: item.input });
   } else if (item.type === "custom_tool_call_output" && session.codeCalls.get(id) === false) {
     session.codeCalls.set(id, true);
-    const content = Array.isArray(item.output) ? item.output.map(block => text(block.text)).join("") : text(item.output);
+    const content = Array.isArray(item.output) ? item.output.map((block: Json) => text(block.text)).join("") : text(item.output);
     session.ctx.emit({ type: EventType.TOOL_CALL_RESULT, toolCallId: id, messageId: `${id}:result`, role: "tool", content,
       metadata: { aiCollab: { toolCallName: "exec" } } });
   }
 }
 
-function toolCall(session, id, name, input, output, failed) {
+function toolCall(session: Json, id: Json, name: Json, input: Json, output: Json, failed: Json) {
   const { emit } = session.ctx;
   emit({ type: EventType.TOOL_CALL_CHUNK, toolCallId: id, toolCallName: name, delta: JSON.stringify(input ?? {}) });
   emit({
@@ -270,7 +275,7 @@ function toolCall(session, id, name, input, output, failed) {
   });
 }
 
-function tokenUsage(session, usage) {
+function tokenUsage(session: Json, usage: Json) {
   const tokens = usage?.last?.totalTokens;
   if (!Number.isSafeInteger(tokens)) return;
   const window = Number.isSafeInteger(usage.modelContextWindow) ? usage.modelContextWindow : undefined;
@@ -280,7 +285,7 @@ function tokenUsage(session, usage) {
   session.ctx.emit({ type: EventType.STATE_DELTA, delta });
 }
 
-function requestResolved(session, requestId) {
+function requestResolved(session: Json, requestId: Json) {
   for (const [interruptId, approval] of session.approvals) {
     if (approval.rpcId !== requestId) continue;
     session.approvals.delete(interruptId);
@@ -288,14 +293,14 @@ function requestResolved(session, requestId) {
   }
 }
 
-function codexError(session, { error, willRetry }) {
+function codexError(session: Json, { error, willRetry }: Json) {
   if (willRetry) return;
   session.ctx.emit({ type: EventType.CUSTOM, name: ERROR, value: text(error?.message) || "codex error" });
 }
 
-function onServerRequest(server, message) {
+function onServerRequest(server: Json, message: Json) {
   const session = server.sessions.get(message.params?.threadId);
-  const tool = APPROVAL_TOOL[message.method];
+  const tool = APPROVAL_TOOL[message.method as keyof typeof APPROVAL_TOOL];
   if (!session || !tool) {
     // Requests the runner does not answer yet (user input, MCP elicitation, dynamic tools, auth refresh) get an error, never silence.
     server.fail(message.id, `ai-collab does not answer ${message.method} yet`);
@@ -311,10 +316,10 @@ function onServerRequest(server, message) {
   });
 }
 
-function makeHandle(session) {
+function makeHandle(session: Json) {
   return {
     nativeId: session.nativeId,
-    async send(input) {
+    async send(input: UserInput) {
       if (session.turnId) throw new Error("the codex turn is still running");
       if (session.compactWait) throw new Error("a codex compaction is still running");
       await attach(session);
@@ -327,13 +332,13 @@ function makeHandle(session) {
       const { turn } = await session.server.request("turn/start", {
         threadId: session.nativeId, input: userInput(input), cwd: session.cwd, ...turnPolicy(session.settings),
         ...(session.model ? { model: session.model } : {}),
-      }).catch((error) => {
+      }).catch((error: Json) => {
         if (error.timedOut) error.mayHaveStarted = true;
         throw error;
       });
       return { runId: turn.id };
     },
-    async steer(input) {
+    async steer(input: UserInput) {
       if (!session.turnId) throw new Error("no codex turn is running to steer");
       await liveServer(session).request("turn/steer", { threadId: session.nativeId, expectedTurnId: session.turnId, input: userInput(input) });
     },
@@ -348,7 +353,7 @@ function makeHandle(session) {
       if (session.compactWait) throw new Error("codex: a compaction is already running");
       const server = await currentServer(session.pool, session.env);
       if (session.server !== server) await attach(session);
-      const wait = { turnId: null, before: null, after: null };
+      const wait: Json = { turnId: null, before: null, after: null };
       const done = new Promise((resolve, reject) => {
         wait.timer = setTimeout(() => settleCompact(session, new Error("codex compaction timed out")), COMPACT_MS);
         wait.resolve = resolve;
@@ -361,12 +366,12 @@ function makeHandle(session) {
       session.compactWait = wait;
       try {
         await server.request("thread/compact/start", { threadId: session.nativeId });
-      } catch (error) {
+      } catch (error: Json) {
         settleCompact(session, error);
       }
       return done;
     },
-    async respond(interruptId, decision) {
+    async respond(interruptId: string, decision: Decision) {
       const approval = session.approvals.get(interruptId);
       if (!approval) throw new Error(`no codex approval ${interruptId} is waiting`);
       session.approvals.delete(interruptId);
@@ -377,7 +382,7 @@ function makeHandle(session) {
       session.server.reply(approval.rpcId, result);
       session.ctx.emit({ type: EventType.CUSTOM, name: APPROVAL_RESOLVED, value: { interruptId, status: "resolved", reason: allow ? "allowed" : "denied" } });
     },
-    async setPermissionMode(mode) {
+    async setPermissionMode(mode: Json) {
       const { settings, error } = permissionSettings("codex", mode, session.place);
       if (error) throw new Error(error);
       session.settings = settings;
@@ -403,13 +408,13 @@ function makeHandle(session) {
 }
 
 /** The session's child, or a clear error once the child has exited or the session closed. */
-function liveServer(session) {
+function liveServer(session: Json) {
   if (!session.server || session.server.exited) throw new Error("the codex app-server is not running; resume the session");
   return session.server;
 }
 
 /** Binds the session to the shared child, resuming the thread there after a restart or child exit. */
-async function attach(session) {
+async function attach(session: Json) {
   const server = await currentServer(session.pool, session.env);
   if (session.server === server) return;
   server.sessions.set(session.nativeId, session);
@@ -419,19 +424,19 @@ async function attach(session) {
       ...threadConfig(session.codeMode),
     });
     session.rolloutPath = thread?.path || null;
-  } catch (error) {
+  } catch (error: Json) {
     server.sessions.delete(session.nativeId);
     throw error;
   }
   session.server = server;
 }
 
-function newSession({ pool, ctx, env, cwd, place, mode, model, settings, codeMode }) {
+function newSession({ pool, ctx, env, cwd, place, mode, model, settings, codeMode }: Json) {
   return { pool, ctx, env, cwd, place, mode, model, settings, codeMode, nativeId: "", address: "", server: null, prompt: "", turnId: null, approvals: new Map(), usage: null, compactWait: null,
     codeCalls: new Map(), rolloutPath: null, rolloutOffset: null };
 }
 
-async function openThread(pool, options, ctx) {
+async function openThread(pool: Json, options: Json, ctx: SessionContext) {
   const server = await currentServer(pool, options.env);
   const session = newSession({ pool, ctx, env: options.env, cwd: options.cwd, place: options.place, mode: options.permissionMode, model: options.model, settings: options.permission, codeMode: options.codeMode });
   const { thread } = await server.request("thread/start", {
@@ -445,24 +450,24 @@ async function openThread(pool, options, ctx) {
   return makeHandle(session);
 }
 
-/** Default export of runner/adapters/codex.mjs. `command` overrides the child argv; requestMs the RPC timeout (tests). */
+/** Default export of runner/adapters/codex.ts. `command` overrides the child argv; requestMs the RPC timeout (tests). */
 export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND, requestMs = REQUEST_MS } = {}) {
-  const pool = { command, requestMs, server: null, starting: null, booting: null };
+  const pool: Json = { command, requestMs, server: null, starting: null, booting: null };
   // Managed sessions share a second app-server with native subagents off and AI_COLLAB_MANAGED in its env (spec answer 5).
-  const managedPool = { command: { ...command, args: [...command.args, ...CODEX_NO_SUBAGENT_ARGS] }, requestMs, server: null, starting: null, booting: null };
+  const managedPool: Json = { command: { ...command, args: [...command.args, ...CODEX_NO_SUBAGENT_ARGS] }, requestMs, server: null, starting: null, booting: null };
   // The argv tail a managed session's own launcher gets, so an OpenShell child runs without subagents too.
-  const launcherArgs = (args, managed) => (managed ? [...args, ...CODEX_NO_SUBAGENT_ARGS] : args);
+  const launcherArgs = (args: Json, managed: Json) => (managed ? [...args, ...CODEX_NO_SUBAGENT_ARGS] : args);
   return {
     harness: "codex",
     capabilities: { steer: true, images: false, resume: "transcript", permissionModes: PERMISSION_MODES, places: ["folder", "worktree", "openshell"] },
-    available(probeEnv) {
+    available(probeEnv: Json) {
       return new Promise((resolve) => {
         execFile(command.file, command.version, { env: probeEnv, timeout: 10_000 }, (error, stdout) => {
           resolve(error ? { ok: false, detail: error.message } : { ok: true, detail: stdout.trim() });
         });
       });
     },
-    async open(options, ctx) {
+    async open(options: Json, ctx: SessionContext) {
       const [file, ...args] = options.sandboxArgv || [];
       const commandAt = args.indexOf("--") + 1;
       if (options.place === "openshell" && (!file || args[0] !== "sandbox" || args[1] !== "exec" || !commandAt || !args[commandAt])) {
@@ -472,12 +477,12 @@ export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND, requ
       const opened = options.place === "openshell" ? { ...options, permission: openshellPermission(options.permission) } : options;
       try {
         return await openThread(sessionPool, opened, ctx);
-      } catch (error) {
+      } catch (error: Json) {
         if (file) sessionPool.server?.child.kill();
         throw error;
       }
     },
-    async resume(record, ctx, resumeEnv, staged) {
+    async resume(record: Json, ctx: SessionContext, resumeEnv: Json, staged: Json) {
       if (record.place === "openshell" && !staged?.argv?.[0]) throw new Error("Codex OpenShell threads require a prepared launcher to resume");
       const { settings, error } = permissionSettings("codex", record.permissionMode, record.place);
       if (error) throw new Error(error);
@@ -492,26 +497,26 @@ export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND, requ
       try {
         await attach(session);
         return makeHandle(session);
-      } catch (error) {
+      } catch (error: Json) {
         if (file) sessionPool.server?.child.kill();
         throw error;
       }
     },
-    async listModels(listEnv) {
+    async listModels(listEnv: Json) {
       const server = await currentServer(pool, listEnv);
-      const models = [];
-      let cursor = null;
+      const models: Json[] = [];
+      let cursor: Json = null;
       do {
-        const page = await server.request("model/list", cursor ? { cursor } : {});
+        const page: Json = await server.request("model/list", cursor ? { cursor } : {});
         models.push(...(page.data || []));
         cursor = typeof page.nextCursor === "string" ? page.nextCursor : null;
       } while (cursor);
       return models.filter((m) => !m.hidden).map((m) => ({ id: m.model, label: m.displayName, ...(m.isDefault ? { default: true } : {}) }));
     },
-    async listCommands(cwd, listEnv) {
+    async listCommands(cwd: string, listEnv: Json) {
       const server = await currentServer(pool, listEnv);
       const page = await server.request("skills/list", { cwds: [cwd] });
-      return (page.data || []).flatMap((entry) => entry.skills || []).map((skill) => ({ name: skill.name, description: skill.description }));
+      return (page.data || []).flatMap((entry: Json) => entry.skills || []).map((skill: Json) => ({ name: skill.name, description: skill.description }));
     },
     async shutdown() {
       for (const each of [pool, managedPool]) {

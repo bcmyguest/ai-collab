@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ai-collab-runner entry: loads projects and adapters, recovers durable sessions, serves the control socket.
-import { mkdirSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { loadProjects, stateDir, autoDefaults, autoDeployEnabled } from "../lib/config.ts";
@@ -8,7 +8,7 @@ import { autoDeployEntry } from "../lib/land.ts";
 import { HARNESSES } from "./contract.ts";
 import { openWorkflows } from "../lib/workflows.ts";
 import { pgUrl } from "../lib/postgres.ts";
-import { createRunner } from "./runner.mjs";
+import { createRunner } from "./runner.ts";
 import { listenControl, runnerSocket } from "./control.ts";
 import { loadSchedules, registerSchedules } from "./schedules.ts";
 import { startTaskWakes } from "./task-wake.ts";
@@ -19,14 +19,15 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 /** The durable log path: AI_COLLAB_RUNNER_DB, else <state dir>/runner.db. */
 export const runnerDb = (env = process.env) => env.AI_COLLAB_RUNNER_DB || join(stateDir(env), "runner.db");
 
-/** Imports runner/adapters/<harness>.mjs for each name; a missing module is skipped and reported. */
+/** Imports runner/adapters/<harness>.ts (.js in the built package, else .mjs) for each name; a missing module is skipped and reported. */
 export async function loadAdapters(names, { dir = join(HERE, "adapters"), env = process.env, log = () => {} } = {}) {
   const adapters = new Map();
   for (const harness of names) {
     if (!HARNESSES.includes(harness)) { log(`unknown harness ${harness}`); continue; }
     let factory;
     try {
-      ({ default: factory } = await import(pathToFileURL(join(dir, `${harness}.mjs`)).href));
+      const file = [".ts", ".js"].map((ext) => join(dir, harness + ext)).find((path) => existsSync(path)) ?? join(dir, `${harness}.mjs`);
+      ({ default: factory } = await import(pathToFileURL(file).href));
     } catch (error) {
       if (error.code === "ERR_MODULE_NOT_FOUND") { log(`no ${harness} adapter yet`); continue; }
       throw error;

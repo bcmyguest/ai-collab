@@ -17,7 +17,7 @@ Lib: `lib/builder/`, re-exported by `lib/builder.ts`. OpenShell lifecycle: `lib/
 
 Codex's hook trust flag is needed because `codex exec` runs plugin hooks only when their trust is persisted in config.toml, which only the interactive `/hooks` review writes.
 
-`runner/runner.mjs` manages the durable session steps for runner-owned builders. Both supervisors use `lib/builder/` to collect work, publish landing results, and clean up sandboxes. Cleanup retains an uploaded workspace until its worktree has been collected.
+`runner/runner.ts` manages the durable session steps for runner-owned builders. Both supervisors use `lib/builder/` to collect work, publish landing results, and clean up sandboxes. Cleanup retains an uploaded workspace until its worktree has been collected.
 
 For the opt-in host integration matrix, see [Live OpenShell bootstrap smoke](sandbox-smoke.md).
 
