@@ -8,12 +8,14 @@ import { cn } from "@/lib/utils";
 
 // Button, TextField and Chip render with the app's components; the schemas stay the basic catalog's, so answers and checks are unchanged.
 const VARIANT = { primary: "default", default: "outline", borderless: "ghost" };
+// The child Text paints with the surface color; inside a button it takes the button's foreground.
+const ON_BUTTON = { "--a2ui-color-on-surface": "currentColor", "--a2ui-color-on-background": "currentColor" };
 
 /** A button: primary, outlined or ghost; disabled while its checks fail. */
 export const ButtonImpl = createComponentImplementation(basicCatalog.components.get("Button"), ({ props, buildChild }) => {
   const disabled = props.isValid === false;
   return <Button type="button" size="sm" variant={VARIANT[props.variant ?? "default"]} disabled={disabled} onClick={() => props.action?.()}
-    className="h-8 rounded-md px-3.5 disabled:opacity-50">
+    style={ON_BUTTON} className="h-8 rounded-md px-3.5 disabled:opacity-50 [&_*]:text-inherit">
     {props.child && buildChild(props.child)}
   </Button>;
 });
