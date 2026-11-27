@@ -106,11 +106,20 @@ function takeLock(lock: string, token: string): boolean {
     if ((err as NodeJS.ErrnoException).code === "EEXIST") return false;
     throw err;
   }
+  // A waiter may break this ownerless dir after staleMs and another process may make a new one, so owner.json is
+  // written only into a dir that still has none: the temp write fails on a missing dir, the link on an existing owner.
+  const owner = path.join(lock, OWNER_FILE);
+  const temp = `${owner}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
   try {
-    writeJson(path.join(lock, OWNER_FILE), { pid: process.pid, host: os.hostname(), token, start: procStart(process.pid) });
+    fs.writeFileSync(temp, `${JSON.stringify({ pid: process.pid, host: os.hostname(), token, start: procStart(process.pid) })}\n`, { mode: 0o600 });
+    fs.linkSync(temp, owner);
   } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "EEXIST") return false;
     fs.rmSync(lock, { recursive: true, force: true });
     throw error;
+  } finally {
+    fs.rmSync(temp, { force: true });
   }
   return true;
 }
