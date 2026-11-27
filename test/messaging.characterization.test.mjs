@@ -8,7 +8,7 @@ import { sendMessage } from "../lib/inbox.mjs";
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import { awaitReply, waitForIdle, waitForMessages, waitForReply } from "../lib/agents.mjs";
 import { readInbox } from "../lib/messaging.ts";
-import { runWaiter } from "../lib/waiter.mjs";
+import { runWaiter } from "../lib/waiter.ts";
 import { runCli } from "../lib/cli.mjs";
 import { decideStop } from "../lib/stop.mjs";
 import { requestWait } from "../lib/questions.mjs";

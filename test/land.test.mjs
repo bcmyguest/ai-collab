@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { HOST_CHECKOUT } from "../lib/merge-cli.mjs";
 import { LandRefused, autoDeployEntry, checkState, deployHost, listOpenPrs, mergePr, requestLand, restartServices, startDeploy } from "../lib/land.mjs";
-import { deploy, land } from "../lib/land-cli.mjs";
+import { deploy, land } from "../lib/land-cli.ts";
 import { autoDeployEnabled } from "../lib/config.mjs";
 import { runCli } from "../lib/cli.mjs";
 

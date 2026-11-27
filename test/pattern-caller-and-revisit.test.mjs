@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { compileTrace } from "../lib/pattern-compiler.mjs";
+import { compileTrace } from "../lib/pattern-compiler.ts";
 import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, launchPatternRun, runStatus } from "../lib/pattern-runs.mjs";
 import { seedPatternRun } from "../lib/pattern-workflow.mjs";
 

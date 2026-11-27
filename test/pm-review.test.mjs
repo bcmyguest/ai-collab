@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { RULES_MAX } from "../lib/mission.mjs";
-import { REVIEW_HEADING, REVIEW_MAX_LINES, reviewBlock, withReview } from "../lib/pm-review.mjs";
+import { REVIEW_HEADING, REVIEW_MAX_LINES, reviewBlock, withReview } from "../lib/pm-review.ts";
 import { tickFn } from "../runner/schedules.mjs";
 
 function project() {

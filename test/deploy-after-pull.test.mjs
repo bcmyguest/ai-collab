@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { deployHost } from "../lib/land.mjs";
-import { deploy } from "../lib/land-cli.mjs";
+import { deploy } from "../lib/land-cli.ts";
 
 const OLD = "1".repeat(40);
 const NEW = "2".repeat(40);

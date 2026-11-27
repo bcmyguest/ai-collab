@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { compileTrace } from "../lib/pattern-compiler.mjs";
+import { compileTrace } from "../lib/pattern-compiler.ts";
 import { BUILT_IN_PATTERNS } from "../lib/patterns.mjs";
 
 const dot = readFileSync(new URL("../lib/team-templates/product/team.dot", import.meta.url), "utf8");

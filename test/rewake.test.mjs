@@ -6,7 +6,7 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { sendMessage } from "../lib/inbox.mjs";
-import { runWaiter, takeWaiterSlot } from "../lib/waiter.mjs";
+import { runWaiter, takeWaiterSlot } from "../lib/waiter.ts";
 
 const HOOK = fileURLToPath(new URL("../scripts/ai-collab-hook.mjs", import.meta.url));
 const SESSION_ID = "11111111-2222-3333-4444-555555555555";
