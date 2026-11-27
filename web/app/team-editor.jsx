@@ -55,7 +55,7 @@ export function TeamEditor({ pattern, initialName = "", templates, project, call
   return <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-3 py-4 text-sm lg:flex-row lg:items-start">
     <section className="flex min-w-0 flex-col gap-2 lg:flex-1">
       <h2 className="text-xs font-medium text-muted-foreground">Graph</h2>
-      <div className="rounded-xl border bg-card p-2">
+      <div className="rounded-xl bg-card shadow-surface p-2">
         {good?.roles?.length ? <RoleGraph graph={toGraph(good)} label={`Graph of ${good.name}`}/>
           : <p className="py-8 text-center text-xs text-muted-foreground">No valid graph yet.</p>}
       </div>

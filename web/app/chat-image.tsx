@@ -37,7 +37,7 @@ export function ChatImage({ attachment, compact = false }: { attachment: { file:
   const src = "/api/file/" + encodeURIComponent(attachment.file);
   const [unavailable, setUnavailable] = useState(false);
   return <a href={src} target="_blank" rel="noreferrer"
-    className="block w-fit max-w-full overflow-hidden rounded-xl border bg-card focus-visible:outline-2 focus-visible:outline-ring">
+    className="block w-fit max-w-full overflow-hidden rounded-xl bg-card shadow-surface focus-visible:outline-2 focus-visible:outline-ring">
     {!unavailable && <img src={src} alt="" loading="lazy" onError={() => setUnavailable(true)}
       className={cn("w-auto max-w-full object-contain", compact ? "max-h-20" : "max-h-96")}/>}
     <span className="block break-all px-3 py-1.5 text-sm underline">{attachment.name}</span>

@@ -29,7 +29,7 @@ export function Avatar({ address, className, by }) {
 }
 
 export function Dot({ online }) {
-  return <span aria-hidden className={cn("inline-block size-2 shrink-0 rounded-full", online ? "bg-emerald-500" : "bg-muted-foreground/40")}/>;
+  return <span aria-hidden className={cn("inline-block size-2 shrink-0 rounded-full", online ? "bg-live" : "bg-muted-foreground/40")}/>;
 }
 
 /** Team and role for a session address, from the agent list. Empty when the session holds no live role. */

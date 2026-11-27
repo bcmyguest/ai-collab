@@ -17,7 +17,7 @@ const PRIORITY_BADGE = {
   P3: "border-border bg-transparent text-muted-foreground",
 };
 const VIEWS = [["board", "Board"], ["graph", "Graph"]];
-const CARD = "flex w-full min-w-0 flex-col gap-1.5 rounded-xl border bg-card p-3 text-left text-sm";
+const CARD = "flex w-full min-w-0 flex-col gap-1.5 rounded-xl bg-card shadow-surface p-3 text-left text-sm";
 const LAZY = "[content-visibility:auto] [contain-intrinsic-size:auto_7rem]";
 
 const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -121,7 +121,7 @@ const Card = memo(function Card({ task, age, compose, open, fullId, continuation
 });
 
 function CompactCard({ task, age, inspect, move, dragStart }) {
-  return <li className="min-w-0 rounded-xl border bg-card p-2">
+  return <li className="min-w-0 rounded-xl bg-card shadow-surface p-2">
     <button type="button" className="flex w-full min-w-0 flex-col gap-1 text-left hover:underline" onClick={() => inspect(task.id)}>
       <TaskMetadata task={task}/>
       <span className="line-clamp-2 text-sm font-medium wrap-anywhere">{task.title}</span>

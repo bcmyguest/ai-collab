@@ -35,14 +35,18 @@
   --color-cursor: var(--cursor);
   --color-opencode: var(--opencode);
   --color-agent: var(--agent);
-  --radius-sm: 3px;
-  --radius-md: 4px;
-  --radius-lg: var(--radius);
-  /* The larger steps clamp to 6px, so no surface reads as a pill or a bubble. */
-  --radius-xl: var(--radius);
-  --radius-2xl: var(--radius);
-  --radius-3xl: var(--radius);
-  --radius-4xl: var(--radius);
+  --color-live: var(--live);
+  /* Rounded, not pill: chips 8px, buttons and inputs 10px, rows 14px, cards 16px. */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: calc(var(--radius) - 2px);
+  --radius-xl: calc(var(--radius) + 2px);
+  --radius-2xl: calc(var(--radius) + 4px);
+  --radius-3xl: calc(var(--radius) + 8px);
+  --radius-4xl: calc(var(--radius) + 12px);
+  /* Major surfaces lift by tone and shadow instead of a hairline border. */
+  --shadow-surface: var(--elevation-1);
+  --shadow-raised: var(--elevation-2);
 }
 
 /* Five type steps; components use only these. */
@@ -60,66 +64,74 @@
 }
 
 :root {
-  --radius: 0.375rem;
-  --background: oklch(0.985 0.002 75);
-  --foreground: oklch(0.22 0.006 60);
-  --card: oklch(0.995 0.001 75);
-  --card-foreground: oklch(0.22 0.006 60);
-  --popover: oklch(0.995 0.001 75);
-  --popover-foreground: oklch(0.22 0.006 60);
-  /* The one accent: the primary action and anything that waits on the operator. */
-  --primary: oklch(0.53 0.15 45);
-  --primary-foreground: oklch(0.99 0.003 75);
-  --secondary: oklch(0.95 0.004 75);
-  --secondary-foreground: oklch(0.22 0.006 60);
-  --muted: oklch(0.95 0.004 75);
-  --muted-foreground: oklch(0.48 0.008 60);
-  --accent: oklch(0.93 0.005 75);
-  --accent-foreground: oklch(0.22 0.006 60);
+  --radius: 0.75rem;
+  /* Neutrals carry a slight indigo tint so the accent belongs to them. */
+  --background: oklch(0.985 0.005 275);
+  --foreground: oklch(0.22 0.015 275);
+  --card: oklch(0.998 0.002 275);
+  --card-foreground: oklch(0.22 0.015 275);
+  --popover: oklch(0.998 0.002 275);
+  --popover-foreground: oklch(0.22 0.015 275);
+  /* The one accent, indigo #4B53C2: the primary action, the focus ring and anything that waits on the operator; never "live". */
+  --primary: oklch(0.5 0.17 275);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.955 0.007 275);
+  --secondary-foreground: oklch(0.22 0.015 275);
+  --muted: oklch(0.955 0.007 275);
+  --muted-foreground: oklch(0.48 0.015 275);
+  --accent: oklch(0.94 0.012 275);
+  --accent-foreground: oklch(0.22 0.015 275);
   --destructive: oklch(0.53 0.19 27);
-  --border: oklch(0.9 0.005 75);
-  --input: oklch(0.88 0.005 75);
-  /* Focus rings use the accent: at least 4.4:1 against every light surface and 7.1:1 against every dark one. */
+  --border: oklch(0.91 0.008 275);
+  --input: oklch(0.88 0.01 275);
+  /* Focus rings use the accent: 5.1:1 or more against every light surface, 7.2:1 or more against every dark one. */
   --ring: var(--primary);
-  --sidebar: oklch(0.965 0.004 75);
-  --sidebar-foreground: oklch(0.22 0.006 60);
-  --sidebar-accent: oklch(0.92 0.006 75);
-  --sidebar-border: oklch(0.9 0.005 75);
-  /* Harness marks are monochrome; the glyph shape tells them apart. */
-  --claude: oklch(0.45 0.01 60);
-  --codex: oklch(0.45 0.01 60);
-  --cursor: oklch(0.45 0.01 60);
-  --opencode: oklch(0.45 0.01 60);
-  --agent: oklch(0.45 0.01 60);
+  --sidebar: oklch(0.965 0.008 275);
+  --sidebar-foreground: oklch(0.22 0.015 275);
+  --sidebar-accent: oklch(0.925 0.02 275);
+  --sidebar-border: oklch(0.91 0.008 275);
+  /* Harness tints, each 3.8:1 or more as an icon on the sidebar's hover surface. */
+  --claude: oklch(0.56 0.13 45);
+  --codex: oklch(0.5 0.03 250);
+  --cursor: oklch(0.55 0.12 235);
+  --opencode: oklch(0.52 0.12 150);
+  --agent: oklch(0.5 0.05 300);
+  --live: oklch(0.54 0.13 163);
+  --elevation-1: 0 1px 2px oklch(0.25 0.04 275 / 0.06), 0 1px 6px oklch(0.25 0.04 275 / 0.05);
+  --elevation-2: 0 2px 6px oklch(0.25 0.04 275 / 0.08), 0 8px 24px oklch(0.25 0.04 275 / 0.08);
 }
 
 .dark {
-  --background: oklch(0.175 0.004 60);
-  --foreground: oklch(0.93 0.004 75);
-  --card: oklch(0.205 0.005 60);
-  --card-foreground: oklch(0.93 0.004 75);
-  --popover: oklch(0.225 0.005 60);
-  --popover-foreground: oklch(0.93 0.004 75);
-  --primary: oklch(0.75 0.13 55);
-  --primary-foreground: oklch(0.2 0.02 50);
-  --secondary: oklch(0.25 0.005 60);
-  --secondary-foreground: oklch(0.93 0.004 75);
-  --muted: oklch(0.25 0.005 60);
-  --muted-foreground: oklch(0.7 0.008 70);
-  --accent: oklch(0.27 0.006 60);
-  --accent-foreground: oklch(0.93 0.004 75);
+  --background: oklch(0.18 0.012 275);
+  --foreground: oklch(0.94 0.006 275);
+  --card: oklch(0.215 0.014 275);
+  --card-foreground: oklch(0.94 0.006 275);
+  --popover: oklch(0.235 0.016 275);
+  --popover-foreground: oklch(0.94 0.006 275);
+  /* Indigo #9BABFD. */
+  --primary: oklch(0.76 0.12 275);
+  --primary-foreground: oklch(0.2 0.04 275);
+  --secondary: oklch(0.25 0.014 275);
+  --secondary-foreground: oklch(0.94 0.006 275);
+  --muted: oklch(0.25 0.014 275);
+  --muted-foreground: oklch(0.72 0.015 275);
+  --accent: oklch(0.27 0.02 275);
+  --accent-foreground: oklch(0.94 0.006 275);
   --destructive: oklch(0.7 0.17 25);
-  --border: oklch(0.29 0.005 60);
-  --input: oklch(0.33 0.005 60);
-  --sidebar: oklch(0.155 0.004 60);
-  --sidebar-foreground: oklch(0.93 0.004 75);
-  --sidebar-accent: oklch(0.24 0.005 60);
-  --sidebar-border: oklch(0.26 0.005 60);
-  --claude: oklch(0.78 0.008 70);
-  --codex: oklch(0.78 0.008 70);
-  --cursor: oklch(0.78 0.008 70);
-  --opencode: oklch(0.78 0.008 70);
-  --agent: oklch(0.78 0.008 70);
+  --border: oklch(0.29 0.015 275);
+  --input: oklch(0.33 0.016 275);
+  --sidebar: oklch(0.16 0.012 275);
+  --sidebar-foreground: oklch(0.94 0.006 275);
+  --sidebar-accent: oklch(0.26 0.025 275);
+  --sidebar-border: oklch(0.26 0.014 275);
+  --claude: oklch(0.76 0.12 50);
+  --codex: oklch(0.74 0.03 250);
+  --cursor: oklch(0.78 0.11 230);
+  --opencode: oklch(0.78 0.13 150);
+  --agent: oklch(0.75 0.05 300);
+  --live: oklch(0.72 0.16 163);
+  --elevation-1: 0 1px 2px oklch(0 0 0 / 0.3), 0 0 0 1px oklch(1 0 0 / 0.04);
+  --elevation-2: 0 4px 16px oklch(0 0 0 / 0.4), 0 0 0 1px oklch(1 0 0 / 0.06);
 }
 
 @layer base {

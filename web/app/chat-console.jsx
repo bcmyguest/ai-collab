@@ -376,7 +376,7 @@ export function Console({ account }) {
     (listScreen ? asideRef : headerRef).current?.querySelector("button:not(:disabled)")?.focus();
   }, [listScreen]);
   return <SurfaceContext.Provider value={{ surfaces, submit: payload => action("a2ui", payload, "Sent"), disabled: !ready || working }}><div className="flex h-dvh w-full overflow-hidden">
-    <aside ref={asideRef} aria-label="Projects and threads" className={cn("shrink-0 border-r bg-sidebar text-sidebar-foreground", listScreen ? "flex w-full" : "hidden w-72 md:flex")}>
+    <aside ref={asideRef} aria-label="Projects and threads" className={cn("shrink-0 bg-sidebar text-sidebar-foreground", listScreen ? "flex w-full" : "hidden w-72 md:flex")}>
       <div className="min-w-0 flex-1"><ThreadSidebar {...threadProps}/></div>
     </aside>
     <Sheet open={schedulesOpen} onOpenChange={setSchedulesOpen}>
@@ -399,7 +399,7 @@ export function Console({ account }) {
       }}/>
     <main className={cn("min-w-0 flex-1 flex-col", listScreen ? "hidden" : "flex")}>
       <DeployedBanner deployed={data.deployed}/>
-      <header ref={headerRef} className="flex min-h-12 shrink-0 items-center gap-2 border-b px-3 py-1.5">
+      <header ref={headerRef} className="relative z-10 flex min-h-12 shrink-0 items-center gap-2 bg-background px-3 py-1.5 shadow-surface">
         {/* A phone goes back to the thread list; the list is always beside the chat from md up. */}
         <Button variant="ghost" size="icon" className="relative -ml-1 md:hidden" aria-label="Threads" onClick={() => setNavOpen(true)} title={anyWaiting ? "Sessions waiting on you" : undefined}>
           <ArrowLeft/>{anyWaiting && <span aria-hidden className="absolute right-1.5 top-1.5 size-2 rounded-full bg-primary"/>}

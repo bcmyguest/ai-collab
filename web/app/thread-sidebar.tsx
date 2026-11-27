@@ -10,6 +10,7 @@ import { isLive, sessionState } from "@/lib/session-state";
 import { COLLAPSED, GROUPS, elapsed, shortName, threadGroups, threadSession, unthreaded, workingTime, type Agent, type GroupId, type Thread, type ThreadRow } from "@/lib/thread-groups";
 import { AgentName, HarnessMark } from "./agent-mark";
 import { ago } from "./chat-shared";
+import { Logo } from "./logo";
 
 type Project = { id: string; waiting?: number; paused?: boolean };
 type Selected = { level: string; project?: string; session?: string; tab?: string };
@@ -26,18 +27,18 @@ export type SidebarProps = {
   controls?: ReactNode;
 };
 
-const MENU = "z-50 min-w-56 rounded-md border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none";
-const ITEM = "flex min-h-9 cursor-pointer items-center gap-2 rounded-sm px-2 focus-visible:-outline-offset-2 data-highlighted:bg-accent data-disabled:cursor-default data-disabled:opacity-50 max-sm:min-h-11";
+const MENU = "z-50 min-w-56 rounded-xl bg-popover p-1 text-sm text-popover-foreground shadow-raised outline-none";
+const ITEM = "flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2 focus-visible:-outline-offset-2 data-highlighted:bg-accent data-disabled:cursor-default data-disabled:opacity-50 max-sm:min-h-11";
 const LABEL = "px-2 pb-1 pt-2 text-xs text-muted-foreground";
 const SEP = "my-1 h-px bg-border";
 const THEMES = [["system", "System"], ["light", "Light"], ["dark", "Dark"]];
 const PR_TONE = { merged: "text-foreground", open: "text-foreground", draft: "text-muted-foreground", closed: "text-muted-foreground line-through" } satisfies Record<string, string>;
 
-/** The text wordmark; it doubles as the way home. */
+/** The mark and wordmark; together they are the way home. */
 function Wordmark({ current, navigate }: { current: boolean; navigate: Navigate }) {
   return <button type="button" data-tap onClick={() => navigate({ level: "home" })} aria-current={current ? "page" : undefined} title="Home: every project"
-    className="rounded-sm px-1 text-base font-semibold tracking-tight text-foreground">
-    ai<span className="text-muted-foreground">-</span>collab
+    className="flex items-center gap-2 rounded-md px-1 text-base font-semibold tracking-tight text-foreground">
+    <Logo/><span>ai<span className="text-muted-foreground">-</span>collab</span>
   </button>;
 }
 
@@ -252,7 +253,7 @@ export function ThreadSidebar(props: SidebarProps) {
         {threads.length + loose.length === 0 && <p className="px-2 py-4 text-sm text-muted-foreground">No threads yet. Start one with New thread.</p>}
       </>}
     </nav>
-    <footer className="flex items-center gap-1 border-t px-2 py-1.5">
+    <footer className="flex items-center gap-1 px-2 py-1.5 shadow-[0_-1px_0_var(--sidebar-border)]">
       <AppMenu {...props} current={current}/>
       <span className="flex-1"/>
       {controls}

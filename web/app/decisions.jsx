@@ -23,7 +23,7 @@ export function DecisionQueue({ decisions = [], inbox, now, disabled, action, se
     {!count && <p className="text-sm text-muted-foreground">No unresolved decisions.</p>}
     {[...groups].map(([key, items]) => {
       const { project, task } = items[0];
-      return <section key={key} className="flex min-w-0 flex-col gap-3 rounded-2xl border bg-card p-3 [overflow-wrap:anywhere]">
+      return <section key={key} className="flex min-w-0 flex-col gap-3 rounded-2xl bg-card shadow-surface p-3 [overflow-wrap:anywhere]">
         <h3 className="text-sm font-medium">
           {project}{task && <> · <a className="underline" href={taskLink(project, task.id)}>{task.title || task.id}</a> · {task.priority}</>}
         </h3>
