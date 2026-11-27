@@ -56,13 +56,16 @@ retain its stated provenance.
 
 ## Starting another agent
 
-Start another harness's agent headless from your shell in the project folder; it joins AI Collab and messages you `started: <its address>`:
+Call the MCP tool `spawn_agent` (or `ai-collab spawn <harness[:model]>` from the shell). It needs the ai-collab runner.
+
+- Make the brief self-contained: the child sees none of your context.
+- Message the child with `send_to_peer` (`to` = its address). Wait for its report with `wait` or by ending your turn; it arrives at your next hook.
+
+Fallback, only when `spawn_agent` is unavailable (no runner, no MCP tools): start the harness headless from your shell in the project folder. It joins AI Collab and messages you `started: <its address>`. Sessions ai-collab starts refuse shell starts.
 
 - `codex exec "<prompt>"`, `claude -p "<prompt>"`, or `cursor-agent -p "<prompt>"`.
 - In Claude Code your shell already carries `AI_COLLAB_PARENT`. In Codex, prefix the command with the `AI_COLLAB_PARENT=<you>` your SessionStart context shows.
-- Make the prompt self-contained: the child sees none of your context. Ask it to report with `send_to_peer` to your address.
-- Message it with the MCP tool `send_to_peer` (`to` = its address) or `ai-collab send <address> "…"`. Wait for its reply by ending your turn or with `ai-collab inbox`; it arrives at your next hook.
-- A headless run ends when its turn ends; continue it with the resume command from `ai-collab sessions`.
+- Ask the child to report with `send_to_peer` to your address. Continue a finished run with the resume command from `ai-collab sessions`.
 - Do not add flags that skip permissions or trust. In AFK mode the operator approves the child's command from the phone.
 
 ## AFK modes
