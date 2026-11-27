@@ -180,12 +180,14 @@ export function Console({ account }) {
       // Set now so the old stream's events, until its effect closes it, are dropped.
       route.current = nextStream;
       setSelected(next);
+      // Any route change, a panel tab included, leaves the phone's thread list.
+      setNavOpen(false);
       if (same) return;
       // A screen still in the cache is shown at once; the reconnected stream revalidates it. An uncached one keeps the
       // old snapshot's project list beside it until its own state frame arrives, so the sidebar never empties.
       restore(nextStream);
       latestAction.current++;
-      setNotice(""); setReplyTo(null); setNavOpen(false);
+      setNotice(""); setReplyTo(null);
     };
     window.addEventListener("hashchange", change);
     return () => window.removeEventListener("hashchange", change);
