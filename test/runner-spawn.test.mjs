@@ -33,8 +33,8 @@ function setup(t, fake) {
   return { home, root, env, cfg, db: path.join(home, "state", "runner.db") };
 }
 
-function makeRunner(ctx, adapter, { startGapMs = 0 } = {}) {
-  return createRunner({ projects: [ctx.cfg], adapters: new Map([[adapter.harness, adapter]]), durable: openDurable(ctx.db), env: ctx.env, startGapMs, watch: false });
+function makeRunner(ctx, adapter, { startGapMs = 0, startTimeoutMs } = {}) {
+  return createRunner({ projects: [ctx.cfg], adapters: new Map([[adapter.harness, adapter]]), durable: openDurable(ctx.db), env: ctx.env, startGapMs, watch: false, ...(startTimeoutMs ? { startTimeoutMs } : {}) });
 }
 
 async function until(check, what, ms = 4000) {
@@ -173,3 +173,16 @@ test("a spawned child's first prompt names its own address and session label", (
   const text = adapter.calls.filter((c) => c.op === "send")[1].text;
   assert.match(text, new RegExp(`your address is ${session}; pass session "${session.split("#")[1]}"`));
 }));
+
+test("a spawn that times out is cancelled, so no child runs and the cap stays free", (t) => withRunner(t, async ({ runner, adapter }) => {
+  const open = adapter.open.bind(adapter);
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  adapter.open = async (...args) => { await gate; return open(...args); };
+  await assert.rejects(runner.start(spawnInput("slow child")), { status: 504 });
+  release();
+  adapter.open = open;
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(adapter.calls.filter((c) => c.op === "send").length, 1, "only the parent's prompt was sent");
+  for (let i = 0; i < 4; i++) assert.equal((await runner.start(spawnInput(`child ${i}`))).status, "started");
+}, { startTimeoutMs: 150 }));
