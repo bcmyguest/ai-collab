@@ -4,7 +4,7 @@ import { broadcastTopic } from "../lib/config.mjs";
 import { approvalEnd } from "../lib/operator.ts";
 import { publish } from "../lib/messaging.ts";
 import { publishStatus } from "../lib/messaging.ts";
-import { publishActivity } from "../lib/activity.mjs";
+import { publishActivity } from "../lib/activity.ts";
 import { compactionFields } from "../lib/compaction.mjs";
 import { modelFields } from "../lib/session-events.mjs";
 import { approvalMessage, cleanQuestions } from "../lib/approvals.mjs";

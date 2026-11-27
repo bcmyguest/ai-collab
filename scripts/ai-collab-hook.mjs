@@ -37,7 +37,7 @@ import { recordSession, sessionName, standsDown } from "../lib/sessions/registry
 import { harnessProcess, isRunning } from "../lib/process.mjs";
 import { CLAIM_SETTLE_MS, STOP_GRACE_MS, WAITER_MAX_S, runWaiter, takeWaiterSlot } from "../lib/waiter.ts";
 import { ON_DEMAND_LOADS, contextUsage, dropOnDemandFiles, readContext, recordInstructions, reportContext } from "../lib/usage.mjs";
-import { activityEvents, publishActivity } from "../lib/activity.mjs";
+import { activityEvents, publishActivity } from "../lib/activity.ts";
 import { compactionFields } from "../lib/compaction.mjs";
 import { clearFields } from "../lib/session-events.mjs";
 import { sendReceipts, settleReceipts } from "../lib/receipts.mjs";
