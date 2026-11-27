@@ -133,6 +133,14 @@ test("minting prunes tickets whose harness process has exited and keeps those of
   assert.deepEqual([`${live}.json`, `${live}.bound`].map((f) => existsSync(join(dir, f))), [true, true]);
 });
 
+test("without a process identity (no /proc) a ticket stays unbound, so the harness's later starts pass", (t) => {
+  const env = setup(t);
+  const child = { ...env, [MANAGED_ENV]: "1", [MANAGED_TICKET_ENV]: mintManagedTicket(env) };
+  assert.equal(managedStartAllowed(child, { pid: 5, start: null }), true);
+  assert.equal(managedStartAllowed(child, { pid: 6, start: null }), true, "the hook's parent shell differs per hook run");
+  assert.equal(managedStartAllowed({ ...env, [MANAGED_ENV]: "1" }, { pid: 5, start: null }), false, "still no start without a ticket");
+});
+
 test("minting keeps a ticket older than 7 days while its bound harness is running", (t) => {
   const env = setup(t);
   const dir = join(stateDir(env), "managed-tickets");
