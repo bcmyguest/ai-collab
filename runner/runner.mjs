@@ -27,7 +27,7 @@ import { MAX_ATTEMPTS } from "../lib/delivery.ts";
 import { sessionIdleState } from "../lib/idle.mjs";
 import { opencodeRequest } from "../lib/opencode-api.mjs";
 import { BUILDER_START_TIMEOUT_MS, builderPaths, builderResumePrompt, stoppedBuilder, ownedBuilder, stageOwnedBuilder, claimOwnedBuilder, finishOwnedBuilder, markOwnedBuilderFailed } from "../lib/builder.ts";
-import { childEnv, checkPrompt, claudePermissionFor, findExecutable, modelShape, projectRoot, worktreeNames } from "../lib/start.mjs";
+import { PROMPT_MAX_CHARS, childEnv, checkPrompt, claudePermissionFor, findExecutable, modelShape, projectRoot, worktreeNames } from "../lib/start.mjs";
 import { parseCodeMode, resolveCodeMode } from "../lib/code-mode.mjs";
 import { openTasks } from "../lib/tasks.mjs";
 import { listOwned, nextPermission, ownedFile, readOwned, writeOwned } from "../lib/sessions/registry.ts";
@@ -904,6 +904,9 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     if (hostFullAccess(mode, place, env)) fail(400, hostFullAccess(mode, place, env));
     const checked = checkPrompt(spawned && typeof prompt === "string" ? spawnBriefNote(prompt, parent) : prompt);
     if (checked.error) fail(400, checked.error);
+    // The self note joins the first prompt once the address is known; every label is 16 hex digits, so its length is known now.
+    const selfNote = spawned ? spawnSelfNote(`${harness}#${"0".repeat(16)}`).length : 0;
+    if (checked.text.length + selfNote > PROMPT_MAX_CHARS) fail(400, `The brief is ${checked.text.length + selfNote - PROMPT_MAX_CHARS} characters over the ${PROMPT_MAX_CHARS}-character first prompt once the spawn notes are added`);
     if (model !== undefined && (typeof model !== "string" || !MODEL.test(model))) fail(400, "Invalid model name");
     if (codeMode !== undefined && parseCodeMode(codeMode) === undefined) fail(400, "codeMode must be on or off");
     if (taskId !== undefined) {
