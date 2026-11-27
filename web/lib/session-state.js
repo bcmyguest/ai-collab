@@ -1,4 +1,4 @@
-// Pure session-state helpers shared by the UI server (ui.mjs), the Home and Sessions views, and their tests.
+// Pure session-state helpers shared by the UI server (ui.ts), the Home and Sessions views, and their tests.
 import { runState } from "./activity-rows.js";
 
 export const RECENT_MS = 60_000;

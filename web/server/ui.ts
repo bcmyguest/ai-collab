@@ -1,5 +1,5 @@
 import { SEND_CONFIRMATION } from "../lib/send-confirmation.js";
-import { landReviews, mergeReview } from "./land-reviews.ts";
+import { landReviews, mergeReview, type Receipt } from "./land-reviews.ts";
 import { HOST_CHECKOUT, LandRefused, deployedField, hostLand } from "../../lib/land.ts";
 import { isProjectPaused, PROJECT_PAUSED, setProjectPaused } from "../../lib/project-pause.ts";
 import { terminalHasDraft } from "../../lib/terminal-draft.ts";
@@ -18,10 +18,10 @@ import { stripControl } from "../../lib/format.ts";
 import { MESSAGE_MAX_BYTES, latestStatuses, changeQueuedMessage, queuedMessage, markUrgent, parseEnvelope, sendMessage } from "../../lib/messaging.ts";
 import { ATTACHMENT_MAX_BYTES, imageAttachment } from "../../lib/attachment.ts";
 import { IMAGE_FILE, TEXT_FILE, attachmentOf, ensureAttachment, cachedAttachment, readAttachmentFile } from "../../lib/attachment-cache.ts";
-import { publish } from "../../lib/messaging.ts";
+import { publish, type Cfg } from "../../lib/messaging.ts";
 import { parseQuestionText } from "../../lib/questions.ts";
 import { readReply } from "../../lib/operator.ts";
-import { disposeSession, listSessions, sessionPlace, worktreeGone } from "../../lib/sessions.mjs";
+import { disposeSession, listSessions, sessionPlace, worktreeGone } from "../../lib/sessions/registry.ts";
 import { readState, statePath } from "../../lib/state.ts";
 import { readReceipts } from "../../lib/receipts.ts";
 import { controlSession } from "../../lib/sessions/control.ts";
@@ -31,17 +31,20 @@ import { readContext } from "../../lib/usage.ts";
 import { parseCommand } from "../lib/slash-commands.js";
 import { startModes } from "../lib/start-mode.js";
 import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } from "../../lib/approvals.ts";
-import { START_HARNESSES, availableHarnesses, availablePlaces, claudePermissionFor, defaultStartPlace, findExecutable, openshellHarnesses, openshellRunner, projectRoot, checkPrompt, startSession } from "../../lib/start.mjs";
+import { START_HARNESSES, availableHarnesses, availablePlaces, claudePermissionFor, defaultStartPlace, openshellHarnesses, openshellRunner, projectRoot, checkPrompt, startSession } from "../../lib/sessions/launch.ts";
+import { findExecutable } from "../../lib/sessions/scope.ts";
 import { codeModeDefault } from "../../lib/code-mode.ts";
 import { cleanName } from "../../lib/sessions/registry.ts";
 import { REF_NAME_MAX, gitRunner, listBranches, listWorktrees, parseWorktreeList, pickedWorktree, prHead, refInputError, untrackedDiff } from "../../lib/sessions/git-refs.ts";
 import { listModels } from "../../lib/models.ts";
 import { LIMIT_TOOL, chooseLimit, limitEndMessage, skipLimit } from "../../lib/limit-alert.ts";
 import { limitEndNotice } from "../../lib/start-limit.ts";
-import { closedProjectNames, createTeam, deleteTeam, listTeams, readProjectsFile, removeProject, setProjectClosed, teamTask } from "../../lib/teams.mjs";
+import { closedProjectNames, readProjectsFile, removeProject, setProjectClosed } from "../../lib/catalog/projects.ts";
+import { createTeam } from "../../lib/catalog/roster.ts";
+import { deleteTeam, listTeams, teamTask } from "../../lib/catalog/teams.ts";
 import { clearFields, modelFields, sessionHistory } from "../../lib/session-events.ts";
 import { compactionFields } from "../../lib/compaction.ts";
-import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern, savePattern, saveTeamText, teamTemplates, teamTextOf } from "../../lib/patterns.mjs";
+import { checkTeamText, copyPattern, listPatterns, removableNames, removePattern, savePattern, saveTeamText, teamTemplates, teamTextOf } from "../../lib/catalog/patterns.ts";
 import { authorModel, authorTeam, saveAuthoredTeam } from "../../lib/catalog/author.ts";
 import { listOwned, readOwned, setNextPermission } from "../../lib/sessions/registry.ts";
 import { requestTeamPermission } from "../../lib/team-permission.ts";
@@ -58,9 +61,9 @@ import { activityRows, groupSubagents, summarize, turnStarts } from "../lib/acti
 import { childRuns } from "../lib/child-subagents.js";
 import { fallbackName, sessionCounts, shownOnline, visibleWake, waitingOn } from "../lib/session-state.js";
 import { createHostedUi } from "./hosted.ts";
-import { createAuth } from "./auth.ts";
+import { createAuth, type Auth } from "./auth.ts";
 import { createHub } from "./hub.ts";
-import { createPush, notice } from "./push.ts";
+import { createPush, notice, type Notice } from "./push.ts";
 import { createDispatcher } from "./dispatch.ts";
 import { runnerClient, runnerUp } from "../../runner/client.ts";
 import { runnerSocket } from "../../runner/control.ts";
@@ -72,9 +75,23 @@ import { runTerminalUi } from "./run-terminal.ts";
 import { projectThreads } from "./threads.ts";
 import { THREAD_ID } from "../../lib/threads.ts";
 
+// oxlint-disable-next-line typescript/no-explicit-any -- browser actions, bus events, session records and store rows are JSON
+type Json = any;
+type Push = ReturnType<typeof createPush>;
+/** createUi's options; each injected function defaults to the real one, so tests swap any of them. */
+export type UiOptions = {
+  cfg?: Json; projects?: Json[]; allowedOrigin?: string; control?: typeof controlSession; interrupt?: typeof interruptSession;
+  setMode?: typeof publishMode; env?: NodeJS.ProcessEnv; start?: typeof startSession; models?: typeof listModels; push?: Push | null;
+  auth?: Auth | null; runner?: typeof runnerClient; hasDraft?: typeof terminalHasDraft; hosted?: boolean; landingCheckout?: string;
+  runMergeReview?: typeof mergeReview; land?: typeof hostLand;
+};
+/** The land-reviews run the snapshot reports. */
+type Landing = { running: boolean; receipts: Receipt[]; error?: string; finished?: boolean };
+
 export { mentionedNames, mentionedTeams, startOnlyMentions };
 
 const INSTANCE = Symbol.for("ai-collab.ui");
+const shared = globalThis as typeof globalThis & { [INSTANCE]?: Json };
 const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "move-task", "continue-builder", "recover-builder", "project-pause", "land-reviews", "land", "review", "skip", "request-outcome", "approve-outcome", "accept-outcome", "thread"];
 const HOSTED_ACTIONS = new Set(["history", "messages", "send", "reply", "afk", "approve", "a2ui", "skip"]);
 const START_GAP_MS = 10_000;
@@ -116,24 +133,24 @@ const REPLY_TITLE = /^Reply from operator \(([^)]+)\)$/;
 const encoder = new TextEncoder();
 const runFile = promisify(execFile);
 
-const peerOf = address => String(address || "").split("#")[0];
-const replyTitle = (cfg, by) => "Reply from " + cfg.peer + (by ? ` (${by})` : "");
-const replyBy = event => { const by = REPLY_TITLE.exec(event.title || "")?.[1]; return isGithubLogin(by) ? by : undefined; };
+const peerOf = (address: string) => String(address || "").split("#")[0];
+const replyTitle = (cfg: Json, by?: string) => "Reply from " + cfg.peer + (by ? ` (${by})` : "");
+const replyBy = (event: Json) => { const by = REPLY_TITLE.exec(event.title || "")?.[1]; return isGithubLogin(by) ? by : undefined; };
 
 // Operator AFK mode for every project's agents, by the signed-in user if any; throws when any project's publish fails.
-export async function publishMode(cfgs, mode, by) {
+export async function publishMode(cfgs: Json, mode: Json, by: string | undefined) {
   const failed = (await publishModeAll(cfgs, mode, by ? { by } : {})).filter(r => !r.ok);
   if (failed.length) throw new Error(`Mode publish failed for ${failed.map(r => r.project).join(", ")}`);
 }
 
 // Latest operator mode envelope in the given events; none means off.
-function latestMode(events) {
+function latestMode(events: Json) {
   let latest = { mode: "off", at: 0 };
   for (const event of events) {
     const envelope = parseEnvelope(event.message);
-    if (envelope?.kind !== "mode" || envelope.from !== "operator" || !MODES.includes(envelope.mode)) continue;
+    if (envelope?.kind !== "mode" || envelope.from !== "operator" || !MODES.includes(envelope.mode as string)) continue;
     const at = Number(envelope.ts) || event.time * 1000;
-    if (at >= latest.at) latest = { mode: envelope.mode, at };
+    if (at >= latest.at) latest = { mode: envelope.mode as string, at };
   }
   return latest;
 }
@@ -141,18 +158,18 @@ function latestMode(events) {
 const FILE_NAME = IMAGE_FILE;
 const activityCache = new WeakMap();
 
-const cleanText = (value, max) => typeof value === "string" && value ? stripControl(value).slice(0, max) : undefined;
+const cleanText = (value: Json, max: number) => typeof value === "string" && value ? stripControl(value).slice(0, max) : undefined;
 
 // One activity row per valid activity envelope; anything else on the topic is dropped. Cached per event object.
-function activityItem(event) {
+function activityItem(event: Json) {
   if (activityCache.has(event)) return activityCache.get(event).item;
   const record = readWireRecord(event.message);
   const original = record && record.v !== 1 ? record : null;
   const e = original ? projectEvent(original) : record;
-  let item = null;
+  let item: Json = null;
   if (e?.kind === "activity" && isValidName(e.from) && typeof e.session === "string" && SESSION_LABEL.test(e.session) && ACTIVITY_TYPES.includes(e.type)) {
     item = { id: event.id, time: event.time, agent: e.from + "#" + e.session, harness: cleanText(e.harness, 10) || "other", type: e.type };
-    for (const [key, max] of [["tool", ACTIVITY_NAME_MAX], ["callId", ACTIVITY_NAME_MAX], ["input", ACTIVITY_TEXT_MAX], ["output", ACTIVITY_TEXT_MAX]]) {
+    for (const [key, max] of [["tool", ACTIVITY_NAME_MAX], ["callId", ACTIVITY_NAME_MAX], ["input", ACTIVITY_TEXT_MAX], ["output", ACTIVITY_TEXT_MAX]] as [string, number][]) {
       const value = cleanText(e[key], max);
       if (value) item[key] = value;
     }
@@ -172,7 +189,7 @@ function activityItem(event) {
   return item;
 }
 
-function activityFrame(source) {
+function activityFrame(source: Json) {
   const cached = activityCache.get(source);
   if (cached.frame) return cached.frame;
   const { item: row, original } = cached;
@@ -191,13 +208,13 @@ function activityFrame(source) {
 }
 
 // One chat entry per bus event; status and alert envelopes are skipped.
-function entry(event) {
+function entry(event: Json): Json {
   const item = baseEntry(event);
   const attachment = item && attachmentOf(event);
   return attachment ? { ...item, attachment } : item;
 }
 
-function baseEntry(event) {
+function baseEntry(event: Json): Json {
   const { message, id, time } = event;
   const envelope = parseEnvelope(message);
   if (!envelope || envelope.kind === "question") {
@@ -222,7 +239,7 @@ function baseEntry(event) {
 }
 
 // A permission request or AskUserQuestion choice a hook is waiting on; its state comes from replies and its end envelope.
-function approvalEntry({ id, time }, e) {
+function approvalEntry({ id, time }: { id: string; time: number }, e: Json): Json {
   if (!isValidName(e.from) || !APPROVAL_ID.test(e.id) || (e.session !== undefined && !SESSION_LABEL.test(e.session))) return null;
   const sender = e.session ? `${e.from}#${e.session}` : e.from;
   const questions = e.questions === undefined ? undefined : cleanQuestions(e.questions);
@@ -236,7 +253,7 @@ function approvalEntry({ id, time }, e) {
 }
 
 // Outcome of each approval and the answers to each question (with who sent them), from the broadcast topic's replies and end envelopes.
-function outcomes(events) {
+function outcomes(events: Json) {
   const ends = new Map();
   const replies = new Map();
   const senders = new Map();
@@ -249,32 +266,32 @@ function outcomes(events) {
       continue;
     }
     const e = parseEnvelope(event.message);
-    if (e?.kind === "approval-end" && APPROVAL_ID.test(e.id) && END_REASONS.includes(e.reason) && !ends.has(e.id)) ends.set(e.id, e.reason);
+    if (e?.kind === "approval-end" && APPROVAL_ID.test(e.id as string) && END_REASONS.includes(e.reason as string) && !ends.has(e.id)) ends.set(e.id, e.reason);
   }
   return { ends, replies, senders };
 }
 
 // The base, branch and worktreePath a start names; empty values count as unnamed.
-function pickOf(given) {
+function pickOf(given: Json) {
   return Object.fromEntries(Object.entries(given).filter(([, value]) => value !== undefined && value !== null && value !== ""));
 }
 
-function reject(status, message) {
+function reject(status: Json, message: string): never {
   throw Object.assign(new Error(message), { status });
 }
 
-function json(status, value) {
+function json(status: Json, value: Json) {
   return Response.json(value, { status, headers: { "Cache-Control": "no-store" } });
 }
 
-function sentStream(confirmed, complete) {
+function sentStream(confirmed: Json, complete: Json) {
   const encoder = new TextEncoder();
-  const line = value => encoder.encode(JSON.stringify(value) + "\n");
+  const line = (value: Json) => encoder.encode(JSON.stringify(value) + "\n");
   let canceled = false;
   const body = new ReadableStream({
     start(controller) {
       controller.enqueue(line(confirmed));
-      void complete().then(result => {
+      void complete().then((result: Json) => {
         if (canceled) return;
         controller.enqueue(line(result));
         controller.close();
@@ -288,18 +305,18 @@ function sentStream(confirmed, complete) {
   });
 }
 
-function failure(err) {
+function failure(err: Json) {
   const status = err.status || ([401, 403].includes(err.ntfyStatus) ? 403 : err.ntfyStatus === 429 ? 429 : 502);
   const message = err.status ? err.message : status === 403 ? "The bus token cannot access that channel"
     : status === 429 ? "The messaging service is rate limiting requests; try again shortly" : "Messaging service unavailable";
   return { status, message };
 }
 
-async function readBody(request, limit) {
+async function readBody(request: Request, limit: number) {
   if (!request.body) reject(400, "Expected a request body");
   const chunks = [];
   let size = 0;
-  for await (const part of request.body) {
+  for await (const part of request.body as ReadableStream<Uint8Array>) {
     size += part.length;
     if (size > limit) reject(413, "Message too large");
     chunks.push(part);
@@ -307,7 +324,7 @@ async function readBody(request, limit) {
   return Buffer.concat(chunks);
 }
 
-function jsonPayload(text) {
+function jsonPayload(text: Json) {
   try {
     const value = JSON.parse(text);
     if (value && typeof value === "object" && !Array.isArray(value)) return value;
@@ -315,15 +332,15 @@ function jsonPayload(text) {
   reject(400, "Expected a JSON object");
 }
 
-async function payload(request) {
+async function payload(request: Request) {
   if (!request.body) reject(400, "Expected a JSON object");
   return jsonPayload((await readBody(request, MAX_REQUEST_BYTES)).toString());
 }
 
-async function imagePayload(request) {
+async function imagePayload(request: Request) {
   const bytes = await readBody(request, ATTACHMENT_MAX_BYTES + MAX_REQUEST_BYTES);
-  let form;
-  try { form = await new Response(bytes, { headers: { "content-type": request.headers.get("content-type") } }).formData(); }
+  let form: FormData;
+  try { form = await new Response(bytes, { headers: { "content-type": String(request.headers.get("content-type")) } }).formData(); }
   catch { reject(400, "Invalid image upload"); }
   const metadata = form.get("message");
   const file = form.get("image");
@@ -332,16 +349,16 @@ async function imagePayload(request) {
   if (file.size > ATTACHMENT_MAX_BYTES) reject(413, "Image is over 15 MB");
   const input = jsonPayload(metadata);
   try { return { input, attachment: imageAttachment(file.name, Buffer.from(await file.arrayBuffer())) }; }
-  catch (error) { reject(400, error.message); }
+  catch (error: Json) { reject(400, error.message); }
 }
 
 // A Home card's context meter: the harness's last token count and window, only when a token count is recorded.
-function cardContext(cfg, agent) {
-  const { tokens, window } = readContext({ stateDir: cfg.stateDir, project: cfg.project, peer: agent.peer, session: agent.session });
+function cardContext(cfg: Json, agent: Json) {
+  const { tokens, window } = readContext({ stateDir: cfg.stateDir, project: cfg.project, peer: agent.peer, session: agent.session } as Cfg);
   return tokens === null ? {} : { context: { tokens, window } };
 }
 
-function recipient(cfg, target, exact = false) {
+function recipient(cfg: Json, target: Json, exact = false) {
   if (typeof target !== "string") reject(400, "Select a recipient");
   const [role, session, ...extra] = target.split("#");
   if (target === "all" && !exact) return role;
@@ -352,7 +369,7 @@ function recipient(cfg, target, exact = false) {
 }
 
 // CSRF guard for state-changing requests: the browser must send the UI's own origin.
-export function assertSameOrigin(request, allowedOrigin) {
+export function assertSameOrigin(request: Request, allowedOrigin: string) {
   const origin = request.headers.get("origin");
   const site = request.headers.get("sec-fetch-site");
   const host = request.headers.get("host") || new URL(request.url).host;
@@ -362,7 +379,7 @@ export function assertSameOrigin(request, allowedOrigin) {
 }
 
 // The project's task backend, or null when its projects.json "tasks" setting names none.
-function tasksOf(name, env) {
+function tasksOf(name: Json, env: NodeJS.ProcessEnv) {
   try { return openTasks(name, env); } catch { return null; }
 }
 
@@ -372,43 +389,43 @@ function tasksOf(name, env) {
  * caller falls back to lib/sessions/control.ts (a terminal session, or a session outside the runner). `runner` is the
  * runnerClient factory, injected in tests.
  */
-async function runnerCompact(address, runner, env) {
+async function runnerCompact(address: string, runner: Json, env: NodeJS.ProcessEnv) {
   const r = await runner({ socket: runnerSocket(env) }).compact(address).catch(() => null);
   if (!r || ![200, 409].includes(r.status) || !r.body) return null;
   return r.status === 200 ? r.body : { status: "failed", detail: r.body.error || "The runner refused the compaction" };
 }
 
 // The status events that keep a session online: a turn started or an AFK hold, reported within ONLINE_MS.
-function statusOnline(state) {
+function statusOnline(state: Json) {
   return Boolean(state) && (state.event === "start" || state.event === "hold") && Date.now() - (Date.parse(state.ts) || 0) < ONLINE_MS;
 }
 
 // True when the runner holds this session (starting, running or idle-waiting); the runner delivers its messages itself.
-function runnerHeld(cfg, target) {
-  const owned = readOwned(cfg, String(target).split("#")[1]);
+function runnerHeld(cfg: Json, target: Json) {
+  const owned: Json = readOwned(cfg, String(target).split("#")[1]);
   return owned?.address === target && owned.status !== "ended";
 }
 
 // A reply whose id the server cannot accept goes out as plain text quoting the original's first and last words.
-function replyQuote(replyTo, body, quote) {
+function replyQuote(replyTo: string, body: Json, quote: Json) {
   if (usableReplyId(replyTo)) return { replyTo };
   return { quoted: true, body: quotedReply(body, originalOf(quote)) };
 }
 
 // The reply composer's copy of the original, {sender, body}; the server sends it as text, never as a link.
-function originalOf(quote) {
+function originalOf(quote: Json) {
   const source = quote && typeof quote === "object" && !Array.isArray(quote) ? quote : null;
   if (!source) return {};
   return { sender: typeof source.sender === "string" ? source.sender : "", body: typeof source.body === "string" ? source.body : "" };
 }
 
-export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start: launch = startSession, models = listModels, push: notifier = null, auth = null, runner = runnerClient, hasDraft = terminalHasDraft, hosted = false, landingCheckout = HOST_CHECKOUT, runMergeReview = mergeReview, land = hostLand }) {
+export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start: launch = startSession, models = listModels, push: notifier = null, auth = null, runner = runnerClient, hasDraft = terminalHasDraft, hosted = false, landingCheckout = HOST_CHECKOUT, runMergeReview = mergeReview, land = hostLand }: UiOptions) {
   if (!configs.length) throw new Error("No ai-collab project is configured");
   for (const item of configs) if (!item.enabled) throw new Error(item.reason);
   if (allowedOrigin && (!allowedOrigin.startsWith("https://") || new URL(allowedOrigin).origin !== allowedOrigin)) {
     throw new Error("AI_COLLAB_UI_ORIGIN must be a single HTTPS origin without a trailing slash");
   }
-  const clients = new Set();
+  const clients = new Set<Json>();
   const hubs = new Map();
   const known = new Set();
   // Projects deleted in this process; they stay hidden until the next start.
@@ -416,12 +433,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   // Closed or deleted projects: hidden from the UI and silent in notifications.
   const hiddenProjects = () => new Set([...closedProjectNames(env), ...removed]);
   const projects = new Map();
-  let pushTimer = null;
+  let pushTimer: NodeJS.Timeout | null = null;
   let lastStartAt = 0;
   let closed = false;
-  let landing = { running: false, receipts: [] };
+  let landing: Landing = { running: false, receipts: [] };
 
-  const start = launch === startSession ? startSession : async (cfg, options) =>
+  const start = launch === startSession ? startSession : async (cfg: Json, options: Json) =>
     isProjectPaused(cfg) ? { status: "failed", detail: PROJECT_PAUSED } : launch(cfg, options);
 
   function broadcast() {
@@ -436,7 +453,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     && notifier.notify(project + ":" + request.id, notice({ project, kind: "approval", id: request.id, sender: request.session, tool: "run in terminal", text: request.reason, important: true })).catch(() => {}) });
 
   // Adds a project once; a hub new to this instance gets its listener, and push keeps its topics open.
-  function addProject(item) {
+  function addProject(item: Json) {
     if (projects.has(item.project) || closed) return false;
     // Projects on the same ntfy server and account share one hub, hence one streaming subscription.
     const key = JSON.stringify([item.url, item.token]);
@@ -469,13 +486,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       operator: { ...item, peer: "operator", session: "" },
       topic: broadcastTopic(item.project), status: statusTopic(item.project), activity: activityTopic(item.project),
       receipts: receiptsTopic(item.project),
-      inboxes: new Map(item.peers.map(peer => [peer, inboxTopic(item.project, peer)])),
+      inboxes: new Map(item.peers.map((peer: Json) => [peer, inboxTopic(item.project, peer)])),
       wakes: new Map(), statuses: new Map(), reads: new Map(), recipients: new Map(),
     };
     for (const name of [project.topic, project.status, project.activity, project.receipts, ...project.inboxes.values()]) known.add(name);
     projects.set(item.project, project);
     // Archive incoming events even while every browser tab is closed.
-    const open = name => project.hub.open(name, name === project.activity ? { tailBytes: ACTIVITY_TAIL_BYTES } : undefined).catch(() => {
+    const open = (name: Json) => project.hub.open(name, name === project.activity ? { tailBytes: ACTIVITY_TAIL_BYTES } : undefined).catch(() => {
       if (!closed) setTimeout(() => open(name), NOTIFY_RETRY_MS).unref?.();
     });
     for (const name of [project.topic, project.status, project.activity, project.receipts, ...project.inboxes.values()]) open(name);
@@ -486,14 +503,14 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   const fallback = projects.values().next().value;
 
   // New approvals, choice cards, questions, and direct messages to the operator become one push each.
-  function notifyActions(project, topic, added) {
+  function notifyActions(project: Json, topic: Json, added: Json) {
     const name = project.cfg.project;
     if (hiddenProjects().has(name)) return;
-    const fresh = added.filter(event => Date.now() - event.time * 1000 < NOTIFY_RECENT_MS);
+    const fresh = added.filter((event: Json) => Date.now() - event.time * 1000 < NOTIFY_RECENT_MS);
     // The phone alert level decides which pushes go out; the message itself stays in the chat.
-    const send = (id, fields) => {
+    const send = (id: Json, fields: Json) => {
       if (!buzzes(readAlertLevel(env), fields.kind === "message" ? "direct" : "question")) return;
-      notifier.notify(name + ":" + id, notice({ project: name, id, ...fields })).catch(() => {});
+      (notifier as Push).notify(name + ":" + id, notice({ project: name, id, ...fields })).catch(() => {});
     };
     if (topic === project.topic) {
       const { ends, replies } = outcomes(project.hub.events(topic));
@@ -519,14 +536,14 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     }
   }
 
-  function projectFor(name) {
+  function projectFor(name: Json) {
     if (name === undefined || name === null || name === "") return fallback;
     if (!projects.has(name)) reject(hosted ? 404 : 400, "Unknown project");
     return projects.get(name);
   }
 
   // @pattern in any chat starts a run of the saved pattern with the text after the tag as its task.
-  async function routePatternMentions(project, body) {
+  async function routePatternMentions(project: Json, body: Json) {
     const { cfg } = project;
     const patterns = listPatterns(cfg, env);
     const notes = [];
@@ -538,7 +555,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return notes;
   }
 
-  async function routeTeamMentions(project, body, target, by) {
+  async function routeTeamMentions(project: Json, body: Json, target: Json, by: string | undefined) {
     const { cfg, operator } = project;
     const teams = listTeams(cfg, env);
     const notes = [];
@@ -564,11 +581,11 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // An @session gets the post in its direct chat; an @harness reaches its running sessions, or starts one with the post as prompt.
-  async function routeMentions(project, body, target, by, sentTo, attachment) {
+  async function routeMentions(project: Json, body: Json, target: Json, by: string | undefined, sentTo: Json, attachment: Json) {
     const { cfg, operator } = project;
     const teamNames = [...Object.keys(listTeams(cfg, env)), ...Object.keys(listPatterns(cfg, env))];
     const sessions = listSessions(cfg);
-    const direct = (to, forSubagent) => sendMessage(operator, to, body, { operatorThread: true, mentionedIn: target, attachment, ...(by ? { by } : {}), ...(forSubagent ? { forSubagent } : {}) });
+    const direct = (to: Json, forSubagent?: Json) => sendMessage(operator, to, body, { operatorThread: true, mentionedIn: target, attachment, ...(by ? { by } : {}), ...(forSubagent ? { forSubagent } : {}) });
     const notes = attachment
       ? mentionedTeams(body, teamNames).map(name => "@" + name + " needs a text-only message to start")
       : [...(await routeTeamMentions(project, body, target, by)), ...(await routePatternMentions(project, body))];
@@ -580,7 +597,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (!startable(project).includes(harness)) {
           notes.push("@" + name + " not available here");
           await refuseStart(project, target, "@" + name, `${harness} is not available here`);
-        } else if (!(await models(cfg.stateDir, env, { peers: cfg.peers }))[harness]?.includes(model)) {
+        } else if (!(await models(cfg.stateDir, env, { peers: cfg.peers }) as Record<string, string[]>)[harness]?.includes(model)) {
           notes.push("@" + name + " unknown model");
           await refuseStart(project, target, "@" + name, `${harness} lists no model named ${model}`);
         } else notes.push("@" + name + await startFor(cfg, body, { harness, model }, { project, target, tag: "@" + name }));
@@ -618,12 +635,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   // Posts ai-collab's own system message in the chat the operator wrote in, so a refused tag start is visible there and not only
   // in the small per-message note. It rides the operator address as a system message (the same as a pattern-run failure notice).
   // In the project chat it is startOnly, so no running agent is woken by it. Best effort: a failed post leaves the note.
-  async function refuseStart(project, target, tag, reason) {
+  async function refuseStart(project: Json, target: Json, tag: string, reason: Json) {
     const text = `${tag} did not start: ${reason}${/[.!]$/.test(reason) ? "" : "."}`;
     await postSystem(project, target, text, true);
   }
 
-  async function postSystem(project, target, text, startOnly = false) {
+  async function postSystem(project: Json, target: Json, text: Json, startOnly = false) {
     const direct = typeof target === "string" && target.includes("#");
     const to = direct ? target : "all";
     await sendMessage(project.operator, to, text, { system: true, onPublished: project.hub.record, ...(direct ? { operatorThread: true } : startOnly ? { startOnly: true } : {}) }).catch(() => {});
@@ -631,8 +648,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
 
   // Starts a mention's session in the project folder, one start per START_GAP_MS; returns the note after the tag.
   // A refusal also posts a system message in the operator's chat (see refuseStart); so does a start that later ends on a usage limit.
-  async function startFor(cfg, body, options, report) {
-    const refuse = async (note, reason = note.replace(/^: /, "")) => {
+  async function startFor(cfg: Json, body: Json, options: Json, report: Json) {
+    const refuse = async (note: Json, reason = note.replace(/^: /, "")) => {
       if (report) await refuseStart(report.project, report.target, report.tag, reason);
       return note;
     };
@@ -644,9 +661,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const taggedStart = { ...options, prompt: checked.text, env, place: "folder" };
     // Only the real launcher reports how its process ended; a replacement launcher keeps the options it always got.
     const watching = launch === startSession && Boolean(report);
-    let finish;
-    const exited = new Promise(resolve => { finish = resolve; });
-    if (watching) taggedStart.onEnd = ({ log }) => finish(log);
+    let finish!: (log: string) => void;
+    const exited = new Promise<string>(resolve => { finish = resolve; });
+    if (watching) taggedStart.onEnd = ({ log }: { log: string }) => finish(log);
     const result = launch === startSession
       ? await startSession(cfg, { ...taggedStart, requireRunCode: true })
       : await start(cfg, taggedStart);
@@ -660,11 +677,11 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return " starting a new session";
   }
 
-  function inboxOf(project, peer) {
+  function inboxOf(project: Json, peer: Json) {
     return project.inboxes.get(peer) || inboxTopic(project.cfg.project, peer);
   }
 
-  function wakeAgent(project, target, session) {
+  function wakeAgent(project: Json, target: Json, session: Json) {
     if (hosted) return { status: "unsupported", detail: "The agent will receive this on its next poll." };
     const { wakes, cfg, statuses } = project;
     if (!session) return { status: "unsupported", detail: "This agent must register its local session before it can be woken." };
@@ -683,9 +700,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // Latest msg time (ms) per sender address and per harness, from hub history already in memory.
-  function lastMessages(project) {
+  function lastMessages(project: Json) {
     const last = new Map();
-    const note = (key, at) => { if (at > (last.get(key) || 0)) last.set(key, at); };
+    const note = (key: Json, at: Json) => { if (at > (last.get(key) || 0)) last.set(key, at); };
     for (const name of [project.topic, ...project.inboxes.values()]) {
       for (const event of project.hub.events(name)) {
         const envelope = parseEnvelope(event.message);
@@ -698,9 +715,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return last;
   }
 
-  function agents(project, last) {
+  function agents(project: Json, last: Json) {
     const { cfg, statuses, wakes } = project;
-    const allowed = peer => peer !== "operator" && (!cfg.peers.length || cfg.peers.includes(peer));
+    const allowed = (peer: Json) => peer !== "operator" && (!cfg.peers.length || cfg.peers.includes(peer));
     const found = new Map();
     for (const [id, at] of last) {
       const [peer, session] = id.split("#");
@@ -750,7 +767,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // First prompt per session in activity history held in memory.
-  function firstPrompts(project) {
+  function firstPrompts(project: Json) {
     const first = new Map();
     for (const event of project.hub.events(project.activity)) {
       const item = activityItem(event);
@@ -760,13 +777,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // Open approvals and unanswered questions per sender address, as chat entries the cards render.
-  function pendingBySender(project, list, persistent = false) {
+  function pendingBySender(project: Json, list: Json, persistent = false) {
     const { ends, replies } = outcomes(project.hub.events(project.topic));
-    const online = new Set(list.filter(agent => agent.online).map(agent => agent.id));
+    const online = new Set(list.filter((agent: Json) => agent.online).map((agent: Json) => agent.id));
     const liveMode = projectModeReader(project);
     const out = new Map();
-    const add = (sender, item) => { if (!out.has(sender)) out.set(sender, []); out.get(sender).push(item); };
-    for (const item of entries(project.hub.events, project.topic, e => e.kind === "Approval" || e.kind === "Question")) {
+    const add = (sender: string, item: Json) => { if (!out.has(sender)) out.set(sender, []); out.get(sender).push(item); };
+    for (const item of entries(project.hub.events, project.topic, (e: Json) => e.kind === "Approval" || e.kind === "Question")) {
       if (item.kind === "Approval") {
         const approval = approvalState(liveMode, item.approval, ends, replies);
         if (approval.state !== "pending" || (approval.expiresAt && approval.expiresAt < Date.now())) continue;
@@ -779,11 +796,11 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return out;
   }
 
-  function projectDecisions(project, runs, list) {
+  function projectDecisions(project: Json, runs: Json, list: Json) {
     const { tasks } = taskBoard(project.tasks, list, runs, project.tasks ? listOwned(project.cfg) : []);
-    const agentsById = new Map(list.map(agent => [agent.id, agent]));
+    const agentsById = new Map<string, Json>(list.map((agent: Json) => [agent.id, agent]));
     const decisions = new Map();
-    function add(key, item, run) {
+    function add(key: Json, item: Json, run: Json) {
       const tags = taskTags(item.body || "").map(match => match[2]);
       const owned = tasks.filter(task => task.owner === item.from && task.status !== "done");
       const task = tasks.find(task => tags.includes(task.id) || (run && (task.run === run.id || task.id === run.task)))
@@ -795,7 +812,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     for (const items of pendingBySender(project, [], true).values()) {
       for (const item of items) {
         if (item.approval?.terminal || (hosted && item.approval?.tool === LIMIT_TOOL)) continue;
-        const run = runs.find(run => Object.values(run.instances ?? {}).flat().includes(item.from)
+        const run = runs.find((run: Json) => Object.values(run.instances ?? {}).flat().includes(item.from)
           || Object.values(run.sessions ?? {}).includes(item.from));
         add(item.question ?? item.approval.id, item, run);
       }
@@ -810,18 +827,18 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // Addresses of the project's sessions in list that wait on the operator (sessionState "waiting").
-  function waitingIds(project, list) {
+  function waitingIds(project: Json, list: Json) {
     const pending = pendingBySender(project, list);
-    return new Set(list.filter(agent => waitingOn(pending.get(agent.id), Date.now())).map(agent => agent.id));
+    return new Set(list.filter((agent: Json) => waitingOn(pending.get(agent.id), Date.now())).map((agent: Json) => agent.id));
   }
 
   // Sessions that still have a place to run: an offline one whose worktree was deleted is left out of cards and counts.
-  function placed(list) {
-    return list.filter(agent => !agent.gone);
+  function placed(list: Json) {
+    return list.filter((agent: Json) => !agent.gone);
   }
 
   // Home and Sessions cards: each session's facts for sessionState(), its last action and running subagents.
-  function sessionCards(project, list, mode) {
+  function sessionCards(project: Json, list: Json, mode: Json) {
     const { cfg, statuses } = project;
     const shown = placed(list);
     const rows = groupSubagents(activityRows(activityList(project)));
@@ -840,41 +857,41 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const pending = pendingBySender(project, list);
     const membership = rolesByAddress(listRuns(cfg));
     const turns = turnStarts(rows);
-    return shown.map(agent => {
+    return shown.map((agent: Json) => {
       const row = latest.get(agent.id);
-      const lastAt = row ? Math.max(row.time, ...(row.rows || []).map(r => r.time)) * 1000 : 0;
+      const lastAt = row ? Math.max(row.time, ...(row.rows || []).map((r: Json) => r.time)) * 1000 : 0;
       const open = row && row.type === "tool_call" && !row.result;
       // Unfinished runs; the browser counts only those with a row in the last 2 min (runState).
-      const subagents = (runs.get(agent.id) || []).map(run => ({ id: run.id, agent: run.agent, run: run.run, kind: run.kind, description: run.description, steps: run.steps, time: run.time, lastTime: run.lastTime, last: run.last, open: run.open }));
+      const subagents = (runs.get(agent.id) || []).map((run: Json) => ({ id: run.id, agent: run.agent, run: run.run, kind: run.kind, description: run.description, steps: run.steps, time: run.time, lastTime: run.lastTime, last: run.last, open: run.open }));
       return {
         ...agent, project: cfg.project, harness: peerOf(agent.id), online: shownOnline(agent), lastActivityAt: lastAt, ...(open ? { openCallAt: lastAt } : {}), ...(turns.has(agent.id) ? { turnStartAt: turns.get(agent.id) } : {}),
         // Only the Stop hook's own "hold" status marks a hold; an ordinary turn end publishes "stop".
         afkHold: mode !== "off" && statuses.get(agent.id)?.event === "hold" && row?.type === "stop",
         ...(lastAction.has(agent.id) ? { lastAction: lastAction.get(agent.id) } : {}), subagents, pending: pending.get(agent.id) || [],
-        ...(membership.get(agent.id) ? { team: membership.get(agent.id).team, role: membership.get(agent.id).role } : {}),
+        ...(membership.get(agent.id) ? { team: membership.get(agent.id)?.team, role: membership.get(agent.id)?.role } : {}),
         ...cardContext(cfg, agent),
       };
     });
   }
 
-  function harnesses(project, list, last) {
-    const names = project.cfg.peers.length ? project.cfg.peers : [...new Set(list.map(agent => agent.peer))].sort();
-    return names.map(id => {
-      const sessions = list.filter(agent => agent.peer === id);
-      return { id, lastMessageAt: last.get(id) || 0, activeAt: Math.max(0, ...sessions.map(agent => agent.activeAt || 0)), sessions: sessions.length, online: sessions.filter(agent => agent.online).length };
+  function harnesses(project: Json, list: Json, last: Json) {
+    const names = project.cfg.peers.length ? project.cfg.peers : [...new Set(list.map((agent: Json) => agent.peer))].sort();
+    return names.map((id: Json) => {
+      const sessions = list.filter((agent: Json) => agent.peer === id);
+      return { id, lastMessageAt: last.get(id) || 0, activeAt: Math.max(0, ...sessions.map((agent: Json) => agent.activeAt || 0)), sessions: sessions.length, online: sessions.filter((agent: Json) => agent.online).length };
     });
   }
 
   // Ticks for an operator message: read when every recipient read it, delivered when one was online then or since.
-  function receiptOf(project, item, list, reads) {
+  function receiptOf(project: Json, item: Json, list: Json, reads: Json) {
     // A start-only post has no recipient to wait on: its tag starts a session with no inbox position for it.
     if (item.startOnly) return "";
     const at = item.time * 1000;
     const [peer, session] = item.to.split("#");
-    const targets = list.filter(agent => agent.session && (peer === "all" || agent.peer === peer) && (!session || agent.session === session));
+    const targets = list.filter((agent: Json) => agent.session && (peer === "all" || agent.peer === peer) && (!session || agent.session === session));
     // Sessions online when the UI first saw the message; history older than ONLINE_MS has no such snapshot.
     if (!project.recipients.has(item.id)) {
-      project.recipients.set(item.id, new Set(Date.now() - at < ONLINE_MS ? targets.filter(agent => agent.online).map(agent => agent.id) : []));
+      project.recipients.set(item.id, new Set(Date.now() - at < ONLINE_MS ? targets.filter((agent: Json) => agent.online).map((agent: Json) => agent.id) : []));
       for (const id of project.recipients.keys()) { if (project.recipients.size <= RECIPIENTS_MAX) break; project.recipients.delete(id); }
     }
     const online = project.recipients.get(item.id);
@@ -887,18 +904,18 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return read.size ? "delivered" : "sent";
   }
 
-  function entries(events, name, keep) {
-    return events(name).map(entry).filter(item => item && keep(item));
+  function entries(events: Json, name: Json, keep: Json) {
+    return events(name).map(entry).filter((item: Json) => item && keep(item));
   }
 
   // Operator answers to questions and approvals on the project topic, each linked to the ask it answers (replyTo).
-  function answersOf(events, topic) {
+  function answersOf(events: Json, topic: Json) {
     const asks = new Map();
     for (const item of topic) {
       if (item.kind === "Question") asks.set(item.question, { asker: item.from });
       if (item.kind === "Approval") asks.set(item.approval.id, { asker: item.from, approval: item.approval });
     }
-    return events.flatMap(event => {
+    return events.flatMap((event: Json) => {
       const reply = readReply(event);
       const ask = reply && !reply.skipped && asks.get(reply.id);
       if (!ask) return [];
@@ -907,25 +924,25 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     });
   }
 
-  function queueEntry(item) {
+  function queueEntry(item: Json) {
     if (item.kind !== "Message" || item.from !== "operator" || !item.thread || typeof item.to !== "string") return false;
     const [peer, session, ...extra] = item.to.split("#");
     return isValidName(peer) && typeof session === "string" && SESSION_LABEL.test(session) && !extra.length;
   }
 
   // Zoom by sender: the whole project, one harness, or one session's direct thread.
-  function messages(project, { harness, session }, agentList, { events = project.hub.events, archived = false } = {}) {
+  function messages(project: Json, { harness, session }: { harness: string; session: string }, agentList: Json, { events = project.hub.events, archived = false } = {}) {
     const reads = archived ? readReceipts(events(project.receipts), new Map(), Infinity) : project.reads;
-    const activity = (session) => activityList(project, session, events);
+    const activity = (session?: Json) => activityList(project, session, events);
     const sharedEvents = events(project.topic);
     const topic = sharedEvents.map(entry).filter(Boolean);
     const answers = answersOf(sharedEvents, topic);
-    const answered = new Set(answers.map(answer => answer.question));
+    const answered = new Set(answers.map((answer: Json) => answer.question));
     // An answer shows as an operator message, so the ntfy Reply entry it came from goes.
-    const shared = topic.filter(item => !(item.kind === "Reply" && answered.has(item.question)));
+    const shared = topic.filter((item: Json) => !(item.kind === "Reply" && answered.has(item.question)));
     const states = new Map();
-    const local = new Set(agentList.filter(agent => agent.registered).map(agent => agent.id));
-    const withQueue = items => items.map(item => {
+    const local = new Set(agentList.filter((agent: Json) => agent.registered).map((agent: Json) => agent.id));
+    const withQueue = (items: Json) => items.map((item: Json) => {
       if (!queueEntry(item)) return item;
       if (!states.has(item.to)) {
         const [peer, session] = item.to.split("#");
@@ -942,19 +959,19 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     let list;
     if (session) {
       // A system message rides the operator's address, so it belongs in the operator's thread with that session.
-      const fromOperator = item => item.from === "operator" || item.system === true;
-      const thread = item => item.thread && ((fromOperator(item) && item.to === session) || (item.from === session && item.to === "operator"));
+      const fromOperator = (item: Json) => item.from === "operator" || item.system === true;
+      const thread = (item: Json) => item.thread && ((fromOperator(item) && item.to === session) || (item.from === session && item.to === "operator"));
       const inbox = entries(events, inboxOf(project, peerOf(session)), () => true);
       const sent = withQueue(inbox);
       list = [...sent.filter(thread), ...terminalPrompts(activity(session), [...topic, ...sent]),
-        ...shared.filter(item => item.from === session).map(item => ({ ...item, scope: "all" })),
-        ...answers.filter(answer => answer.asker === session).map(answerMessage)];
+        ...shared.filter((item: Json) => item.from === session).map((item: Json) => ({ ...item, scope: "all" })),
+        ...answers.filter((answer: Json) => answer.asker === session).map(answerMessage)];
     } else if (harness) {
-      const related = item => peerOf(item.from) === harness || peerOf(item.to) === harness || mentions(item.body, harness);
-      list = [...shared.filter(related).map(item => ({ ...item, scope: "all" })),
-        ...withQueue(entries(events, inboxOf(project, harness), item => item.kind === "Message"))];
+      const related = (item: Json) => peerOf(item.from) === harness || peerOf(item.to) === harness || mentions(item.body, harness);
+      list = [...shared.filter(related).map((item: Json) => ({ ...item, scope: "all" })),
+        ...withQueue(entries(events, inboxOf(project, harness), (item: Json) => item.kind === "Message"))];
     } else {
-      const peers = new Set([...project.inboxes.keys(), ...activity().map(item => peerOf(item.agent))]);
+      const peers = new Set([...project.inboxes.keys(), ...activity().map((item: Json) => peerOf(item.agent))]);
       const inbox = [...peers].flatMap(peer => entries(events, inboxOf(project, peer), () => true));
       const sent = [...topic, ...withQueue(inbox)];
       // Inbox direct sends stay in session threads; they only suppress terminal echoes here.
@@ -968,7 +985,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const { ends, replies, senders } = outcomes(sharedEvents);
     // A reply carries its replied message's sender and opening text, even when that message is off the page.
     const byId = new Map(list.map(item => [item.id, item]));
-    const quoted = item => {
+    const quoted = (item: Json) => {
       const original = item.replyOf && byId.get(item.replyOf);
       return original ? { ...item, quote: { id: original.id, sender: original.sender || original.from, body: String(original.body || "").slice(0, QUOTE_MAX) } } : item;
     };
@@ -989,15 +1006,15 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // Show system prompts and typed prompts in chat, with typed echoes removed.
-  function terminalPrompts(activity, sent) {
-    const prompts = activity.filter(item => item.type === "prompt" && item.input && (item.system || operatorPrompt(item.input)));
+  function terminalPrompts(activity: Json, sent: Json) {
+    const prompts = activity.filter((item: Json) => item.type === "prompt" && item.input && (item.system || operatorPrompt(item.input)));
     return terminalMessages(prompts, sent);
   }
 
   // pending, sent (answered, the hook has not read it yet), or the end reason; with the decision or answers that applied.
   // A terminal card also carries the live mode, so its hint never says AFK is off once the operator is back away.
-  function approvalState(projectMode, approval, ends, replies, senders = new Map()) {
-    const decisions = (replies.get(approval.id) || []).map(answer => replyDecision(approval, answer));
+  function approvalState(projectMode: Json, approval: Json, ends: Json, replies: Json, senders = new Map()) {
+    const decisions = (replies.get(approval.id) || []).map((answer: Json) => replyDecision(approval, answer));
     const at = decisions.findIndex(Boolean);
     const decision = decisions[at];
     const by = senders.get(approval.id)?.[at];
@@ -1010,14 +1027,14 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // The project's latest operator mode, read once per snapshot and shared by every card that needs it.
-  function projectModeReader(project) {
+  function projectModeReader(project: Json) {
     let mode;
     return () => (mode ??= latestMode(project.hub.events(project.topic)).mode);
   }
 
-  function findApproval(project, id) {
+  function findApproval(project: Json, id: Json) {
     if (typeof id !== "string" || !APPROVAL_ID.test(id)) reject(400, "Invalid approval");
-    const item = project.hub.events(project.topic).map(entry).find(e => e?.kind === "Approval" && e.approval.id === id);
+    const item = project.hub.events(project.topic).map(entry).find((e: Json) => e?.kind === "Approval" && e.approval.id === id);
     if (!item) reject(404, "Unknown approval");
     if (item.approval.terminal) reject(409, "Answer this in the terminal");
     const { ends } = outcomes(project.hub.events(project.topic));
@@ -1026,7 +1043,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // Publishes an allow/deny decision, or the answers to a choice, as the reply the hook waits on.
-  async function answerApproval(project, id, { decision, answers }, by) {
+  async function answerApproval(project: Json, id: Json, { decision, answers }: { decision?: string; answers?: Json }, by: string | undefined) {
     const approval = findApproval(project, id);
     let answer;
     if (approval.questions) {
@@ -1034,7 +1051,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       answer = JSON.stringify(answers);
       if (answer.length > ANSWER_MAX_CHARS || !parseChoice(approval.questions, answer)) reject(400, "Answer every question");
     } else {
-      if (!["allow", "deny"].includes(decision)) reject(400, "Decision must be allow or deny");
+      if (!["allow", "deny"].includes(decision as string)) reject(400, "Decision must be allow or deny");
       answer = decision;
     }
     if (approval.tool === LIMIT_TOOL) return answerLimit(project, approval, answer);
@@ -1043,11 +1060,11 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // A limit card's pick: "Wait for reset" acknowledges; a replacement starts a session (lib/limit-alert.ts chooseLimit). No ntfy reply: no hook waits.
-  async function answerLimit(project, approval, answer) {
+  async function answerLimit(project: Json, approval: Json, answer: Json) {
     if (hosted) reject(403, "Handle usage limits on the agent machine");
     const label = Object.values(parseChoice(approval.questions, answer) ?? {})[0];
     // Text typed in Other, not a listed option, names a harness or model (lib/limit-alert.ts typedReplacement).
-    const listedOption = (approval.questions?.[0]?.options ?? []).some(o => o.label === label);
+    const listedOption = (approval.questions?.[0]?.options ?? []).some((o: Json) => o.label === label);
     const result = await chooseLimit(project.cfg, { id: approval.id, ...(listedOption ? { label } : { typed: label }), start, env });
     if (result.status === "duplicate") reject(409, result.detail);
     if (result.status === "failed") reject(400, result.detail);
@@ -1062,7 +1079,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
    * "skipped" and no reply, so a waiting hook returns no decision and the harness's own prompt stays in charge. A task question is
    * cleared with a progress line. A runner-owned approval has no terminal prompt to fall back on, so it cannot be skipped.
    */
-  async function skipDecision(project, { id, taskId }, by) {
+  async function skipDecision(project: Json, { id, taskId }: { id?: Json; taskId?: Json }, by: string | undefined) {
     const who = by ? `operator:${by}` : "operator";
     if (taskId !== undefined) {
       if (hosted) reject(403, "Skip task questions on the agent machine");
@@ -1070,13 +1087,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const result = { status: "Skipped", detail: taskId };
       let task;
       try { task = project.tasks.get(taskId); }
-      catch (err) {
+      catch (err: Json) {
         if (err instanceof TaskNotFoundError) return result;
         reject(404, err.message);
       }
       if (!task.question || task.question.answer) reject(409, "This task has no open question");
       try { await project.tasks.update(taskId, { ask: null, progress: { by: who, text: SKIPPED_PROGRESS } }); }
-      catch (err) {
+      catch (err: Json) {
         if (err instanceof TaskNotFoundError) return result;
         reject(400, err.message);
       }
@@ -1085,13 +1102,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     }
     if (typeof id !== "string" || !APPROVAL_ID.test(id)) reject(400, "Invalid decision");
     const items = project.hub.events(project.topic).map(entry);
-    const hasApproval = items.some(e => e?.kind === "Approval" && e.approval.id === id);
-    if (!hasApproval && !items.some(e => e?.kind === "Question" && e.question === id)) return { status: "Skipped" };
-    await resolveDecision(project, id, async (_events, replies) => {
+    const hasApproval = items.some((e: Json) => e?.kind === "Approval" && e.approval.id === id);
+    if (!hasApproval && !items.some((e: Json) => e?.kind === "Question" && e.question === id)) return { status: "Skipped" };
+    await resolveDecision(project, id, async (_events: Json, replies: Json) => {
       if (hasApproval) {
         const approval = findApproval(project, id);
         if (approval.owned) reject(409, "A runner session has no terminal prompt; answer this request");
-        if (replies.some(value => replyDecision(approval, value))) reject(409, "This request has closed");
+        if (replies.some((value: Json) => replyDecision(approval, value))) reject(409, "This request has closed");
         if (approval.tool === LIMIT_TOOL) {
           if (hosted) reject(403, "Handle usage limits on the agent machine");
           const result = await skipLimit(project.cfg, id);
@@ -1104,7 +1121,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return { status: "Skipped" };
   }
 
-  async function resolveDecision(project, id, resolve) {
+  async function resolveDecision(project: Json, id: Json, resolve: Json) {
     const pending = project.publishingDecisions ??= new Set();
     const events = project.hub.events(project.topic);
     const { ends, replies } = outcomes(events);
@@ -1117,15 +1134,15 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     }
   }
 
-  async function publishDecision(project, id, reply, by, valid = Boolean) {
-    await resolveDecision(project, id, async (_events, replies) => {
+  async function publishDecision(project: Json, id: Json, reply: Json, by: string | undefined, valid: (value: string) => Json = Boolean) {
+    await resolveDecision(project, id, async (_events: Json, replies: Json) => {
       if (replies.some(valid)) reject(409, "This request has closed");
       await publish(project.cfg, project.topic, reply, { title: replyTitle(project.cfg, by), onPublished: project.hub.record });
     });
   }
 
   // An A2UI surface action: a choice's picks become the answers object, a question's text the reply body.
-  async function answerSurface(project, answer, by) {
+  async function answerSurface(project: Json, answer: Json, by: string | undefined) {
     if (answer.kind === "approval") {
       const approval = findApproval(project, answer.id);
       const answers = approval.questions && answer.picks ? choiceAnswers(approval.questions, answer.picks, answer.other) : undefined;
@@ -1140,34 +1157,34 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // Harnesses each project can start, cached because it scans PATH.
-  function startable(project) {
+  function startable(project: Json) {
     if (hosted) return [];
     if (!project.startable || Date.now() - project.startable.at > STARTABLE_CACHE_MS) project.startable = { at: Date.now(), list: availableHarnesses(project.cfg, env) };
     return project.startable.list;
   }
 
   // Start places (folder, worktree, openshell) for the project, cached like startable().
-  function startPlaces(project) {
+  function startPlaces(project: Json) {
     if (hosted) return [];
     if (!project.places || Date.now() - project.places.at > STARTABLE_CACHE_MS) project.places = { at: Date.now(), list: availablePlaces(project.cfg, env) };
     return project.places.list;
   }
 
   // A project's checkout, for the git reads behind review packets; "" when it is unregistered or missing.
-  function taskRoot(project) {
+  function taskRoot(project: Json) {
     try { return projectRoot(project.cfg.project, env); } catch { return ""; }
   }
 
-  const canLand = project => !hosted && project.tasks && taskRoot(project) === landingCheckout;
+  const canLand = (project: Json) => !hosted && project.tasks && taskRoot(project) === landingCheckout;
 
   // The plain-text diff of one build, capped so a huge change cannot exhaust memory or the connection.
-  async function diffRange(root, base, commit) {
+  async function diffRange(root: string, base: Json, commit: Json) {
     const { stdout } = await runFile("git", ["diff", "--no-ext-diff", "--no-textconv", base, commit, "--"],
       { cwd: root, timeout: 10_000, maxBuffer: DIFF_MAX_BYTES }).catch(() => reject(422, "The build diff is unavailable or larger than 4 MiB"));
     return stdout;
   }
 
-  function snapshot({ project, harness, session, scope, history: wantHistory }) {
+  function snapshot({ project, harness, session, scope, history: wantHistory }: { project: Json; harness: string; session: string; scope?: string; history?: boolean }) {
     const last = lastMessages(project);
     const list = agents(project, last);
     // A session whose worktree was deleted has no card to answer on, so it does not count as waiting either.
@@ -1175,7 +1192,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const mode = latestMode([...projects.values()].flatMap(item => item.hub.events(item.topic))).mode;
     // Home covers every project's hub; Sessions only this project. Both ride the same pushed state event.
     const own = sessionCards(project, list, mode);
-    const cardsById = new Map(own.map(card => [card.id, card]));
+    const cardsById = new Map<string, Json>(own.map((card: Json) => [card.id, card]));
     // Child sessions join their parent's subagents on the agent list only; the cards nest them already (sessionTree).
     const kids = childRuns(own);
     const hidden = hiddenProjects();
@@ -1207,13 +1224,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       agents: list.map(agent => {
         const card = cardsById.get(agent.id);
         const subagents = [...(card?.subagents || []), ...(kids.get(agent.id) || [])];
-        const owned = agent.peer === "claude" && agent.id === session ? readOwned(project.cfg, agent.session) : null;
+        const owned: Json = agent.peer === "claude" && agent.id === session ? readOwned(project.cfg, agent.session) : null;
         const modelControl = owned?.address === agent.id && ["idle", "running"].includes(owned.status)
           ? { current: owned.model || "", busy: owned.status === "running" } : null;
         const { lastActivityAt, openCallAt, turnStartAt, afkHold, pending, team, role } = card || {};
         const base = { ...agent, lastActivityAt, openCallAt, turnStartAt, afkHold, pending, ...(team ? { team, role } : {}), ...(subagents.length ? { subagents } : {}), ...(modelControl ? { modelControl } : {}) };
         // Context telemetry and instruction files from the session's state file (lib/usage.ts).
-        const context = readContext({ stateDir: project.cfg.stateDir, project: project.cfg.project, peer: agent.peer, session: agent.session });
+        const context = readContext({ stateDir: project.cfg.stateDir, project: project.cfg.project, peer: agent.peer, session: agent.session } as Cfg);
         const withContext = context.tokens !== null || context.files.length ? { ...base, context } : base;
         const withHistory = history.has(agent.id) ? { ...withContext, history: history.get(agent.id) } : withContext;
         return waiting.has(agent.id) ? { ...withHistory, waiting: true } : withHistory;
@@ -1224,7 +1241,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         ...(!hosted ? { shipped: shown.flatMap(item => item.failed ? [] :
           shippedTasks(item.tasks, item.cfg.project, taskRoot(item))).sort((a, b) => b.at - a.at) } : {}),
         decisions: shown.flatMap(item => item.failed ? [] : projectDecisions(item,
-          item === project ? runs : listRuns(item.cfg), item === project ? list : cards.filter(card => card.project === item.cfg.project))),
+          item === project ? runs : listRuns(item.cfg), item === project ? list : cards.filter((card: Json) => card.project === item.cfg.project))),
         unavailable: shown.filter(item => item.failed).map(item => item.cfg.project) } : {}),
       ...((scope === "home" ? shown.some(canLand) : canLand(project)) ? { landing } : {}),
       ...(hosted ? { hosted: true } : {}),
@@ -1254,7 +1271,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // Listed patterns for the Patterns page; removable marks the project's own patterns and teams (global teams stay in teams.json).
-  function patternRows(cfg, env) {
+  function patternRows(cfg: Json, env: NodeJS.ProcessEnv) {
     const removable = removableNames(cfg, env);
     return Object.values(listPatterns(cfg, env)).map((entry) => {
       const { name, source, legacy, invalid, description, roles, handoffs } = entry;
@@ -1268,23 +1285,23 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // One session's activity, or every allowed agent's for the project overview, oldest first.
-  function activityList(project, session, events) {
+  function activityList(project: Json, session?: Json, events?: Json) {
     return scopedActivity(project, session, events).map(activityItem);
   }
 
-  function scopedActivity(project, session, events = project.hub.events) {
+  function scopedActivity(project: Json, session: Json, events = project.hub.events) {
     const { cfg } = project;
-    return events(project.activity).filter(event => {
+    return events(project.activity).filter((event: Json) => {
       const item = activityItem(event);
       return item && (!cfg.peers.length || cfg.peers.includes(peerOf(item.agent))) && (!session || item.agent === session);
     });
   }
 
   // Activity travels as deltas: a reset with the full list, then only rows newer than the last one sent.
-  function pushActivity(client) {
+  function pushActivity(client: Json) {
     if (!client.activity) return;
     const list = scopedActivity(client.project, client.session);
-    const at = client.activitySent === undefined ? -1 : list.findIndex(item => item.id === client.activitySent);
+    const at = client.activitySent === undefined ? -1 : list.findIndex((item: Json) => item.id === client.activitySent);
     const reset = at < 0 && !(client.activitySent === "" && list.length === 0);
     const items = reset ? list : list.slice(at + 1);
     if (!reset && !items.length) return;
@@ -1294,8 +1311,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // A2UI surfaces for the cards on screen: one ACTIVITY_SNAPSHOT per surface whose operations changed since the last push.
-  function pushSurfaces(client, current) {
-    const entries = [...(current.messages || []), ...(current.sessions || []).flatMap(card => card.pending || [])];
+  function pushSurfaces(client: Json, current: Json) {
+    const entries = [...(current.messages || []), ...(current.sessions || []).flatMap((card: Json) => card.pending || [])];
     const sent = new Map();
     const now = Date.now();
     for (const surface of [...entries.map(entry => surfaceOf(entry, now)), ...runTerminal.surfaces(current, now)]) {
@@ -1312,13 +1329,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // Surfaces go before the state frame: a client that stops reading at the state frame must not get frames after it.
-  function push(client) {
+  function push(client: Json) {
     if (client.authorized && !client.authorized()) return client.disconnect();
     const current = snapshot(client);
     client.hasQueuedMessages = Boolean(client.session && current.messages.some(item => item.queued));
     client.hasOpenTasks = current.tasks.tasks.some(task => task.status !== "done");
     client.hasReview = current.tasks.tasks.some(task => task.review && !task.review.decision);
-    client.hasRunningJobs = current.agents.some(agent => agent.runningJobs) || current.sessions?.some(agent => agent.runningJobs);
+    client.hasRunningJobs = current.agents.some(agent => agent.runningJobs) || current.sessions?.some((agent: Json) => agent.runningJobs);
     pushSurfaces(client, current);
     const state = JSON.stringify(buildEvent(EventType.STATE_SNAPSHOT, { snapshot: current }));
     if (state !== client.last) {
@@ -1329,7 +1346,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     pushActivity(client);
   }
 
-  async function load(client) {
+  async function load(client: Json) {
     const { project, harness, session } = client;
     const { hub } = project;
     try {
@@ -1355,12 +1372,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }
       client.ready = true;
       push(client);
-    } catch (err) {
+    } catch (err: Json) {
       client.send(buildEvent(EventType.CUSTOM, { name: STREAM_ERROR, value: { error: failure(err).message } }));
     }
   }
 
-  function view(url) {
+  function view(url: Json) {
     const project = projectFor(url.searchParams.get("project"));
     const { cfg } = project;
     const session = url.searchParams.get("session") || "";
@@ -1376,38 +1393,38 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // GET /api/land: the open PRs into main with their checks, and the last deploy result.
-  async function landApi(request) {
+  async function landApi(request: Request) {
     try {
       caller(request);
       if (hosted) reject(403, "Landing is unavailable in hosted mode");
       return json(200, { prs: await land.list(), deploy: await land.lastDeploy(env) });
-    } catch (err) {
+    } catch (err: Json) {
       return json(err.status || 502, { error: err.message });
     }
   }
 
   // The signed-in GitHub user, or a 401 while sign-in is on; null while it is off.
-  function caller(request) {
+  function caller(request: Request) {
     if (!auth) return null;
     return auth.user(request) || reject(401, "Sign in with GitHub");
   }
 
   // /api/auth/<step>; without github.json only "me" answers, saying sign-in is off.
-  async function authApi(request, step) {
+  async function authApi(request: Request, step: Json) {
     if (auth) return auth.route(request, step);
     return step === "me" ? json(200, { enabled: false, user: null }) : json(404, { error: "GitHub sign-in is not configured" });
   }
 
-  function events(request) {
+  function events(request: Request) {
     let selected;
     try {
       caller(request);
       selected = view(new URL(request.url));
-    } catch (err) {
+    } catch (err: Json) {
       return json(err.status || 400, { error: err.message });
     }
-    let client;
-    let keepalive;
+    let client: Json;
+    let keepalive: NodeJS.Timeout | undefined;
     const close = () => {
       clearInterval(keepalive);
       clients.delete(client);
@@ -1417,11 +1434,11 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         client = {
           ...selected, ready: false, last: "", surfaces: new Map(),
           ...(hosted ? {
-            authorized: () => Boolean(auth.user(request)),
+            authorized: () => Boolean((auth as Auth).user(request)),
             disconnect() { if (clients.has(client)) { close(); controller.close(); } },
           } : {}),
-          send(event) { this.write(`data: ${JSON.stringify(event)}\n\n`); },
-          write(text) {
+          send(event: Json) { this.write(`data: ${JSON.stringify(event)}\n\n`); },
+          write(text: Json) {
             try { controller.enqueue(encoder.encode(text)); } catch { close(); }
           },
         };
@@ -1450,7 +1467,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
   }
 
   // The archive endpoint remains usable while transport is down.
-  function history(request, by, body) {
+  function history(request: Request, by: string | undefined, body: Json) {
     const { project, harness, session } = view(new URL(request.url));
     if (typeof body.query !== "string" || body.query.length > 200) reject(400, "Invalid search query");
     if (hiddenProjects().has(project.cfg.project)) reject(404, "Project is closed");
@@ -1459,7 +1476,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const reader = by?.toLowerCase() || "";
     const topics = new Map();
     const sequences = new Map();
-    function events(topic) {
+    function events(topic: Json) {
       if (!topics.has(topic)) {
         const rows = store.events(topic);
         for (const row of rows) sequences.set(row.id, row.sequence);
@@ -1499,14 +1516,14 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
    * The submitted build's changes as plain text, read from the project checkout for the packet named in the query.
    * The commit and base come from the stored packet, never the request, so a URL cannot ask for an arbitrary diff.
    */
-  async function reviewDiff(request) {
+  async function reviewDiff(request: Request) {
     try {
       caller(request);
       if (hosted) reject(403, "Build reviews are unavailable in hosted mode");
       const query = new URL(request.url).searchParams;
       const project = projectFor(query.get("project"));
       const id = query.get("id");
-      const task = project.tasks && typeof id === "string" ? project.tasks.list().find(item => item.id === id) : undefined;
+      const task = project.tasks && typeof id === "string" ? project.tasks.list().find((item: Json) => item.id === id) : undefined;
       const review = task?.review;
       if (!review || review.submission !== query.get("submission")) reject(404, "Review packet unavailable");
       const root = taskRoot(project);
@@ -1517,7 +1534,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "no-store",
       } });
-    } catch (err) {
+    } catch (err: Json) {
       return json(err.status || 400, { error: err.message });
     }
   }
@@ -1527,7 +1544,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
    * untracked files included.
    * The worktree must be one git lists for the project checkout, so a stored path cannot point the diff elsewhere.
    */
-  async function threadDiff(request) {
+  async function threadDiff(request: Request) {
     try {
       caller(request);
       if (hosted) reject(403, "Thread diffs are unavailable in hosted mode");
@@ -1535,7 +1552,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const project = projectFor(query.get("project"));
       const id = query.get("thread") ?? "";
       if (!THREAD_ID.test(id)) reject(400, "Invalid thread id");
-      const thread = project.threads?.list().find(item => item.id === id);
+      const thread = project.threads?.list().find((item: Json) => item.id === id);
       if (!thread) reject(404, "Thread unavailable");
       const root = taskRoot(project);
       if (!root) reject(409, "The project checkout is unavailable");
@@ -1560,13 +1577,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "no-store",
       } });
-    } catch (err) {
+    } catch (err: Json) {
       return json(err.status || 400, { error: err.message });
     }
   }
 
   // Branches or worktrees of the project checkout for the start toolbar, filtered and capped here; "#123" adds that PR's head.
-  async function refs(request) {
+  async function refs(request: Request) {
     try {
       caller(request);
       if (hosted) reject(403, "Branches are unavailable in hosted mode");
@@ -1586,12 +1603,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const pr = PR_QUERY.exec(q);
       const listed = await listBranches(run, root, { query: pr ? "" : q });
       return json(200, { ...listed, gh: Boolean(ghFile), pr: ghFile && pr ? await prHead(ghFile, run, root, Number(pr[1]), env) : null });
-    } catch (err) {
+    } catch (err: Json) {
       return json(err.status || 400, { error: err.message });
     }
   }
 
-  async function handle(request, action) {
+  async function handle(request: Request, action: Json) {
     try {
       if (request.method !== "POST" || !ACTIONS.includes(action)) reject(404, "Unknown route");
       const by = caller(request)?.login;
@@ -1601,7 +1618,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const upload = action === "send" && contentType === "multipart/form-data";
       if (!upload && contentType !== "application/json") reject(415, "JSON required");
       if (action === "history") return history(request, by, await payload(request));
-      const { input, attachment } = upload ? await imagePayload(request) : { input: await payload(request) };
+      const { input, attachment }: { input: Json; attachment?: Json } = upload ? await imagePayload(request) : { input: await payload(request) };
       const { project: name, paused, target, body, queueAction, question, mode, level: alertLevel, id, status: taskStatus, decision, answers, harness, prompt, place, worktree, openshell, base, branch, worktreePath, urgent, sendAnyway, model, startMode, codeMode, permission, team: teamName, members, editTeam, delete: deleteTeamName, replyTo, quote, command, pattern: patternSpec, deletePattern: deletePatternName, copyPattern: copyPatternName, replace: replacePatternName, checkDot, teamDot, teamNew, startPattern, task: patternTask, advanceRun: advanceRunId, advanceEvent, advanceNote, advanceConfirmation, authorRequest, authorDot, authorScope, authorCurrent, authorTurns, authorHarness, authorModel: authorModelName, authorReplace, forwardedProps, answer: decisionText, commit, submission, note: reviewNote, taskId } = input;
       // Merges one PR whose checks are green at the head the operator reviewed, then starts deploy detached.
       if (action === "land") {
@@ -1610,7 +1627,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (!Number.isInteger(number) || number < 1 || !/^[0-9a-f]{40}$/.test(headSha)) reject(400, "Give the PR number and its head commit");
         try {
           await land.merge(number, headSha);
-        } catch (err) {
+        } catch (err: Json) {
           reject(err instanceof LandRefused ? 409 : 502, err.message);
         }
         const deploy = await land.startDeploy().then(() => "deploy started", err => "deploy not started: " + err.message);
@@ -1690,7 +1707,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       if (action === "recover-builder") {
         if (!project.tasks || typeof id !== "string") reject(400, "Give the task id");
         try { await recoverBuilder(cfg.project, id, harness, () => listOwned(cfg), env); }
-        catch (err) { reject(409, err.message); }
+        catch (err: Json) { reject(409, err.message); }
         broadcast();
         return json(201, { status: "Builder started", detail: id });
       }
@@ -1700,14 +1717,14 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (step === "approve" && isProjectPaused(cfg)) reject(409, PROJECT_PAUSED);
         let outcome;
         try { outcome = await project.tasks.outcome(step, input); }
-        catch (err) { reject(step === "request" ? 400 : 409, err.message); }
+        catch (err: Json) { reject(step === "request" ? 400 : 409, err.message); }
         broadcast();
         return json(step === "request" ? 201 : 200, { outcome });
       }
       if (action === "move-task") {
         if (!project.tasks || typeof id !== "string" || !STATUSES.includes(taskStatus)) reject(400, "Give a task id and valid status");
         try { await project.tasks.update(id, { status: taskStatus }); }
-        catch (err) { reject(400, err.message); }
+        catch (err: Json) { reject(400, err.message); }
         broadcast();
         return json(200, { status: "Task moved", detail: id });
       }
@@ -1721,7 +1738,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
             commit, submission, action: decision, note: typeof reviewNote === "string" ? reviewNote.trim() : "",
             by: by ? `operator:${by}` : "operator", root: taskRoot(project),
           });
-        } catch (err) { reject(409, err.message); }
+        } catch (err: Json) { reject(409, err.message); }
         broadcast();
         return json(201, { status: decision === "accept" ? "Build accepted" : "Build returned", detail: id });
       }
@@ -1732,7 +1749,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         if (typeof id !== "string" || !text) reject(400, "Give the task id and an answer");
         try {
           await project.tasks.update(id, { answer: { text, by: by ? `operator:${by}` : "operator" } });
-        } catch (err) { reject(400, err.message); }
+        } catch (err: Json) { reject(400, err.message); }
         return json(201, { status: "Decided", detail: id });
       }
       // AG-UI run input from an A2UI surface: its userAction is the answer, mapped onto the approval or question reply path.
@@ -1775,13 +1792,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           // The composer picks the writer. An unknown harness or model is refused here, before the process starts.
           const writerHarness = authorHarness ? String(authorHarness) : "";
           const writerModel = authorModelName ? String(authorModelName) : "";
-          if (writerHarness && (!START_HARNESSES.includes(writerHarness) || !startable(project).includes(writerHarness))) {
+          if (writerHarness && (!(START_HARNESSES as readonly string[]).includes(writerHarness) || !startable(project).includes(writerHarness))) {
             reject(400, "That harness is not available for this project");
           }
           if (writerModel) {
             const forHarness = writerHarness || authorModel(env).harness;
             const listed = await models(cfg.stateDir, env, { peers: cfg.peers });
-            if (!listed[forHarness]?.includes(writerModel)) reject(400, "That model is not available for this harness");
+            if (!(listed as Record<string, string[]>)[forHarness]?.includes(writerModel)) reject(400, "That model is not available for this harness");
           }
           const drafted = await authorTeam(cfg, {
             request: String(authorRequest ?? ""), name: String(teamName ?? ""), scope: String(authorScope ?? "project"),
@@ -1840,7 +1857,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         const checked = checkPrompt(prompt);
         if (checked.error) reject(400, checked.error);
         const chosen = model === undefined || model === null || model === "" ? undefined : model;
-        if (chosen !== undefined && (typeof chosen !== "string" || !(await models(cfg.stateDir, env, { peers: cfg.peers }))[harness]?.includes(chosen))) {
+        if (chosen !== undefined && (typeof chosen !== "string" || !(await models(cfg.stateDir, env, { peers: cfg.peers }) as Record<string, string[]>)[harness]?.includes(chosen))) {
           reject(400, "That model is not available for this harness");
         }
         // The dialogue's Agent / Ask / Plan pill; an unnamed mode is the harness's normal, editing one.
@@ -1878,7 +1895,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           await project.threads?.claim(result.body.session, { prompt: checked.text });
           return json(201, result.body);
         }
-        const started = await start(cfg, { harness, prompt: checked.text, env, place: where, mode: chosenMode, ...(inThread ? { origin: inThread.worktree } : {}), ...(Object.keys(pick).length ? { pick } : {}), ...(permissionChosen !== undefined ? { claudePermission: permissionChosen } : {}), ...(chosen !== undefined ? { model: chosen } : {}), ...(typeof codeMode === "boolean" ? { codeMode } : {}) });
+        const started: Json = await start(cfg, { harness, prompt: checked.text, env, place: where, mode: chosenMode, ...(inThread ? { origin: inThread.worktree } : {}), ...(Object.keys(pick).length ? { pick } : {}), ...(permissionChosen !== undefined ? { claudePermission: permissionChosen } : {}), ...(chosen !== undefined ? { model: chosen } : {}), ...(typeof codeMode === "boolean" ? { codeMode } : {}) });
         await project.threads?.claim(started.session, { thread: inThread, prompt: checked.text });
         return json(201, started);
       }
@@ -1896,11 +1913,11 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         const inbox = inboxOf(project, peer);
         await project.hub.open(inbox);
         await project.hub.open(project.receipts);
-        const item = entries(project.hub.events, inbox, item => item.id === id && item.to === target && queueEntry(item))[0];
+        const item = entries(project.hub.events, inbox, (item: Json) => item.id === id && item.to === target && queueEntry(item))[0];
         if (!item) reject(404, "Queued message unavailable");
         if (item.by && item.by !== by) reject(403, "Only the sender can change this message");
         if (project.reads.get(id)?.has(target)) reject(409, "The agent already read this message");
-        let change;
+        let change: Json;
         if (queueAction === "edit") {
           if (typeof body !== "string" || !body.trim() || body.length > 4000) reject(400, "Enter 1–4000 characters");
           change = { body: body.trim() };
@@ -1938,13 +1955,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         const session = listSessions(cfg).find(item => item.id === target);
         // /compact compacts an owned session in place; every other command keeps its control path.
         const compact = parsed.name === "compact"
-          ? async peer => (await runnerCompact(peer.id, runner, env)) ?? control("compact", peer, { cfg })
-          : peer => control("compact", peer, { cfg });
+          ? async (peer: Json) => (await runnerCompact(peer.id, runner, env)) ?? control("compact", peer, { cfg })
+          : (peer: Json) => control("compact", peer, { cfg });
         // /permission stores the next-start mode on the session; /team-permission asks the operator before writing team.dot.
-        const setPermission = (peer, mode) => setNextPermission(cfg, { id: peer.id, label: String(peer.id).split("#")[1] ?? "", value: mode });
-        const askTeamPermission = (team, mode) => { const { done, ...reply } = requestTeamPermission(cfg, team, mode, { env }); void done; return reply; };
+        const setPermission = (peer: Json, mode: Json) => setNextPermission(cfg, { id: peer.id, label: String(peer.id).split("#")[1] ?? "", value: mode });
+        const askTeamPermission = (team: Json, mode: Json) => { const { done, ...reply }: { done?: Promise<string>; status: string; detail: string } = requestTeamPermission(cfg, team, mode, { env }); void done; return reply; };
         // /mode changes a runner-owned session's live mode; the runner applies the start checks again.
-        const setSessionMode = async (peer, mode) => {
+        const setSessionMode = async (peer: Json, mode: Json) => {
           if (readOwned(cfg, String(peer.id).split("#")[1] ?? "")?.address !== peer.id) throw new Error("/mode needs a runner-owned session; /permission sets a terminal Claude session's next start");
           const result = await runner({ socket: runnerSocket(env) }).setMode(peer.id, mode).catch(() => { throw new Error("The session runner is unavailable"); });
           if (result.status !== 200) throw new Error(result.body?.error || "The runner refused the mode change");
@@ -1988,7 +2005,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       // A post tagged only @harness:model starts sessions; it names nobody running, so no running session takes it.
       const startOnly = !attachment && !hosted && action === "send" && !reply?.quoted && destinations.size === 1 && primary === "all"
         && startOnlyMentions(text, cfg.peers, [...Object.keys(listTeams(cfg, env)), ...Object.keys(listPatterns(cfg, env))]);
-      const notes = [];
+      const notes: string[] = [];
       let wake;
       try {
         if (urgent !== undefined && typeof urgent !== "boolean") reject(400, "urgent must be true or false");
@@ -2018,7 +2035,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           }
           if (tagged.length) notes.push(to === "all" ? "Project chat" : "To " + to);
         }
-      } catch (err) {
+      } catch (err: Json) {
         if (err.message.includes("-byte limit")) reject(400, `Message exceeds ${MESSAGE_MAX_BYTES} encoded bytes`);
         throw err;
       }
@@ -2036,14 +2053,14 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         }));
       }
       return json(201, await complete());
-    } catch (err) {
+    } catch (err: Json) {
       const { status, message } = failure(err);
       return json(status, { error: message });
     }
   }
 
   // GET key, POST/DELETE subscribe, POST test: the browser's push subscription and a test notification.
-  async function pushApi(request, action) {
+  async function pushApi(request: Request, action: Json) {
     try {
       caller(request);
       if (!PUSH_ACTIONS.includes(action)) reject(404, "Unknown route");
@@ -2062,10 +2079,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }
       if (typeof endpoint !== "string" || !endpoint) reject(400, "Endpoint required");
       if (action === "subscribe") return json(200, { removed: notifier.unsubscribe(endpoint) });
-      if (!notifier.subscriptions().some(item => item.endpoint === endpoint)) reject(404, "This browser is not subscribed");
-      const result = await notifier.send({ title: "AI Collab test", body: "Notifications reach this device.", tag: "test", url: "/", important: false }, { endpoint });
+      if (!notifier.subscriptions().some((item: Json) => item.endpoint === endpoint)) reject(404, "This browser is not subscribed");
+      const result = await notifier.send({ title: "AI Collab test", body: "Notifications reach this device.", tag: "test", url: "/", important: false } as Notice, { endpoint });
       return json(result.sent ? 201 : 502, result.sent ? { sent: true } : { error: "The push service did not accept the test" });
-    } catch (err) {
+    } catch (err: Json) {
       const { status, message } = failure(err);
       return json(status, { error: message });
     }
@@ -2077,13 +2094,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
    * The first request downloads the file into the shared local cache; later ones read it from disk, so
    * ntfy's attachment bandwidth is spent once per file however many tabs, reloads or devices ask.
    */
-  async function file(name, request) {
+  async function file(name: Json, request: Request) {
     if (auth && !(request && auth.user(request))) return json(401, { error: "Sign in with GitHub" });
     const text = TEXT_FILE.test(name);
     if (!text && !FILE_NAME.test(name)) return new Response("Not found", { status: 404 });
     for (const project of projects.values()) {
       const topics = text ? [project.activity] : [project.topic, ...project.inboxes.values()];
-      const found = topics.some(topic => project.hub.history.events(topic).some(event => attachmentOf(event, { text })?.file === name));
+      const found = topics.some(topic => project.hub.history.events(topic).some((event: Json) => attachmentOf(event, { text })?.file === name));
       if (!found) continue;
       let cached = cachedAttachment(project.cfg, name);
       if (!cached) {
@@ -2102,20 +2119,20 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       const ifNoneMatch = request?.headers?.get?.("if-none-match");
       const etag = `"${name}-${cached.size}"`;
       if (ifNoneMatch === etag) return new Response(null, { status: 304, headers: { ...headers, etag } });
-      return new Response(readAttachmentFile(cached), { headers: { ...headers, etag } });
+      return new Response(readAttachmentFile(cached) as Uint8Array<ArrayBuffer>, { headers: { ...headers, etag } });
     }
     return new Response("Not found", { status: 404 });
   }
 
   // Read-only runner schedules; ?runs=<name> returns that schedule's latest runs. Sign-in applies as to the event stream.
-  async function schedules(request) {
+  async function schedules(request: Request) {
     try {
       caller(request);
       const name = new URL(request.url).searchParams.get("runs");
       if (name === null) return json(200, await readSchedules({ socket: runnerSocket(env) }));
       if (!SCHEDULE_NAME.test(name)) reject(400, "Invalid schedule name");
       return json(200, await readScheduleRuns(name, { env, socket: runnerSocket(env) }));
-    } catch (err) {
+    } catch (err: Json) {
       return json(err.status || 400, { error: err.message });
     }
   }
@@ -2132,14 +2149,14 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     land: landApi,
     push: pushApi,
     /** Adds every enabled config not yet watched (auto-joined repos); returns how many were added. */
-    refresh(list) {
-      return list.filter(item => item.enabled && addProject(item)).length;
+    refresh(list: Json) {
+      return list.filter((item: Json) => item.enabled && addProject(item)).length;
     },
     close() {
       closed = true;
       for (const client of clients) client.write = () => {};
       clients.clear();
-      clearTimeout(pushTimer);
+      clearTimeout(pushTimer ?? undefined);
       for (const project of projects.values()) {
         project.watcher.close();
         project.unwatchTasks();
@@ -2153,24 +2170,24 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
 
 // Process-wide instance shared by every route bundle; tests may install their own first.
 export function ui() {
-  if (!globalThis[INSTANCE]) {
+  if (!shared[INSTANCE]) {
     const auth = createAuth({ dir: configDir(process.env), stateDir: stateDir(process.env), origin: process.env.AI_COLLAB_UI_ORIGIN });
     if (auth?.hosted) {
-      globalThis[INSTANCE] = createHostedUi({
+      shared[INSTANCE] = createHostedUi({
         auth, projects: loadProjects(process.env, { host: "operator" }),
         stateDir: stateDir(process.env), origin: process.env.AI_COLLAB_UI_ORIGIN, createUi,
       });
-      return globalThis[INSTANCE];
+      return shared[INSTANCE];
     }
     const listed = loadProjects(process.env, { host: "operator" });
-    const projects = listed.length ? listed
+    const projects: Json[] = listed.length ? listed
       : [loadConfig(process.env, { cwd: process.env.AI_COLLAB_UI_WORKSPACE || process.cwd(), host: "operator" })];
     // VAPID subject: the UI's HTTPS origin, or a mailto: placeholder without one.
     const push = createPush({ dir: join(projects[0].stateDir, "push"), subject: process.env.AI_COLLAB_UI_ORIGIN || "mailto:ai-collab@localhost.invalid" });
     const instance = createUi({ projects, allowedOrigin: process.env.AI_COLLAB_UI_ORIGIN, push, auth });
     // Repos that auto-join after start-up appear within one refresh interval.
     setInterval(() => instance.refresh(loadProjects(process.env, { host: "operator" })), REFRESH_MS).unref();
-    globalThis[INSTANCE] = instance;
+    shared[INSTANCE] = instance;
     // Pushes direct messages into Codex, OpenCode and Claude sessions; it stands down while the runner delivers.
     // AI_COLLAB_DISPATCH=off turns it off.
     if (process.env.AI_COLLAB_DISPATCH !== "off") {
@@ -2178,10 +2195,10 @@ export function ui() {
       dispatcher.start();
     }
   }
-  return globalThis[INSTANCE];
+  return shared[INSTANCE];
 }
 
-export function installUi(instance) {
-  globalThis[INSTANCE] = instance;
+export function installUi(instance: Json) {
+  shared[INSTANCE] = instance;
   return instance;
 }

@@ -28,7 +28,7 @@ CLI exit codes: 0 success, 1 error (for example a peer not in `AI_COLLAB_PEERS`,
 
 ## The UI
 
-- **UI broken after moving the checkout.** `next build` records the absolute path of `web/server/ui.mjs`; rebuild.
+- **UI broken after moving the checkout.** `next build` records the absolute path of `web/server/ui.ts`; rebuild.
 - **The UI refuses to start.** With `github.json` present it needs `AI_COLLAB_UI_ORIGIN`.
 - **Posts fail from the phone.** Every `POST /api/*` must come from `AI_COLLAB_UI_ORIGIN`; set it to the HTTPS URL without a trailing slash and restart the service.
 - **No push notifications.** Push needs HTTPS. On iPhone and iPad, open AI Collab from the Home Screen. See [Push notifications](phone-ui.md#push-notifications).
