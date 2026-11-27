@@ -2,7 +2,7 @@
 
 [Quick start](quick-start.md) installs everything with one command. This page covers each harness by hand.
 
-Requirements: Node 24+. Run `npm ci && npm run build && npm test` in the checkout. The UI uses shadcn/ui, Tailwind CSS, and the prompt-kit chat components with React, built by Next.js into a fresh directory under `web/.next-builds/`. Tests run the real bus server on an in-memory store and need no network or API access.
+Requirements: Node 24+ and Docker. The bus stores its events in Postgres: run `ai-collab postgres up` before starting `ai-collab-bus` ([Bus store](configuration.md#bus-store)). Run `npm ci && npm run build && npm test` in the checkout. The UI uses shadcn/ui, Tailwind CSS, and the prompt-kit chat components with React, built by Next.js into a fresh directory under `web/.next-builds/`. Tests run the real bus server on an in-memory store and need no network or API access.
 
 Each harness also needs a server to talk to: write `defaults.json` or `projects.json` first (see [Configuration](configuration.md)).
 

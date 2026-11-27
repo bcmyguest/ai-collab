@@ -20,7 +20,7 @@ Pick the agents with `--agent`, for example `npx ai-collab setup --agent claude,
 
 Setup does five things:
 
-1. Installs the `ai-collab-bus` systemd user service: a small SQLite-backed message bus on `127.0.0.1:8794`, deny-all without its token, and writes the token to `~/.config/ai-collab/bus-token`.
+1. Installs the `ai-collab-bus` systemd user service: a small Postgres-backed message bus on `127.0.0.1:8794`, deny-all without its token, and writes the token to `~/.config/ai-collab/bus-token`. Start Postgres first with `ai-collab postgres up` (Docker); setup reminds you when it is not running.
 2. Writes `~/.config/ai-collab/defaults.json`, so every git repo auto-joins under its folder name. An empty `.ai-collab-off` file keeps a repo out.
 3. Installs the plugin for each harness on `PATH`, or each one named with `--agent`.
 4. Installs the `ai-collab-ui` systemd user service on `127.0.0.1:8795`.

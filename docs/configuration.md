@@ -97,34 +97,56 @@ The UI server reads its own variables; see [Phone UI](phone-ui.md#ui-settings) a
 
 ## Bus store
 
-`ai-collab-bus` keeps events and attachments in SQLite (`bus.db` under its data directory) unless `AI_COLLAB_BUS_STORE` or `defaults.json` `busStore` selects `postgres`. The environment variable wins over `defaults.json`; any other value stops the bus at start.
+`ai-collab-bus` keeps events and attachment metadata in Postgres: schema `bus` of the database `AI_COLLAB_PG_DATABASE` names (default `ai_collab`), on the container and with the variables of the DBOS engine above. Attachment bytes stay in `files/` under the bus data directory (`AI_COLLAB_BUS_DATA`, default `<state dir>/bus`). The store creates the schema on first open. Ids come from a `bigserial`; each publish runs `NOTIFY bus_events`, and every open stream reads when that notification arrives, so no stream polls. Retention is 7 days (`AI_COLLAB_BUS_RETENTION_HOURS`).
+
+Run `ai-collab postgres up` before the bus starts. Without Postgres the bus exits with a message naming that command: the password file is missing, nothing listens on `AI_COLLAB_PG_HOST:AI_COLLAB_PG_PORT`, or the server refuses the store.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AI_COLLAB_BUS_STORE` | `defaults.json` `busStore`, else `sqlite` | `sqlite` or `postgres`. |
+| `AI_COLLAB_BUS_STORE` | `defaults.json` `busStore`, else `postgres` | Only `postgres`. `sqlite` stops the bus with a pointer at `ai-collab bus migrate`. |
 
-The Postgres store writes to schema `bus` of the database `AI_COLLAB_PG_DATABASE` names (default `ai_collab`), on the container and with the variables of the DBOS engine above. It creates the schema on first open. Ids come from a `bigserial`; each publish runs `NOTIFY bus_events`, and every open stream reads when that notification arrives, so no stream polls. Ids, ordering, `since` values, retention and attachments behave as in the SQLite store.
+### Upgrading from the SQLite store (bus.db)
 
-Events in `bus.db` do not move on their own. `ai-collab bus migrate --to postgres` copies them, keeping their ids; without it a bus switched to `postgres` starts with an empty `bus` schema.
+Releases before this one kept the bus in SQLite (`bus.db` in the bus data directory). That store is retired. `ai-collab bus migrate --to postgres` stays for one release to copy an old `bus.db` into Postgres, keeping its ids; the next release removes it.
 
-### Cutover: bus to Postgres
+At start the bus checks for `<bus data dir>/bus.db`. Beside an empty `bus.events` table it refuses to start, because new ids would collide with the old ones and `bus migrate` refuses a non-empty target. Beside a filled table it logs a reminder to archive the file.
 
-Run the steps in order. The copy reads `bus.db` read-only, so the bus must be stopped first: a crashed bus can leave a dirty WAL that makes that read fail.
+The copy reads `bus.db` read-only, so stop the bus first: a crashed bus can leave a dirty WAL that makes that read fail.
 
 ```sh
-ai-collab bus migrate --to postgres --dry-run   # read-only; prints event and file counts
+ai-collab postgres up
 systemctl --user stop ai-collab-bus
+ai-collab bus migrate --to postgres --dry-run   # read-only; prints event and file counts and the id range
 ai-collab bus migrate --to postgres             # copies into schema bus of AI_COLLAB_PG_DATABASE
 ```
 
-Set `"busStore": "postgres"` in `~/.config/ai-collab/defaults.json`, then:
+Remove `"busStore": "sqlite"` from `~/.config/ai-collab/defaults.json` if present, then:
 
 ```sh
 systemctl --user start ai-collab-bus            # log line: "store postgres"
 systemctl --user restart ai-collab-ui ai-collab-runner
 ```
 
-Rollback: set `"busStore": "sqlite"` in `defaults.json` and restart the bus. Events published while on postgres are not in `bus.db`. Clients whose cursors point past `bus.db`'s max id get a `reset: true` replay; dedupe absorbs it.
+### Check the copy, then archive bus.db
+
+Both stores prune at 7 days, so compare the events of the last 6 days with ids up to `bus.db`'s maximum. The two lines must print the same count and id range. `bus.db` opens read-only; the Postgres query only reads.
+
+```sh
+BUSDB=~/.local/state/ai-collab/bus/bus.db
+CUT=$(( $(date +%s) - 6*86400 ))
+HI=$(node --input-type=module -e 'import { DatabaseSync } from "node:sqlite"; const db = new DatabaseSync(process.argv[1], { readOnly: true }); console.log(db.prepare("SELECT max(id) AS hi FROM events").get().hi)' "$BUSDB")
+node --input-type=module -e 'import { DatabaseSync } from "node:sqlite"; const db = new DatabaseSync(process.argv[1], { readOnly: true }); const r = db.prepare("SELECT count(*) AS n, min(id) AS lo, max(id) AS hi FROM events WHERE time >= ?").get(Number(process.argv[2])); console.log(`${r.n}|${r.lo}|${r.hi}`)' "$BUSDB" "$CUT"
+docker exec ai-collab-postgres-postgres-1 psql -U ai_collab -d ai_collab -Atc "SELECT count(*), min(id), max(id) FROM bus.events WHERE time >= $CUT AND id <= $HI"
+```
+
+When they match, move the SQLite files out of the data directory and restart the bus; keep `files/`, which the Postgres store uses:
+
+```sh
+mkdir -p ~/.local/state/ai-collab/bus-sqlite-archive
+mv ~/.local/state/ai-collab/bus/bus.db ~/.local/state/ai-collab/bus-sqlite-archive/
+mv ~/.local/state/ai-collab/bus/bus.db-wal ~/.local/state/ai-collab/bus/bus.db-shm ~/.local/state/ai-collab/bus-sqlite-archive/ 2>/dev/null
+systemctl --user restart ai-collab-bus          # no "retired SQLite store" line
+```
 
 ## Topics
 
