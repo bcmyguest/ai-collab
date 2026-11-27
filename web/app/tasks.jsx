@@ -9,10 +9,10 @@ import { cn } from "@/lib/utils";
 import { views } from "@/lib/view-memory";
 import { TaskGraph } from "./task-graph";
 
-const DOT = { open: "bg-muted-foreground", decided: "bg-sky-500", building: "bg-amber-500", review: "bg-violet-500", blocked: "bg-destructive", done: "bg-emerald-500" };
+const DOT = { open: "bg-muted-foreground", decided: "bg-sky-500", building: "bg-primary", review: "bg-primary", blocked: "bg-destructive", done: "bg-emerald-500" };
 const PRIORITY_BADGE = {
   P0: "border-destructive/40 bg-destructive/10 text-destructive",
-  P1: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  P1: "border-primary/40 bg-primary/10 text-primary",
   P2: "border-border bg-muted text-muted-foreground",
   P3: "border-border bg-transparent text-muted-foreground",
 };
@@ -35,8 +35,8 @@ function ReviewLine({ review }) {
     <span>{plural(review.files?.length ?? 0, "file")}{review.more > 0 && ` +${review.more}`}</span>
     {review.check?.code !== 0 && <span className="text-destructive">check failed</span>}
     {decision ? <span>{decision.action === "accept" ? "accepted" : "returned"}</span>
-      : review.stale ? <span className="text-amber-700 dark:text-amber-400">branch moved</span>
-        : <span className="text-violet-600 dark:text-violet-400">waiting for you</span>}
+      : review.stale ? <span className="text-primary">branch moved</span>
+        : <span className="text-primary">waiting for you</span>}
   </p>;
 }
 
@@ -54,7 +54,7 @@ function ReviewTask({ task, review, decide }) {
     try { if (await decide(task.id, decision, text, { commit: review.commit, submission: review.submission })) setNote(""); }
     finally { setBusy(false); }
   };
-  return <li className="flex min-w-0 flex-col gap-2 rounded-xl border border-violet-500/50 bg-violet-500/5 p-3 text-sm">
+  return <li className="flex min-w-0 flex-col gap-2 rounded-xl border border-primary/50 bg-primary/5 p-3 text-sm">
     <TaskMetadata task={task} fullId/>
     <p className="font-medium leading-snug wrap-break-word">{task.title}</p>
     {review.criteria && <p className="text-xs text-muted-foreground break-words">Asked for: {review.criteria}</p>}
@@ -68,7 +68,7 @@ function ReviewTask({ task, review, decide }) {
       <span className="text-muted-foreground">{decided.action === "accept" ? "Accepted" : "Returned"} by </span>
       <span className="font-mono">{decided.by}</span>
       {decided.note && <span className="text-muted-foreground"> ({decided.note})</span>}
-    </p> : review.stale ? <p className="text-xs text-amber-700 dark:text-amber-400">
+    </p> : review.stale ? <p className="text-xs text-primary">
       The branch moved past this commit, so this packet can no longer be decided. Queue the task for a fresh build.
     </p> : <>
       <form className="flex gap-2" onSubmit={event => { event.preventDefault(); send("return", note); }}>
@@ -86,8 +86,8 @@ function ReviewTask({ task, review, decide }) {
 function TaskMetadata({ task, fullId }) {
   const priority = priorityOf(task);
   return <div className="flex w-full min-w-0 items-start gap-2">
-    <Badge variant="outline" aria-label={`priority ${priority}`} className={cn("shrink-0 font-mono text-[10px]", PRIORITY_BADGE[priority])}>{priority}</Badge>
-    <span className={cn("min-w-0 font-mono text-[11px] text-muted-foreground", fullId ? "wrap-anywhere" : "truncate")}>{task.id}</span>
+    <Badge variant="outline" aria-label={`priority ${priority}`} className={cn("shrink-0 font-mono text-xs", PRIORITY_BADGE[priority])}>{priority}</Badge>
+    <span className={cn("min-w-0 font-mono text-xs text-muted-foreground", fullId ? "wrap-anywhere" : "truncate")}>{task.id}</span>
   </div>;
 }
 
@@ -170,7 +170,7 @@ function BuilderRecovery({ task, recover }) {
     try { await recover(task.id, nextHarness); }
     finally { setBusy(false); }
   }
-  return <section aria-label="Builder recovery" className="flex flex-col gap-2 rounded-xl border border-amber-500/50 p-3 text-xs">
+  return <section aria-label="Builder recovery" className="flex flex-col gap-2 rounded-xl border border-primary/50 p-3 text-xs">
     <p className="font-medium">Builder needs recovery</p>
     {!task.last && <p>No progress update recorded</p>}
     <p className="wrap-anywhere">Worktree {worktree}</p>
@@ -199,7 +199,7 @@ function Decision({ task, decide, skip, compose, fullId }) {
     if (ok) setText("");
   };
   const q = task.question;
-  return <li className="flex min-w-0 flex-col gap-2 rounded-xl border border-amber-500/50 bg-amber-500/5 p-3 text-sm">
+  return <li className="flex min-w-0 flex-col gap-2 rounded-xl border border-primary/50 bg-primary/5 p-3 text-sm">
     <TaskMetadata task={task} fullId={fullId}/>
     <button type="button" onClick={() => compose(task.id)} className="w-full text-left font-medium leading-snug wrap-break-word hover:underline">{task.title}</button>
     <p className="wrap-anywhere">{q.text}</p>
@@ -227,9 +227,9 @@ const Column = memo(function Column({ status, list, now, compose, open, fullId, 
   </>;
   return <section aria-label={status} data-task-column={status} className={cn("flex min-w-0 flex-col gap-2",
     !fullId && "min-h-0 snap-start rounded-xl border bg-muted/30 p-2", target && "ring-2 ring-inset ring-primary")}>
-    <h2 className="flex shrink-0 items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+    <h2 className="flex shrink-0 items-center gap-2 text-xs font-medium text-muted-foreground">
       {toggle ? <button type="button" aria-expanded={!collapsed} onClick={toggle}
-        className="flex w-full items-center gap-2 py-1 uppercase">
+        className="flex w-full items-center gap-2 py-1">
         {heading}<span aria-hidden className="ml-auto">{collapsed ? "+" : "−"}</span>
       </button> : heading}
     </h2>
@@ -339,20 +339,20 @@ export function TaskBoard({ project, board, now, open, compose, decide, skip, re
         {landControl}
         {outcomeControls && <OutcomeCards outcomes={board?.outcomes} tasks={tasks} inspect={inspect} controls={outcomeControls}/>}
         {waiting.length > 0 && decide && <section aria-label="Needs your decision" className="flex flex-col gap-2">
-          <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-amber-700 dark:text-amber-400">
-            <span aria-hidden className="inline-block size-2 rounded-full bg-amber-500"/>Needs you · {waiting.length}
+          <h2 className="flex items-center gap-2 text-xs font-medium text-primary">
+            <span aria-hidden className="inline-block size-2 rounded-full bg-primary"/>Needs you · {waiting.length}
           </h2>
           <ul className="flex flex-col gap-2 md:grid md:grid-cols-2">{waiting.map(item => <Decision key={item.id} task={item} decide={decide} skip={skip} compose={message}/>)}</ul>
         </section>}
       </div>
       <div role="group" aria-label="View" className="flex shrink-0 gap-2">
         {VIEWS.map(([id, name]) => <Button key={id} type="button" size="sm" variant={view === id ? "default" : "outline"}
-          aria-pressed={view === id} className="h-8 rounded-full" onClick={() => setView(id)}>{name}</Button>)}
+          aria-pressed={view === id} className="h-8 rounded-md" onClick={() => setView(id)}>{name}</Button>)}
       </div>
       {view === "graph" ? <TaskGraph tasks={tasks} open={open}/> : <>
         <div role="group" aria-label="Filter by status" className="flex shrink-0 flex-wrap gap-2">
           {FILTERS.map(status => <Button key={status} type="button" size="sm" variant={filter === status ? "default" : "outline"}
-            aria-pressed={filter === status} className="h-8 rounded-full capitalize" onClick={() => {
+            aria-pressed={filter === status} className="h-8 rounded-md capitalize" onClick={() => {
               views.set(filterKey, status === "all" ? "" : status);
               stopDrag.current?.();
               setFilter(status);

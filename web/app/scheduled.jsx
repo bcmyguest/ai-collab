@@ -67,7 +67,7 @@ export function ScheduledJobs({ project = "", openRun }) {
   // A run link is the console's own hash: close the sheets and hand it to the console, which parses it like any hash.
   const openAt = hash => { setOpen(""); openRun?.(hash); };
   return <section aria-label="Scheduled jobs" className="px-2 pb-2">
-    <h2 className="flex items-center gap-1.5 pb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground"><CalendarClock className="size-3.5"/>Scheduled jobs</h2>
+    <h2 className="flex items-center gap-1.5 pb-2 text-xs font-medium text-muted-foreground"><CalendarClock className="size-3.5"/>Scheduled jobs</h2>
     {!list ? <p className="px-1 text-sm text-muted-foreground">Loading schedules…</p>
       : list.status !== "up" ? <p className="px-1 text-sm text-muted-foreground">runner offline</p>
       : <>
@@ -77,13 +77,13 @@ export function ScheduledJobs({ project = "", openRun }) {
             <button type="button" aria-haspopup="dialog" aria-label={"Schedule " + item.name} onClick={() => show(item.name)}
               className={cn("flex w-full min-w-0 flex-col gap-0.5 rounded-xl px-2 py-1.5 text-left text-sm transition-colors hover:bg-sidebar-accent", open === item.name && "bg-sidebar-accent")}>
               <span className="truncate font-medium">{item.name} <span className="font-normal text-muted-foreground">· every {item.everyMs / 60_000} min</span></span>
-              {item.command && <span className="truncate font-mono text-[11px] text-muted-foreground">{item.command.join(" ")}</span>}
-              <span className="text-[11px] text-muted-foreground">last {item.last ? item.last.status + " " + when(item.last.scheduledTime) : "never"} · next {when(item.nextRun)}</span>
-              {jobAgent(item) && <span className="truncate text-[11px] text-muted-foreground">resumes <span className="font-mono">{jobAgent(item)}</span></span>}
+              {item.command && <span className="truncate font-mono text-xs text-muted-foreground">{item.command.join(" ")}</span>}
+              <span className="text-xs text-muted-foreground">last {item.last ? item.last.status + " " + when(item.last.scheduledTime) : "never"} · next {when(item.nextRun)}</span>
+              {jobAgent(item) && <span className="truncate text-xs text-muted-foreground">resumes <span className="font-mono">{jobAgent(item)}</span></span>}
             </button>
           </li>)}
         </ul>
-        {list.configError?.length > 0 && <p className="px-1 pt-1 text-xs text-amber-700 dark:text-amber-300">{list.configError.length} schedule entries skipped</p>}
+        {list.configError?.length > 0 && <p className="px-1 pt-1 text-xs text-primary">{list.configError.length} schedule entries skipped</p>}
       </>}
     <Sheet open={Boolean(job)} onOpenChange={next => { if (!next) setOpen(""); }}>
       <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto">
@@ -96,7 +96,7 @@ export function ScheduledJobs({ project = "", openRun }) {
               <dd className="min-w-0 break-all font-mono text-xs">{value}</dd>
             </div>)}
           </dl>
-          <h3 className="px-4 pb-2 pt-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">Recent runs</h3>
+          <h3 className="px-4 pb-2 pt-4 text-xs font-medium text-muted-foreground">Recent runs</h3>
           <div className="px-4 pb-6"><RunList runs={runs[job.name]} project={project} open={openAt}/></div>
         </>}
       </SheetContent>

@@ -169,11 +169,11 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
     }
   }
   return <div className="relative mx-auto w-full max-w-3xl px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
-    {held?.text === draft.trim() && held.replying === replying && held.question === question && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-sm">
+    {held?.text === draft.trim() && held.replying === replying && held.question === question && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3 py-1.5 text-sm">
       <span role="status">The terminal has an unsent draft.</span>
       <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => send(true, held.sendNow)}>Send anyway</Button>
     </div>}
-    {question && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-sm">
+    {question && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3 py-1.5 text-sm">
       <span className="min-w-0 truncate">Replying to question {question}</span>
       <Button variant="ghost" size="sm" onClick={cancel}>Cancel</Button>
     </div>}
@@ -188,8 +188,8 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
         className={cn("flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm", i === commandChosen && "bg-accent text-accent-foreground", command.status === "unsupported" && "opacity-50")}>
         <span className="flex min-w-0 flex-1 flex-col"><span className="font-mono text-xs">/{command.name}{command.args ? " " + command.args : ""}</span>
           <span className="truncate text-xs text-muted-foreground">{command.summary}</span></span>
-        {command.status === "partial" && <span className="shrink-0 rounded-full border px-1.5 text-[10px] text-amber-700 dark:text-amber-400">partial</span>}
-        {command.status === "unverified" && <span className="shrink-0 rounded-full border px-1.5 text-[10px] text-amber-700 dark:text-amber-400">unverified</span>}
+        {command.status === "partial" && <span className="shrink-0 rounded-md border px-1.5 text-xs text-primary">partial</span>}
+        {command.status === "unverified" && <span className="shrink-0 rounded-md border px-1.5 text-xs text-primary">unverified</span>}
         {command.status === "unsupported" && <span className="shrink-0 text-xs text-muted-foreground">unsupported</span>}
       </button>)}
     </div>}
@@ -198,7 +198,7 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
       {matches.map((option, i) => <button type="button" role="option" aria-selected={i === chosen} key={option.id}
         onMouseDown={event => event.preventDefault()} onClick={() => insert(option)}
         className={cn("flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm", i === chosen && "bg-accent text-accent-foreground")}>
-        <Avatar address={option.run ? option.owner : option.model ? option.harness : option.team ? "operator" : option.id} className="size-6 text-[9px]"/>
+        <Avatar address={option.run ? option.owner : option.model ? option.harness : option.team ? "operator" : option.id} className="size-6 text-xs"/>
         <span className="flex min-w-0 flex-1 flex-col">{option.run ? <span className="truncate text-xs text-muted-foreground">{option.label}</span> : <span className="truncate font-mono text-xs">@{option.id}</span>}
           {option.run ? null : option.model ? <span className="truncate text-xs text-muted-foreground">{(HARNESS_NAMES[option.harness] || option.harness) + " · " + option.model}</span> : option.team ? <span className="truncate text-xs text-muted-foreground">{(option.members || []).join(", ")}</span> : <SessionName agent={option}/>}</span>
         {!option.harness && !option.run && !option.team && <Dot online={option.live === true}/>}
@@ -236,14 +236,14 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
             submitMode={coarse ? "none" : "enter"} cancelOnEscape={false}
             unstable_focusOnRunStart={false} unstable_focusOnScrollToBottom={false} unstable_focusOnThreadSwitched={false}
             onChange={event => change(event.target.value)}
-            className="max-h-60 min-h-[44px] w-full resize-none border-none bg-transparent px-3 text-[15px] text-foreground shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0"/>
+            className="max-h-60 min-h-[44px] w-full resize-none border-none bg-transparent px-3 text-base text-foreground shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0"/>
           <TooltipProvider>
             <div className="flex items-center justify-between px-1 pt-1">
               <div className="flex items-center gap-1">
                 {!question && <AttachImageButton replacing={Boolean(image)}/>}
                 <Tooltip>
                   <TooltipTrigger asChild disabled={busy} onClick={event => event.stopPropagation()}>
-                    <Button type="button" variant="ghost" size="sm" className="rounded-full" aria-expanded={picking} disabled={busy}
+                    <Button type="button" variant="ghost" size="sm" className="rounded-md" aria-expanded={picking} disabled={busy}
                       onClick={() => { setShowPicker(!showPicker); setActiveIndex(0); focus(); }}><AtSign/>Mention</Button>
                   </TooltipTrigger>
                   <TooltipContent side="top">Mention an agent</TooltipContent>
@@ -252,14 +252,14 @@ export function Composer({ conversation, agents, harnesses, teams = [], startabl
               <div className="flex items-center gap-1">
                 {urgentable && !command && <Tooltip>
                   <TooltipTrigger asChild disabled={busy} onClick={event => event.stopPropagation()}>
-                    <Button type="button" variant={urgent ? "secondary" : "ghost"} size="sm" className={cn("rounded-full", urgent && "text-amber-700 dark:text-amber-400")} aria-pressed={routing.session ? undefined : urgent} disabled={busy || (routing.session && !canSend)}
+                    <Button type="button" variant={urgent ? "secondary" : "ghost"} size="sm" className={cn("rounded-md", urgent && "text-primary")} aria-pressed={routing.session ? undefined : urgent} disabled={busy || (routing.session && !canSend)}
                       onClick={() => routing.session ? send(false, true) : setUrgent(!urgent)}><Zap/>Send now</Button>
                   </TooltipTrigger>
                   <TooltipContent side="top">Deliver at the agent&apos;s next tool call instead of its next turn</TooltipContent>
                 </Tooltip>}
                 <Tooltip>
                   <TooltipTrigger asChild disabled={busy} onClick={event => event.stopPropagation()}>
-                    <Button type="submit" size="icon" className="rounded-full" aria-label={sendName} disabled={busy || !canSend}><ArrowUp/></Button>
+                    <Button type="submit" size="icon" className="rounded-md" aria-label={sendName} disabled={busy || !canSend}><ArrowUp/></Button>
                   </TooltipTrigger>
                   <TooltipContent side="top">{sendName}</TooltipContent>
                 </Tooltip>

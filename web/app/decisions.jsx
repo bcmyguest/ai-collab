@@ -29,7 +29,7 @@ export function DecisionQueue({ decisions = [], inbox, now, disabled, action, se
         </h3>
         {items.map(item => <div key={item.key} className="flex min-w-0 flex-col gap-1.5">
           {!seen.has(JSON.stringify([project, item.key])) && <button type="button" aria-label="Mark new decision as seen"
-            className="w-fit rounded-full border border-orange-500/60 bg-orange-500/15 px-2 py-0.5 text-xs font-medium text-orange-800 hover:bg-orange-500/25 dark:text-orange-300"
+            className="w-fit rounded-md border border-primary/60 bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary hover:bg-primary/25"
             onClick={() => markSeen(JSON.stringify([project, item.key]))}>New</button>}
           <p className="text-xs text-muted-foreground">
             {item.from.includes("#") ? <a className="underline" href={"#" + selectionHash({ project, level: "session", session: item.from })}>{item.agentName || item.from}</a>
@@ -44,7 +44,7 @@ export function DecisionQueue({ decisions = [], inbox, now, disabled, action, se
               : <LegacyQuestionCard body={item.body} disabled={disabled}
                 onAnswer={body => action("reply", { project, question: item.question, body }, "Reply sent")}/>}
           {/* Skip closes the card unanswered; a suspended run has no prompt to fall back on, so it is resumed or left waiting. */}
-          {item.kind !== "Suspension" && !item.approval?.owned && <Button variant="ghost" size="sm" className="w-fit rounded-full text-muted-foreground" disabled={disabled}
+          {item.kind !== "Suspension" && !item.approval?.owned && <Button variant="ghost" size="sm" className="w-fit rounded-md text-muted-foreground" disabled={disabled}
             onClick={() => action("skip", { project, id: item.key }, "Skipped")}>Skip</Button>}
         </div>)}
       </section>;

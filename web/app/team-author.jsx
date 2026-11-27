@@ -118,7 +118,7 @@ export function TeamAuthor({ templates, pattern = null, project, call, go, disab
     </p>}
 
     {checked && <section className="flex flex-col gap-2">
-      <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Draft</h3>
+      <h3 className="text-xs font-medium text-muted-foreground">Draft</h3>
       <div className="rounded-xl border bg-card p-2"><RoleGraph graph={graph} label={`Draft graph of ${draft.pattern.name}`}/></div>
       <ul className="flex flex-col gap-1 text-xs">
         {draft.pattern.roles.map(role => <li key={role.id} className="flex flex-wrap gap-2 rounded-lg border px-2 py-1.5">

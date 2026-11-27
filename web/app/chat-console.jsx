@@ -56,13 +56,13 @@ function ContextChip({ context, rows }) {
   const meter = contextMeter(context);
   const loaded = context.files || [];
   const read = filesRead(rows);
-  const tone = meter.level === "full" ? "border-destructive text-destructive" : meter.level === "warn" ? "border-amber-500 text-amber-700 dark:text-amber-400" : "text-muted-foreground";
+  const tone = meter.level === "full" ? "border-destructive text-destructive" : meter.level === "warn" ? "border-primary text-primary" : "text-muted-foreground";
   const warning = meter.level === "full" ? " · full" : meter.level === "warn" ? " · near full" : "";
   const [open, setOpen] = useState(false);
   // A sheet fits any phone width; a popover anchored to the chip ran off the left edge at 390px.
   return <>
     <button type="button" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}
-      className={cn("flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs", tone)}>
+      className={cn("flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs", tone)}>
       Context{meter.text && " " + meter.text}{warning}</button>
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto break-words p-0">
@@ -94,7 +94,7 @@ function ZoomControls({ data, selected, now, navigate, compact }) {
   return <div className="flex flex-wrap items-center gap-2">
     {/* Projects and sessions live in the sidebar (the menu on a phone); the header keeps only the session views. */}
     {selected.level === "session" && selected.session && (selected.tab === "raw"
-      ? <Button variant="outline" size="sm" className="h-9 rounded-full" onClick={() => navigate({ ...selected, project, tab: "activity", run: "" })}><ArrowLeft/>Timeline</Button>
+      ? <Button variant="outline" size="sm" className="h-9 rounded-md" onClick={() => navigate({ ...selected, project, tab: "activity", run: "" })}><ArrowLeft/>Timeline</Button>
       : <Tabs value={selected.tab} onValueChange={tab => navigate({ ...selected, project, tab, run: "" })}>
         <TabsList aria-label="Session view" className="h-9">
           <TabsTrigger value="activity" className="px-3"><Activity/>Timeline</TabsTrigger>
@@ -373,7 +373,7 @@ export function Console({ account }) {
       <header className="sticky top-0 z-10 flex flex-col gap-2 border-b bg-background/85 px-3 py-2 backdrop-blur supports-backdrop-filter:bg-background/70">
         <div className={cn("flex items-center gap-2", level === "session" && "flex-wrap")}>
           <Button variant="ghost" size="icon" className="relative md:hidden" aria-label="Projects" aria-expanded={navOpen} onClick={() => setNavOpen(true)} title={anyWaiting ? "Sessions waiting on you" : undefined}>
-            <Menu/>{anyWaiting && <span aria-hidden className="absolute right-1.5 top-1.5 size-2.5 rounded-full bg-amber-500 ring-2 ring-background"/>}
+            <Menu/>{anyWaiting && <span aria-hidden className="absolute right-1.5 top-1.5 size-2.5 rounded-full bg-primary ring-2 ring-background"/>}
           </Button>
           {/* Back one level, the same step on every view: a session (or its compactions) returns to its project's chat, and
               a project view returns to Home. The rail's own links do the sideways moves between the project's views. */}
@@ -406,7 +406,7 @@ export function Console({ account }) {
             <ThemeToggle/>
           </div>
         </div>
-        {account.user && <p className="-mt-1 truncate text-right text-[11px] text-muted-foreground" data-account={account.user.login}>
+        {account.user && <p className="-mt-1 truncate text-right text-xs text-muted-foreground" data-account={account.user.login}>
           signed in as <span className="font-medium text-foreground" title={account.user.name || undefined}>{account.user.login}</span>
           {" · "}<button type="button" data-tap className="underline-offset-2 hover:underline" onClick={signOut}>sign out</button></p>}
         {level === "project" && ready && !data.hosted && !missing && <div className="flex items-center gap-2">
@@ -417,7 +417,7 @@ export function Console({ account }) {
         {level === "session" && selected.session && <ZoomControls data={data} selected={selected} now={now} navigate={navigate}
           compact={level === "session" && agent?.session && <span className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {agent.modelControl && modelsOf(models, "claude").length > 0 && <select
-              aria-label="Claude model" className="h-9 w-28 truncate rounded-full border bg-background px-2 text-sm"
+              aria-label="Claude model" className="h-9 w-28 truncate rounded-md border bg-background px-2 text-sm"
               value={agent.modelControl.current} disabled={!ready || working || agent.modelControl.busy}
               onChange={event => action("model", { target: selected.session, model: event.target.value }, "Model switched")}>
               <option value="" disabled>Default model</option>
@@ -425,11 +425,11 @@ export function Console({ account }) {
                 .map(model => <option key={model} value={model}>{model}</option>)}
             </select>}
             <ContextChip context={agent.context || {}} rows={rows.filter(row => row.agent === agent.id)}/>
-            {agent.online && ["codex", "opencode"].includes(agent.peer) && <Button variant="outline" size="sm" className="h-9 rounded-full" aria-label="Interrupt" disabled={!ready || working}
+            {agent.online && ["codex", "opencode"].includes(agent.peer) && <Button variant="outline" size="sm" className="h-9 rounded-md" aria-label="Interrupt" disabled={!ready || working}
               onClick={() => action("interrupt", { target: selected.session }, "Interrupt requested")}><Square/>Interrupt</Button>}
             <SessionMenu node={{ ...agent, project }} disabled={working} map={() => navigate({ project, level: "compactions" })} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}
               raw={openRaw} label={"Session actions for " + selected.session}/>
-            <Button variant="outline" size="sm" className="h-9 rounded-full" aria-label="Compact" disabled={!ready || working}
+            <Button variant="outline" size="sm" className="h-9 rounded-md" aria-label="Compact" disabled={!ready || working}
               onClick={() => action("compact", { target: selected.session }, "Compaction requested")}><Minimize2/>Compact</Button></span>}/>}
       </header>
       <div className={cn("flex flex-col gap-2 px-3 empty:hidden", composing && "min-h-0 flex-1 justify-center pb-[20vh]")}>

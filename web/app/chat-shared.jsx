@@ -31,7 +31,7 @@ export function Avatar({ address, className, by }) {
   const peer = peerOf(address);
   const label = by ? by.slice(0, 2).toUpperCase() : peer === "operator" ? "You" : peer === "system" ? "Sys" : peer.slice(0, 2).toUpperCase();
   const fallback = !by && hasLogo(peer) ? <HarnessLogo peer={peer} className="size-[55%]"/> : label;
-  return <BaseAvatar className={cn("size-8 shrink-0 text-[11px] font-semibold [&_[data-slot=avatar-fallback]]:text-white", colorOf(address), className)}><AvatarFallback>{fallback}</AvatarFallback></BaseAvatar>;
+  return <BaseAvatar className={cn("size-8 shrink-0 text-xs font-semibold [&_[data-slot=avatar-fallback]]:text-white", colorOf(address), className)}><AvatarFallback>{fallback}</AvatarFallback></BaseAvatar>;
 }
 
 export function Dot({ online }) {

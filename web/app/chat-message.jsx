@@ -63,36 +63,36 @@ export function ChatMessage({ message, operator, me, now, reply, replyFrom, open
   // A reply to an agent prefills its address so the mention routes the reply to that session.
   const prefill = openable ? "@" + sender + " " : "";
   // The asking agent's avatar and name, the header row of an A2UI card.
-  const cardHead = <><Avatar address={sender} by={other} className="size-6 text-[10px]"/><span className="truncate">{short(sender)}</span></>;
+  const cardHead = <><Avatar address={sender} by={other} className="size-6 text-xs"/><span className="truncate">{short(sender)}</span></>;
   return <MessagePrimitive.Root data-message-id={message.id} className={cn("flex max-w-full gap-3", outgoing && "flex-row-reverse")}
     onClick={event => { const tag = event.target.closest?.("[data-mention]"); if (tag) open(tag.textContent.replace(/^@/, "").split(/[:/]/)[0]); }}>
-    {openable ? <button type="button" aria-label={"Open avatar " + sender} tabIndex={-1} className="shrink-0 self-start rounded-full" onClick={go}><Avatar address={sender}/></button> : <Avatar address={shown} by={other}/>}
+    {openable ? <button type="button" aria-label={"Open avatar " + sender} tabIndex={-1} className="shrink-0 self-start rounded-md" onClick={go}><Avatar address={sender}/></button> : <Avatar address={shown} by={other}/>}
     <div className={cn("flex min-w-0 max-w-[82%] flex-col gap-1", outgoing ? "items-end" : "items-start")}>
       <div className="flex max-w-full flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
         {openable ? <button type="button" aria-label={"Open " + sender} title={sender} onClick={go}
           className="font-medium text-foreground underline-offset-2 hover:underline">{label}</button>
           : <span className="font-medium text-foreground" title={message.by ? shown + " · " + message.by : shown}>{outgoing ? other || "You" : label}</span>}
-        {detail && <span data-agent-detail className="text-[11px] text-muted-foreground">{"· " + detail}</span>}
+        {detail && <span data-agent-detail className="text-xs text-muted-foreground">{"· " + detail}</span>}
         {message.to && message.to !== "all" && <span title={message.to}>→ {short(message.to)}</span>}
-        {message.terminal && <Badge variant="outline" data-terminal title="Typed in the agent's terminal" className="h-4 px-1.5 text-[10px]">terminal</Badge>}
-        {message.replyTo && <Badge variant="outline" data-answer title={"Answers question " + message.replyTo} className="h-4 px-1.5 text-[10px]">answer</Badge>}
+        {message.terminal && <Badge variant="outline" data-terminal title="Typed in the agent's terminal" className="h-4 px-1.5 text-xs">terminal</Badge>}
+        {message.replyTo && <Badge variant="outline" data-answer title={"Answers question " + message.replyTo} className="h-4 px-1.5 text-xs">answer</Badge>}
         {at > 0 && <time dateTime={new Date(at).toISOString()} title={clock.format(at)}>{ago(at, now)}</time>}
         {replyFrom && message.kind !== "Approval" && <button type="button" data-tap aria-label={"Reply to " + sender} title="Reply" onClick={() => replyFrom({ id: message.id, sender, prefill, body: message.body })}
-          className="rounded-full p-0.5 hover:bg-muted hover:text-foreground"><Reply className="size-3.5"/></button>}
-        {message.scope === "all" && <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">to all</Badge>}
-        {message.urgent && !message.cancelled && <span role="img" aria-label="Sent now" title="Sent now: delivered at the agent's next tool call" data-urgent className="text-amber-700 dark:text-amber-400"><Zap className="size-3.5"/></span>}
+          className="rounded-md p-0.5 hover:bg-muted hover:text-foreground"><Reply className="size-3.5"/></button>}
+        {message.scope === "all" && <Badge variant="secondary" className="h-4 px-1.5 text-xs">to all</Badge>}
+        {message.urgent && !message.cancelled && <span role="img" aria-label="Sent now" title="Sent now: delivered at the agent's next tool call" data-urgent className="text-primary"><Zap className="size-3.5"/></span>}
         {outgoing && (message.queueStatus ? <span>{message.queueStatus}</span> : <Ticks state={message.receipt}/>)}
       </div>
       {message.quote && <Quote quote={message.quote} label={short(message.quote.sender)}/>}
       {message.kind === "Approval" ? <ApprovalCard approval={message.approval} now={now} disabled={disabled} act={act} skip={skip} head={cardHead}/>
         : message.kind === "Question" && message.question ? <QuestionCard question={message.question} body={withMentions(message.body)} taskLinks={taskLinks} answer={message.answer} by={message.answeredBy} skipped={message.skipped} disabled={disabled} onAnswer={body => answer(message.question, body)} skip={skip} head={cardHead}/>
         : (message.body || !message.attachment) && <BubbleContext.Provider value={bubble}>
-          <div className={cn("bubble max-w-full rounded-2xl px-3.5 py-2 text-[15px] leading-relaxed shadow-xs [overflow-wrap:anywhere]",
+          <div className={cn("bubble max-w-full rounded-2xl px-3.5 py-2 text-base leading-relaxed shadow-xs [overflow-wrap:anywhere]",
         outgoing ? "rounded-tr-md border border-primary/25 bg-primary/10 text-foreground" : "rounded-tl-md border bg-card text-card-foreground",
-        message.kind === "Question" && "border-amber-500/50")}><MessagePrimitive.Content components={{ Text: BubbleText }}/></div>
+        message.kind === "Question" && "border-primary/50")}><MessagePrimitive.Content components={{ Text: BubbleText }}/></div>
         </BubbleContext.Provider>}
       {message.attachment && <ChatImage attachment={message.attachment}/>}
-      {message.kind === "Question" && message.question && !message.answer && <Button variant="ghost" size="sm" className="rounded-full text-xs" onClick={() => reply(message.question)}>Reply from the composer</Button>}
+      {message.kind === "Question" && message.question && !message.answer && <Button variant="ghost" size="sm" className="rounded-md text-xs" onClick={() => reply(message.question)}>Reply from the composer</Button>}
     </div>
   </MessagePrimitive.Root>;
 }

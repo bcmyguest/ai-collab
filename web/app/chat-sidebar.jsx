@@ -22,7 +22,7 @@ export function AfkToggle({ mode, disabled, set }) {
   const Icon = AFK_MODES.find(([id]) => id === mode)?.[2] || Monitor;
   return <DropdownMenu>
     <DropdownMenuTrigger asChild>
-      <Button variant={mode === "off" ? "ghost" : "secondary"} size="sm" className="rounded-full" aria-label={"AFK mode: " + mode} title={"AFK mode: " + mode} disabled={disabled}>
+      <Button variant={mode === "off" ? "ghost" : "secondary"} size="sm" className="rounded-md" aria-label={"AFK mode: " + mode} title={"AFK mode: " + mode} disabled={disabled}>
         <Icon/><span className="text-xs">{mode === "off" ? "AFK" : "AFK " + mode}</span>
       </Button>
     </DropdownMenuTrigger>
@@ -63,26 +63,26 @@ function SessionRow({ agent, project, selected, now, navigate, dispose, openRaw,
         onClick={() => navigate({ project, level: "session", harness: agent.peer, session: agent.id, ...(selected.level === "session" && selected.session ? { tab: selected.tab } : {}) })}
         className={cn("flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-sm transition-colors hover:bg-sidebar-accent",
           selected.level === "session" && selected.session === agent.id && "bg-sidebar-accent")}>
-        <Avatar address={agent.id} className="size-6 text-[9px]"/>
+        <Avatar address={agent.id} className="size-6 text-xs"/>
         <span className="flex min-w-0 flex-1 flex-col">
           {lead === "name" ? <>
             <span className="truncate font-medium" title={name}>{label}</span>
-            <span className="truncate font-mono text-[11px] text-muted-foreground">{short(agent.id)}</span>
+            <span className="truncate font-mono text-xs text-muted-foreground">{short(agent.id)}</span>
           </> : <>
             <span className="truncate font-mono text-xs">{short(agent.id)}</span><SessionName agent={agent}/>
           </>}
-          {agent.owner && <span className="truncate text-[11px] text-muted-foreground">@{agent.owner}</span>}
-          {agent.team && <span className="truncate text-[11px] text-muted-foreground" title="Team and role">{agent.team} · {agent.role}</span>}
+          {agent.owner && <span className="truncate text-xs text-muted-foreground">@{agent.owner}</span>}
+          {agent.team && <span className="truncate text-xs text-muted-foreground" title="Team and role">{agent.team} · {agent.role}</span>}
           <span className="self-start"><RunningCount runs={agent.subagents} now={now}/></span>
         </span>
-        {agent.waiting && <span role="img" aria-label="Waiting on you" title="Waiting on you" className="inline-block size-2.5 shrink-0 rounded-full bg-amber-500 ring-2 ring-amber-500/25"/>}
+        {agent.waiting && <span role="img" aria-label="Waiting on you" title="Waiting on you" className="inline-block size-2.5 shrink-0 rounded-full bg-primary ring-2 ring-primary/25"/>}
         <Dot online={isLive(agent, now)}/>
-        <span className="shrink-0 text-right text-[11px] leading-tight text-muted-foreground">{ago(agent.lastMessageAt, now)}{isLive(agent, now) && agent.activeAt ? <><br/>active {ago(agent.activeAt, now)}</> : null}</span>
+        <span className="shrink-0 text-right text-xs leading-tight text-muted-foreground">{ago(agent.lastMessageAt, now)}{isLive(agent, now) && agent.activeAt ? <><br/>active {ago(agent.activeAt, now)}</> : null}</span>
       </button>
       {dispose && <SessionMenu node={{ ...agent, project }} disabled={disabled} dispose={dispose} raw={openRaw} map={() => navigate({ project, level: "compactions" })} label={"Session actions for " + agent.id}/>}
     </div>
     {/* An agent's activity line says what it is doing now; the harness title is beside it on the card views. */}
-    {lead === "name" && agent.activity && <p className="truncate px-2 text-[11px] text-muted-foreground" title={agent.activity}>{agent.activity}</p>}
+    {lead === "name" && agent.activity && <p className="truncate px-2 text-xs text-muted-foreground" title={agent.activity}>{agent.activity}</p>}
     <SubagentRuns runs={agent.subagents} now={now} open={run => navigate({ project, level: "session", harness: agent.peer, session: agent.id, tab: "subagents", run: run.run })}/>
   </li>;
 }
@@ -90,7 +90,7 @@ function SessionRow({ agent, project, selected, now, navigate, dispose, openRaw,
 // The agents that set a name with set_identity, PM first; a tap opens that session's direct chat.
 function AgentList({ agents, project, selected, now, navigate, dispose, openRaw, disabled }) {
   return <section aria-label="Agents">
-    <h2 className="px-2 pb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Agents</h2>
+    <h2 className="px-2 pb-2 text-xs font-medium text-muted-foreground">Agents</h2>
     <ul className="flex flex-col gap-1">
       {agents.map(agent => <SessionRow key={"agent:" + agent.id} agent={agent} project={project} selected={selected} now={now} navigate={navigate} dispose={dispose} openRaw={openRaw} disabled={disabled} lead="name"/>)}
     </ul>
@@ -100,13 +100,13 @@ function AgentList({ agents, project, selected, now, navigate, dispose, openRaw,
 // Threads of this project with their sessions nested; the shown status comes from the live session cards.
 function ThreadList({ threads, project, selected, now, navigate, dispose, openRaw, disabled }) {
   return <section aria-label="Threads">
-    <h2 className="min-w-0 truncate px-2 pb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Threads · {project}</h2>
+    <h2 className="min-w-0 truncate px-2 pb-2 text-xs font-medium text-muted-foreground">Threads · {project}</h2>
     <ul className="flex flex-col gap-2">
       {threads.map(thread => <li key={thread.id} className="flex min-w-0 flex-col gap-1">
         <div className="flex min-w-0 items-center gap-2 px-2 text-sm">
           <span className="min-w-0 flex-1 truncate font-medium" title={thread.worktree || thread.title}>{thread.title || thread.branch || thread.id}</span>
-          {thread.pinned && <span className="shrink-0 text-[11px] text-muted-foreground">Pinned</span>}
-          <span className={cn("shrink-0 text-[11px]", thread.status === "waiting" ? "font-medium text-amber-700 dark:text-amber-300" : "text-muted-foreground")}>{THREAD_STATUS_LABELS[thread.status] || thread.status}</span>
+          {thread.pinned && <span className="shrink-0 text-xs text-muted-foreground">Pinned</span>}
+          <span className={cn("shrink-0 text-xs", thread.status === "waiting" ? "font-medium text-primary" : "text-muted-foreground")}>{THREAD_STATUS_LABELS[thread.status] || thread.status}</span>
         </div>
         {thread.agents.length > 0 && <ul className="flex flex-col gap-1 pl-3">
           {thread.agents.map(agent => <SessionRow key={thread.id + ":" + agent.id} agent={agent} project={project} selected={selected} now={now} navigate={navigate} dispose={dispose} openRaw={openRaw} disabled={disabled} lead={agent.identityName ? "name" : undefined}/>)}
@@ -135,7 +135,7 @@ export function Sidebar({ data, selected, now, navigate, newSession, dispose, op
     </button>
     <Button variant="ghost" className="justify-start" onClick={() => navigate({ level: "inbox" })} aria-current={selected.level === "inbox" ? "page" : undefined}>Decision inbox</Button>
     <section>
-      <h2 className="px-2 pb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Projects</h2>
+      <h2 className="px-2 pb-2 text-xs font-medium text-muted-foreground">Projects</h2>
       <ul className="flex flex-col gap-1">
         {data.projects.map(project => <li key={project.id} className="flex items-center gap-1">
           <button type="button" data-tap aria-current={project.id === current ? "page" : undefined}
@@ -144,11 +144,11 @@ export function Sidebar({ data, selected, now, navigate, newSession, dispose, op
               project.id === current && "bg-sidebar-accent font-medium")}>
             <FolderGit2 className="size-4 shrink-0 text-muted-foreground"/>
             <span className="min-w-0 flex-1 truncate">{project.id}</span>
-            {project.waiting > 0 && <span className="shrink-0 rounded-full border border-amber-500/60 bg-amber-500/15 px-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-300"
+            {project.waiting > 0 && <span className="shrink-0 rounded-md border border-primary/60 bg-primary/15 px-1.5 text-xs font-medium text-primary"
               aria-label={project.waiting + " waiting on you"} title="Sessions waiting on you">{project.waiting}</span>}
             <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground" title={data.projectCounts?.[project.id] ? data.projectCounts[project.id].running + " running · " + data.projectCounts[project.id].inactive + " inactive" : undefined}>{data.projectCounts?.[project.id] ? data.projectCounts[project.id].running + " ▶ · " + data.projectCounts[project.id].inactive + " off" : ""}</span>
           </button>
-          <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label={"New session in " + project.id}
+          <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-md" aria-label={"New session in " + project.id}
             disabled={disabled || project.paused} title="New session" onClick={() => newSession(project.id)}><Plus/></Button>
           {!data.autoProjects?.includes(project.id) && <ProjectMenu project={project.id} act={projectAction}/>}
         </li>)}
@@ -162,10 +162,10 @@ export function Sidebar({ data, selected, now, navigate, newSession, dispose, op
     {threads.length > 0 && <ThreadList threads={threads} project={current} selected={selected} now={now} navigate={navigate} dispose={dispose} openRaw={openRaw} disabled={disabled}/>}
     <section>
       <div className="flex items-center justify-between px-2 pb-2">
-        <h2 className="min-w-0 truncate text-xs font-medium uppercase tracking-wider text-muted-foreground" title={home ? undefined : current}>{home ? "Sessions" : "Sessions · " + current}</h2>
+        <h2 className="min-w-0 truncate text-xs font-medium text-muted-foreground" title={home ? undefined : current}>{home ? "Sessions" : "Sessions · " + current}</h2>
         <button type="button" data-tap onClick={() => navigate(home ? { level: "home" } : { project: current, level: "session" })}
           aria-current={home || (selected.level === "session" && !selected.session) ? "page" : undefined}
-          className="shrink-0 rounded-full px-2 py-0.5 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">All sessions</button>
+          className="shrink-0 rounded-md px-2 py-0.5 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">All sessions</button>
       </div>
       {home ? <p className="px-2 text-sm text-muted-foreground">Pick a project to list its sessions here.</p>
         : visible.length === 0 && <p className="px-2 text-sm text-muted-foreground">No sessions seen yet.</p>}

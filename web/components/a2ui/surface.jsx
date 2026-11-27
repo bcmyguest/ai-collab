@@ -21,7 +21,7 @@ const THEME = {
   "--a2ui-color-border": "var(--border)", "--a2ui-border": "1px solid var(--border)",
   "--a2ui-color-input": "var(--background)", "--a2ui-color-on-input": "var(--foreground)",
   "--a2ui-font-size": "0.875rem", "--a2ui-line-height-body": "1.45",
-  "--a2ui-button-font-weight": "500", "--a2ui-button-border-radius": "9999px",
+  "--a2ui-button-font-weight": "500", "--a2ui-button-border-radius": "var(--radius-md)",
 };
 const catalog = aiCollabCatalog([OptionPicker, ButtonImpl, TextFieldImpl, ChipImpl, ScriptImpl]);
 // Surfaces by id from the AG-UI stream, and the submit that posts a surface action (null when signed out).
@@ -70,7 +70,7 @@ export function Surface({ id, fallback, head, kind, open = false }) {
   // inert blocks taps and keys while the chat is busy or not connected, as the legacy card's disabled does.
   return <SurfaceBoundary fallback={fallback}>
     <section data-surface={id} inert={disabled || undefined} aria-disabled={disabled || undefined}
-      className={cn(CARD, "flex flex-col gap-2.5", open && "border-amber-500/50", disabled && "opacity-60")} style={THEME}>
+      className={cn(CARD, "flex flex-col gap-2.5", open && "border-primary/50", disabled && "opacity-60")} style={THEME}>
       {(head || kind) && <header className="flex min-w-0 items-center justify-between gap-2 text-xs text-muted-foreground">
         <div className="flex min-w-0 items-center gap-2 font-medium text-foreground">{head}</div>
         {kind && <span className="shrink-0">{kind}</span>}

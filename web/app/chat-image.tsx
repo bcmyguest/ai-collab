@@ -28,7 +28,7 @@ export function ImagePicker({ files, onChange, onError, disabled, children }: {
 export function AttachImageButton({ replacing }: { replacing: boolean }) {
   const label = replacing ? "Replace image" : "Attach image";
   return <FileInputTrigger aria-label={label} title={label}
-    render={<Button variant="ghost" size="icon" className="size-11 rounded-full sm:size-8"/>}>
+    render={<Button variant="ghost" size="icon" className="size-11 rounded-md sm:size-8"/>}>
     <Paperclip aria-hidden="true"/>
   </FileInputTrigger>;
 }
