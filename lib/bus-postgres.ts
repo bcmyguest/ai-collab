@@ -12,10 +12,12 @@ import fs from "node:fs";
 import path from "node:path";
 import type pg from "pg";
 import { DEFAULT_RETENTION_MS, parseSince, type BusEvent, type PublishInput } from "./bus.ts";
+import { PG_CONNECT_TIMEOUT_MS } from "./postgres.ts";
 import { THREAD_ID, createThreadStore, migrateThreads } from "./threads.ts";
 
 const PUBLISH_LOCK = 7306457; // pg_advisory_xact_lock key: publishes commit in id order
 const SCHEMA_LOCK = 7306458; // serializes CREATE ... IF NOT EXISTS across processes
+const RECONNECT_MS = 1000;
 const FILE_EXT = /\.(png|jpe?g|gif|webp|txt)$/i;
 // oxlint-disable-next-line quality/no-known-value-widening -- looked up by a runtime file extension
 const FILE_TYPES: Record<string, string | undefined> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".txt": "text/plain; charset=utf-8" };
@@ -42,21 +44,23 @@ const rowEvent = (row: EventRow): BusEvent => ({
 
 /**
  * Opens the Postgres store. `schema` defaults to "bus"; tests pass their own so parallel files never share
- * tables. Resolves once the schema exists and the LISTEN connection is up.
+ * tables. Resolves once the schema exists and the LISTEN connection is up; on failure it closes every
+ * connection it opened before rejecting, so a failed open leaves nothing that keeps the process alive.
  */
 export async function openPostgresBusStore({ url, filesDir, retentionMs = DEFAULT_RETENTION_MS, schema = "bus", applicationName = "ai-collab-bus", log = () => {} }: PostgresBusOptions) {
   if (!/^[a-z_][a-z0-9_]*$/.test(schema)) throw new Error(`bus: invalid schema ${schema}`);
   const { default: pg } = await import("pg");
   const channel = `${schema}_events`;
-  const pool = new pg.Pool({ connectionString: url, max: 5, application_name: applicationName });
+  const pool = new pg.Pool({ connectionString: url, max: 5, application_name: applicationName, connectionTimeoutMillis: PG_CONNECT_TIMEOUT_MS });
   // An idle client that errors (server restart, terminated backend) is dropped by the pool; without a listener Node would throw.
   pool.on("error", (error) => log(`postgres pool: ${error.message}`));
   const streams = new Set<Stream>();
   let listener: pg.Client | null = null;
+  let reconnect: NodeJS.Timeout | null = null;
   let closing = false;
+  let closed: Promise<void> | null = null;
 
   if (filesDir) fs.mkdirSync(filesDir, { recursive: true, mode: 0o700 });
-  await migrate();
 
   /** Creates the schema and tables under an advisory lock, so two processes opening at once cannot race. */
   async function migrate(): Promise<void> {
@@ -114,14 +118,17 @@ export async function openPostgresBusStore({ url, filesDir, retentionMs = DEFAUL
 
   /** Keeps one LISTEN connection; after a drop it reopens and catches every stream up, so no wake is lost. */
   async function listen(): Promise<void> {
-    const client = new pg.Client({ connectionString: url, application_name: applicationName });
+    reconnect = null;
+    if (closing) return;
+    const client = new pg.Client({ connectionString: url, application_name: applicationName, connectionTimeoutMillis: PG_CONNECT_TIMEOUT_MS });
     listener = client;
     client.on("notification", () => { for (const s of streams) drain(s).catch(() => {}); });
     // error and end can both fire for one drop: the first one clears listener, so only one reconnect is scheduled.
     const lost = () => {
       if (closing || listener !== client) return;
       listener = null;
-      setTimeout(() => listen().catch(lost), 1000).unref();
+      reconnect = setTimeout(() => listen().catch(lost), RECONNECT_MS);
+      reconnect.unref();
     };
     client.on("error", (error) => { log(`postgres listener: ${error.message}`); lost(); });
     client.on("end", lost);
@@ -129,7 +136,6 @@ export async function openPostgresBusStore({ url, filesDir, retentionMs = DEFAUL
     await client.query(`LISTEN ${channel}`);
     for (const s of streams) drain(s).catch(() => {});
   }
-  await listen();
 
   const backlog = (topics: string[], since: string, high: string): Promise<{ rows: EventRow[] }> => {
     const s = parseSince(since);
@@ -235,14 +241,26 @@ export async function openPostgresBusStore({ url, filesDir, retentionMs = DEFAUL
     async isEmpty(): Promise<boolean> {
       return (await pool.query<{ empty: boolean }>(`SELECT NOT EXISTS (SELECT 1 FROM ${schema}.events) AS empty`)).rows[0].empty;
     },
-    async close() {
-      closing = true;
-      streams.clear();
-      const client = listener;
-      listener = null;
-      if (client) await client.end().catch(() => {});
-      await pool.end();
+    /** Idempotent: a second call waits for the first. */
+    close(): Promise<void> {
+      closed ??= (async () => {
+        closing = true;
+        streams.clear();
+        if (reconnect) clearTimeout(reconnect);
+        const client = listener;
+        listener = null;
+        if (client) await client.end().catch(() => {});
+        await pool.end();
+      })();
+      return closed;
     },
   };
+  try {
+    await migrate();
+    await listen();
+  } catch (error) {
+    await store.close();
+    throw error;
+  }
   return store;
 }
