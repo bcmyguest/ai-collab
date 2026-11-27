@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Bell, BellOff, BellRing } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ALERT_LEVELS, AlertLevelItems } from "./alert-level";
 import { isAlertLevel, readRememberedAlertLevel, rememberAlertLevel, shownAlertLevel, subscriptionUsesKey } from "@/lib/alert-level";
@@ -16,6 +17,9 @@ const HINTS = {
   unsupported: "This browser cannot receive push notifications here. Use Chrome or Firefox over the HTTPS address.",
   install: "On iPhone or iPad, add AI Collab to the Home Screen and open it from there.",
 };
+
+// Decisions the bell lists before pointing at the inbox.
+const BELL_ITEMS = 5;
 
 const supported = () => typeof window !== "undefined" && window.isSecureContext && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 const apple = () => /iPad|iPhone|iPod/.test(navigator.userAgent) && !navigator.standalone;
@@ -36,7 +40,16 @@ async function call(method, path, body) {
 
 // Header bell: one Notifications menu with the browser push state, its actions, and the phone alert level.
 // level is the server's stored level; undefined before the first state frame, so the last choice shows instead.
-export function NotifyToggle({ level, levelDisabled = false, setLevel }) {
+/** One line for a pending decision: the approval's summary, the suspension's title, or the question itself. */
+function decisionText(item) {
+  if (item.approval) return item.approval.summary || item.approval.tool || "Approval";
+  if (item.suspension) return item.suspension.title || item.suspension.prompt || "Run waits to resume";
+  const lines = String(item.body || "").split("\n").map(line => line.trim()).filter(line => line && !/^(Question from|Reply in this topic)/.test(line));
+  return (lines[0] || "Question").replace(/^IMPORTANT, the agent waits for this answer:\s*/, "");
+}
+
+/** The one bell: pending decisions from every project with their count, then this browser's push and alert controls. */
+export function NotifyToggle({ level, levelDisabled = false, setLevel, decisions = [], now = 0, openInbox }) {
   const [state, setState] = useState("loading");
   const [busy, setBusy] = useState(false);
 
@@ -133,12 +146,26 @@ export function NotifyToggle({ level, levelDisabled = false, setLevel }) {
   };
   const [label, Icon] = STATES[state];
   const alerts = ALERT_LEVELS.find(([id]) => id === shown)?.[1] || "All";
-  const summary = "Notifications: " + label + " · phone alerts " + alerts;
+  const pending = decisions.filter(item => !(item.expiresAt && item.expiresAt < now));
+  const count = pending.length;
+  const summary = (count ? count + (count === 1 ? " decision waits" : " decisions wait") + " on you · " : "") + "Notifications: " + label + " · phone alerts " + alerts;
   return <DropdownMenu>
     <DropdownMenuTrigger asChild>
-      <Button variant="ghost" size="icon" aria-label={summary} title={summary} data-state-push={state} disabled={levelDisabled}><Icon/></Button>
+      <Button variant="ghost" size={count ? "default" : "icon"} aria-label={summary} title={summary} data-state-push={state} data-decisions={count} disabled={levelDisabled}
+        className={cn(count > 0 && "gap-1 px-2 text-primary")}>
+        <Icon/>{count > 0 && <span className="text-xs font-semibold tabular-nums">{count}</span>}
+      </Button>
     </DropdownMenuTrigger>
-    <DropdownMenuContent align="end" className="w-64">
+    <DropdownMenuContent align="end" side="top" className="w-80 max-w-[calc(100vw-1rem)]">
+      <DropdownMenuLabel>{count ? "Waiting on you · " + count : "No decisions waiting"}</DropdownMenuLabel>
+      {pending.slice(0, BELL_ITEMS).map(item => <DropdownMenuItem key={item.project + ":" + item.key} onSelect={() => openInbox?.()} className="flex-col items-start gap-0.5">
+        <span className="line-clamp-2 w-full text-sm [overflow-wrap:anywhere]">{decisionText(item)}</span>
+        <span className="text-xs text-muted-foreground">{item.project} · {item.agentName || item.from}</span>
+      </DropdownMenuItem>)}
+      {openInbox && <DropdownMenuItem onSelect={openInbox} className="font-medium text-primary">
+        {count > BELL_ITEMS ? "All " + count + " in the decision inbox" : "Open decision inbox"}
+      </DropdownMenuItem>}
+      <DropdownMenuSeparator/>
       <DropdownMenuLabel>Browser push · {label}</DropdownMenuLabel>
       <DropdownMenuSeparator/>
       {state === "off" && <DropdownMenuItem disabled={busy} onSelect={enable}>Turn on</DropdownMenuItem>}

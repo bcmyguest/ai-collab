@@ -359,7 +359,8 @@ export function Console({ account }) {
     controls: <>
       <AfkToggle mode={data.mode || "off"} disabled={!ready || working} set={mode => action("afk", { mode }, "AFK " + mode)}/>
       {/* Before the first state frame the bell shows this browser's last choice. */}
-      <NotifyToggle level={data.alerts} levelDisabled={!ready || working} setLevel={level => action("alerts", { level }, "Alerts set")}/>
+      <NotifyToggle level={data.alerts} levelDisabled={!ready || working} setLevel={level => action("alerts", { level }, "Alerts set")}
+        decisions={ready ? data.decisions || [] : []} now={now} openInbox={() => navigate({ level: "inbox" })}/>
     </>,
   };
   // The session's display name: a set_identity name, else a few words of its title, else the thread's.
