@@ -109,8 +109,6 @@ Run `ai-collab postgres up` before the bus starts. Without Postgres the bus exit
 
 Releases before this one kept the bus in SQLite (`bus.db` in the bus data directory). That store is retired. `ai-collab bus migrate --to postgres` stays for one release to copy an old `bus.db` into Postgres, keeping its ids; the next release removes it.
 
-At start the bus checks for `<bus data dir>/bus.db`. Beside an empty `bus.events` table it refuses to start, because new ids would collide with the old ones and `bus migrate` refuses a non-empty target. Beside a filled table it logs a reminder to archive the file.
-
 The copy reads `bus.db` read-only, so stop the bus first: a crashed bus can leave a dirty WAL that makes that read fail.
 
 ```sh
@@ -145,7 +143,7 @@ When they match, move the SQLite files out of the data directory and restart the
 mkdir -p ~/.local/state/ai-collab/bus-sqlite-archive
 mv ~/.local/state/ai-collab/bus/bus.db ~/.local/state/ai-collab/bus-sqlite-archive/
 mv ~/.local/state/ai-collab/bus/bus.db-wal ~/.local/state/ai-collab/bus/bus.db-shm ~/.local/state/ai-collab/bus-sqlite-archive/ 2>/dev/null
-systemctl --user restart ai-collab-bus          # no "retired SQLite store" line
+systemctl --user restart ai-collab-bus
 ```
 
 ## Topics

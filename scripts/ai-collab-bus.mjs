@@ -58,20 +58,6 @@ export async function backfillThreads(threads, env, log) {
   }
 }
 
-/**
- * A bus.db left by the retired SQLite store. Beside an empty Postgres store the start refuses: new ids would
- * collide with the old ones and `bus migrate` refuses a non-empty target. Beside a filled store it only warns.
- */
-export async function legacyBusDb({ dataDir, store }) {
-  const file = path.join(dataDir, "bus.db");
-  if (!existsSync(file)) return { refuse: false, message: "" };
-  const howto = "docs/configuration.md#bus-store";
-  if (await store.isEmpty()) {
-    return { refuse: true, message: `${file} holds the retired SQLite store and Postgres has no events: run \`ai-collab bus migrate --to postgres\`, or archive ${file} to start empty (${howto})` };
-  }
-  return { refuse: false, message: `${file} is left from the retired SQLite store; check it is copied, then archive it (${howto})` };
-}
-
 export async function main(env = process.env, { err = process.stderr } = {}) {
   const log = (message) => err.write(`ai-collab-bus: ${message}\n`);
   const token = busToken(env);
@@ -102,12 +88,6 @@ export async function main(env = process.env, { err = process.stderr } = {}) {
     store = await openPostgresBusStore({ url: pgUrl(env), filesDir: path.join(dataDir, "files"), retentionMs, log });
   } catch (error) {
     noPostgres(`Postgres on ${pgAt} refused the bus store: ${error.message}`);
-    return 1;
-  }
-  const legacy = await legacyBusDb({ dataDir, store });
-  if (legacy.message) log(legacy.message);
-  if (legacy.refuse) {
-    await store.close();
     return 1;
   }
   if (store.threads) await backfillThreads(store.threads, env, log);
