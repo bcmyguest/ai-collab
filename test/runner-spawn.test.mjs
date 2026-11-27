@@ -12,8 +12,8 @@ import { createRunner } from "../runner/runner.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 
-const PARENT = "claude#aaaaaaaaaaaaaaaa";
-const TO_CLAUDE = "ai-collab-demo--to--claude";
+// The parent is a live owned session the runner started, so its address is known only at run time.
+const TO_CODEX = "ai-collab-demo--to--codex";
 
 // A throwaway HOME with projects.json, a state dir and a durable log, as test/runner.test.mjs sets up.
 function setup(t, fake) {
@@ -47,7 +47,8 @@ async function until(check, what, ms = 4000) {
   }
 }
 
-const reports = (fake) => fake.state.publishes.filter((p) => p.topic === TO_CLAUDE).map((p) => parseWireEnvelope(p.message)).filter((e) => e?.body?.startsWith("[spawn_agent]"));
+const reports = (fake) => fake.state.publishes.filter((p) => p.topic === TO_CODEX).map((p) => parseWireEnvelope(p.message)).filter((e) => e?.body?.startsWith("[spawn_agent]"));
+let PARENT = "";
 const spawnInput = (prompt, parent = PARENT) => ({ project: "demo", harness: "codex", prompt, place: "folder", managed: true, parent, spawn: true, system: false });
 
 async function withRunner(t, run, options = {}) {
@@ -57,6 +58,7 @@ async function withRunner(t, run, options = {}) {
   const runner = makeRunner(ctx, adapter, options);
   await runner.boot();
   try {
+    PARENT = (await runner.start({ project: "demo", harness: "codex", prompt: "parent" })).session;
     await run({ fake, ctx, adapter, runner });
   } finally {
     await runner.stop();
@@ -74,7 +76,7 @@ test("a spawn returns at once and records managed, parent and depth on the owned
   assert.equal(record.parent, PARENT);
   assert.deepEqual(record.spawn, { depth: 1 });
   assert.equal(listSessions(ctx.cfg).find((s) => s.id === started.session)?.parent, PARENT);
-  assert.equal(adapter.calls.find((c) => c.op === "open").options.managed, true);
+  assert.equal(adapter.calls.filter((c) => c.op === "open").at(-1).options.managed, true);
 }));
 
 test("each finished run of a spawned child reports to its parent from the child's address", (t) => withRunner(t, async ({ fake, runner }) => {
@@ -83,10 +85,10 @@ test("each finished run of a spawned child reports to its parent from the child'
   const label = session.split("#")[1];
   assert.equal(first.from, "codex");
   assert.equal(first.session, label);
-  assert.equal(first.to, "claude");
-  assert.equal(first.toSession, "aaaaaaaaaaaaaaaa");
+  assert.equal(first.to, "codex");
+  assert.equal(first.toSession, PARENT.split("#")[1]);
   assert.match(first.body, new RegExp(`^\\[spawn_agent\\] ${session} finished \\(success\\):\\necho: say hi`));
-  assert.match(first.body, /You were started by claude#aaaaaaaaaaaaaaaa/);
+  assert.match(first.body, new RegExp(`You were started by ${PARENT}`));
   assert.notEqual(first.priority, "fyi");
   await until(() => runner.get(session).status === "idle", "idle");
   await runner.send(session, { text: "again" });
@@ -116,9 +118,8 @@ test("a parent gets at most 4 live children, and a chain stops at depth 2", (t) 
 test("spawns skip the start gap; plain starts keep it", (t) => withRunner(t, async ({ runner, adapter }) => {
   assert.equal((await runner.start(spawnInput("one"))).status, "started");
   assert.equal((await runner.start(spawnInput("two"))).status, "started");
-  await runner.start({ project: "demo", harness: "codex", prompt: "plain" });
   await assert.rejects(runner.start({ project: "demo", harness: "codex", prompt: "plain again" }), { status: 429 });
-  const plain = adapter.calls.filter((c) => c.op === "open").at(-1).options;
+  const plain = adapter.calls.find((c) => c.op === "open").options;
   assert.equal(plain.managed, undefined);
 }, { startGapMs: 10_000 }));
 
@@ -128,9 +129,12 @@ test("a spawn with a malformed parent is refused", (t) => withRunner(t, async ({
 }));
 
 test("a spawn's brief that already names the parent gets no added line", (t) => withRunner(t, async ({ runner, adapter }) => {
-  await runner.start(spawnInput(`report to ${PARENT} when done`));
-  await until(() => adapter.calls.some((c) => c.op === "send"), "send");
-  assert.equal(adapter.calls.find((c) => c.op === "send").text, `report to ${PARENT} when done`);
+  const { session } = await runner.start(spawnInput(`report to ${PARENT} when done`));
+  await until(() => adapter.calls.filter((c) => c.op === "send").length === 2, "send");
+  const text = adapter.calls.filter((c) => c.op === "send")[1].text;
+  assert.ok(text.startsWith(`report to ${PARENT} when done`));
+  assert.ok(!text.includes("You were started by"));
+  assert.match(text, new RegExp(`your address is ${session}`));
 }));
 
 test("a restart mid-run sends one interrupted report and no success report", async (t) => {
@@ -139,6 +143,7 @@ test("a restart mid-run sends one interrupted report and no success report", asy
   const ctx = setup(t, fake);
   const first = makeRunner(ctx, createFakeAdapter({ harness: "codex" }));
   await first.boot();
+  PARENT = (await first.start({ project: "demo", harness: "codex", prompt: "parent" })).session;
   const { session } = await first.start(spawnInput("hang until cut"));
   await until(() => first.get(session).run, "run").finally(() => first.stop());
   const second = makeRunner(ctx, createFakeAdapter({ harness: "codex" }));
@@ -153,3 +158,18 @@ test("a restart mid-run sends one interrupted report and no success report", asy
     await second.stop();
   }
 });
+
+test("a spawn whose parent is not a live session is refused, so a forged label cannot reset the depth", (t) => withRunner(t, async ({ runner }) => {
+  await assert.rejects(runner.start(spawnInput("d3", "codex#0123456789abcdef")), { status: 409, message: "spawn parent is not a live session" });
+  const child = (await runner.start(spawnInput("child"))).session;
+  await runner.close(child);
+  await until(() => runner.get(child).status === "ended", "ended");
+  await assert.rejects(runner.start(spawnInput("orphan", child)), { status: 409, message: "spawn parent is not a live session" });
+}));
+
+test("a spawned child's first prompt names its own address and session label", (t) => withRunner(t, async ({ runner, adapter }) => {
+  const { session } = await runner.start(spawnInput("say hi"));
+  await until(() => adapter.calls.filter((c) => c.op === "send").length === 2, "send");
+  const text = adapter.calls.filter((c) => c.op === "send")[1].text;
+  assert.match(text, new RegExp(`your address is ${session}; pass session "${session.split("#")[1]}"`));
+}));

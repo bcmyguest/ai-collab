@@ -36,7 +36,7 @@ import { alertLimit } from "../lib/limit-alert.mjs";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, LIMIT, NOTICE, PERMISSION_MODES, PLACES, approvalTimeoutMs, defaultPermission, eventProblem, OPENSHELL_PERMISSION, permissionSettings, runnerModeOfClaude } from "./contract.mjs";
 import { sessionOfCommand } from "../lib/schedule-session.mjs";
 import { ALLOW_HOST_AGENT_ENV, MANAGED_ENV } from "../lib/agent-guard.mjs";
-import { SPAWN_MAX_CHILDREN, SPAWN_MAX_DEPTH, spawnBriefNote, spawnReport } from "../lib/spawn.ts";
+import { SPAWN_MAX_CHILDREN, SPAWN_MAX_DEPTH, spawnBriefNote, spawnReport, spawnSelfNote } from "../lib/spawn.ts";
 import { sandboxCapRefusal, sandboxName, teamSandboxName } from "./sandbox.mjs";
 import { DELIVERY, deliveryWorkflow } from "./delivery.mjs";
 import { publishApproval, publishApprovalEnd, publishEnded, publishEvent, publishReceipts } from "./publish.mjs";
@@ -473,7 +473,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       s.live = null;
       await finishOwnedBuilder(builder, staged, finished?.outcome === "success" ? 0 : 1, env, log, undefined, finished?.usageLimit, wf.signal);
     });
-    let next = { text: input.prompt, messageIds: [], system: input.system ?? Boolean(builder || patternRun) };
+    let next = { text: spawn ? input.prompt + spawnSelfNote(s.record.address) : input.prompt, messageIds: [], system: input.system ?? Boolean(builder || patternRun) };
     for (;;) {
       if (!next) {
         const batch = await wf.recv("input", { all: true });
@@ -849,7 +849,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   async function start({ project, harness, prompt, model, place: named, permissionMode, claudePermission, codeMode, taskId, builder: builderId, system = true, managed: managedInput, parent, spawn } = {}, patternRun, continuation) {
     if (!configs.has(project)) fail(400, "Unknown project");
     const spawned = spawn === true;
-    const depth = spawned ? spawnDepth(parent) : 0;
+    const depth = spawned ? spawnDepth(configs.get(project), parent) : 0;
     if (isProjectPaused(configs.get(project))) fail(409, PROJECT_PAUSED);
     const adapter = adapterOf(harness);
     const place = named ?? defaultPlace(harness);
@@ -924,8 +924,12 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   }
 
   // A spawn's depth below its parent, refusing a bad parent and a chain past SPAWN_MAX_DEPTH.
-  function spawnDepth(parent) {
+  // The parent label is self-asserted, so it must name a live session: an owned one, or a registry entry whose process runs.
+  function spawnDepth(cfg, parent) {
     if (typeof parent !== "string" || parentAddress({ AI_COLLAB_PARENT: parent }) !== parent) fail(400, "Invalid parent address");
+    const owned = sessions.get(parent);
+    const live = owned ? owned.record.status !== "ended" : listSessions(cfg).some((e) => e.id === parent && e.online);
+    if (!live) fail(409, "spawn parent is not a live session");
     const depth = (sessions.get(parent)?.record.spawn?.depth ?? 0) + 1;
     if (depth > SPAWN_MAX_DEPTH) fail(409, "spawn depth limit reached");
     return depth;
