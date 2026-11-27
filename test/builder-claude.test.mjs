@@ -5,9 +5,9 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { runCli } from "../lib/cli.mjs";
+import { runCli } from "../lib/cli.ts";
 import { builderSandbox, claudeMcpConfig, claudeSettings, harnessCommand } from "../lib/builder.ts";
-import { taskStoreFile } from "../lib/tasks.mjs";
+import { taskStoreFile } from "../lib/tasks.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));

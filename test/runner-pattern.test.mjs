@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { EventType } from "@ag-ui/core";
-import { advanceRun, runStatus, startRun } from "../lib/pattern-runs.mjs";
+import { advanceRun, runStatus, startRun } from "../lib/pattern-runs.ts";
 import { saveTeamText } from "../lib/patterns.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
 import { listenControl, runnerSocket } from "../runner/control.ts";

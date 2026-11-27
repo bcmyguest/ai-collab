@@ -1,8 +1,8 @@
 import { EventType } from "@ag-ui/core";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, NOTICE, EVENT_TYPES, PERMISSION_TABLE, DEFAULT_PERMISSION, HARNESSES, approvalTimeoutMs, defaultPermission, eventProblem, permissionSettings } from "../runner/contract.mjs";
-import { activityFor, ownedApprovalMessage } from "../runner/publish.mjs";
+import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, NOTICE, EVENT_TYPES, PERMISSION_TABLE, DEFAULT_PERMISSION, HARNESSES, approvalTimeoutMs, defaultPermission, eventProblem, permissionSettings } from "../runner/contract.ts";
+import { activityFor, ownedApprovalMessage } from "../runner/publish.ts";
 
 test("every harness has a default permission mode present in its table", () => {
   for (const harness of HARNESSES) assert.ok(PERMISSION_TABLE[harness][DEFAULT_PERMISSION[harness]], harness);

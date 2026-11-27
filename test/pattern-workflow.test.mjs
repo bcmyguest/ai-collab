@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { test, after } from "node:test";
-import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, cutPatternEntry, cutPatternLeave, launchPatternRun, runStatus } from "../lib/pattern-runs.mjs";
+import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, cutPatternEntry, cutPatternLeave, launchPatternRun, runStatus } from "../lib/pattern-runs.ts";
 import { patternWorkflowId, runPatternWorkflow, seedPatternRun } from "../lib/pattern-workflow.ts";
 import { openDurable } from "../runner/durable.mjs";
 import { tempDir } from "./helpers/tmp.mjs";

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import { test } from "node:test";
 import { toolClient } from "../lib/tool-api.ts";
-import { addTask, taskStoreFile, writeStore } from "../lib/tasks.mjs";
+import { addTask, taskStoreFile, writeStore } from "../lib/tasks.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 test("sandbox programs discover and call AI Collab tools in process", async (t) => {

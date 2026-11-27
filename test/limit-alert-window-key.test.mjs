@@ -1,11 +1,11 @@
-import { parseWireEnvelope } from "../lib/agui.mjs";
+import { parseWireEnvelope } from "../lib/agui.ts";
 // One limit card per harness and window: a known-reset report and an unknown-reset report for the same harness and window, from
 // different sessions, share one card and the known reset upgrades it in place instead of opening a second card.
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { loadConfig } from "../lib/config.mjs";
+import { loadConfig } from "../lib/config.ts";
 import { alertLimit, readCard } from "../lib/limit-alert.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

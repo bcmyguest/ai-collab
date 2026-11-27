@@ -6,7 +6,7 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 import { test, after } from "node:test";
 import { fileURLToPath } from "node:url";
-import { runCli } from "../lib/cli.mjs";
+import { runCli } from "../lib/cli.ts";
 import { OPS } from "../lib/surfaces/ops.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";

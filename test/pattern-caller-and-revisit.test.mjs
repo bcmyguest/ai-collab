@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import { test } from "node:test";
 import { compileTrace } from "../lib/pattern-compiler.ts";
-import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, launchPatternRun, runStatus } from "../lib/pattern-runs.mjs";
+import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, launchPatternRun, runStatus } from "../lib/pattern-runs.ts";
 import { seedPatternRun } from "../lib/pattern-workflow.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 

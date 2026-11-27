@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
-import { loadConfig, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { sendMessage } from "../lib/inbox.mjs";
 import { runWaiter, takeWaiterSlot } from "../lib/waiter.ts";
 

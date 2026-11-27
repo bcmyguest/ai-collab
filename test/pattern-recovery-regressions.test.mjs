@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { test } from "node:test";
 import { compileTrace } from "../lib/pattern-compiler.ts";
-import { applyPatternAdvance, cutPatternEnter, cutPatternLeave, launchPatternRun, runStatus } from "../lib/pattern-runs.mjs";
+import { applyPatternAdvance, cutPatternEnter, cutPatternLeave, launchPatternRun, runStatus } from "../lib/pattern-runs.ts";
 import { seedPatternRun } from "../lib/pattern-workflow.ts";
 import { saveTeamText } from "../lib/patterns.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";

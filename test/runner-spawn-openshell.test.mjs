@@ -6,7 +6,7 @@ import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadConfig } from "../lib/config.mjs";
+import { loadConfig } from "../lib/config.ts";
 import { listOwned } from "../lib/sessions/registry.ts";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";

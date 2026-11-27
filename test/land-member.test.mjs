@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { EventType } from "@ag-ui/core";
 import { finishMemberBranch, landFinishRequest } from "../lib/land-member.ts";
-import { runStatus, startRun } from "../lib/pattern-runs.mjs";
+import { runStatus, startRun } from "../lib/pattern-runs.ts";
 import { saveTeamText } from "../lib/patterns.mjs";
 import cursorAdapter, { sandboxName } from "../runner/adapters/cursor.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";

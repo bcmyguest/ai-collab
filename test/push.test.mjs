@@ -5,7 +5,7 @@ import { readFileSync, statSync } from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { broadcastTopic, inboxTopic, loadConfig } from "../lib/config.mjs";
+import { broadcastTopic, inboxTopic, loadConfig } from "../lib/config.ts";
 import { approvalMessage, approvalRequest } from "../lib/approvals.ts";
 import { askQuestion } from "../lib/questions.ts";
 import { createPush, notice } from "../web/server/push.mjs";

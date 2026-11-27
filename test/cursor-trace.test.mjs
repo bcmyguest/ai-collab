@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { encodeTraceRequest } from "../lib/analyze-otlp.ts";
 import { DEFAULT_OTLP_ENDPOINT, TRACE_ENV, exportSpans, hookTrace, otlpEndpoint, runRecorder, streamTrace } from "../lib/cursor-trace.ts";
-import { sessionLabel } from "../lib/config.mjs";
+import { sessionLabel } from "../lib/config.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const SESSION = "34b83f3e-25a5-4cdd-9cf8-f03ccb1c7f34";

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { publishActivity } from "../lib/activity.ts";
-import { loadConfig } from "../lib/config.mjs";
+import { loadConfig } from "../lib/config.ts";
 import { sendMessage } from "../lib/inbox.mjs";
 import { WAKE_PROMPT } from "../lib/mode.ts";
 import { createUi } from "../web/server/ui.mjs";

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildEvent, parseEvent } from "../lib/agui.mjs";
+import { buildEvent, parseEvent } from "../lib/agui.ts";
 
 test("ACTIVITY_SNAPSHOT round-trips through the codec and rejects a missing content object", () => {
   const event = buildEvent("ACTIVITY_SNAPSHOT", { messageId: "approval-0123456789ab", activityType: "a2ui-surface", content: { a2ui_operations: [] }, replace: true });

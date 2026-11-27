@@ -3,7 +3,7 @@ import { test, after } from "node:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { sessionLabel } from "../lib/config.mjs";
+import { sessionLabel } from "../lib/config.ts";
 import { disposeSession, sessionPlace } from "../lib/sessions.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

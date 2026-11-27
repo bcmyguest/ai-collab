@@ -1,10 +1,10 @@
-import { parseWireEnvelope } from "../lib/agui.mjs";
+import { parseWireEnvelope } from "../lib/agui.ts";
 import { EventType } from "@ag-ui/core";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { broadcastTopic, inboxTopic, loadConfig, loadProjects, sessionLabel, statusTopic } from "../lib/config.mjs";
+import { broadcastTopic, inboxTopic, loadConfig, loadProjects, sessionLabel, statusTopic } from "../lib/config.ts";
 import { claimInbox, publishStatus, replyToOperator, sendMessage } from "../lib/inbox.mjs";
 import { waitForAnswer } from "../lib/questions.ts";
 import { recordSession } from "../lib/sessions.mjs";

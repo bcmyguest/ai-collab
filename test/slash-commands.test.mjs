@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { sessionLabel } from "../lib/config.mjs";
+import { sessionLabel } from "../lib/config.ts";
 import { COMMANDS, SUPPORT, commandFor, commandSupport, matchCommands, parseCommand } from "../web/lib/slash-commands.js";
 import { modelRef, slashCommand } from "../lib/slash.ts";
 

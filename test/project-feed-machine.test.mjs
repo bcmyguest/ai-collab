@@ -4,7 +4,7 @@ import { activityRows, groupSubagents } from "../web/lib/activity-rows.js";
 import { chatTurns, turnSummary } from "../web/lib/chat-turns.js";
 import { completionRows, liveRows, sessionTurns } from "../web/lib/project-feed.js";
 import * as mode from "../lib/mode.ts";
-import * as machine from "../lib/machine-prompt.mjs";
+import * as machine from "../lib/machine-prompt.ts";
 
 const A = "claude#abc12345";
 const row = (id, time, type, extra = {}) => ({ id, time, type, agent: A, ...extra });

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import { loadConfig, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { publishActivity } from "../lib/activity.ts";
 import { recordSession } from "../lib/sessions.mjs";
 import { createUi } from "../web/server/ui.mjs";

@@ -5,7 +5,7 @@ import { chmodSync, existsSync, mkdirSync, rmSync, symlinkSync, utimesSync, writ
 import path, { delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { childEnv } from "../lib/start.mjs";
-import { summaryLine } from "../lib/prune.mjs";
+import { summaryLine } from "../lib/prune.ts";
 import { loadSchedules, runCommand } from "../runner/schedules.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 

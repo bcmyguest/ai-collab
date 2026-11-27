@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadConfig, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { claimInbox, sendMessage } from "../lib/inbox.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { tempDir } from "./helpers/tmp.mjs";

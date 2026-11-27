@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { randomUUID } from "node:crypto";
 const SRC = process.env.SRC || new URL("..", import.meta.url).pathname.replace(/\/$/, "");
-const { sessionLabel } = await import(`${SRC}/lib/config.mjs`);
+const { sessionLabel } = await import(`${SRC}/lib/config.ts`);
 const { recordSession } = await import(`${SRC}/lib/sessions.mjs`);
 const { openDurable } = await import(`${SRC}/runner/durable.mjs`);
 const { startFakeNtfy } = await import(`${SRC}/test/helpers/fake-ntfy.mjs`);

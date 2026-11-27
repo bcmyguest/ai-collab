@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test, after } from "node:test";
-import { sessionLabel } from "../lib/config.mjs";
+import { sessionLabel } from "../lib/config.ts";
 import { harnessCommand } from "../lib/sessions/control.ts";
 import { nextPermission, readOwned, setNextPermission, writeOwned } from "../lib/sessions/registry.ts";
 import { slashCommand } from "../lib/slash.ts";

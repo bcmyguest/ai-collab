@@ -1,27 +1,27 @@
-// Native code mode setting (lib/code-mode.mjs): default on, defaults.json, per start, team.dot roles, and what each harness gets.
+// Native code mode setting (lib/code-mode.ts): default on, defaults.json, per start, team.dot roles, and what each harness gets.
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CODEX_CODE_MODE_KEY, claudeCodeModeSettings, codeModeDefault, codexCodeModeArgs, parseCodeMode, resolveCodeMode } from "../lib/code-mode.mjs";
-import { loadConfig } from "../lib/config.mjs";
+import { CODEX_CODE_MODE_KEY, claudeCodeModeSettings, codeModeDefault, codexCodeModeArgs, parseCodeMode, resolveCodeMode } from "../lib/code-mode.ts";
+import { loadConfig } from "../lib/config.ts";
 import { parseDot, serializeDot } from "../lib/catalog/dot.ts";
 import { checkTeamText } from "../lib/patterns.mjs";
-import { startRun } from "../lib/pattern-runs.mjs";
+import { startRun } from "../lib/pattern-runs.ts";
 import { startCommand } from "../lib/start.mjs";
 import { projectTeamsDir, teamFilePath } from "../lib/catalog/team-files.ts";
 import { createClaudeAdapter } from "../runner/adapters/claude.mjs";
 import codexAdapter, { APP_SERVER_ARGS } from "../runner/adapters/codex.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
-import { permissionSettings } from "../runner/contract.mjs";
+import { permissionSettings } from "../runner/contract.ts";
 import { readOwned } from "../lib/sessions/registry.ts";
 import { codeModeField } from "../web/lib/new-session.js";
 import { fakeClaudeQuery } from "./helpers/fake-claude-query.mjs";
 import { wrapOpen } from "./helpers/fake-adapter-hooks.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { makeRunner, setup } from "./helpers/runner-ctx.mjs";
-import { sessionLabel } from "../lib/config.mjs";
+import { sessionLabel } from "../lib/config.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const FAKE_CODEX = fileURLToPath(new URL("./helpers/fake-codex-app-server.mjs", import.meta.url));

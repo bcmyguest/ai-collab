@@ -7,7 +7,7 @@ import { test } from "node:test";
 import swc from "next/dist/build/swc/index.js";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { deployedField } from "../lib/land.mjs";
+import { deployedField } from "../lib/land.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const require = createRequire(import.meta.url);

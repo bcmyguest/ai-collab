@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { test, after } from "node:test";
-import { loadConfig } from "../lib/config.mjs";
+import { loadConfig } from "../lib/config.ts";
 import { checkTeamText, createPattern, listPatterns, saveTeamText, teamTemplates, teamTextOf } from "../lib/patterns.mjs";
 import { projectTeamsDir, teamFilePath } from "../lib/catalog/team-files.ts";
 import { renameTeam, sourceLine } from "../web/lib/team-editor.js";
@@ -124,7 +124,7 @@ test("two concurrent creates of one team name: one saves, the other says it exis
   const { env } = setup();
   const base = pathToFileURL(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "lib")).href;
   const child = (name, startAt) => execFileAsync(process.execPath, ["--input-type=module", "-e", `
-    const { loadConfig } = await import(${JSON.stringify(`${base}/config.mjs`)});
+    const { loadConfig } = await import(${JSON.stringify(`${base}/config.ts`)});
     const { saveTeamText } = await import(${JSON.stringify(`${base}/patterns.mjs`)});
     const env = ${JSON.stringify(env)};
     const text = ${JSON.stringify(TEXT.replaceAll("pipe", name))};

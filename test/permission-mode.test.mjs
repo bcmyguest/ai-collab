@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test, after } from "node:test";
-import { claudePermissionSetting } from "../lib/config.mjs";
+import { claudePermissionSetting } from "../lib/config.ts";
 import { claudePermissionFor, startSession } from "../lib/start.mjs";
-import { runnerModeOfClaude } from "../runner/contract.mjs";
+import { runnerModeOfClaude } from "../runner/contract.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 // A config dir holding defaults.json (when given) and projects.json for one project rooted at a real folder.

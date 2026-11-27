@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { deployHost } from "../lib/land.mjs";
+import { deployHost } from "../lib/land.ts";
 import { deploy } from "../lib/land-cli.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 

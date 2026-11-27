@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { approvalMessage } from "../lib/approvals.ts";
-import { broadcastTopic, loadConfig } from "../lib/config.mjs";
+import { broadcastTopic, loadConfig } from "../lib/config.ts";
 import { publish } from "../lib/transport.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";

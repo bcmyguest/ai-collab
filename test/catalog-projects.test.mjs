@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, after } from "node:test";
-import { loadConfig } from "../lib/config.mjs";
+import { loadConfig } from "../lib/config.ts";
 import { createPattern, deletePattern, saveTeamText } from "../lib/patterns.mjs";
 import { createTeam, deleteTeam, setProjectClosed } from "../lib/teams.mjs";
 import { tempDir } from "./helpers/tmp.mjs";

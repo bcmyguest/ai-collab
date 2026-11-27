@@ -1,4 +1,4 @@
-import { parseWireEnvelope } from "../lib/agui.mjs";
+import { parseWireEnvelope } from "../lib/agui.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -7,7 +7,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
-import { loadConfig, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { sendMessage } from "../lib/inbox.mjs";
 import { formatInbox, identityLine, stopOutput } from "../lib/format.ts";
 

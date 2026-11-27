@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { loadConfig } from "../lib/config.mjs";
+import { loadConfig } from "../lib/config.ts";
 import { formatInbox } from "../lib/format.ts";
 import { claimInbox, sendMessage } from "../lib/inbox.mjs";
 import { mentionedNames } from "../web/server/ui.mjs";

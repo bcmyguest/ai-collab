@@ -3,7 +3,7 @@ import { test, after } from "node:test";
 import path from "node:path";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
-import { sessionLabel } from "../lib/config.mjs";
+import { sessionLabel } from "../lib/config.ts";
 import { parseSelection } from "../web/lib/selection.js";
 import { runLink } from "../web/lib/scheduled.js";
 import { tempDir } from "./helpers/tmp.mjs";

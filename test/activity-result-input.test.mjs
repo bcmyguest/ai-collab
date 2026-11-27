@@ -1,4 +1,4 @@
-import { parseWireEnvelope } from "../lib/agui.mjs";
+import { parseWireEnvelope } from "../lib/agui.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ACTIVITY_MAX_BYTES, activityEvents, buildActivity } from "../lib/activity.ts";

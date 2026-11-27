@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { test, after } from "node:test";
-import { addProgress, addTask, createFileBackend, ownTask, writeStore } from "../lib/tasks.mjs";
+import { addProgress, addTask, createFileBackend, ownTask, writeStore } from "../lib/tasks.ts";
 import { taskBoard } from "../web/server/task-board.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

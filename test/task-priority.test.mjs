@@ -5,11 +5,11 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 import { test, after } from "node:test";
 import { fileURLToPath } from "node:url";
-import { runCli } from "../lib/cli.mjs";
+import { runCli } from "../lib/cli.ts";
 import {
   addTask, createFileBackend, importFeatureRequests, openTasks, priorityOf, readStore, renderFeatureRequests,
   setTaskField, sortTasks, taskStoreFile, TASK_PRIORITIES, validateTasks, writeStore,
-} from "../lib/tasks.mjs";
+} from "../lib/tasks.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { COLUMNS, columnsOf, statusLabel } from "../web/lib/task-board.js";
@@ -184,7 +184,7 @@ test("a store written before priorities loads and lists as P2", async () => {
 });
 
 test("the CLI help names the priority flag and the priority field", () => {
-  const cli = readFileSync(fileURLToPath(new URL("../lib/cli.mjs", import.meta.url)), "utf8");
+  const cli = readFileSync(fileURLToPath(new URL("../lib/cli.ts", import.meta.url)), "utf8");
   assert.match(cli, /task add "<title>"\s+add an open task; --priority/);
   assert.match(cli, /task set <id> .*priority=/);
 });

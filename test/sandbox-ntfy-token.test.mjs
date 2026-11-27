@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { runCli } from "../lib/cli.mjs";
+import { runCli } from "../lib/cli.ts";
 import { builderSandbox } from "../lib/builder.ts";
 import { prepareSandbox, sandboxName } from "../runner/adapters/cursor.mjs";
 import { ensureSandbox } from "../runner/sandbox.mjs";

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { test } from "node:test";
-import { LandRefused, finishBranch } from "../lib/land.mjs";
-import { createFileBackend } from "../lib/tasks.mjs";
+import { LandRefused, finishBranch } from "../lib/land.ts";
+import { createFileBackend } from "../lib/tasks.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const TIP = "c".repeat(40);

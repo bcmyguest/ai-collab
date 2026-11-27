@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { appendFileSync, chmodSync, existsSync, lstatSync, lutimesSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { stateDir } from "../lib/config.mjs";
+import { stateDir } from "../lib/config.ts";
 import {
   builderDecision, isProtectedCheckout, parseAge, parsePruneArgs, parseWorktreeList, pruneRepo, readLiveCwds, treeBytes, worktreeDecision,
-} from "../lib/prune.mjs";
+} from "../lib/prune.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const NOW = Date.parse("2026-11-25T00:00:00Z");

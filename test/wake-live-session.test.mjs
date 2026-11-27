@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import path from "node:path";
-import { loadConfig, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { recordSession } from "../lib/sessions.mjs";
 import { writeOwned } from "../lib/sessions/registry.ts";
 import { publishStatus } from "../lib/inbox.mjs";

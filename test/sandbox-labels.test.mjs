@@ -5,7 +5,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { removeCodeSandbox } from "../lib/code-run.mjs";
+import { removeCodeSandbox } from "../lib/code-run.ts";
 import cursorAdapter from "../runner/adapters/cursor.mjs";
 import * as sandbox from "../runner/sandbox.mjs";
 import { ensureSandbox, sandboxCapRefusal, teamSandboxName } from "../runner/sandbox.mjs";

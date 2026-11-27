@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test, after } from "node:test";
-import { runCli } from "../lib/cli.mjs";
+import { runCli } from "../lib/cli.ts";
 import { MISSION_FILE, parseMission, readMission, renderMission, withMission } from "../lib/mission.ts";
 import { tickFn } from "../runner/schedules.ts";
 import { projectOfFolder } from "../lib/schedule-session.ts";

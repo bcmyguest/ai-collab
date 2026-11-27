@@ -3,9 +3,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { EventType } from "@ag-ui/core";
 import { activityEvents, buildActivity } from "../lib/activity.ts";
-import { clearFields, modelFields, sessionHistory } from "../lib/session-events.mjs";
-import { activityFor } from "../runner/publish.mjs";
-import { envelopeToEvent, eventToEnvelope, parseWireEnvelope } from "../lib/agui.mjs";
+import { clearFields, modelFields, sessionHistory } from "../lib/session-events.ts";
+import { activityFor } from "../runner/publish.ts";
+import { envelopeToEvent, eventToEnvelope, parseWireEnvelope } from "../lib/agui.ts";
 import { clearText, modelText } from "../web/lib/compaction-view.js";
 
 test("clearFields keeps the count it has and always reports 0 after", () => {

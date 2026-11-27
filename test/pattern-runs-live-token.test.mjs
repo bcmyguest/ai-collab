@@ -1,7 +1,7 @@
 // Regression for the pattern-run model counterexample [Advance(operator, split), Advance(worker#1, help), Advance(operator, help)].
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { commitDecided, decide } from "../lib/pattern-runs.mjs";
+import { commitDecided, decide } from "../lib/pattern-runs.ts";
 
 const definition = {
   name: "live-token",

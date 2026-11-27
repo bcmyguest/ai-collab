@@ -1,7 +1,7 @@
 // The owned record exists before an adapter starts its child on open(), so the child's SessionStart hook stands down.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sessionLabel } from "../lib/config.mjs";
+import { sessionLabel } from "../lib/config.ts";
 import { readOwned } from "../lib/sessions/registry.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { makeRunner, setup } from "./helpers/runner-ctx.mjs";

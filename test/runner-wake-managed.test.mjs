@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
-import { loadConfig, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { recordSession } from "../lib/sessions.mjs";
 import { writeOwned } from "../lib/sessions/registry.ts";
 import { MANAGED_ENV } from "../lib/subagent-guard.ts";

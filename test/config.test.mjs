@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadConfig, isValidName, statusTopic, inboxTopic, broadcastTopic } from "../lib/config.mjs";
+import { loadConfig, isValidName, statusTopic, inboxTopic, broadcastTopic } from "../lib/config.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const base = { AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "alice" };

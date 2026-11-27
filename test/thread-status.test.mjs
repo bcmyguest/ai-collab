@@ -5,7 +5,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { threadRows, threadStatus } from "../web/lib/threads.js";
 import { projectThreads, promptTitle } from "../web/server/threads.mjs";
-import { sessionLabel } from "../lib/config.mjs";
+import { sessionLabel } from "../lib/config.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const NOW = 1_800_000_000_000;

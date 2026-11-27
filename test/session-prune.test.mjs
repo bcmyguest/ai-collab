@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { loadConfig, loadProjects, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, loadProjects, sessionLabel } from "../lib/config.ts";
 import { recordSession, worktreeGone, worktreeRoot } from "../lib/sessions.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

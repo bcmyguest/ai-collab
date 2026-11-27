@@ -1,4 +1,4 @@
-import { parseWireEnvelope } from "../lib/agui.mjs";
+import { parseWireEnvelope } from "../lib/agui.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawn } from "node:child_process";
@@ -7,7 +7,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ACTIVITY_MAX_BYTES, activityEvents, buildActivity, publishActivity } from "../lib/activity.ts";
-import { activityTopic, loadConfig } from "../lib/config.mjs";
+import { activityTopic, loadConfig } from "../lib/config.ts";
 import { claimInbox, sendMessage } from "../lib/inbox.mjs";
 import { pollCached, publish, querySafe } from "../lib/transport.mjs";
 import { createUi } from "../web/server/ui.mjs";

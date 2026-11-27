@@ -1,9 +1,9 @@
-import { parseWireEnvelope } from "../lib/agui.mjs";
+import { parseWireEnvelope } from "../lib/agui.ts";
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { MESSAGE_MAX_BYTES, loadConfig } from "../lib/config.mjs";
+import { MESSAGE_MAX_BYTES, loadConfig } from "../lib/config.ts";
 import { LIMIT_TOOL, WAIT_LABEL, alertLimit, handoffPrompt, limitLine, replacementOptions, resetClock, roleFallback } from "../lib/limit-alert.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

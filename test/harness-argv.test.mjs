@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { startCommand } from "../lib/start.mjs";
 import { harnessCommand as builderCommand } from "../lib/builder.ts";
 import { harnessCommand as wakeCommand } from "../lib/sessions/control.ts";
-import { codexRequiredRunCodeArgs } from "../lib/code-mode.mjs";
+import { codexRequiredRunCodeArgs } from "../lib/code-mode.ts";
 import { authorCommand } from "../lib/catalog/author.ts";
 import { pushSession } from "../lib/deliver-push.ts";
 import { acpArgs } from "../runner/adapters/cursor.mjs";

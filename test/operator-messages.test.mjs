@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { publishActivity } from "../lib/activity.ts";
 import { askQuestion } from "../lib/questions.ts";
-import { broadcastTopic, loadConfig } from "../lib/config.mjs";
+import { broadcastTopic, loadConfig } from "../lib/config.ts";
 import { publish } from "../lib/transport.mjs";
 import { sendMessage } from "../lib/inbox.mjs";
 import { createUi } from "../web/server/ui.mjs";

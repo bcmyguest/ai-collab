@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
-import { watchTaskFinishes } from "../runner/task-wake.mjs";
+import { watchTaskFinishes } from "../runner/task-wake.ts";
 import { loadSchedules } from "../runner/schedules.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 

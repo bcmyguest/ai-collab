@@ -1,12 +1,12 @@
-import { parseWireEnvelope } from "../lib/agui.mjs";
+import { parseWireEnvelope } from "../lib/agui.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { loadConfig } from "../lib/config.mjs";
-import { MESSAGE_MAX_BYTES } from "../lib/config.mjs";
+import { loadConfig } from "../lib/config.ts";
+import { MESSAGE_MAX_BYTES } from "../lib/config.ts";
 import { askQuestion, openQuestions, waitRequestedAt } from "../lib/questions.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

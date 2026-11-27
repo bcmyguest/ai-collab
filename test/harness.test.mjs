@@ -4,7 +4,7 @@ import path from "node:path";
 import { test, after } from "node:test";
 import { agentHarness } from "../lib/agent-guard.ts";
 import { limitFallback } from "../lib/builder.ts";
-import { loadConfig, START_DEFAULT, startDefaultSetting } from "../lib/config.mjs";
+import { loadConfig, START_DEFAULT, startDefaultSetting } from "../lib/config.ts";
 import { CURSOR_FALLBACK } from "../lib/limit-alert.ts";
 import { FALLBACK_MODEL, formatHarnessModel, harnessOfBinary, parseHarnessModel } from "../lib/harness.ts";
 import { getPattern, listPatterns } from "../lib/patterns.mjs";

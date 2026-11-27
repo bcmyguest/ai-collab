@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
-import { loadConfig } from "../lib/config.mjs";
+import { loadConfig } from "../lib/config.ts";
 import { claimInbox, markDelivered, parseEnvelope, sendMessage } from "../lib/inbox.mjs";
 import { formatInbox } from "../lib/format.ts";
 

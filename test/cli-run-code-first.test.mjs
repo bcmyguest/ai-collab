@@ -5,7 +5,7 @@ import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test, after } from "node:test";
 import { fileURLToPath } from "node:url";
-import { runCli } from "../lib/cli.mjs";
+import { runCli } from "../lib/cli.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const CLI = fileURLToPath(new URL("../scripts/ai-collab.mjs", import.meta.url));

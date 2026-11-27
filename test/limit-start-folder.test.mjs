@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test, after } from "node:test";
-import { loadConfig, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { alertLimit, chooseLimit } from "../lib/limit-alert.ts";
 import { recordSession } from "../lib/sessions.mjs";
 import { startFolder, startSession } from "../lib/start.mjs";

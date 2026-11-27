@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { runCli } from "../lib/cli.mjs";
+import { runCli } from "../lib/cli.ts";
 import { quietEnv } from "./helpers/surface-env.mjs";
 
 const UPDATE = process.env.UPDATE_SURFACE_GOLDEN === "1";

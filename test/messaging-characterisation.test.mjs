@@ -3,7 +3,7 @@ import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import os from "node:os";
 import { createBusServer, openMemoryStore } from "../lib/bus.ts";
-import { loadConfig } from "../lib/config.mjs";
+import { loadConfig } from "../lib/config.ts";
 import { claimInbox, parseEnvelope, sendMessage } from "../lib/inbox.mjs";
 import { settleReceipts } from "../lib/receipts.ts";
 import { readInbox, waitUntil } from "../lib/messaging.ts";

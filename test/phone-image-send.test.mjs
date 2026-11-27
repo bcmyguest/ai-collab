@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { loadConfig, inboxTopic } from "../lib/config.mjs";
+import { loadConfig, inboxTopic } from "../lib/config.ts";
 import { claimInbox, parseEnvelope } from "../lib/inbox.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

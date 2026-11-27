@@ -1,9 +1,9 @@
-import { parseWireEnvelope } from "../lib/agui.mjs";
+import { parseWireEnvelope } from "../lib/agui.ts";
 import assert from "node:assert/strict";
 import { test, after } from "node:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { broadcastTopic, loadConfig } from "../lib/config.mjs";
+import { broadcastTopic, loadConfig } from "../lib/config.ts";
 import { WAIT_LABEL, alertLimit, chooseLimit } from "../lib/limit-alert.ts";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";

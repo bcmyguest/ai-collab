@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import { existsSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadConfig, sessionLabel, stateDir } from "../lib/config.mjs";
+import { loadConfig, sessionLabel, stateDir } from "../lib/config.ts";
 import { processStart } from "../lib/process.ts";
 import { writeOwned } from "../lib/sessions/registry.ts";
 import {

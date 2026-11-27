@@ -1,7 +1,7 @@
 // Pins how the CLI splits argv into flags and words, so the parser can move to util.parseArgs unchanged.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseFlags, readProgram } from "../lib/cli.mjs";
+import { parseFlags, readProgram } from "../lib/cli.ts";
 
 const SEND = { "--file": 1, "--await": 1, "--urgent": 0, "--priority": 1, "--expect-reply": 0, "--reply-to": 1, "--progress": 0 };
 

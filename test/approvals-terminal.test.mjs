@@ -1,10 +1,10 @@
-import { parseWireEnvelope } from "../lib/agui.mjs";
+import { parseWireEnvelope } from "../lib/agui.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { MESSAGE_MAX_BYTES, loadConfig, sessionLabel } from "../lib/config.mjs";
+import { MESSAGE_MAX_BYTES, loadConfig, sessionLabel } from "../lib/config.ts";
 import { closeTerminalCards, decideApproval } from "../lib/approvals.ts";
 import { currentModeKnown } from "../lib/mode.ts";
 import { createUi } from "../web/server/ui.mjs";

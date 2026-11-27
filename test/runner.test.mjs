@@ -1,4 +1,4 @@
-import { parseWireEnvelope } from "../lib/agui.mjs";
+import { parseWireEnvelope } from "../lib/agui.ts";
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
@@ -10,10 +10,10 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
-import { loadConfig, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { readOwned, standsDown, writeOwned } from "../lib/sessions/registry.ts";
 import { listSessions } from "../lib/sessions.mjs";
-import { openTasks } from "../lib/tasks.mjs";
+import { openTasks } from "../lib/tasks.ts";
 import { builderPaths } from "../lib/builder.ts";
 import { setProjectPaused } from "../lib/project-pause.ts";
 import { settleReceipts } from "../lib/receipts.ts";

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EventType } from "@ag-ui/core";
-import { buildEvent, envelopeToEvent, eventToEnvelope, parseEvent, parseWireEnvelope } from "../lib/agui.mjs";
+import { buildEvent, envelopeToEvent, eventToEnvelope, parseEvent, parseWireEnvelope } from "../lib/agui.ts";
 
 const SESSION = "aabbccddeeff0011";
 const TS = "2026-11-21T16:20:00.000Z";

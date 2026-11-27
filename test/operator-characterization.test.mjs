@@ -2,13 +2,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
-import { parseWireEnvelope } from "../lib/agui.mjs";
-import { loadConfig } from "../lib/config.mjs";
+import { parseWireEnvelope } from "../lib/agui.ts";
+import { loadConfig } from "../lib/config.ts";
 import { decideApproval, decideQuestion } from "../lib/approvals.ts";
 import { askQuestion, findAnswers, waitForAnswer } from "../lib/questions.ts";
 import { limitEndMessage } from "../lib/limit-alert.ts";
 import { waitForMessages } from "../lib/agents.ts";
-import { approvalEndMessage } from "../runner/publish.mjs";
+import { approvalEndMessage } from "../runner/publish.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 

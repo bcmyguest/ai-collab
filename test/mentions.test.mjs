@@ -1,9 +1,9 @@
-import { parseWireEnvelope } from "../lib/agui.mjs";
+import { parseWireEnvelope } from "../lib/agui.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { loadConfig, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { claimInbox } from "../lib/inbox.mjs";
 import { recordSession } from "../lib/sessions.mjs";
 import { createUi, mentionedNames, startOnlyMentions } from "../web/server/ui.mjs";

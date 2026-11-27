@@ -6,7 +6,7 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
-import { loadConfig, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { claimInbox, markDelivered, readInbox, releaseDelivery, releaseOwned, reserveDelivery, reserveOwned, sendMessage } from "../lib/messaging.ts";
 import { holdRunning } from "../lib/deliver-push.ts";
 import { decideStop, handOff, markStopRunning } from "../lib/stop.ts";

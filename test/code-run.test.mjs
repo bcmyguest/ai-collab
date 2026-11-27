@@ -1,4 +1,4 @@
-// run_code (lib/code-run.mjs, scripts/ai-collab-code-mcp.mjs) against fakes: a fake openshell, no real sandbox or CLI.
+// run_code (lib/code-run.ts, scripts/ai-collab-code-mcp.mjs) against fakes: a fake openshell, no real sandbox or CLI.
 import test, { after as afterAll } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
@@ -9,9 +9,9 @@ import { fileURLToPath } from "node:url";
 import {
   BOOTSTRAP, CALLS_MAX, CODE_TOOLS, OUTPUT_MAX_CHARS, REMOTE_DIR, codeSandbox, formatRun, hostCaller, prepareSandbox,
   programArgv, runCodeTool, runProgram, schemaProblem, signature,
-} from "../lib/code-run.mjs";
+} from "../lib/code-run.ts";
 import { toolClient } from "../lib/tool-api.ts";
-import { addTask, taskStoreFile, writeStore } from "../lib/tasks.mjs";
+import { addTask, taskStoreFile, writeStore } from "../lib/tasks.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const SERVER = fileURLToPath(new URL("../scripts/ai-collab-code-mcp.mjs", import.meta.url));

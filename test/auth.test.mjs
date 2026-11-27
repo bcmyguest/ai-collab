@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test, after } from "node:test";
 import { readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { loadConfig } from "../lib/config.mjs";
+import { loadConfig } from "../lib/config.ts";
 import { claimInbox } from "../lib/inbox.mjs";
 import { formatInbox } from "../lib/format.ts";
 import { SESSION_COOKIE, STATE_COOKIE, createAuth, signSession, verifySession } from "../web/server/auth.mjs";

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { loadConfig, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { claimInbox } from "../lib/inbox.mjs";
 import { recordSession } from "../lib/sessions.mjs";
 import { createUi, mentionedNames, mentionedTeams } from "../web/server/ui.mjs";

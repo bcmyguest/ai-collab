@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { inboxTopic, loadConfig } from "../lib/config.mjs";
-import { encodeEnvelope } from "../lib/agui.mjs";
+import { inboxTopic, loadConfig } from "../lib/config.ts";
+import { encodeEnvelope } from "../lib/agui.ts";
 import { replyToOperator, sendMessage } from "../lib/inbox.mjs";
 import { publish } from "../lib/transport.mjs";
 import { createUi } from "../web/server/ui.mjs";

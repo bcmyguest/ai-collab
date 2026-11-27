@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { publishActivity } from "../lib/activity.ts";
 import { approvalMessage } from "../lib/approvals.ts";
-import { broadcastTopic, loadConfig } from "../lib/config.mjs";
+import { broadcastTopic, loadConfig } from "../lib/config.ts";
 import { sendMessage } from "../lib/inbox.mjs";
 import { publish } from "../lib/transport.mjs";
 import { createStreamViews } from "../web/lib/stream-views.js";

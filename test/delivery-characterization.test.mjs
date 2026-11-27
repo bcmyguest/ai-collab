@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { mock, test, after } from "node:test";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
-import { loadConfig, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { reserveDelivery, sendMessage } from "../lib/inbox.mjs";
 import { busyWithPush, readDispatchLedger, readySession } from "../lib/deliver-push.ts";
 import { processStart } from "../lib/process.ts";

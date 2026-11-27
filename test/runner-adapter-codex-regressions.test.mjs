@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { EventType } from "@ag-ui/core";
-import { permissionSettings } from "../runner/contract.mjs";
+import { permissionSettings } from "../runner/contract.ts";
 import codexAdapter from "../runner/adapters/codex.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { loadConfig } from "../lib/config.mjs";
-import { runCli } from "../lib/cli.mjs";
+import { loadConfig } from "../lib/config.ts";
+import { runCli } from "../lib/cli.ts";
 import { claimInbox, sendMessage } from "../lib/inbox.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";

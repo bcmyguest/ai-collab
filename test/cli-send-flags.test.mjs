@@ -1,9 +1,9 @@
-import { parseWireEnvelope } from "../lib/agui.mjs";
+import { parseWireEnvelope } from "../lib/agui.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
-import { runCli } from "../lib/cli.mjs";
+import { runCli } from "../lib/cli.ts";
 
 function io(env) {
   const o = { out: "", err: "" };

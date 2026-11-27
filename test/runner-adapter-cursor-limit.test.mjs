@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { EventType } from "@ag-ui/core";
 import cursorAdapter, { errorText } from "../runner/adapters/cursor.mjs";
 import { limitFromRunError } from "../lib/limits.ts";
-import { eventProblem } from "../runner/contract.mjs";
+import { eventProblem } from "../runner/contract.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));

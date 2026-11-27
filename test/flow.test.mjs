@@ -1,14 +1,14 @@
-import { parseWireEnvelope } from "../lib/agui.mjs";
+import { parseWireEnvelope } from "../lib/agui.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
-import { loadConfig } from "../lib/config.mjs";
+import { loadConfig } from "../lib/config.ts";
 import { claimInbox, publishStatus, readStatuses, sendMessage, MAX_PER_CLAIM } from "../lib/inbox.mjs";
 import { formatInbox, hookOutput } from "../lib/format.ts";
-import { runCli } from "../lib/cli.mjs";
+import { runCli } from "../lib/cli.ts";
 import { statePath } from "../lib/state.ts";
 
 const TOKEN = "tok-test";

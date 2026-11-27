@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
-import { mergeNode, npmCommand } from "../lib/land.mjs";
+import { mergeNode, npmCommand } from "../lib/land.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 // A Node without bundled npm (Cursor's), and a mise that names an installed Node with npm.

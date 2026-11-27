@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { sessionOfCommand, projectOfFolder } from "../lib/schedule-session.ts";
-import { sessionLabel } from "../lib/config.mjs";
+import { sessionLabel } from "../lib/config.ts";
 import { runLink, runLabel, runWindow, RUN_WINDOW_SLACK_MS } from "../web/lib/scheduled.js";
 import { parseSelection } from "../web/lib/selection.js";
 

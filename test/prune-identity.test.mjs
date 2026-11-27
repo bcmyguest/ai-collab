@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { stateDir } from "../lib/config.mjs";
-import { pruneRepo } from "../lib/prune.mjs";
+import { stateDir } from "../lib/config.ts";
+import { pruneRepo } from "../lib/prune.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const NOW = Date.parse("2026-11-25T00:00:00Z");

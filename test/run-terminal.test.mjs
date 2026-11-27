@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test, after } from "node:test";
 import { approvalMessage } from "../lib/approvals.ts";
-import { broadcastTopic, loadConfig } from "../lib/config.mjs";
+import { broadcastTopic, loadConfig } from "../lib/config.ts";
 import { createRunRequest, decideRun, runStatus, sha256, waitForRun } from "../lib/run-terminal.ts";
 import { toolClient } from "../lib/tool-api.ts";
 import { publish } from "../lib/transport.mjs";

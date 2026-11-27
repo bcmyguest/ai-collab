@@ -4,11 +4,11 @@ import { spawnSync } from "node:child_process";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { HOST_CHECKOUT } from "../lib/land.mjs";
-import { LandRefused, autoDeployEntry, checkState, deployHost, listOpenPrs, mergePr, requestLand, restartServices, startDeploy } from "../lib/land.mjs";
+import { HOST_CHECKOUT } from "../lib/land.ts";
+import { LandRefused, autoDeployEntry, checkState, deployHost, listOpenPrs, mergePr, requestLand, restartServices, startDeploy } from "../lib/land.ts";
 import { deploy, land } from "../lib/land-cli.ts";
-import { autoDeployEnabled } from "../lib/config.mjs";
-import { runCli } from "../lib/cli.mjs";
+import { autoDeployEnabled } from "../lib/config.ts";
+import { runCli } from "../lib/cli.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const SHA = "a".repeat(40);

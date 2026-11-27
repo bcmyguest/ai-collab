@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, readlinkSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { DROP_IN, deployLink, installUnits, unitDropIn } from "../lib/deploy-tree.mjs";
+import { DROP_IN, deployLink, installUnits, unitDropIn } from "../lib/deploy-tree.ts";
 import { deploy } from "../lib/land-cli.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 

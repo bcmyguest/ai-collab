@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test, after } from "node:test";
 import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { CODE_MAX_CHARS, programSource } from "../lib/code-run.mjs";
+import { CODE_MAX_CHARS, programSource } from "../lib/code-run.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 function dirs() {

@@ -6,7 +6,7 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync,
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { runCli } from "../lib/cli.mjs";
+import { runCli } from "../lib/cli.ts";
 import { sandboxRun } from "../runner/sandbox-run.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

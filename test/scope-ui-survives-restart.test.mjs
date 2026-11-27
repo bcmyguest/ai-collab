@@ -4,7 +4,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { loadProjects, sessionLabel } from "../lib/config.mjs";
+import { loadProjects, sessionLabel } from "../lib/config.ts";
 import { resetScopeProbe, scopeAvailable, systemdRunOnPath } from "../lib/sessions/scope.ts";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
@@ -164,7 +164,7 @@ test("a session a UI-shaped unit starts is in another cgroup and outlives that u
   const driver = path.join(files.home, "ui.mjs");
   writeFileSync(driver, `
 import { writeFileSync } from "node:fs";
-import { loadProjects } from ${JSON.stringify(new URL("../lib/config.mjs", import.meta.url).href)};
+import { loadProjects } from ${JSON.stringify(new URL("../lib/config.ts", import.meta.url).href)};
 import { startSession } from ${JSON.stringify(new URL("../lib/start.mjs", import.meta.url).href)};
 const env = process.env;
 const [cfg] = loadProjects(env, { host: "operator" });

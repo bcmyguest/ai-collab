@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { test, after } from "node:test";
-import { loadConfig } from "../lib/config.mjs";
+import { loadConfig } from "../lib/config.ts";
 import { writeGlobalTeams } from "../lib/teams.mjs";
 import { BUILT_IN_PATTERNS, createPattern, deletePattern, legacyPattern, listPatterns, validatePattern } from "../lib/patterns.mjs";
 import { tempDir } from "./helpers/tmp.mjs";

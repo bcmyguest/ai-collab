@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { sessionLabel } from "../lib/config.mjs";
+import { sessionLabel } from "../lib/config.ts";
 import { classifyCall, isRefusal, isRunCodeFailure, claudeSource, codexSource, opencodeSource, cursorSource, journalSource } from "../lib/analyze-sources.ts";
 import { aggregate, classifyRole, parseSelectors, matchesSelectors, periodOf, priceTurn, isoWeek, renderReport, analyze } from "../lib/analyze-run-code.ts";
 import { encodeTraceRequest } from "../lib/analyze-otlp.ts";

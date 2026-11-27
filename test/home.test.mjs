@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test, after as afterAll } from "node:test";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { broadcastTopic, loadConfig, sessionLabel } from "../lib/config.mjs";
+import { broadcastTopic, loadConfig, sessionLabel } from "../lib/config.ts";
 import { publishActivity } from "../lib/activity.ts";
 import { publishStatus } from "../lib/inbox.mjs";
 import { cleanName, sessionName } from "../lib/sessions/registry.ts";

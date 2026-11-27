@@ -1,7 +1,7 @@
 // A click refused for a wrong hash closes the card, and the UI must hear about it at once: its folder watch cannot see the decision.
 import assert from "node:assert/strict";
 import { test, after } from "node:test";
-import { loadConfig } from "../lib/config.mjs";
+import { loadConfig } from "../lib/config.ts";
 import { createRunRequest, decideRun, runStatus, sha256 } from "../lib/run-terminal.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { tempDir } from "./helpers/tmp.mjs";

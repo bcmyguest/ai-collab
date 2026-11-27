@@ -4,10 +4,10 @@ import http from "node:http";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { sessionLabel } from "../lib/config.mjs";
+import { sessionLabel } from "../lib/config.ts";
 import { sessionIdleState } from "../lib/idle.ts";
 import { codexLiveInterrupt, interruptSession } from "../lib/sessions/control.ts";
-import { activeOpencodeSessions, opencodeRequest } from "../lib/opencode-api.mjs";
+import { activeOpencodeSessions, opencodeRequest } from "../lib/opencode-api.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const CODEX_ID = "0198a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";

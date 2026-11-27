@@ -1,4 +1,4 @@
-import { parseWireEnvelope } from "../lib/agui.mjs";
+import { parseWireEnvelope } from "../lib/agui.ts";
 import { test } from "node:test";
 import { PassThrough } from "node:stream";
 import assert from "node:assert/strict";
@@ -6,10 +6,10 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
-import { loadConfig } from "../lib/config.mjs";
+import { loadConfig } from "../lib/config.ts";
 import { claimInbox, sendMessage } from "../lib/inbox.mjs";
 import { currentMode, currentModeKnown, latestMode, operatorConfigs, parseMode, projectMode, publishMode, storedMode, takeModeNote } from "../lib/mode.ts";
-import { runCli } from "../lib/cli.mjs";
+import { runCli } from "../lib/cli.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const ALL = "ai-collab-demo--to--all";

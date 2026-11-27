@@ -3,7 +3,7 @@ import { test, after } from "node:test";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { readAttachment } from "../lib/attachment.ts";
-import { loadConfig } from "../lib/config.mjs";
+import { loadConfig } from "../lib/config.ts";
 import { parseEnvelope, sendMessage } from "../lib/inbox.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";

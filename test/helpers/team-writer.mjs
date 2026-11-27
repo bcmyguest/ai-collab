@@ -1,5 +1,5 @@
 // Child process for the projects.json concurrency test: creates teams one by one, retrying when the lock is busy.
-import { loadConfig } from "../../lib/config.mjs";
+import { loadConfig } from "../../lib/config.ts";
 import { createTeam } from "../../lib/teams.mjs";
 
 async function main() {

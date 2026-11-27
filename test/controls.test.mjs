@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { controlSession, harnessCommand, harnessEnv, runnerFromEnv } from "../lib/sessions/control.ts";
 import { childEnv, resolveStartBinary } from "../lib/start.mjs";
-import { sessionLabel } from "../lib/config.mjs";
+import { sessionLabel } from "../lib/config.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const sessionId = "00000000-abcd-1234-9876-000000000001";

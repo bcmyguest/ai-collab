@@ -9,12 +9,12 @@ import { setup } from "./helpers/runner-ctx.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
 import { createRunner, WAKE } from "../runner/runner.mjs";
 import { listenControl, runnerSocket } from "../runner/control.ts";
-import { advanceRun, runStatus, startRun } from "../lib/pattern-runs.mjs";
+import { advanceRun, runStatus, startRun } from "../lib/pattern-runs.ts";
 import { saveTeamText } from "../lib/patterns.mjs";
 import { openWorkflows } from "../lib/workflows.ts";
 import { pgUrl } from "../lib/postgres.ts";
 import { dbosTestDb } from "./helpers/dbos-env.mjs";
-import { sessionLabel } from "../lib/config.mjs";
+import { sessionLabel } from "../lib/config.ts";
 
 const pgUp = await dbosTestDb();
 const direct = (label, body) => JSON.stringify({ v: 1, kind: "msg", from: "operator", to: "codex", toSession: label, operatorThread: true, ts: new Date().toISOString(), body });

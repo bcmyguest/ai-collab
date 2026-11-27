@@ -2,8 +2,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { parseWireEnvelope } from "../lib/agui.mjs";
-import { loadConfig } from "../lib/config.mjs";
+import { parseWireEnvelope } from "../lib/agui.ts";
+import { loadConfig } from "../lib/config.ts";
 import { END_REASONS, decideApproval, decideQuestion } from "../lib/approvals.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

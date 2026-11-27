@@ -1,7 +1,7 @@
 // A wake whose harness send may have started the turn marks its batch delivered and never releases it for a resend.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sessionLabel } from "../lib/config.mjs";
+import { sessionLabel } from "../lib/config.ts";
 import { reserveOwned } from "../lib/inbox.mjs";
 import { WAKE } from "../runner/runner.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

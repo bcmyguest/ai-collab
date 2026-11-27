@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test, after } from "node:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { gitRoot, listProjects, loadConfig, loadProjects, projectName, sessionLabel } from "../lib/config.mjs";
+import { gitRoot, listProjects, loadConfig, loadProjects, projectName, sessionLabel } from "../lib/config.ts";
 import { recordSession } from "../lib/sessions.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

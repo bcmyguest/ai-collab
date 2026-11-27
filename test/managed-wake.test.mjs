@@ -4,7 +4,7 @@ import { readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { controlSession, harnessCommand } from "../lib/sessions/control.ts";
 import { recordSession } from "../lib/sessions/registry.ts";
-import { loadConfig, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { CLAUDE_NO_SUBAGENT_SETTINGS, CODEX_NO_SUBAGENT_ARGS, MANAGED_ENV } from "../lib/subagent-guard.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 

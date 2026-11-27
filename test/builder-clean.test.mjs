@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { builderLiveRefusal, buildersToRemove, cleanBuilders, worktreeIsProtected } from "../lib/builder-clean.ts";
-import { stateDir } from "../lib/config.mjs";
+import { stateDir } from "../lib/config.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 test("buildersToRemove keeps running and staging and drops oldest finished, then failed, then stopped", () => {

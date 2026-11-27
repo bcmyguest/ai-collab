@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import { test } from "node:test";
-import { broadcastTopic, statusTopic } from "../lib/config.mjs";
+import { broadcastTopic, statusTopic } from "../lib/config.ts";
 import { publishStatus } from "../lib/inbox.mjs";
 import { createHostedUi } from "../web/server/hosted.mjs";
 import { createUi } from "../web/server/ui.mjs";

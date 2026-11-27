@@ -1,9 +1,9 @@
-import { parseWireEnvelope } from "../lib/agui.mjs";
+import { parseWireEnvelope } from "../lib/agui.ts";
 import assert from "node:assert/strict";
 import { test, after } from "node:test";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { loadConfig, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { claimInbox, MESSAGE_MAX_BYTES, sendMessage } from "../lib/inbox.mjs";
 import { operatorPrompt, WAKE_PROMPT } from "../lib/mode.ts";
 import { askQuestion, requestWait } from "../lib/questions.ts";

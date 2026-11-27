@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { sessionLabel } from "../lib/config.mjs";
+import { sessionLabel } from "../lib/config.ts";
 import { controlSession, nativeSessionId } from "../lib/sessions/control.ts";
 import { installOpenCode, mcpEntry, mergeMcp, opencodeConfigDir, pluginShim } from "../lib/install-opencode.ts";
 import { opencodeModels, parseOpenCodeModels } from "../lib/models.ts";

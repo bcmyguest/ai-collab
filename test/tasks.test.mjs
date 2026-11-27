@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   PROGRESS_MAX, TABLE_END, TABLE_START, addTask, clipProgress, createFileBackend, importFeatureRequests,
   readStore, renderFeatureRequests, importReport, slugify, taskStoreFile, validateTasks, writeStore,
-} from "../lib/tasks.mjs";
+} from "../lib/tasks.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const NOW = Date.parse("2026-11-22T00:00:00Z");

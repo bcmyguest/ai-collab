@@ -1,11 +1,11 @@
 // Model-based test of pattern-run handoffs: advances, operator overrides, confirmations, member crashes and runner
-// restarts at every step boundary, run through lib/pattern-workflow.ts on the durable log against lib/pattern-runs.mjs.
+// restarts at every step boundary, run through lib/pattern-workflow.ts on the durable log against lib/pattern-runs.ts.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { test, after } from "node:test";
 import fc from "fast-check";
-import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, cutPatternEntry, cutPatternLeave, launchPatternRun, runStatus } from "../lib/pattern-runs.mjs";
+import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, cutPatternEntry, cutPatternLeave, launchPatternRun, runStatus } from "../lib/pattern-runs.ts";
 import { patternWorkflowId, runPatternWorkflow, seedPatternRun } from "../lib/pattern-workflow.ts";
 import { openDurable } from "../runner/durable.mjs";
 import { tempDir } from "./helpers/tmp.mjs";

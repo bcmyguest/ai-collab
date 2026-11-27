@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { sessionLabel } from "../lib/config.mjs";
+import { sessionLabel } from "../lib/config.ts";
 import { listSessions, recordSession } from "../lib/sessions.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

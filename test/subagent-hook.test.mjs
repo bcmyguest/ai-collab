@@ -5,7 +5,7 @@ import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadConfig, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { writeOwned } from "../lib/sessions/registry.ts";
 import { MANAGED_ENV, SHELL_START_DENIED, SUBAGENT_DENIED } from "../lib/subagent-guard.ts";
 import { job } from "../lib/job.ts";

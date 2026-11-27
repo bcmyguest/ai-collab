@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
-import { broadcastTopic, inboxTopic, sessionLabel } from "../lib/config.mjs";
+import { broadcastTopic, inboxTopic, sessionLabel } from "../lib/config.ts";
 import { claimInbox, reserveOwned } from "../lib/inbox.mjs";
 import { recordSession } from "../lib/sessions.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

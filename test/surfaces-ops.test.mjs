@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CODE_TOOLS, READ_TOOLS } from "../lib/code-run.mjs";
+import { CODE_TOOLS, READ_TOOLS } from "../lib/code-run.ts";
 import { OPS } from "../lib/surfaces/ops.ts";
 
 const tagged = (surface) => OPS.filter((op) => op.surfaces.includes(surface)).map((op) => op.name);

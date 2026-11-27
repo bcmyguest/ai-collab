@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { productionDistDir } from "../lib/ui-build-output.mjs";
+import { productionDistDir } from "../lib/ui-build-output.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 test("UI builds publish only successful releases and retain previous output", (t) => {

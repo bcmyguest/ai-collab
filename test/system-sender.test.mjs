@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { COMPACT_REQUEST, controlSession } from "../lib/sessions/control.ts";
-import { loadConfig, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { formatInbox } from "../lib/format.ts";
 import { claimInbox, parseEnvelope, sendMessage } from "../lib/inbox.mjs";
 import { createUi } from "../web/server/ui.mjs";

@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
-import { addTask, createFileBackend, taskStoreFile, writeStore } from "../lib/tasks.mjs";
+import { addTask, createFileBackend, taskStoreFile, writeStore } from "../lib/tasks.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const LABEL = "aabbccddeeff0123";

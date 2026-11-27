@@ -5,7 +5,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { EventType } from "@ag-ui/core";
-import { eventProblem } from "../runner/contract.mjs";
+import { eventProblem } from "../runner/contract.ts";
 import { createOpenCodeAdapter, modelRef, sseData } from "../runner/adapters/opencode.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test, after } from "node:test";
-import { loadConfig } from "../lib/config.mjs";
+import { loadConfig } from "../lib/config.ts";
 import { CURSOR_FALLBACK } from "../lib/limit-alert.ts";
 import { checkTeamText } from "../lib/patterns.mjs";
 import { teamStart } from "../lib/teams.mjs";

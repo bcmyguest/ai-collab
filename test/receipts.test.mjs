@@ -1,13 +1,13 @@
-import { parseWireEnvelope } from "../lib/agui.mjs";
+import { parseWireEnvelope } from "../lib/agui.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { publishActivity } from "../lib/activity.ts";
-import { loadConfig, MESSAGE_MAX_BYTES, receiptsTopic, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, MESSAGE_MAX_BYTES, receiptsTopic, sessionLabel } from "../lib/config.ts";
 import { claimInbox, publishStatus, sendMessage } from "../lib/inbox.mjs";
 import { readReceipts, receiptMessages, sendReceipts, settleReceipts } from "../lib/receipts.ts";
-import { runCli } from "../lib/cli.mjs";
+import { runCli } from "../lib/cli.ts";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
-import { loadConfig, sessionLabel } from "../lib/config.mjs";
+import { loadConfig, sessionLabel } from "../lib/config.ts";
 import { claimInbox, markDelivered, readInbox, releaseOwned, reserveOwned, sendMessage } from "../lib/messaging.ts";
 import { holdRunning, readDispatchLedger } from "../lib/deliver-push.ts";
 import { decideStop, handOff, markStopRunning } from "../lib/stop.ts";

@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { procStart, makeRunner, setup, until } from "./helpers/runner-ctx.mjs";
-import { sessionLabel } from "../lib/config.mjs";
+import { sessionLabel } from "../lib/config.ts";
 import { ownedFile } from "../lib/sessions/registry.ts";
 import { recordSession } from "../lib/sessions.mjs";
 import { WAKE } from "../runner/runner.mjs";
