@@ -340,7 +340,7 @@ ai-collab spawn <harness[:model]> [--model <id>] [--worktree] (--brief <text> | 
 `childHint` (line 38) tells agents to start children from the shell. That is the bug path. Replace its text:
 
 ```
-[ai-collab] To hand work to another agent, call spawn_agent (harness, model, brief); it returns the child's address at once and the child messages you its result when each run ends. Do not start harnesses from your shell. Message a child with send_to_peer; list sessions with list_sessions.
+[ai-collab] To hand work to another agent, call the ai-collab spawn_agent tool (harness, model, brief); it returns the child's address at once and the child messages you its result when each run ends. Do not start harnesses from your shell. Message a child with send_to_peer; list sessions with list_sessions.
 ```
 
 Keep `parentLine` and `greetParent`. A runner-owned child gets no hook context, so B4 adds the parent's address to the brief's end only when the brief does not already name it: `\n\n[ai-collab] You were started by <parent>; your result reaches it automatically when your run ends.` Append it in `start` (B3) before `checkPrompt`, and count it against the 4000-char limit.
