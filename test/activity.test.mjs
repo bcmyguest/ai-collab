@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ACTIVITY_MAX_BYTES, activityEvents, buildActivity, publishActivity } from "../lib/activity.mjs";
+import { ACTIVITY_MAX_BYTES, activityEvents, buildActivity, publishActivity } from "../lib/activity.ts";
 import { activityTopic, loadConfig } from "../lib/config.mjs";
 import { claimInbox, sendMessage } from "../lib/inbox.mjs";
 import { pollCached, publish, querySafe } from "../lib/transport.mjs";

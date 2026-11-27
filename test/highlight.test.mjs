@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { activityEvents } from "../lib/activity.mjs";
+import { activityEvents } from "../lib/activity.ts";
 import { HIGHLIGHT_MAX_BYTES, highlight, languageOf } from "../web/lib/highlight.js";
 import { inputBlocks, resultLanguage } from "../web/lib/activity-rows.js";
 

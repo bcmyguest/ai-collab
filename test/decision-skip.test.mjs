@@ -6,7 +6,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import { broadcastTopic, loadProjects } from "../lib/config.mjs";
-import { alertLimit, cardFile, chooseLimit, readCard } from "../lib/limit-alert.mjs";
+import { alertLimit, cardFile, chooseLimit, readCard } from "../lib/limit-alert.ts";
 import { addTask, askTask, openTasks, readStore, taskStoreFile, writeStore } from "../lib/tasks.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

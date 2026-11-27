@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { publishActivity } from "../lib/activity.mjs";
+import { publishActivity } from "../lib/activity.ts";
 import { loadConfig, MESSAGE_MAX_BYTES, receiptsTopic, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, publishStatus, sendMessage } from "../lib/inbox.mjs";
 import { readReceipts, receiptMessages, sendReceipts, settleReceipts } from "../lib/receipts.mjs";

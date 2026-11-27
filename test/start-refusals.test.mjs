@@ -9,7 +9,7 @@ import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
-import { resetClock } from "../lib/limit-alert.mjs";
+import { resetClock } from "../lib/limit-alert.ts";
 import { setProjectPaused } from "../lib/project-pause.ts";
 import { recordSession } from "../lib/sessions.mjs";
 import { codexResetFrom, classifyLimit, limitFromRunError } from "../lib/limits.ts";

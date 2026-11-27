@@ -6,7 +6,7 @@ import { parseWireEnvelope } from "../lib/agui.mjs";
 import { loadConfig } from "../lib/config.mjs";
 import { decideApproval, decideQuestion } from "../lib/approvals.mjs";
 import { askQuestion, findAnswers, waitForAnswer } from "../lib/questions.mjs";
-import { limitEndMessage } from "../lib/limit-alert.mjs";
+import { limitEndMessage } from "../lib/limit-alert.ts";
 import { waitForMessages } from "../lib/agents.mjs";
 import { approvalEndMessage } from "../runner/publish.mjs";
 import { peerEnv } from "./helpers/env.mjs";

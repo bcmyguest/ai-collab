@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { runCli } from "../lib/cli.mjs";
-import { MISSION_FILE, parseMission, readMission, renderMission, withMission } from "../lib/mission.mjs";
+import { MISSION_FILE, parseMission, readMission, renderMission, withMission } from "../lib/mission.ts";
 import { tickFn } from "../runner/schedules.mjs";
 import { projectOfFolder } from "../lib/schedule-session.mjs";
 

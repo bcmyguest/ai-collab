@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { activityEvents } from "../lib/activity.mjs";
+import { activityEvents } from "../lib/activity.ts";
 import { activityTopic, loadConfig, sessionLabel } from "../lib/config.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { activityRows, groupSubagents, interleave, runState, runningSubagents, subagentLabel } from "../web/lib/activity-rows.js";

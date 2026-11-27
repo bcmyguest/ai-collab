@@ -1,7 +1,7 @@
 // The console's cache fed by real server frames: a screen switched back to shows its last view at once.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { publishActivity } from "../lib/activity.mjs";
+import { publishActivity } from "../lib/activity.ts";
 import { approvalMessage } from "../lib/approvals.mjs";
 import { broadcastTopic, loadConfig } from "../lib/config.mjs";
 import { sendMessage } from "../lib/inbox.mjs";

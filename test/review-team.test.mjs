@@ -5,7 +5,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import { loadConfig } from "../lib/config.mjs";
-import { alertLimit, CURSOR_FALLBACK } from "../lib/limit-alert.mjs";
+import { alertLimit, CURSOR_FALLBACK } from "../lib/limit-alert.ts";
 import { checkTeamText } from "../lib/patterns.mjs";
 import { teamStart } from "../lib/teams.mjs";
 import { peerEnv } from "./helpers/env.mjs";

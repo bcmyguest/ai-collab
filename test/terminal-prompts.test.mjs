@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { publishActivity } from "../lib/activity.mjs";
+import { publishActivity } from "../lib/activity.ts";
 import { loadConfig } from "../lib/config.mjs";
 import { sendMessage } from "../lib/inbox.mjs";
 import { WAKE_PROMPT } from "../lib/mode.mjs";

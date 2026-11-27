@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { attachmentOf, cacheAttachments, cachedAttachment, ensureAttachment, pruneAttachments } from "../lib/attachment-cache.mjs";
+import { attachmentOf, cacheAttachments, cachedAttachment, ensureAttachment, pruneAttachments } from "../lib/attachment-cache.ts";
 import { loadConfig } from "../lib/config.mjs";
 import { formatInbox } from "../lib/format.mjs";
 import { claimInbox, channelHistory, sendMessage } from "../lib/inbox.mjs";

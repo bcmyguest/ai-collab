@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { broadcastTopic, loadConfig } from "../lib/config.mjs";
-import { WAIT_LABEL, alertLimit, chooseLimit } from "../lib/limit-alert.mjs";
+import { WAIT_LABEL, alertLimit, chooseLimit } from "../lib/limit-alert.ts";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
