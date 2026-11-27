@@ -16,7 +16,7 @@ export type BuilderSandbox = { tools: string; claudeTools: string; mcpIn: string
 
 // The Cursor model every built-in default and fallback uses.
 export const FALLBACK_MODEL = "deepseek-v41-flash-1017-high";
-// Shape of a model name a start may pass; membership in lib/models.mjs's allowlist is checked by the caller.
+// Shape of a model name a start may pass; membership in lib/models.ts's allowlist is checked by the caller.
 export const MODEL_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._:[\]-]{0,79}$/;
 // OpenCode names a model provider/model#variant (`opencode run --help`); the model part may hold more slashes.
 export const OPENCODE_MODEL_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,39}\/[a-zA-Z0-9][a-zA-Z0-9._:@/[\]-]{0,119}(#[a-zA-Z0-9._-]{1,40})?$/;

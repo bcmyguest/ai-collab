@@ -84,7 +84,7 @@ Six MCP tools (plus the options below) follow the agent-messaging interface of t
 | `send` | To a session (`peer#label`), a peer name, or `all` / `*`. `await_reply: N` blocks up to N s (max 45) for a `reply`, `done` or `declined` answer to this message. `priority` (`normal`, `urgent`, `fyi`), `expect_reply`, `urgent`, `reply_to`, `attachment` optional. | `sendMessage`, the Stop hook's bus stream waiter | `ai-collab send <to> [msg] [--urgent] [--priority P] [--expect-reply] [--await N]` |
 | `respond` | Answers a message id with `state` `working`, `reply`, `done` or `declined` and an optional body: an operator direct message in its chat, a broadcast on the shared channel, a peer message to its sender's session. | msg envelope with `replyTo` and `state` | `ai-collab respond <id> <state> [msg]` |
 | `wait` | Blocks up to `seconds` (max 45) for a new message to this session; returns it marked read. `until: "idle:<address>"` blocks until that agent has no turn running (`idle`), its process ended (`ended`) or the timeout. | stream waiter + `claimInbox`; `lib/idle.ts` | `ai-collab wait [N]`, `ai-collab wait idle:<address> [N]`, `ai-collab wait reply:<id> [N]` |
-| `inbox` | Reads new messages and marks them delivered; publishes read receipts. `peek: true` leaves them unread. | `claimInbox`, `lib/receipts.mjs` | `ai-collab inbox [--peek]` |
+| `inbox` | Reads new messages and marks them delivered; publishes read receipts. `peek: true` leaves them unread. | `claimInbox`, `lib/receipts.ts` | `ai-collab inbox [--peek]` |
 | `history` | Lists the last `limit` (default 30, max 100) project-channel messages, oldest first; read-only, no cursor or receipts. | `channelHistory` | `ai-collab history [--limit N]` |
 | `set_identity` | Stores `name`, `activity` (one line, at most 200 characters) and `tags` (at most 10, e.g. `pr:12`, `role:reviewer`) in this session's registry entry. | session registry | `ai-collab identity [--name N] [--activity T] [--tag T]...` |
 
@@ -104,7 +104,7 @@ A hook runs only while its agent runs a turn, so an idle session would otherwise
 
 The dispatcher polls every 5 s, only for online Claude (with an open gate), Codex and OpenCode sessions, and only for direct messages: broadcasts and `fyi` messages stay in the inbox. After a push it marks the message seen for that session (`markDelivered`), so the session's hooks skip it. A failed push leaves the message for the hooks. `AI_COLLAB_DISPATCH=off` stops the dispatcher. Native session ids come from the registry (`lib/sessions.mjs`).
 
-While the runner is up (its control socket answers `runnerUp()` in `runner/client.mjs`), the UI dispatcher stands down and the runner delivers instead, one durable workflow per message (see [Delivery and wake workflows](owned-sessions-contract.md#delivery-and-wake-workflows)). The dispatcher runs again once the runner is down. Both write the same inbox reservations, so a message goes out once.
+While the runner is up (its control socket answers `runnerUp()` in `runner/client.ts`), the UI dispatcher stands down and the runner delivers instead, one durable workflow per message (see [Delivery and wake workflows](owned-sessions-contract.md#delivery-and-wake-workflows)). The dispatcher runs again once the runner is down. Both write the same inbox reservations, so a message goes out once.
 
 ### Closed sessions
 

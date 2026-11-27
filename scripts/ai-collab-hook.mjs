@@ -8,7 +8,7 @@
  * --rewake marks the Claude asyncRewake registration (lib/waiter.ts): it prints no JSON; it exits 2 with the messages on stderr.
  * --activity marks a registration that only publishes activity and returns the neutral output.
  * A Stop hold publishes status "hold"; the hold's message or answer, or the session's next prompt or tool call, publishes "start".
- * InstructionsLoaded (Claude) records the instruction file it loaded in the session's context state (lib/usage.mjs).
+ * InstructionsLoaded (Claude) records the instruction file it loaded in the session's context state (lib/usage.ts).
  * A prompt the operator typed records operatorPromptAt for this session; AFK mode changes only when the operator sets it.
  * --host opencode takes Claude-shaped input from the OpenCode plugin (lib/opencode-plugin.mjs) and answers in Claude's shapes.
  * PermissionRequest (Claude, Codex, OpenCode) and Cursor beforeShellExecution / beforeMCPExecution ask the operator's phone in AFK
@@ -27,7 +27,7 @@ import { loadConfig, ownEnv, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, publishStatus } from "../lib/messaging.ts";
 import { childHint, exportParent, greetParent, parentLine } from "../lib/family.ts";
 import { formatInbox, hookOutput, identityLine, stopOutput } from "../lib/format.ts";
-import { currentMode, operatorPrompt, takeModeNote } from "../lib/mode.mjs";
+import { currentMode, operatorPrompt, takeModeNote } from "../lib/mode.ts";
 import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.mjs";
 import { decideStop, markStopRunning, noteHeld, takeHeld } from "../lib/stop.mjs";
 import { REQUIRE_RUN_CODE_ENV } from "../lib/code-mode.mjs";
@@ -37,11 +37,11 @@ import { recordSession, sessionName, standsDown } from "../lib/sessions/registry
 import { MANAGED_ENV, MANAGED_START_REFUSED, managedDenial, managedStartAllowed } from "../lib/subagent-guard.ts";
 import { harnessProcess, isRunning, processStart } from "../lib/process.ts";
 import { CLAIM_SETTLE_MS, STOP_GRACE_MS, WAITER_MAX_S, runWaiter, takeWaiterSlot } from "../lib/waiter.ts";
-import { ON_DEMAND_LOADS, contextUsage, dropOnDemandFiles, readContext, recordInstructions, reportContext } from "../lib/usage.mjs";
+import { ON_DEMAND_LOADS, contextUsage, dropOnDemandFiles, readContext, recordInstructions, reportContext } from "../lib/usage.ts";
 import { activityEvents, publishActivity } from "../lib/activity.ts";
 import { compactionFields } from "../lib/compaction.mjs";
 import { clearFields } from "../lib/session-events.mjs";
-import { sendReceipts, settleReceipts } from "../lib/receipts.mjs";
+import { sendReceipts, settleReceipts } from "../lib/receipts.ts";
 import { closeTerminalCards, decideApproval, decideQuestion } from "../lib/approvals.mjs";
 import { classifyLimit } from "../lib/limits.ts";
 import { alertLimit } from "../lib/limit-alert.ts";

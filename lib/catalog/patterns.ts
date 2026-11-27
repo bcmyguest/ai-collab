@@ -151,7 +151,7 @@ export function getPattern(cfg: CatalogConfig, name: string, env: Env = process.
   return pattern;
 }
 
-/** Checks every role's harness and model against the allowlists (lib/models.mjs output). */
+/** Checks every role's harness and model against the allowlists (lib/models.ts output). */
 export async function validatePatternModels(pattern: Pattern, cfg: CatalogConfig, env: Env = process.env, models?: Models): Promise<Pattern> {
   for (const role of pattern.roles) {
     await validateMember(role.model ? `${role.harness}:${role.model}` : role.harness, cfg, env, models);

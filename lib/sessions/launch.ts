@@ -6,7 +6,7 @@ import { ALLOW_HOST_AGENT_ENV, hostAgentRefusal } from "../agent-guard.ts";
 import { claudePermissionSetting, listProjects, sessionLabel, startPlaceSetting } from "../config.mjs";
 import { REQUIRE_RUN_CODE_ENV, resolveCodeMode } from "../code-mode.mjs";
 import { SYSTEM_PROMPT_ENV } from "../machine-prompt.mjs";
-import { recordedMode, WAKE_ENV } from "../mode.mjs";
+import { recordedMode, WAKE_ENV } from "../mode.ts";
 import { isProjectPaused, PROJECT_PAUSED } from "../project-pause.ts";
 import { runnerSocket } from "../runner-request.ts";
 import { argv, childPath, claudePermissionError, claudePermissionFlag, CURSOR_BINARIES, cursorCommandFor, type Command, HARNESSES, type Harness, LAUNCH_BINARY, modelShape } from "../harness.ts";
@@ -59,7 +59,7 @@ export function claudePermissionFor(harness: string, cfg: SessionCfg, env: NodeJ
   const configured = named === undefined ? claudePermissionSetting(env) : undefined;
   if (configured?.error) return { error: configured.error };
   const mode = named ?? configured?.mode ?? "default";
-  const afk = ["on", "quiet"].includes(recordedMode(cfg)?.mode);
+  const afk = ["on", "quiet"].includes(recordedMode(cfg)?.mode as string);
   const flag = claudePermissionFlag(mode, afk);
   const refusal = bypassRefusal(flag, { sandboxed }, env);
   if (refusal) return { flag: undefined, error: refusal };

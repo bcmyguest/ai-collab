@@ -14,8 +14,17 @@ import { readJson } from "./store.ts";
 import { PLUGIN_COPY_MAX_BYTES, packPluginCopy } from "./plugin-copy.ts";
 
 export { PLUGIN_COPY_MAX_BYTES, packPluginCopy };
-import { installCursorPlugin, packageRoot } from "./install-cursor.mjs";
-import { installOpenCode } from "./install-opencode.mjs";
+import { installCursorPlugin, packageRoot } from "./install-cursor.ts";
+import { installOpenCode } from "./install-opencode.ts";
+
+interface Harness { peer: string; bin: string; fallback?: string }
+interface RunResult { code: number; stdout: string; stderr: string }
+interface RunOptions { env?: NodeJS.ProcessEnv; cwd?: string; stdio?: "inherit" }
+type Run = (cmd: string, args: string[], opts?: RunOptions) => RunResult
+type Which = (bin: string, env: NodeJS.ProcessEnv) => string
+interface Defaults { url?: string; tokenFile?: string; peers?: string }
+interface Flags { port?: string; "no-ui"?: boolean; agent?: string[] }
+interface SetupOptions { env?: NodeJS.ProcessEnv; home?: string; out?: NodeJS.WritableStream; run?: Run; which?: Which; root?: string }
 
 const BUS_PORT = 8794;
 const UI_PORT = 8795;
@@ -24,7 +33,7 @@ const APP_DIR = [".local", "share", "ai-collab", "app"];
 // Claude and Codex copy their marketplace folder; a checkout with worktrees once made a 42 GB plugin cache.
 const SHARE_DIR = [".local", "share", "ai-collab"];
 const SKIP_COPY = new Set(["node_modules", ".git", path.join("web", ".next"), path.join("web", ".next-demo"), path.join("web", ".next-builds"), "site"]);
-const OPTIONS = { port: { type: "string" }, "no-ui": { type: "boolean" }, agent: { type: "string", multiple: true } };
+const OPTIONS = { port: { type: "string" }, "no-ui": { type: "boolean" }, agent: { type: "string", multiple: true } } as const;
 const HARNESSES = [
   { peer: "claude", bin: "claude" },
   { peer: "codex", bin: "codex" },
@@ -34,30 +43,30 @@ const HARNESSES = [
 ];
 
 /** Whether one harness's CLI is installed: its binary, or else the fallback name older installs use. */
-function installed(h, env, which) {
+function installed(h: Harness, env: NodeJS.ProcessEnv, which: Which): string {
   return which(h.bin, env) || (h.fallback ? which(h.fallback, env) : "");
 }
 
-function defaultRun(cmd, args, opts = {}) {
+function defaultRun(cmd: string, args: string[], opts: RunOptions = {}): RunResult {
   const r = spawnSync(cmd, args, { encoding: "utf8", ...opts, env: { ...process.env, ...opts.env } });
   return { code: r.status ?? 1, stdout: r.stdout || "", stderr: r.stderr || String(r.error?.message || "") };
 }
 
-function defaultWhich(bin, env) {
+function defaultWhich(bin: string, env: NodeJS.ProcessEnv): string {
   for (const dir of String(env.PATH || "").split(path.delimiter)) {
     if (dir && fs.existsSync(path.join(dir, bin))) return path.join(dir, bin);
   }
   return "";
 }
 
-function writePrivate(file, text) {
+function writePrivate(file: string, text: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
   fs.writeFileSync(file, text, { mode: 0o600 });
   fs.chmodSync(file, 0o600);
 }
 
 // A bus token: tk_ plus 29 lowercase alphanumerics, the shape older ntfy tokens had.
-function busToken() {
+function busToken(): string {
   const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
   const bytes = randomBytes(29);
   let out = "";
@@ -65,7 +74,7 @@ function busToken() {
   return `tk_${out}`;
 }
 
-function busUnit(root, port) {
+function busUnit(root: string, port: number): string {
   return `[Unit]
 Description=AI Collab message bus
 
@@ -82,7 +91,7 @@ WantedBy=default.target
 }
 
 // Installs and starts the bus user service; an existing unit is left alone.
-function installBus({ root, home, run, which, env, port }) {
+function installBus({ root, home, run, which, env, port }: { root: string; home: string; run: Run; which: Which; env: NodeJS.ProcessEnv; port: number }): string {
   const unit = path.join(home, ".config", "systemd", "user", "ai-collab-bus.service");
   if (fs.existsSync(unit)) return `kept ${unit}`;
   if (!which("systemctl", env)) return `no systemd: run \`node ${path.join(root, "scripts", "ai-collab-bus.mjs")}\` in the background`;
@@ -93,12 +102,12 @@ function installBus({ root, home, run, which, env, port }) {
   return r.code === 0 ? `running on http://127.0.0.1:${port}` : `systemctl enable failed: ${r.stderr.trim()}`;
 }
 
-function installPlugin(peer, { root, home, env, run }) {
+function installPlugin(peer: string, { root, home, env, run }: { root: string; home: string; env: NodeJS.ProcessEnv; run: Run }): string {
   const url = new URL("../package.json", import.meta.url).href;
   if (peer === "claude" || peer === "codex") {
     let copy;
     try { copy = packPluginCopy(root, path.join(home, ...SHARE_DIR, `${peer}-plugin`)).dest; }
-    catch (error) { return `plugin copy failed: ${error.message}`; }
+    catch (error) { return `plugin copy failed: ${(error as Error).message}`; }
     root = copy;
   }
   if (peer === "claude") {
@@ -123,7 +132,7 @@ function installPlugin(peer, { root, home, env, run }) {
   return r.ok === false ? `failed: ${r.message}` : "restart OpenCode";
 }
 
-function uiUnit(root) {
+function uiUnit(root: string): string {
   const next = path.join(root, "node_modules", "next", "dist", "bin", "next");
   return `[Unit]
 Description=AI Collab UI
@@ -143,7 +152,7 @@ WantedBy=default.target
 }
 
 // Builds the UI if needed and installs a systemd user unit; an existing unit is left alone.
-function installUi({ root, home, run, which, env }) {
+function installUi({ root, home, run, which, env }: { root: string; home: string; run: Run; which: Which; env: NodeJS.ProcessEnv }): string {
   const unit = path.join(home, ".config", "systemd", "user", "ai-collab-ui.service");
   if (fs.existsSync(unit)) return `kept ${unit}`;
   if (!which("systemctl", env)) return `no systemd: run \`npm run ui\` in ${root}`;
@@ -159,7 +168,7 @@ function installUi({ root, home, run, which, env }) {
 }
 
 // Copies the package out of the npx cache, installs its dependencies, and reruns setup from the copy.
-function relocate(root, home, argv, { run, say }) {
+function relocate(root: string, home: string, argv: string[], { run, say }: { run: Run; say: (line: string) => void }): number {
   const dest = path.join(home, ...APP_DIR);
   say(`install: copying ai-collab to ${dest}`);
   fs.rmSync(dest, { recursive: true, force: true });
@@ -172,7 +181,7 @@ function relocate(root, home, argv, { run, say }) {
 }
 
 /** The harnesses to install: --agent names (comma or repeated), else every one on PATH; throws on an unknown name. */
-function chosenHarnesses(agents, env, which) {
+function chosenHarnesses(agents: string[] | undefined, env: NodeJS.ProcessEnv, which: Which): Harness[] {
   if (!agents?.length) return HARNESSES.filter(h => installed(h, env, which));
   const names = agents.flatMap(a => a.split(",")).map(a => a.trim().toLowerCase()).filter(Boolean);
   const unknown = names.filter(n => !HARNESSES.some(h => h.peer === n));
@@ -181,15 +190,15 @@ function chosenHarnesses(agents, env, which) {
 }
 
 /** Runs setup and returns an exit code; run, which and root are injectable for tests. */
-export async function setup(argv = [], { env = process.env, home = env.HOME || os.homedir(), out = process.stdout, run = defaultRun, which = defaultWhich, root = packageRoot(import.meta.url) } = {}) {
-  const say = (line) => out.write(`${line}\n`);
-  let flags;
-  try { flags = parseArgs({ args: argv, options: OPTIONS, strict: true }).values; } catch (err) { say(`setup: ${err.message}`); return 2; }
+export async function setup(argv: string[] = [], { env = process.env, home = env.HOME || os.homedir(), out = process.stdout, run = defaultRun, which = defaultWhich, root = packageRoot(import.meta.url) as string }: SetupOptions = {}): Promise<number> {
+  const say = (line: string) => out.write(`${line}\n`);
+  let flags: Flags;
+  try { flags = parseArgs({ args: argv, options: OPTIONS, strict: true }).values; } catch (err) { say(`setup: ${(err as Error).message}`); return 2; }
   if (root.split(path.sep).includes("_npx")) return relocate(root, home, argv, { run, say });
   let found;
-  try { found = chosenHarnesses(flags.agent, env, which); } catch (err) { say(`setup: ${err.message}`); return 2; }
+  try { found = chosenHarnesses(flags.agent, env, which); } catch (err) { say(`setup: ${(err as Error).message}`); return 2; }
   const defaultsFile = path.join(configDir({ ...env, HOME: home }), "defaults.json");
-  let defaults = readJson(defaultsFile);
+  let defaults = readJson<Defaults>(defaultsFile);
 
   if (defaults?.url && defaults?.tokenFile) say(`bus: using ${defaults.url} from ${defaultsFile}`);
   else {

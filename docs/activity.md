@@ -36,7 +36,7 @@ The bus keeps messages and attachments for 7 days by default (`AI_COLLAB_BUS_RET
 
 ### Compaction
 
-Every compact row carries `compaction: {trigger?, phase, tokensBefore?, tokensAfter?, filesDropped?}` (lib/compaction.mjs). A PreCompact row takes `tokensBefore` (the context meter's last reading, lib/usage.mjs) and `filesDropped` (on-demand instruction files that the compaction drops) from the session state. `phase` is `started`, `finished` or `failed`; `trigger` is `auto` or `manual` and is absent when the harness does not report it. Sources:
+Every compact row carries `compaction: {trigger?, phase, tokensBefore?, tokensAfter?, filesDropped?}` (lib/compaction.mjs). A PreCompact row takes `tokensBefore` (the context meter's last reading, lib/usage.ts) and `filesDropped` (on-demand instruction files that the compaction drops) from the session state. `phase` is `started`, `finished` or `failed`; `trigger` is `auto` or `manual` and is absent when the harness does not report it. Sources:
 
 | Source | Phase | Where |
 |---|---|---|

@@ -8,8 +8,8 @@ import { publishActivity } from "../lib/activity.ts";
 import { compactionFields } from "../lib/compaction.mjs";
 import { modelFields } from "../lib/session-events.mjs";
 import { approvalMessage, cleanQuestions } from "../lib/approvals.mjs";
-import { sendReceipts } from "../lib/receipts.mjs";
-import { reportContext } from "../lib/usage.mjs";
+import { sendReceipts } from "../lib/receipts.ts";
+import { reportContext } from "../lib/usage.ts";
 import { APPROVAL_TIMEOUT_MIN, ERROR, NOTICE } from "./contract.mjs";
 
 // A card's expiresAt is when the runner denies it (AI_COLLAB_APPROVAL_TIMEOUT_MIN); this is the default wait.

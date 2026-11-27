@@ -4,7 +4,7 @@ import { HOST_CHECKOUT, LandRefused, deployedField, hostLand } from "../../lib/l
 import { isProjectPaused, PROJECT_PAUSED, setProjectPaused } from "../../lib/project-pause.ts";
 import { terminalHasDraft } from "../../lib/terminal-draft.ts";
 import { EventType } from "@ag-ui/core";
-import { operatorPrompt, publishMode as publishModeAll } from "../../lib/mode.mjs";
+import { operatorPrompt, publishMode as publishModeAll } from "../../lib/mode.ts";
 import { buildEvent, encodeEnvelope, envelopeToEvent, projectEvent, readWireRecord } from "../../lib/agui.mjs";
 import { ACTIVITY_BATCH, STREAM_ERROR } from "../lib/ui-events.js";
 import { execFile } from "node:child_process";
@@ -22,11 +22,11 @@ import { publish } from "../../lib/messaging.ts";
 import { parsePhoneReply, parseQuestionText } from "../../lib/questions.mjs";
 import { disposeSession, listSessions, sessionPlace, worktreeGone } from "../../lib/sessions.mjs";
 import { readState, statePath } from "../../lib/state.ts";
-import { readReceipts } from "../../lib/receipts.mjs";
+import { readReceipts } from "../../lib/receipts.ts";
 import { controlSession } from "../../lib/sessions/control.ts";
 import { interruptSession } from "../../lib/sessions/control.ts";
 import { slashCommand } from "../../lib/slash.mjs";
-import { readContext } from "../../lib/usage.mjs";
+import { readContext } from "../../lib/usage.ts";
 import { parseCommand } from "../lib/slash-commands.js";
 import { startModes } from "../lib/start-mode.js";
 import { APPROVAL_ID, END_REASONS, cleanQuestions, parseChoice, replyDecision } from "../../lib/approvals.mjs";
@@ -34,7 +34,7 @@ import { START_HARNESSES, availableHarnesses, availablePlaces, claudePermissionF
 import { codeModeDefault } from "../../lib/code-mode.mjs";
 import { cleanName } from "../../lib/sessions/registry.ts";
 import { REF_NAME_MAX, gitRunner, listBranches, listWorktrees, parseWorktreeList, pickedWorktree, prHead, refInputError } from "../../lib/sessions/git-refs.ts";
-import { listModels } from "../../lib/models.mjs";
+import { listModels } from "../../lib/models.ts";
 import { LIMIT_TOOL, chooseLimit, limitEndMessage, skipLimit } from "../../lib/limit-alert.ts";
 import { limitEndNotice } from "../../lib/start-limit.ts";
 import { closedProjectNames, createTeam, deleteTeam, listTeams, readProjectsFile, removeProject, setProjectClosed, teamTask } from "../../lib/teams.mjs";
@@ -61,7 +61,7 @@ import { createAuth } from "./auth.mjs";
 import { createHub } from "./hub.mjs";
 import { createPush, notice } from "./push.mjs";
 import { createDispatcher } from "./dispatch.mjs";
-import { runnerClient, runnerUp } from "../../runner/client.mjs";
+import { runnerClient, runnerUp } from "../../runner/client.ts";
 import { runnerSocket } from "../../runner/control.mjs";
 import { readScheduleRuns, readSchedules } from "./schedules.mjs";
 import { quotedReply, usableReplyId } from "../lib/reply-quote.js";
@@ -1197,7 +1197,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           ? { current: owned.model || "", busy: owned.status === "running" } : null;
         const { lastActivityAt, openCallAt, afkHold, pending, team, role } = card || {};
         const base = { ...agent, lastActivityAt, openCallAt, afkHold, pending, ...(team ? { team, role } : {}), ...(subagents.length ? { subagents } : {}), ...(modelControl ? { modelControl } : {}) };
-        // Context telemetry and instruction files from the session's state file (lib/usage.mjs).
+        // Context telemetry and instruction files from the session's state file (lib/usage.ts).
         const context = readContext({ stateDir: project.cfg.stateDir, project: project.cfg.project, peer: agent.peer, session: agent.session });
         const withContext = context.tokens !== null || context.files.length ? { ...base, context } : base;
         const withHistory = history.has(agent.id) ? { ...withContext, history: history.get(agent.id) } : withContext;

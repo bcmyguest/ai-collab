@@ -2,7 +2,7 @@
  * Messaging: the bus HTTP client (publish, cached poll, stream), send and claim of msg envelopes, the channel and status
  * reads, delivery reservations, and the wait loop (waitUntil, streamWaiter) with the inbox read (readInbox).
  * Every network call goes through the bus client below. Delivery is best-effort: publish failures throw to the caller
- * (CLI) or are swallowed by hooks; there is no outbox or retry (read receipts: lib/receipts.mjs).
+ * (CLI) or are swallowed by hooks; there is no outbox or retry (read receipts: lib/receipts.ts).
  */
 import { setTimeout as delay } from "node:timers/promises";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -12,11 +12,11 @@ import { deepLink } from "./deep-link.ts";
 import { alertPriority, readAlertLevel } from "./alerts.ts";
 import { parsePhoneReply, parseQuestionText } from "./questions.mjs";
 import { readState, writeState, statePath, withLock } from "./state.ts";
-import { parseMode, recordMode } from "./mode.mjs";
+import { parseMode, recordMode } from "./mode.ts";
 import { imageAttachment, readAttachment } from "./attachment.ts";
 import { attachmentOf, cacheAttachmentsWithin, cacheUploadedAttachment, localizedAttachment } from "./attachment-cache.ts";
 import { encodeEnvelope, parseWireEnvelope } from "./agui.mjs";
-import { sendReceipts, settleReceipts } from "./receipts.mjs";
+import { sendReceipts, settleReceipts } from "./receipts.ts";
 import { reconnectBackoff } from "./operator.ts";
 
 export { MESSAGE_MAX_BYTES } from "./config.mjs";

@@ -1,7 +1,7 @@
 // Operator phone replies: matching, the reply wait (stream or poll), the approval-end envelope, and the wait limit.
 import { setTimeout as delay } from "node:timers/promises";
 import { encodeEnvelope, parseWireEnvelope } from "./agui.mjs";
-import { parseMode } from "./mode.mjs";
+import { parseMode } from "./mode.ts";
 import { pollCached, streamEvents, type Cfg } from "./messaging.ts";
 
 export const WAIT_MAX_S = 45;

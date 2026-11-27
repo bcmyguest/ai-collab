@@ -2,7 +2,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { configDir } from "../config.mjs";
-import { listModels } from "../models.mjs";
+import { listModels } from "../models.ts";
 import { listSessions } from "../sessions.mjs";
 import { formatHarnessModel, parseHarnessModel } from "../harness.ts";
 import { readJson, withLock, writeJson } from "../store.ts";

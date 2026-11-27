@@ -333,7 +333,7 @@ Sessions of one harness that hit the same window share one card, whatever reset 
 The card offers up to four replacements, then **Wait for reset**:
 
 - The pattern role's `fallback` (`harness:model`) comes first, when the session's pattern role defines one.
-- Then the first listed model of each other available harness (`lib/models.mjs`).
+- Then the first listed model of each other available harness (`lib/models.ts`).
 - **Wait for reset** only acknowledges. Nothing else changes.
 - Text typed in **Other** picks a replacement not listed: `harness:model`, or a name matched case-insensitively against each other available harness's listed models (first match in the order claude, codex, cursor, opencode), so `deepseek` starts Cursor `deepseek-v41-flash-1017-high`. The limited harness is never picked. Text that matches nothing is refused with the reason.
 - A replacement starts a new session for each session on the card, in the folder that session ran in. A folder that is gone is refused with its path. The handoff prompt quotes the session title and last activity as data, not instructions. The original sessions keep running. Each session's timeline gets a row that links to its replacement.
