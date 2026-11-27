@@ -19,6 +19,7 @@ import { sessionIdleState } from "../../lib/idle.mjs";
 import { claimInbox, ATTACHMENT_BUDGET_MS, markDelivered, parseEnvelope, releaseDelivery, reserveDelivery, reservedMessage } from "../../lib/messaging.ts";
 import { cacheAttachmentsWithin } from "../../lib/attachment-cache.mjs";
 import { pollCached } from "../../lib/messaging.ts";
+import { handOff } from "../../lib/stop.mjs";
 import { opencodeRequest } from "../../lib/opencode-api.mjs";
 import { readReceipts } from "../../lib/receipts.mjs";
 import { listSessions } from "../../lib/sessions.mjs";
@@ -113,9 +114,10 @@ export function createDispatcher({
   }
 
   // Pushes reserved messages and settles the reservation. Resolves "delivered", "failed", "held" or "pending" (watched).
-  async function dispatchIds(session, scfg, text, { urgent, ids }) {
-    // A Stop hook that started since the ready check delivers the messages itself; the next tick retries.
+  async function dispatchIds(session, scfg, text, { urgent, ids, messages }) {
+    // A Stop hook that started since the ready check delivers the messages: hand them to it (read every second), then release.
     if (holdRunning(session, scfg)) {
+      await handOff(scfg, messages).catch(() => {});
       await releaseDelivery(scfg, ids).catch(() => {});
       return "held";
     }
@@ -198,7 +200,7 @@ export function createDispatcher({
       const rest = waiting.filter((m) => !late.includes(m));
       if (!rest.length) continue;
       const ids = rest.map((m) => m.id);
-      const status = await dispatchIds(session, scfg, await textFor(scfg, rest), { urgent: rest.some((m) => m.urgent), ids });
+      const status = await dispatchIds(session, scfg, await textFor(scfg, rest), { urgent: rest.some((m) => m.urgent), ids, messages: rest });
       if (status !== "delivered") continue;
       counts.delivered += rest.length;
       for (const m of rest) {
@@ -230,7 +232,7 @@ export function createDispatcher({
         const again = { ...e.message, attempt: e.attempts + 1, attempts: MAX_ATTEMPTS };
         // Redelivery reserves an id that is already seen, so the seen list can be trimmed without exposing it.
         const owned = await reserveDelivery(scfg, [id], { allowSeen: true });
-        if (owned.length && await dispatchIds(session, scfg, await textFor(scfg, [again]), { urgent: again.urgent === true, ids: [id] }) === "delivered") {
+        if (owned.length && await dispatchIds(session, scfg, await textFor(scfg, [again]), { urgent: again.urgent === true, ids: [id], messages: [again] }) === "delivered") {
           Object.assign(e, { lastAt: now(), attempts: e.attempts + 1 });
           counts.redelivered += 1;
         }
