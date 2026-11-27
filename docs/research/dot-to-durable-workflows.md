@@ -75,7 +75,7 @@ A role with `count` greater than 1 is one `enter`/`event`/`leave` chain per inst
 
 ## Where the checkpoint lives
 
-`runner/durable.mjs` already stores this shape in `runner.db`: a `workflows` row, a `steps` row per call, replay of a `done` step, and `onCut` for a step left in `started`. Owned sessions already use it (`sessionWorkflow` in `runner/runner.mjs`). A pattern run does not. `writeState` writes the run JSON, and `advanceRun` applies the event in the request that received it. A crash between accepting the event and starting the next role is not a step boundary.
+`runner/durable.mjs` already stores this shape in `runner.db`: a `workflows` row, a `steps` row per call, replay of a `done` step, and `onCut` for a step left in `started`. Owned sessions already use it (`sessionWorkflow` in `runner/runner.ts`). A pattern run does not. `writeState` writes the run JSON, and `advanceRun` applies the event in the request that received it. A crash between accepting the event and starting the next role is not a step boundary.
 
 The pattern workflow uses that same log. Workflow id `pattern-<run id>`, name `pattern`. A `done` step returns its recorded output and does not launch again. A step left `started` uses `onCut` and does not call the harness a second time. The run JSON can stay as the view the phone reads. The step log is the authority for what has been decided.
 

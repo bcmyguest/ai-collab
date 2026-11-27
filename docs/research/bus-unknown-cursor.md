@@ -10,7 +10,7 @@ An unknown cursor is an id the store cannot place: pruned away, newer than every
 
 Prune deletes events by time on an hourly timer (lib/bus.ts:218-227, scripts/ai-collab-bus.mjs:45-47), so a stored cursor can name a row that no longer exists.
 
-- Poll: the id existence check misses (lib/bus.ts:176) and the answer is the whole retained topic (lib/bus.ts:177; memory store lib/bus.ts:86). The client re-receives events it already processed: duplicates, no skips, no hang. Consumers are built for this — the fallback carries the comment "unknown id: everything, dedup must cope" (lib/bus.ts:86) — dispatch re-folds receipts into Sets (web/server/dispatch.ts:154-161) and the runner dedupes deliveries by message id (runner/runner.mjs:1341,1359).
+- Poll: the id existence check misses (lib/bus.ts:176) and the answer is the whole retained topic (lib/bus.ts:177; memory store lib/bus.ts:86). The client re-receives events it already processed: duplicates, no skips, no hang. Consumers are built for this — the fallback carries the comment "unknown id: everything, dedup must cope" (lib/bus.ts:86) — dispatch re-folds receipts into Sets (web/server/dispatch.ts:154-161) and the runner dedupes deliveries by message id (runner/runner.ts:1341,1359).
 - Stream: backfill is a bare `id > since` with no existence check (lib/bus.ts:187; memory lib/bus.ts:95), so every retained event follows the pruned cursor. That is the correct continuation: events between the cursor and the oldest retained row are pruned and unrecoverable, and nothing already seen is re-sent. Live events continue from there (lib/bus.ts:354).
 - Nothing in either answer distinguishes an unknown cursor from a normal one; a client cannot tell a full replay from a continuation.
 
@@ -18,7 +18,7 @@ Prune deletes events by time on an hourly timer (lib/bus.ts:218-227, scripts/ai-
 
 - Poll: the existence check misses (lib/bus.ts:176), so the answer is again the whole retained topic (lib/bus.ts:177): the client sees every event again, duplicates. A future unix *time* is different: the time filter answers with nothing (lib/bus.ts:174), pinned by test/bus.test.mjs:56.
 - Stream: `id > since` matches nothing (lib/bus.ts:187), so the backfill is empty. The client skips every existing event; live events still flow because `lastSeen` starts at 0 (lib/bus.ts:345-351). No hang: the server writes a keepalive every 30 s (lib/bus.ts:355-357) and the client's idle abort is 120 s (lib/transport.mjs:12,179).
-- The runner persists its stream cursor and advances it only on a received event (runner/runner.mjs:1366,1370-1373), so a too-new cursor sticks: every reconnect backfills empty, and events published before the next live event stay skipped for that consumer.
+- The runner persists its stream cursor and advances it only on a received event (runner/runner.ts:1366,1370-1373), so a too-new cursor sticks: every reconnect backfills empty, and events published before the next live event stay skipped for that consumer.
 
 ## (c) Garbage (not an id, not a time)
 
@@ -38,7 +38,7 @@ Ids are per-store sequences — SQLite AUTOINCREMENT (lib/bus.ts:125,157-160), a
 ## What the clients do with it
 
 - `pollCached` returns the wire events as-is (lib/transport.mjs:133-143). `messageEvent` keeps a fixed field set (lib/transport.mjs:161,168), so any new marker such as a reset flag is dropped before callers see it, and non-message lines (open, keepalive) never reach `streamEvents` consumers (lib/transport.mjs:161,199-200).
-- The runner is the cursor-bearing stream client (runner/runner.mjs:1362-1380). The web hub streams by time, not id (web/server/hub.ts:58), and its history poll reads "all" with a tail budget (web/server/hub.ts:79). The console never sends a bus cursor: chat-stream.js keys its reconnect on the stream key (web/app/chat-stream.js:63,82,110-116) and re-renders from the hub's state, so bus cursor anomalies surface in runner delivery and ack folding, not in the console.
+- The runner is the cursor-bearing stream client (runner/runner.ts:1362-1380). The web hub streams by time, not id (web/server/hub.ts:58), and its history poll reads "all" with a tail budget (web/server/hub.ts:79). The console never sends a bus cursor: chat-stream.js keys its reconnect on the stream key (web/app/chat-stream.js:63,82,110-116) and re-renders from the hub's state, so bus cursor anomalies surface in runner delivery and ack folding, not in the console.
 - The inbox reads from a committed id, or a unix lookback before the first commit (lib/inbox.mjs:294-301), so it takes the poll fallbacks above.
 - test/bus-cursor.model.test.mjs encodes today's rules as its model (test/bus-cursor.model.test.mjs:78-91: unknown poll id → everything, backfill → `id > since`), and test/bus.test.mjs:55 pins "unknown id: everything, dedup copes". Batch 3 changes the server and must address both pins.
 

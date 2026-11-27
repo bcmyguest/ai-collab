@@ -134,7 +134,7 @@ function classifyCodex(event: Event): Limit | null {
 
 function classifyOpenCode(event: Event): Limit | null {
   if (event?.kind !== "run_error") return null;
-  // UNVERIFIED: OpenCode's provider error carries an HTTP status; runner/adapters/opencode.mjs forwards it in RUN_ERROR metadata.
+  // UNVERIFIED: OpenCode's provider error carries an HTTP status; runner/adapters/opencode.ts forwards it in RUN_ERROR metadata.
   if (event.status === 429) return limit("opencode", { verified: false, source: "UNVERIFIED HTTP 429 from provider" });
   return LIMIT_TEXT.test(event.message ?? "")
     ? limit("opencode", { window: windowFromText(event.message), wording: LIMIT_WORDING.test(event.message), verified: false, source: "UNVERIFIED provider error text" })

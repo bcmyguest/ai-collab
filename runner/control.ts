@@ -12,7 +12,7 @@ const VERSION = 1;
 // oxlint-disable-next-line typescript/no-explicit-any -- request bodies and runner answers are JSON on the control socket
 type Json = any;
 type Awaitable<T> = T | Promise<T>;
-/** The runner methods the control routes call (runner/runner.mjs). */
+/** The runner methods the control routes call (runner/runner.ts). */
 export interface ControlRunner {
   harnesses(): Awaitable<Array<{ harness: string } & Json>>;
   startPattern(input: Json): Awaitable<Json>;

@@ -351,16 +351,16 @@ Detection (`lib/limits.ts`). "Typed" means the pattern appears in a type definit
 | Claude | `rate_limit_event` with `status: "rejected"`, not on overage (`sdk.d.ts:6224`, `SDKRateLimitInfo` at `:6237`, overage fields `:6243-6246`) | Typed. The `resetsAt` unit is UNVERIFIED: values above 1e12 read as ms, else seconds. The window end is held to at least 5 minutes ahead. |
 | Claude | `StopFailure` hook with `error: "rate_limit"` (`sdk.d.ts:10502`; enum at `:3995`) | Typed. It also fires for an API 429 with no plan limit; the card reads `Rate limited` unless its details name a limit. |
 | Claude | Failed result text: "usage limit", "plan limit", "rate limit", "quota" | UNVERIFIED |
-| Codex | Turn error with `codexErrorInfo: "usageLimitExceeded"`, forwarded in RUN_ERROR metadata by `runner/adapters/codex.mjs` | UNVERIFIED: the field name is not in the repo's schema snapshot. |
+| Codex | Turn error with `codexErrorInfo: "usageLimitExceeded"`, forwarded in RUN_ERROR metadata by `runner/adapters/codex.ts` | UNVERIFIED: the field name is not in the repo's schema snapshot. |
 | Codex | Turn error text | UNVERIFIED |
-| OpenCode | Provider error with HTTP 429 | UNVERIFIED. `runner/adapters/opencode.mjs` forwards the provider's HTTP status in `RUN_ERROR` metadata (`aiCollab.status`) and `limitFromRunError` passes it to the classifier. The field names it reads are UNVERIFIED. |
+| OpenCode | Provider error with HTTP 429 | UNVERIFIED. `runner/adapters/opencode.ts` forwards the provider's HTTP status in `RUN_ERROR` metadata (`aiCollab.status`) and `limitFromRunError` passes it to the classifier. The field names it reads are UNVERIFIED. |
 | OpenCode | Provider error text | UNVERIFIED |
 | Cursor | ACP error text, error code and data, and the child's stderr tail: "usage limit", "You've reached your usage limit", a 429 with limit wording, or a structured limit code | UNVERIFIED. `runner/adapters/cursor.mjs` keeps `error.code`, `error.data` and a stderr tail on `RUN_ERROR`, and joins them into the message the classifier reads. |
 
 Where detection runs:
 
 - The Claude `StopFailure` hook (`scripts/ai-collab-hook.mjs`) covers every Claude session that reports to AI Collab, including `claude --bg` sessions the phone starts. Its own `error` timeline row is dropped, because the limit row says the same.
-- The owned-session runner (`runner/runner.mjs`) covers Claude's `rate_limit_event` and every harness's run error.
+- The owned-session runner (`runner/runner.ts`) covers Claude's `rate_limit_event` and every harness's run error.
 - Detached `codex exec`, `opencode run` and `cursor-agent -p` sessions started from the phone have no error hook, so no card appears for them.
 
 A phone post as a plain reply does nothing. Answer the card in the web UI, where the pick starts the replacement.

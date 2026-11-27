@@ -24,7 +24,7 @@ Line numbers below refer to `81129778`. Rebase first and re-check each anchor be
 sequenceDiagram
   participant P as Parent session (any harness)
   participant T as spawn_agent op (lib/spawn.ts)
-  participant R as Runner (runner/runner.mjs)
+  participant R as Runner (runner/runner.ts)
   participant C as Child owned session
   P->>T: spawn_agent {harness, model, brief, worktree}
   T->>R: POST /v1/sessions {..., parent, managed:true, spawn:true}
@@ -142,7 +142,7 @@ If the UI routes team starts through the runner rather than `startSession`, the 
 
 ### A5. Runner sessions
 
-`runner/runner.mjs`:
+`runner/runner.ts`:
 
 1. `start` (line 825) gains `managed`, `parent` and `spawn` (see B3). Compute `managed = Boolean(builder || patternRun || continuation || input.managed)`. `team_start` through the runner passes `managed: true`.
 2. Pass `managed` into the `startWorkflow` input (line 872).
@@ -154,9 +154,9 @@ Adapters:
 
 | Adapter | Change | Anchor |
 |---|---|---|
-| `runner/adapters/claude.mjs` | When `options.managed` (and `record.managed` on resume), set `disallowedTools: [...CLAUDE_SUBAGENT_TOOLS]` in the `query()` options. SDK 0.3.330 `Options.disallowedTools?: string[]` (`node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts:52`). | `startSession` query options, lines ~66-78 |
-| `runner/adapters/codex.mjs` | `threadConfig(codeMode)` (line 44) becomes `threadConfig(codeMode, managed)`. When managed, merge `CODEX_NO_SUBAGENTS` into `config`. Apply it on `thread/start` (`openThread`, line ~436) and `thread/resume` (`attach`, line ~416). | lines 44, ~416, ~436 |
-| `runner/adapters/opencode.mjs` | When managed, add `permissions: OPENCODE_NO_SUBAGENTS` to the `POST /api/session` body in `open` (line ~370). On resume, `PATCH /api/session/{id}` with the same `permissions`. Both fields are in the service's `/openapi.json` (OpenCode 2.2.6). | `open`, line ~370 |
+| `runner/adapters/claude.ts` | When `options.managed` (and `record.managed` on resume), set `disallowedTools: [...CLAUDE_SUBAGENT_TOOLS]` in the `query()` options. SDK 0.3.330 `Options.disallowedTools?: string[]` (`node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts:52`). | `startSession` query options, lines ~66-78 |
+| `runner/adapters/codex.ts` | `threadConfig(codeMode)` (line 44) becomes `threadConfig(codeMode, managed)`. When managed, merge `CODEX_NO_SUBAGENTS` into `config`. Apply it on `thread/start` (`openThread`, line ~436) and `thread/resume` (`attach`, line ~416). | lines 44, ~416, ~436 |
+| `runner/adapters/opencode.ts` | When managed, add `permissions: OPENCODE_NO_SUBAGENTS` to the `POST /api/session` body in `open` (line ~370). On resume, `PATCH /api/session/{id}` with the same `permissions`. Both fields are in the service's `/openapi.json` (OpenCode 2.2.6). | `open`, line ~370 |
 | `runner/adapters/cursor.mjs` | None. The hook gate (A2) reads `managed` from the owned record. | |
 
 Owned sessions' hooks stand down (`standsDown`, `lib/sessions/registry.ts:343`), and the gate runs before `standsDown`, so the Cursor deny still fires.
@@ -208,7 +208,7 @@ export function spawnReport(child: string, outcome: string, text: string): strin
 
 `route` (lines 41-95) already forwards `POST /v1/sessions` to `runner.start(input)`. Pass the three new fields through. If `route` whitelists fields, add `managed`, `parent` and `spawn` there.
 
-### B3. Runner start, `runner/runner.mjs` `start` (line 825)
+### B3. Runner start, `runner/runner.ts` `start` (line 825)
 
 Add to the destructure: `managed`, `parent`, `spawn`.
 
@@ -222,7 +222,7 @@ When `spawn === true`:
 6. Add `parent` and `spawn: { depth }` to the `startWorkflow` input (line 872).
 7. Permission mode: a spawn that names none defaults to `auto` where the adapter supports it (Claude through the member `claudePermission: "auto"` path, Codex), else the harness default (answer 6). An operator start defaults to `supervised` (docs/owned-sessions-contract.md, Permission modes).
 
-### B4. Workflow, `runner/runner.mjs` `sessionWorkflow`
+### B4. Workflow, `runner/runner.ts` `sessionWorkflow`
 
 1. Write `parent` and `spawn` into the owned record (line 403 and the claim write).
 2. At line 453 pass `parent` to `recordSession`: `recordSession(cfg, { id, cwd, harness, event: "owned", proc, ...(parent ? { parent } : {}) })`. `list_sessions` then shows "parent" and the UI shows "started by …".
@@ -320,7 +320,7 @@ Insert after `team_start` (line ~275):
 },
 ```
 
-Take the model pattern from the runner's `MODEL` regex (`runner/runner.mjs`, constants 43-73) instead of the one above if they differ. `surfaces` is `["mcp"]` only: `run_code` programs cannot spawn (answer 3). Leave `listing` and `available` unset so every host sees the op; `lib/tool-api.ts` `listed(env)` filters only `builder_start`.
+Take the model pattern from the runner's `MODEL` regex (`runner/runner.ts`, constants 43-73) instead of the one above if they differ. `surfaces` is `["mcp"]` only: `run_code` programs cannot spawn (answer 3). Leave `listing` and `available` unset so every host sees the op; `lib/tool-api.ts` `listed(env)` filters only `builder_start`.
 
 ### B9. CLI, `lib/cli.ts`
 
@@ -366,7 +366,7 @@ Run the H1-H3 checks first and record the result on the board task.
 
 ## Part C: new tests
 
-Each new test file runs without network or real harnesses, with the in-process test bus (`test/helpers/fake-ntfy.mjs`) and the fake adapter (`runner/adapters/fake.mjs`).
+Each new test file runs without network or real harnesses, with the in-process test bus (`test/helpers/fake-ntfy.mjs`) and the fake adapter (`runner/adapters/fake.ts`).
 
 `test/subagent-guard.test.mjs`:
 
@@ -462,7 +462,7 @@ The operator answered the open questions on 2026-11-27:
 3. **run_code:** `run_code` programs may not spawn. `spawn_agent` is a direct MCP tool only (`surfaces: ["mcp"]`).
 4. **Limits:** 4 live children per parent, depth 2, and spawns are exempt from the 10 s start gap.
 5. **Codex fallback:** if the per-thread `config` cannot turn Codex's own subagents off, managed sessions run on a second `codex app-server` started with `-c agents.enabled=false -c features.multi_agent_v2=false`.
-6. **Permission mode:** spawned Claude and Codex children default to `auto`, as team members do. Spawned Cursor children run with full access inside OpenShell only (operator, 2026-11-26: "these are full access within the container"). `runner/runner.mjs` `start` gives a spawned Cursor child `place: "openshell"`, whatever place the spawn names; OpenShell's default mode, `full-access` (`acp --force`), follows from that. Its worktree is synced back to the host worktree when the session closes, and `cwd` in the spawn result is that host worktree. The host guards are unchanged: `full-access` outside OpenShell still needs `AI_COLLAB_ALLOW_HOST_AGENT=1`, and Cursor's never runs on the host. There is no host fallback. Without OpenShell on the runner host, the spawn is refused with 409 naming it. A spawn that would create a sandbox past the cap (`maxSandboxes`, default 6) is refused with 409 naming the running sandboxes. A spawn into the project's existing sandbox adds none. Both refusals come before the child slot is taken, so they never count against the parent's 4 children. Native subagents are blocked inside OpenShell too. Cursor has no switch for them, so `prepareSandbox` in `runner/adapters/cursor.mjs` gives a managed child `AI_COLLAB_MANAGED=1` in its exec env and uploads `/sandbox/home/.cursor/hooks.json`. Its `subagentStart` command is a shell line: with that env it prints `{"permission":"deny",…}`, without it `{}`. The sandbox is shared per project, so an unmanaged session there is let through. Unmanaged sandbox sessions get neither the env nor the file. Read from the Cursor bundle and tested against the fake openshell, not run in a live sandbox: Cursor reads `~/.cursor/hooks.json` and runs hook commands through a shell. OpenCode has no OpenShell place yet, so spawned OpenCode children still run `supervised` on the host, and their approvals reach the operator.
+6. **Permission mode:** spawned Claude and Codex children default to `auto`, as team members do. Spawned Cursor children run with full access inside OpenShell only (operator, 2026-11-26: "these are full access within the container"). `runner/runner.ts` `start` gives a spawned Cursor child `place: "openshell"`, whatever place the spawn names; OpenShell's default mode, `full-access` (`acp --force`), follows from that. Its worktree is synced back to the host worktree when the session closes, and `cwd` in the spawn result is that host worktree. The host guards are unchanged: `full-access` outside OpenShell still needs `AI_COLLAB_ALLOW_HOST_AGENT=1`, and Cursor's never runs on the host. There is no host fallback. Without OpenShell on the runner host, the spawn is refused with 409 naming it. A spawn that would create a sandbox past the cap (`maxSandboxes`, default 6) is refused with 409 naming the running sandboxes. A spawn into the project's existing sandbox adds none. Both refusals come before the child slot is taken, so they never count against the parent's 4 children. Native subagents are blocked inside OpenShell too. Cursor has no switch for them, so `prepareSandbox` in `runner/adapters/cursor.mjs` gives a managed child `AI_COLLAB_MANAGED=1` in its exec env and uploads `/sandbox/home/.cursor/hooks.json`. Its `subagentStart` command is a shell line: with that env it prints `{"permission":"deny",…}`, without it `{}`. The sandbox is shared per project, so an unmanaged session there is let through. Unmanaged sandbox sessions get neither the env nor the file. Read from the Cursor bundle and tested against the fake openshell, not run in a live sandbox: Cursor reads `~/.cursor/hooks.json` and runs hook commands through a shell. OpenCode has no OpenShell place yet, so spawned OpenCode children still run `supervised` on the host, and their approvals reach the operator.
 7. **Shell starts:** a harness started from the shell inside a managed session is refused (B11 step 3).
 8. **Blocking:** the parent does not block. `spawn_agent` returns the child's address at once.
 
@@ -476,5 +476,5 @@ Where the built code differs from the text above (branch `feat/spawn-agent`):
 - **Start tickets (backstop).** Every managed start (`noSubagentEnv`: `startSession` for team start, the session-control wake, and each runner open and resume) mints a single-use ticket under `<state dir>/managed-tickets/` and passes `AI_COLLAB_MANAGED_TICKET`. At `SessionStart`, a hook that sees `AI_COLLAB_MANAGED=1` binds the ticket to the harness process (pid and start tick) on first use and allows later starts only from that process; a ticket bound to another process is refused. A start with `AI_COLLAB_MANAGED=1` and no ticket file is refused too, even when the session has a live owned record, so a grandchild that unsets the ticket cannot resume its parent's session. A grandchild that keeps the env is refused because its process is not the one the ticket is bound to. A Codex `SessionStart` that runs before the runner writes the owned record passes, because it needs only the ticket. Codex sessions share one managed app-server: its first session's ticket binds to that process, and every later thread on it starts from the same process. The hook takes as the harness process the nearest ancestor whose argv[0] or `/proc/<pid>/exe` basename is the harness binary (`claude`, `claude.exe`, `codex`, `opencode`), or whose argv[1] is inside the Claude or Codex npm package (`@anthropic-ai/claude-code`, `@openai/codex`) or, for a node process, is a script named like the harness binary (a bin symlink such as `…/bin/claude`). So a grandchild started as `node …/cli.js` or under `exec -a` is a process of its own, and is refused. A renamed copy of a native binary is not recognised: the walk passes it and reaches the parent the ticket names, so it starts. Process identity needs `/proc`. On macOS and Windows the hook cannot find the harness, so the ticket stays unbound and any process with the env passes; only a managed start with no ticket is refused there. The runner saves the record's live status before it resumes a harness, so the record on disk never says `ended` during a wake. Any other start returns `{continue: false, stopReason}`, so a harness a managed session started through a wrapper the command check misses stops at once. Claude honours `continue: false` at `SessionStart`. Codex accepts the same output: the `session-start.command.output` schema embedded in codex-cli 0.171.0 lists `continue`, `stopReason`, `suppressOutput`, `systemMessage` and `hookSpecificOutput` with `additionalProperties: false`, so the hook adds no other field. Whether Codex then stops the session, and whether Cursor and OpenCode honour it, is unverified. The backstop is cooperative, not a security boundary. A ticket is a file name in the state dir plus an env var, so an agent that can write files can forge one, and `env -u AI_COLLAB_MANAGED` before the harness command skips the check altogether. It catches a managed agent that starts a harness through a wrapper by accident, not one that sets out to. Each mint prunes tickets bound to a harness process that has exited, and unused tickets older than 7 days.
 - **Child cap race.** The runner counts spawns that are still opening against the cap, so parallel `spawn_agent` calls cannot exceed 4.
 - **Wake path.** A detached managed session resumed by a wake gets no no-subagent argv; the hook backstop covers Claude.
-- **Brief note.** The parent line is added in `runner/runner.mjs` `start` (`lib/spawn.ts` `spawnBriefNote`) and counts against the 4000-char limit. So does the self note (`spawnSelfNote`), whose length is fixed because every label is 16 hex digits; the first prompt is checked with it before the workflow starts.
+- **Brief note.** The parent line is added in `runner/runner.ts` `start` (`lib/spawn.ts` `spawnBriefNote`) and counts against the 4000-char limit. So does the self note (`spawnSelfNote`), whose length is fixed because every label is 16 hex digits; the first prompt is checked with it before the workflow starts.
 - **`childHint`** takes no host argument; the hook passes `cfg` only.

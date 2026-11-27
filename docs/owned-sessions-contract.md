@@ -2,7 +2,7 @@
 
 The contract the four harness adapters (Claude, Codex, Cursor, OpenCode) code against. The `ai-collab-runner` user service drives these sessions directly instead of observing them through hooks. Background: [research](research/owned-sessions.md), [review](research/owned-sessions-review.md), [message delivery](research/pulsar-parity.md).
 
-The types live in `runner/types.d.ts`, the constants and validators in `runner/contract.ts`, and the reference adapter in `runner/adapters/fake.mjs`. Where this page and the code disagree, the code wins; fix the page.
+The types live in `runner/types.d.ts`, the constants and validators in `runner/contract.ts`, and the reference adapter in `runner/adapters/fake.ts`. Where this page and the code disagree, the code wins; fix the page.
 
 ## Deployment status
 
@@ -77,7 +77,7 @@ Replay rule: a step whose row is `done` returns its recorded output without runn
 
 ### The session workflow
 
-One workflow per owned session, id `session-<uuid>`, name `session`, input `{project, harness, place, permissionMode, prompt, model?}`. Code: `sessionWorkflow` in `runner/runner.mjs`.
+One workflow per owned session, id `session-<uuid>`, name `session`, input `{project, harness, place, permissionMode, prompt, model?}`. Code: `sessionWorkflow` in `runner/runner.ts`.
 
 | Step | Does | On replay | When cut |
 |---|---|---|---|
@@ -170,7 +170,7 @@ Control socket only (operator): `GET /v1/schedules` returns `{schedules: [{name,
 
 ## Delivery and wake workflows
 
-Delivery of direct messages runs in the runner. The UI dispatcher stands down while the runner answers its control socket (`runnerUp()` in `runner/client.ts`) and resumes when it does not. Both use the same inbox reservations, so a message goes out once. Code: `runner/delivery.ts` (`deliveryWorkflow`), `lib/deliver-push.ts` (the live push paths shared with the dispatcher), `wakeWorkflow` and `pumpDeliveries` in `runner/runner.mjs`.
+Delivery of direct messages runs in the runner. The UI dispatcher stands down while the runner answers its control socket (`runnerUp()` in `runner/client.ts`) and resumes when it does not. Both use the same inbox reservations, so a message goes out once. Code: `runner/delivery.ts` (`deliveryWorkflow`), `lib/deliver-push.ts` (the live push paths shared with the dispatcher), `wakeWorkflow` and `pumpDeliveries` in `runner/runner.ts`.
 
 ### Delivery to live sessions
 
@@ -285,7 +285,7 @@ Rules for every adapter:
 - A send error with `retryable: true` and no `mayHaveStarted` means the harness refused the request and ran nothing: the wake send retries it a bounded number of times (see `wake.send` above). An adapter sets it from proven provenance, not from message text — the codex adapter sets it when the app-server answers with a JSON-RPC error, because an error response means `turn/start` (or `thread/resume`) was refused.
 - No real CLI runs in tests: drive the adapter against a fake transport (a stub JSON-RPC peer, a stub HTTP server) plus `test/helpers/fake-ntfy.mjs` (the production bus on the memory store).
 
-### OpenCode adapter facts (`runner/adapters/opencode.mjs`)
+### OpenCode adapter facts (`runner/adapters/opencode.ts`)
 
 Verified means the string appears in the local OpenCode 2.2.5 binary (`strings`); no request reached a live service. UNVERIFIED means no local source confirmed it.
 
@@ -308,13 +308,13 @@ Verified means the string appears in the local OpenCode 2.2.5 binary (`strings`)
 | Not implemented | `contextUsage`, question forms (`/form` replies), `resumeData` | |
 ### Codex adapter status
 
-`runner/adapters/codex.mjs` bounds each RPC at 60 s. A timed-out `turn/start` carries `mayHaveStarted`, so the runner never resends it. A `turn/start` or `thread/resume` the app-server answers with a JSON-RPC error carries `retryable`, because the server refused it and ran nothing: this is the "thread is closing" case, where a wake resumes a thread whose unload from the session's close is still in flight, and the runner retries it with backoff. `shutdown()` also kills a child still in its `initialize` handshake. `steer` and `interrupt` after the child is gone (or the session closed) throw `the codex app-server is not running` instead of a `TypeError`. Tested against `test/helpers/fake-codex-silent-app-server.mjs` (`test/runner-adapter-codex-regressions.test.mjs`) and `test/helpers/fake-codex-app-server.mjs` (`test/runner-wake-retry.test.mjs`); nothing ran against the real app-server, and the real error text for a closing thread is UNVERIFIED — the retry keys on the JSON-RPC error, not on the text.
+`runner/adapters/codex.ts` bounds each RPC at 60 s. A timed-out `turn/start` carries `mayHaveStarted`, so the runner never resends it. A `turn/start` or `thread/resume` the app-server answers with a JSON-RPC error carries `retryable`, because the server refused it and ran nothing: this is the "thread is closing" case, where a wake resumes a thread whose unload from the session's close is still in flight, and the runner retries it with backoff. `shutdown()` also kills a child still in its `initialize` handshake. `steer` and `interrupt` after the child is gone (or the session closed) throw `the codex app-server is not running` instead of a `TypeError`. Tested against `test/helpers/fake-codex-silent-app-server.mjs` (`test/runner-adapter-codex-regressions.test.mjs`) and `test/helpers/fake-codex-app-server.mjs` (`test/runner-wake-retry.test.mjs`); nothing ran against the real app-server, and the real error text for a closing thread is UNVERIFIED — the retry keys on the JSON-RPC error, not on the text.
 
 ### Claude adapter status
 
 The CLI handshake at `open` and `resume` is bounded at 60 s: a CLI that does not answer fails with `claude session failed to start: no response from the CLI within 60 s` (or `claude resume ...`), and its query is closed. Tested with `test/helpers/fake-claude-query.mjs` (`test/runner-adapter-claude-handshake.test.mjs`, `test/runner-owned-before-start.test.mjs`).
 
-`runner/adapters/claude.mjs` implements the Claude column above with `query()` from the Agent SDK; `createClaudeAdapter({query})` takes the query function for tests (`test/runner-adapter-claude.test.mjs`, 20 tests, fake query). Nothing ran against the real CLI or SDK. UNVERIFIED:
+`runner/adapters/claude.ts` implements the Claude column above with `query()` from the Agent SDK; `createClaudeAdapter({query})` takes the query function for tests (`test/runner-adapter-claude.test.mjs`, 20 tests, fake query). Nothing ran against the real CLI or SDK. UNVERIFIED:
 
 - `query()` spawns the CLI on first read or on call, and `initializationResult()` makes no API request (no tokens).
 - `query.interrupt()` ends the turn with a `result` message; the adapter reports `cancelled` on it.
@@ -425,7 +425,7 @@ Modes: `supervised`, `accept-edits`, `auto`, `full-access`. The table is `PERMIS
 | `auto` | `auto` (member **default**) | `on-request` / `auto_review` / `workspaceWrite` (member **default**) | — | — |
 | `full-access` | `bypassPermissions` | granular (only MCP elicitations ask) / `user` / `dangerFullAccess` | every ask | `acp --force`; only with `place: "openshell"` |
 
-Defaults (`start` in `runner/runner.mjs`):
+Defaults (`start` in `runner/runner.ts`):
 
 | Start | Mode when the caller names none |
 |---|---|
@@ -562,14 +562,14 @@ entry points, see [Live OpenShell bootstrap smoke](sandbox-smoke.md).
 | `runner/schedules.ts` | `schedules.json` loader and the scheduled command step |
 | `lib/schedule-session.ts` | The registered session a schedule's command resumes, and the project a schedule's folder names |
 | `runner/lock.ts` | Single-instance lock (`runner.lock` beside `runner.db`) |
-| `runner/runner.mjs` | Session workflow, control operations, bus input |
+| `runner/runner.ts` | Session workflow, control operations, bus input |
 | `runner/publish.ts` | Event → envelope mapping |
 | `runner/control.ts`, `runner/client.ts` | Control socket server and client |
 | `runner/main.mjs` | Service entry (`npm run runner`) |
-| `runner/adapters/fake.mjs` | Scripted adapter for tests and a template for real adapters |
-| `runner/adapters/codex.mjs` | Codex adapter: one `codex app-server` child per runner (`-c thread_unload_delay_secs=0`, env `AI_COLLAB_OWNED=codex`); tests in `test/runner-adapter-codex.test.mjs` drive `test/helpers/fake-codex-app-server.mjs` |
-| `runner/adapters/claude.mjs` | Claude adapter: Agent SDK `query()` with an input queue, `canUseTool` → approval cards |
-| `runner/adapters/opencode.mjs` | OpenCode adapter: local OpenCode 2 HTTP service and its `/api/event` SSE stream |
+| `runner/adapters/fake.ts` | Scripted adapter for tests and a template for real adapters |
+| `runner/adapters/codex.ts` | Codex adapter: one `codex app-server` child per runner (`-c thread_unload_delay_secs=0`, env `AI_COLLAB_OWNED=codex`); tests in `test/runner-adapter-codex.test.mjs` drive `test/helpers/fake-codex-app-server.mjs` |
+| `runner/adapters/claude.ts` | Claude adapter: Agent SDK `query()` with an input queue, `canUseTool` → approval cards |
+| `runner/adapters/opencode.ts` | OpenCode adapter: local OpenCode 2 HTTP service and its `/api/event` SSE stream |
 | `runner/adapters/cursor.mjs` | Cursor adapter: ACP over stdio, optional OpenShell sandbox (staged CLI, auth, worktree sync) |
 | `lib/sandbox.ts` | OpenShell lifecycle shared by adapters and builders: ensure, upload, download, delete, and the argv builders (`runner/sandbox.mjs` re-exports it) |
 | `test/runner-adapter-cursor.test.mjs`, `test/helpers/fake-cursor-agent.mjs`, `test/helpers/fake-openshell.mjs` | Cursor adapter tests; fake ACP child and fake openshell |

@@ -4,24 +4,29 @@ import { EventType } from "@ag-ui/core";
 import { sessionLabel } from "../../lib/config.ts";
 import { APPROVAL_REQUESTED, PERMISSION_MODES } from "../contract.ts";
 
+import type { Decision, SessionContext, UserInput } from "../types.d.ts";
+
+// oxlint-disable-next-line typescript/no-explicit-any -- harness protocol frames, session records and runner requests are JSON
+type Json = any;
+
 /** A fake Adapter; calls records every adapter call for assertions. */
 export function createFakeAdapter({ harness = "codex", capabilities = {}, openError = null, compact = true } = {}) {
-  const calls = [];
+  const calls: Json[] = [];
   let runs = 0;
 
-  function makeHandle(nativeId, ctx) {
+  function makeHandle(nativeId: Json, ctx: SessionContext) {
     const threadId = `${harness}#${sessionLabel(nativeId)}`;
-    let running = null;
-    const steered = [];
+    let running: Json = null;
+    const steered: Json[] = [];
 
-    async function run(runId, input, settled) {
+    async function run(runId: string, input: UserInput, settled: Json) {
       ctx.emit({
         type: EventType.RUN_STARTED, threadId, runId,
         input: { threadId, runId, tools: [], context: [], messages: [{ id: `${runId}:input`, role: "user", content: input.text }] },
       });
       await new Promise((resolve) => setImmediate(resolve));
       const approve = /approve: (.+)/.exec(input.text);
-      let outcome = "success";
+      let outcome: "success" | "cancelled" = "success";
       if (approve) {
         const toolCallId = `c-${runId}`;
         ctx.emit({ type: EventType.TOOL_CALL_CHUNK, toolCallId, toolCallName: "Bash", delta: JSON.stringify({ command: approve[1] }, null, 2) });
@@ -53,7 +58,7 @@ export function createFakeAdapter({ harness = "codex", capabilities = {}, openEr
     return {
       nativeId,
       steered,
-      async send(input) {
+      async send(input: UserInput) {
         calls.push({ op: "send", nativeId, text: input.text });
         if (running) throw new Error("fake: a run is already running");
         const runId = `r${++runs}`;
@@ -63,7 +68,7 @@ export function createFakeAdapter({ harness = "codex", capabilities = {}, openEr
         setImmediate(() => run(runId, input, settled));
         return { runId };
       },
-      async steer(input) {
+      async steer(input: UserInput) {
         calls.push({ op: "steer", nativeId, text: input.text });
         steered.push(input.text);
       },
@@ -71,11 +76,11 @@ export function createFakeAdapter({ harness = "codex", capabilities = {}, openEr
         calls.push({ op: "interrupt", nativeId });
         running?.release({ interrupted: true });
       },
-      async respond(interruptId, decision) {
+      async respond(interruptId: string, decision: Decision) {
         calls.push({ op: "respond", nativeId, interruptId, decision });
         if (running?.interruptId === interruptId) running.release(decision);
       },
-      async setPermissionMode(mode) { calls.push({ op: "setPermissionMode", nativeId, mode }); },
+      async setPermissionMode(mode: Json) { calls.push({ op: "setPermissionMode", nativeId, mode }); },
       async contextUsage() { return { tokens: 1234, window: 200000 }; },
       // A harness "compaction": reports before/after counts and leaves a compact step in the timeline.
       ...(compact ? {
@@ -99,17 +104,17 @@ export function createFakeAdapter({ harness = "codex", capabilities = {}, openEr
     calls,
     capabilities: { steer: true, images: false, resume: "transcript", permissionModes: PERMISSION_MODES, ...capabilities },
     async available() { return { ok: true }; },
-    async open(options, ctx) {
+    async open(options: Json, ctx: SessionContext) {
       calls.push({ op: "open", options });
       if (openError) throw new Error(openError);
       return makeHandle(`fake-${randomUUID()}`, ctx);
     },
-    async resume(record, ctx) {
+    async resume(record: Json, ctx: SessionContext) {
       calls.push({ op: "resume", nativeId: record.nativeId, resume: record.resume });
       return makeHandle(record.nativeId, ctx);
     },
     async listModels() { return [{ id: "fake-1", default: true }]; },
-    async listCommands(cwd) { return [{ name: "/fake", description: `in ${cwd}` }]; },
+    async listCommands(cwd: string) { return [{ name: "/fake", description: `in ${cwd}` }]; },
     async shutdown() { calls.push({ op: "shutdown" }); },
   };
   return adapter;

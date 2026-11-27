@@ -85,7 +85,7 @@ export function ackTracker({ poll = pollCached }: { poll?: Poll } = {}) {
   const answers = new Map<string, Set<string>>();
   const cursors = new Map<string, string>();
   return {
-    async refresh(cfg: Cfg, topics: string[]): Promise<void> {
+    async refresh(cfg: Cfg, topics: Iterable<string>): Promise<void> {
       for (const topic of topics) {
         const key = `${cfg.project}\n${topic}`;
         let events: TransportEvent[];

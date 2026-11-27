@@ -40,11 +40,11 @@ Every compact row carries `compaction: {trigger?, phase, tokensBefore?, tokensAf
 
 | Source | Phase | Where |
 |---|---|---|
-| Claude `compact_boundary` system message (`pre_tokens`, `post_tokens`), `@anthropic-ai/claude-agent-sdk` sdk.d.ts:4058 | finished, with token counts | runner/adapters/claude.mjs |
+| Claude `compact_boundary` system message (`pre_tokens`, `post_tokens`), `@anthropic-ai/claude-agent-sdk` sdk.d.ts:4058 | finished, with token counts | runner/adapters/claude.ts |
 | Claude `PreCompact` (sdk.d.ts:2902) | started, with `tokensBefore` and `filesDropped` | lib/activity.mjs, scripts/ai-collab-hook.mjs |
 | Claude `PostCompact` (sdk.d.ts:2778), wired in hooks/hooks.json | finished | lib/activity.mjs |
-| Codex `contextCompaction` item | started and finished together | runner/adapters/codex.mjs |
-| OpenCode `session.compaction.started`, `.ended`, `.failed` | started, finished, failed | runner/adapters/opencode.mjs |
+| Codex `contextCompaction` item | started and finished together | runner/adapters/codex.ts |
+| OpenCode `session.compaction.started`, `.ended`, `.failed` | started, finished, failed | runner/adapters/opencode.ts |
 
 The compact row from a finished step reads `compacted · <trigger>`, and a failed one reads `compaction failed`. `tokensAfter` is set only by the Claude runner (`post_tokens`). Hook rows have no after-reading: the meter's first reading after a compaction is not recorded yet, so the timeline shows no after count for them.
 

@@ -23,7 +23,7 @@ type Run = Json;
 type Role = Json;
 type Handoff = Json;
 type Start = typeof startSession;
-type Notify = (address: string, brief: string) => Promise<void>;
+type Notify = (address: string, brief: string) => Promise<{ status: string } | void>;
 type Arrival = { from: string; on: string; note?: string };
 type Target = { role: Role; index: number };
 type Token = { role: string; index: number };

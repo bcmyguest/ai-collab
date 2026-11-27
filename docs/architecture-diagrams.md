@@ -112,7 +112,7 @@ flowchart TD
 
   callers["UI server and CLI"]
   ctl["Control socket<br/>unix, /v1/sessions"]
-  reg["Session registry<br/>runner/runner.mjs"]
+  reg["Session registry<br/>runner/runner.ts"]
   ad["Harness adapters<br/>claude, codex, cursor, opencode"]
   proc["Harness processes<br/>in the runner cgroup"]
   shell["OpenShell sandboxes<br/>team runs, builders"]
