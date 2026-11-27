@@ -8,6 +8,8 @@ H=$(mktemp -d); HOME=$H CODEX_HOME=$H/.codex npm test
 npm run build
 ```
 
+[Verification](verification.md) covers the model-based tests and `npm run tlc`.
+
 ## Publish build
 
 `npm run build:package` (`tools/build-package.mjs`) writes `dist/`, a complete package with the same paths. It copies the `files` entries, then `tsc -p tsconfig.build.json` replaces each `.ts` module's importers with `.js` and emits the `.mjs` code. Node refuses to strip types under `node_modules`, so the published tarball holds no `.ts` file. The release workflow publishes `./dist`, and `npm pack ./dist` builds the same tarball locally.

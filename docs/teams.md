@@ -138,6 +138,8 @@ The graph declares the available moves. A trace supplies the events agents would
 
 In a real run, the runner stores the starting graph and checkpoints each step. Once a leave is recorded, recovery can use its result to enter the next role without applying the handoff again. During recovery from an interrupted enter, a first visit's recorded session address confirms launch. For a reused session, an address from an earlier visit cannot confirm delivery of the current brief, so the run fails with the interrupted-enter reason.
 
+A model-based test drives these rules with random advances, overrides, member crashes and runner restarts; see [Verification](verification.md).
+
 `node --test test/pattern-compiler.test.mjs test/pattern-caller-and-revisit.test.mjs test/pattern-workflow.test.mjs` checks graph transitions and restart behavior without model calls. The tests exercise the graph rules and recorded outcomes. Agent output quality is a separate check. [Lean proof proposal](research/dot-to-durable-workflows.md#the-compiler-is-the-part-that-can-be-proved)
 
 ## Storage
