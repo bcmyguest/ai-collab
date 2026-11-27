@@ -2,7 +2,7 @@
 // The console shell: hash routing, the header for each level, the streamed screen (via useStream),
 // pull-to-refresh, scroll memory, and the wiring from every action to its /api call.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, CornerLeftUp, PanelRight, Plus, RotateCw } from "lucide-react";
+import { ArrowLeft, CornerLeftUp, ListTodo, PanelRight, Plus, RotateCw } from "lucide-react";
 import { ThreadPrimitive, getExternalStoreMessages } from "@assistant-ui/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -54,7 +54,7 @@ const TICK_MS = 1000;
 // The composer's runtime only sends; the thread list has its own runtime.
 const NO_ENTRIES = [];
 // The panel tabs a session hash can name; "activity" alone means the chat with no panel.
-const PANEL = ["diff", "pr", "subagents", "raw"];
+const PANEL = ["diff", "pr", "subagents", "tasks", "raw"];
 const WIDE = "(min-width: 768px)";
 
 // The session's context: tokens used (with the window and a warning when the harness reported one) and its files.
@@ -158,6 +158,7 @@ export function Console({ account }) {
     return () => list.removeEventListener("scroll", save);
   }, [ready, requested, memoryKey]);
   const [seenDecisions, setSeenDecisions] = useState(() => new Set());
+  const [projectPanel, setProjectPanel] = useState(false);
   const markDecisionSeen = key => setSeenDecisions(seen => new Set(seen).add(key));
   const [inactiveOpen, setInactiveOpen] = useState(false);
   useEffect(() => {
@@ -352,8 +353,26 @@ export function Console({ account }) {
   const currentThread = level === "session" && selected.session ? (data.threads || []).find(item => (item.sessions || []).includes(selected.session)) : undefined;
   const panel = level === "session" && selected.session && PANEL.includes(selected.tab) ? selected.tab : "";
   const setPanel = tab => navigate({ ...selected, project, tab, run: "" });
+  // The board's props, shared by the Tasks level and the panel's Tasks tab.
+  const boardProps = {
+    project, board: ready ? data.tasks : null, now, landControl: ready && <LandReviews landing={data.landing} disabled={working} onLand={() => action("land-reviews", {}, "Landing reviews")}/>,
+    outcomeControls: { act: action, disabled: working, paused },
+    back: () => navigate({ project, level: "tasks" }), compose: id => navigate({ project, level: "project", composeTask: id }),
+    continuation: { harnesses: paused ? [] : data.startable || [], launch: (id, harness) => action("continue-builder", { id, harness }, "Replacement started") },
+    inspect: id => navigate({ project, level: "tasks", task: id }),
+    move: (id, status) => action("move-task", { id, status }, "Task moved"),
+    recover: (id, harness) => action("recover-builder", { id, harness }, "Builder started"),
+    decide: (id, answer) => action("decide", { id, answer }, "Decided"),
+    review: (id, decision, note, packet) => action("review", { id, decision, note, ...packet }, decision === "accept" ? "Build accepted" : "Build returned"),
+    skip: taskId => action("skip", { taskId }, "Skipped"),
+    open: address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" }),
+  };
+  // The project chat's panel holds only Tasks; it lives in state because project&tab=tasks is the old link to the board.
+  const shownPanel = panel || (level === "project" && projectPanel ? "tasks" : "");
+  const closePanel = () => level === "session" ? setPanel("activity") : setProjectPanel(false);
+  const openTasks = () => level === "session" && selected.session ? setPanel("tasks") : level === "project" ? setProjectPanel(true) : navigate({ project, level: "tasks" });
   const threadProps = {
-    data, selected, now, navigate, ready, disabled: working, counts: viewCounts, decisions: data.decisions?.length || 0,
+    data, selected, now, navigate, ready, disabled: working, counts: viewCounts, decisions: data.decisions?.length || 0, openTasks,
     newThread: newSession, projectAction, openSchedules: () => setSchedulesOpen(true), account: account.user?.login, signOut: account.user ? signOut : undefined,
     pause: () => action("project-pause", { paused: !paused }, paused ? "New work resumed" : "New work paused"),
     controls: <>
@@ -450,7 +469,9 @@ export function Console({ account }) {
             </>}/>
         </div>}
         {level === "session" && selected.session && <Button variant={panel ? "secondary" : "ghost"} size="icon" aria-label={panel ? "Close panel" : "Open panel"} aria-pressed={Boolean(panel)}
-          title="Diff, PR, activity and raw" onClick={() => setPanel(panel ? "activity" : "diff")}><PanelRight/></Button>}
+          title="Diff, PR, activity, tasks and raw" onClick={() => setPanel(panel ? "activity" : wide ? "diff" : "subagents")}><PanelRight/></Button>}
+        {level === "project" && project && <Button variant={shownPanel ? "secondary" : "ghost"} size="icon" aria-label={shownPanel ? "Close tasks" : "Open tasks"} aria-pressed={Boolean(shownPanel)}
+          title="Tasks and the plan" onClick={() => setProjectPanel(!projectPanel)}><ListTodo/></Button>}
       </header>
       <div className={cn("flex flex-col gap-2 px-3 empty:hidden", composing && "min-h-0 flex-1 justify-end pb-3")}>
         {composing && <div className="mx-auto w-full max-w-3xl px-1 pb-2">
@@ -477,17 +498,7 @@ export function Console({ account }) {
         {ready ? <PatternsPage data={data} project={project} selected={selected} navigate={navigate} call={patternCall} disabled={working} models={models}/>
           : <p className="py-16 text-center text-sm text-muted-foreground">Loading patterns…</p>}
       </div>}
-      {!patterns && !composing && (tasksView ? <TaskBoard key={project} project={project} board={ready ? data.tasks : null} now={now} taskId={selected.task} landControl={ready && <LandReviews landing={data.landing} disabled={working} onLand={() => action("land-reviews", {}, "Landing reviews")}/>}
-        outcomeControls={{ act: action, disabled: working, paused }}
-        back={() => navigate({ project, level: "tasks" })} compose={id => navigate({ project, level: "project", composeTask: id })}
-        continuation={{ harnesses: paused ? [] : data.startable || [], launch: (id, harness) => action("continue-builder", { id, harness }, "Replacement started") }}
-        inspect={id => navigate({ project, level: "tasks", task: id })}
-        move={(id, status) => action("move-task", { id, status }, "Task moved")}
-        recover={(id, harness) => action("recover-builder", { id, harness }, "Builder started")}
-        decide={(id, answer) => action("decide", { id, answer }, "Decided")}
-        review={(id, decision, note, packet) => action("review", { id, decision, note, ...packet }, decision === "accept" ? "Build accepted" : "Build returned")}
-        skip={taskId => action("skip", { taskId }, "Skipped")}
-        open={address => navigate({ project, level: "session", harness: address.split("#")[0], session: address, tab: "activity" })}/> : <ChatContainerRoot key={inbox ? "inbox" : home ? "home" : "conversation"} initial={home || compactions ? false : "instant"} contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
+      {!patterns && !composing && (tasksView ? <TaskBoard key={project} {...boardProps} taskId={selected.task}/> : <ChatContainerRoot key={inbox ? "inbox" : home ? "home" : "conversation"} initial={home || compactions ? false : "instant"} contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
         <ChatRuntimeProvider key={requested} entries={thread} operator={data.operator}>
         <ChatContainerContent key={requested} className="mx-auto w-full max-w-3xl gap-5 px-3 py-4">
           {!ready && (home || listing || compactions) && !loadError && <p className="py-16 text-center text-sm text-muted-foreground">Loading sessions…</p>}
@@ -568,7 +579,8 @@ export function Console({ account }) {
         }}/>
       </ChatRuntimeProvider>}
     </main>
-    {panel && <SessionPanel wide={wide} tab={panel} setTab={setPanel} close={() => setPanel("activity")} project={project} thread={currentThread}
+    {shownPanel && <SessionPanel wide={wide} tab={shownPanel} setTab={level === "session" ? setPanel : () => {}} close={closePanel} project={project} thread={currentThread}
+      tabs={level === "session" ? undefined : ["tasks"]} tasks={<TaskBoard key={"panel:" + project} {...boardProps} taskId=""/>}
       activity={ready ? <SubagentList rows={rows} session={selected.session} run={selected.run} when={at => ago(at, now)} now={now}
         childRuns={(agent?.subagents || []).filter(run => run.child)} openChild={child => navigate({ project, level: "session", harness: child.kind, session: child.id })}
         back={() => navigate({ ...selected, project, tab: "subagents", run: "" })}

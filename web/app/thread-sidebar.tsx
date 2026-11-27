@@ -12,20 +12,21 @@ import { AgentName, HarnessMark } from "./agent-mark";
 import { SessionTree, missingSession, type OpenSession } from "./thread-sessions";
 import { ago } from "./chat-shared";
 import { Logo } from "./logo";
+import { TasksStrip } from "./tasks-strip";
 
 type Project = { id: string; waiting?: number; paused?: boolean };
 type Selected = { level: string; project?: string; session?: string; tab?: string };
 type Navigate = (next: Record<string, unknown>) => void;
 type Data = {
   project?: string; projects: Project[]; agents: Agent[]; threads?: Thread[]; closedProjects?: string[]; autoProjects?: string[];
-  decisions?: unknown[]; mode?: string; hosted?: boolean;
+  decisions?: unknown[]; mode?: string; hosted?: boolean; tasks?: { tasks?: Parameters<typeof TasksStrip>[0]["tasks"] };
 };
 export type SidebarProps = {
   data: Data; selected: Selected; now: number; navigate: Navigate; ready: boolean; disabled: boolean;
   newThread: (project: string) => void; projectAction: (path: string, name: string) => void;
   counts: { tasks: number; waiting: number; patterns: number }; decisions: number;
   pause: () => void; openSchedules: () => void; signOut?: () => void; account?: string;
-  controls?: ReactNode;
+  controls?: ReactNode; openTasks?: () => void;
 };
 
 const MENU = "z-50 min-w-56 rounded-xl bg-popover p-1 text-sm text-popover-foreground shadow-raised outline-none";
@@ -239,6 +240,8 @@ export function ThreadSidebar(props: SidebarProps) {
         <Plus aria-hidden className="size-4 text-muted-foreground"/>New thread
       </button>}
     </header>
+    {!home && current && <TasksStrip tasks={data.tasks?.tasks || []} openTask={id => navigate({ project: current, level: "tasks", task: id })}
+      openBoard={props.openTasks || (() => navigate({ project: current, level: "tasks" }))}/>}
     <nav aria-label="Threads" className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-3">
       {home ? <ul className="flex flex-col">
         {data.projects.map(project => <li key={project.id}>

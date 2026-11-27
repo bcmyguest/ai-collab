@@ -1,5 +1,5 @@
 "use client";
-// The panel beside a thread's chat: its diff, its pull requests, the session's subagent activity and raw tool calls.
+// The panel beside a thread's chat: its diff, its pull requests, the session's subagent activity, the project's tasks and raw tool calls.
 // A side column from md up; a bottom sheet on a phone.
 import { Component, lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ChevronRight, ExternalLink, GitPullRequest, X } from "lucide-react";
@@ -10,12 +10,12 @@ import { cn } from "@/lib/utils";
 import type { Thread } from "@/lib/thread-groups";
 import { Counts } from "./tool-diff";
 
-export const PANEL_TABS = [["diff", "Diff"], ["pr", "PR"], ["subagents", "Activity"], ["raw", "Raw"]] as const;
+export const PANEL_TABS = [["diff", "Diff"], ["pr", "PR"], ["subagents", "Activity"], ["tasks", "Tasks"], ["raw", "Raw"]] as const;
 export type PanelTab = (typeof PANEL_TABS)[number][0];
 const PatchDiff = lazy(() => import("@pierre/diffs/react").then(mod => ({ default: mod.PatchDiff })));
 const DIFF_OPTIONS = { overflow: "wrap", disableFileHeader: true, theme: { dark: "github-dark", light: "github-light" }, diffStyle: "unified" };
 const FILE_START = /^diff --git /m;
-const TAB = "inline-flex h-8 items-center rounded-sm px-2.5 text-sm text-muted-foreground hover:text-foreground data-selected:bg-accent data-selected:text-foreground max-md:h-11";
+const TAB = "inline-flex h-8 items-center rounded-sm px-2.5 text-sm text-muted-foreground hover:text-foreground data-selected:bg-primary/10 data-selected:text-primary data-selected:text-foreground max-md:h-11";
 const PR_STATE = { open: "Open", draft: "Draft", merged: "Merged", closed: "Closed" } satisfies Record<string, string>;
 
 type DiffFile = { path: string; text: string; added: number; removed: number };
@@ -107,13 +107,16 @@ function Empty({ children }: { children: ReactNode }) {
   return <p className="px-3 py-8 text-center text-sm text-muted-foreground">{children}</p>;
 }
 
-type PanelProps = { tab: PanelTab; setTab: (tab: PanelTab) => void; close: () => void; project: string; thread?: Thread; activity: ReactNode; raw: ReactNode };
+type PanelProps = {
+  tab: PanelTab; setTab: (tab: PanelTab) => void; close: () => void; project: string; thread?: Thread; activity?: ReactNode; raw?: ReactNode;
+  tasks: ReactNode; tabs?: PanelTab[];
+};
 
-function PanelBody({ tab, setTab, close, project, thread, activity, raw }: PanelProps) {
+function PanelBody({ tab, setTab, close, project, thread, activity, raw, tasks, tabs }: PanelProps) {
   return <Tabs value={tab} onValueChange={(next: unknown) => setTab(next as PanelTab)} className="flex h-full min-h-0 flex-col">
     <div className="flex shrink-0 items-center gap-1 border-b px-2 py-1.5">
       <TabsList aria-label="Panel" className="flex flex-1 items-center gap-0.5">
-        {PANEL_TABS.map(([id, label]) => <TabsTab key={id} value={id} className={TAB}>{label}</TabsTab>)}
+        {PANEL_TABS.filter(([id]) => !tabs || tabs.includes(id)).map(([id, label]) => <TabsTab key={id} value={id} className={TAB}>{label}</TabsTab>)}
       </TabsList>
       <button type="button" aria-label="Close panel" onClick={close}
         className="grid size-8 shrink-0 place-items-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground max-md:size-11"><X aria-hidden className="size-4"/></button>
@@ -121,6 +124,7 @@ function PanelBody({ tab, setTab, close, project, thread, activity, raw }: Panel
     <TabsPanel value="diff" className="min-h-0 flex-1 overflow-y-auto">{tab === "diff" && <DiffView project={project} thread={thread}/>}</TabsPanel>
     <TabsPanel value="pr" className="min-h-0 flex-1 overflow-y-auto"><PrView thread={thread}/></TabsPanel>
     <TabsPanel value="subagents" className="min-h-0 flex-1 overflow-y-auto px-3 py-3">{tab === "subagents" && activity}</TabsPanel>
+    <TabsPanel value="tasks" className="min-h-0 flex-1 overflow-y-auto px-3 py-3">{tab === "tasks" && tasks}</TabsPanel>
     <TabsPanel value="raw" className="min-h-0 flex-1 overflow-y-auto px-3 py-3">{tab === "raw" && raw}</TabsPanel>
   </Tabs>;
 }
