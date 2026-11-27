@@ -19,13 +19,14 @@
  * --read-gate refuses an agent read of the task store or state dir when readsThroughRunCode is on, with the
  * run_code recipe, and otherwise prints {}. Cursor beforeShellExecution and beforeReadFile use it so a
  * non-matching command is not turned into an approval prompt. A human shell never runs this hook.
+ * On Claude's Agent/Task tool it adds the spawn_agent hint once per session (lib/family.ts SUBAGENT_TOOL_HINT) and never blocks.
  * Cursor events also feed the run's OTLP trace (lib/cursor-trace.ts); its export waits at most 1.5 s after the output.
  * Every message handed to the agent gets a read receipt, published in the background like activity.
  */
 import path from "node:path";
 import { loadConfig, ownEnv, sessionLabel } from "../lib/config.ts";
 import { claimInbox, publishStatus } from "../lib/messaging.ts";
-import { childHint, exportParent, greetParent, parentLine } from "../lib/family.ts";
+import { childHint, exportParent, greetParent, parentLine, subagentToolHint } from "../lib/family.ts";
 import { formatInbox, hookOutput, identityLine, stopOutput } from "../lib/format.ts";
 import { currentMode, operatorPrompt, takeModeNote } from "../lib/mode.ts";
 import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.ts";
@@ -34,7 +35,7 @@ import { REQUIRE_RUN_CODE_ENV } from "../lib/code-mode.ts";
 import { readsThroughRunCode } from "../lib/code-run.ts";
 import { storeReadDenial } from "../lib/store-read.ts";
 import { recordSession, sessionName, standsDown } from "../lib/sessions/registry.ts";
-import { MANAGED_ENV, MANAGED_START_REFUSED, managedDenial, managedStartAllowed } from "../lib/subagent-guard.ts";
+import { CLAUDE_SUBAGENT_TOOLS, MANAGED_ENV, MANAGED_START_REFUSED, managedDenial, managedStartAllowed } from "../lib/subagent-guard.ts";
 import { harnessProcess, isRunning, processStart } from "../lib/process.ts";
 import { CLAIM_SETTLE_MS, STOP_GRACE_MS, WAITER_MAX_S, runWaiter, takeWaiterSlot } from "../lib/waiter.ts";
 import { ON_DEMAND_LOADS, contextUsage, dropOnDemandFiles, readContext, recordInstructions, reportContext } from "../lib/usage.ts";
@@ -237,6 +238,13 @@ async function main() {
   if (argv.includes("--read-gate") || host === "codex") {
     const denied = managedDenial(host, key, msg, env, { cwd, host, session });
     if (denied) return emit(denied);
+  }
+  // An operator session's first Claude Agent/Task call gets the spawn_agent hint as context; the call goes ahead.
+  if (argv.includes("--read-gate") && host === "claude" && key === "pretooluse" && CLAUDE_SUBAGENT_TOOLS.includes(msg.tool_name)
+      && !(typeof msg.agent_id === "string" && msg.agent_id)) {
+    const cfg = loadConfig(env, { cwd, host, session });
+    const hint = cfg.enabled && !standsDown(cfg, { label: session }) ? await subagentToolHint(cfg).catch(() => "") : "";
+    return emit(hookOutput(host, "PreToolUse", hint));
   }
   if (argv.includes("--read-gate")) return emit({});
   // Backstop for a shell start the command check misses (bash -c, npx): a managed env without a ticket stops the harness.

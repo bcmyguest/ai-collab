@@ -7,7 +7,11 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { basename, isAbsolute } from "node:path";
 import { sendMessage } from "./messaging.ts";
 import type { Cfg } from "./messaging.ts";
-import { claimParentNotice } from "./sessions/registry.ts";
+import { claimParentNotice, claimSubagentHint } from "./sessions/registry.ts";
+
+// Context for Claude's first native subagent call in a session; the SessionStart hint says the rest.
+export const SUBAGENT_TOOL_HINT = "[ai-collab] Native subagents run Claude only. For a Codex, Cursor or OpenCode child, or another model, "
+  + "call the ai-collab spawn_agent tool (harness:model, brief); the child nests under this thread and reports back.";
 
 const address = (cfg: Cfg) => `${cfg.peer}#${cfg.session}`;
 
@@ -39,7 +43,14 @@ export function childHint(cfg: Cfg): string {
   if (!cfg.session) return "";
   return "[ai-collab] To hand work to another agent, call the ai-collab spawn_agent tool (harness, model, brief); it returns the child's address at once "
     + "and the child messages you its result when each run ends. Do not start harnesses from your shell. "
-    + "Message a child with send_to_peer; list sessions with list_sessions.";
+    + "Message a child with send_to_peer; list sessions with list_sessions. "
+    + "spawn_agent starts a Claude, Codex, Cursor or OpenCode child (harness:model) that nests under this thread and reports back; "
+    + "prefer it over your native subagent tool when another harness or model suits the task.";
+}
+
+/** SUBAGENT_TOOL_HINT the first time this session calls a native subagent tool, else "". */
+export async function subagentToolHint(cfg: Cfg): Promise<string> {
+  return cfg.session && (await claimSubagentHint(cfg)) ? SUBAGENT_TOOL_HINT : "";
 }
 
 /** Hook context for a child: its own address, its parent's, and how to answer it. */
