@@ -11,6 +11,7 @@ import { WAKE_ENV, WAKE_PROMPT } from "../mode.mjs";
 import { opencodeRequest } from "../opencode-api.mjs";
 import { argv, type Command, type Harness } from "../harness.ts";
 import type { Session, SessionCfg } from "./registry.ts";
+import { noSubagentArgs, noSubagentEnv } from "../subagent-guard.ts";
 
 type Outcome = { status: string; detail: string };
 type CodexRpcOptions = { cwd?: string; env?: NodeJS.ProcessEnv; command?: Command };
@@ -27,8 +28,9 @@ export const COMPACT_REQUEST = "[ai-collab] The operator asked to compact this s
   + "reply to the operator in one line with what is still in progress, then end your turn so the operator can run /compact.";
 
 /** The binary and argv that act on a session; the Cursor name is cursorBinary on the PATH the wake runs with. */
-export function harnessCommand(action: string, harness: string, id: string, requireRunCode: boolean, { path = "", permission }: { path?: string; permission?: string } = {}): Command | null {
-  if (action === "wake") return argv(harness as Harness, "wake", { id, prompt: WAKE_PROMPT, requireRunCode, path, permission });
+export function harnessCommand(action: string, harness: string, id: string, requireRunCode: boolean, { path = "", permission, managed = false }: { path?: string; permission?: string; managed?: boolean } = {}): Command | null {
+  // A managed session (team, pattern, builder, spawn) wakes with native subagents still off.
+  if (action === "wake") return argv(harness as Harness, "wake", { id, prompt: WAKE_PROMPT, requireRunCode, path, permission, ...(managed ? { noSubagents: noSubagentArgs(harness as Harness) } : {}) });
   if (action === "compact") return argv(harness as Harness, "compact", { id });
   return null;
 }
@@ -120,7 +122,7 @@ async function run(action: string, peer: Session, { execute = invoke, compact = 
     return { status: "unsupported", detail: "Missing a verified native session ID or workspace." };
   }
   const env = harnessEnv();
-  const command = harnessCommand(action, harness, sessionId, peer.requireRunCode === true, { path: env.PATH, permission: peer.claudePermission });
+  const command = harnessCommand(action, harness, sessionId, peer.requireRunCode === true, { path: env.PATH, permission: peer.claudePermission, managed: peer.managed === true });
   const sdk = action === "compact" && harness === "claude";
   const appServer = action === "compact" && harness === "codex";
   const adapter = Boolean(command || sdk || appServer);
@@ -158,6 +160,7 @@ async function run(action: string, peer: Session, { execute = invoke, compact = 
   }
   const [file, args] = placeCommand(command as Command, cwd, runner);
   if (action === "wake" && peer.requireRunCode === true) env[REQUIRE_RUN_CODE_ENV] = "1";
+  if (action === "wake" && peer.managed === true) Object.assign(env, noSubagentEnv(harness as Harness, env));
   env[WAKE_ENV] = "1"; // hooks in the resumed run must not read its prompt as the operator returning
   try {
     const code = await execute(file, args, { cwd, env });
