@@ -220,7 +220,7 @@ export function NewAgentComposer({ project, agents = [], startable = [], places:
   return <section aria-label="New session" className="mx-auto mt-2 w-full max-w-3xl">
     <div className="rounded-2xl border bg-card p-2 shadow-sm focus-within:border-ring/60">
       <div className="flex items-center justify-between gap-2 px-1 pb-1">
-        <h2 className="min-w-0 truncate text-xs text-muted-foreground">New session in <span className="font-medium text-foreground">{project}</span></h2>
+        <h2 className="min-w-0 truncate text-xs text-muted-foreground">Start in <span className="font-medium text-foreground">{project}</span></h2>
         <Button type="button" variant="ghost" size="icon-xs" aria-label="Close new session" disabled={posting} onClick={close}><X/></Button>
       </div>
       {startable.length === 0 ? <p className="px-2 pb-2 pt-1 text-sm text-muted-foreground">No harness is installed and configured for this project.</p>

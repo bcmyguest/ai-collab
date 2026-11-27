@@ -433,7 +433,7 @@ export function Console({ account }) {
       <div className={cn("flex flex-col gap-2 px-3 empty:hidden", composing && "min-h-0 flex-1 justify-end pb-3")}>
         {composing && <div className="mx-auto w-full max-w-3xl px-1 pb-2">
           <h2 className="text-xl font-semibold">New thread</h2>
-          <p className="text-sm text-muted-foreground">Describe the work. The agent starts in <span className="font-medium text-foreground">{project}</span> where the toolbar below points.</p>
+          <p className="text-sm text-muted-foreground">Describe the work; the first words become its title.</p>
         </div>}
         {composing && <NewAgentComposer key={project + ":" + (data.startable || []).join(",")} project={project} startable={data.startable || []} places={data.startPlaces || ["folder"]} startPlace={data.startPlace || "folder"} sandboxHarnesses={data.openshellHarnesses || []}
           startDefault={data.startDefault} codeModeDefault={data.codeModeDefault !== false} agents={data.agents} models={models} disabled={!ready} start={startSession} close={() => setCreating("")} open={openAddress}/>}

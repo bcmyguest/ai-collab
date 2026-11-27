@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { CalendarClock, SquareArrowOutUpRight } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { jobAgent, jobDetail, runLabel, runLink } from "@/lib/scheduled";
+import { commandLabel, jobAgent, jobDetail, runLabel, runLink } from "@/lib/scheduled";
 
 const POLL_MS = 60_000;
 
@@ -77,7 +77,7 @@ export function ScheduledJobs({ project = "", openRun }) {
             <button type="button" aria-haspopup="dialog" aria-label={"Schedule " + item.name} onClick={() => show(item.name)}
               className={cn("flex w-full min-w-0 flex-col gap-0.5 rounded-xl px-2 py-1.5 text-left text-sm transition-colors hover:bg-sidebar-accent", open === item.name && "bg-sidebar-accent")}>
               <span className="truncate font-medium">{item.name} <span className="font-normal text-muted-foreground">· every {item.everyMs / 60_000} min</span></span>
-              {item.command && <span className="truncate font-mono text-xs text-muted-foreground">{item.command.join(" ")}</span>}
+              {item.command && <span className="truncate font-mono text-xs text-muted-foreground" title={item.command.join(" ")}>{commandLabel(item.command)}</span>}
               <span className="text-xs text-muted-foreground">last {item.last ? item.last.status + " " + when(item.last.scheduledTime) : "never"} · next {when(item.nextRun)}</span>
               {jobAgent(item) && <span className="truncate text-xs text-muted-foreground">resumes <span className="font-mono">{jobAgent(item)}</span></span>}
             </button>
