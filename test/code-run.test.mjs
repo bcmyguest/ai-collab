@@ -10,7 +10,7 @@ import {
   BOOTSTRAP, CALLS_MAX, CODE_TOOLS, OUTPUT_MAX_CHARS, REMOTE_DIR, codeSandbox, formatRun, hostCaller, prepareSandbox,
   programArgv, runCodeTool, runProgram, schemaProblem, signature,
 } from "../lib/code-run.mjs";
-import { toolClient } from "../lib/tool-api.mjs";
+import { toolClient } from "../lib/tool-api.ts";
 import { addTask, taskStoreFile, writeStore } from "../lib/tasks.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

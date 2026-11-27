@@ -5,7 +5,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { waitForIdle } from "../lib/agents.mjs";
+import { waitForIdle } from "../lib/agents.ts";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { sessionIdleState } from "../lib/idle.ts";
 import { listSessions, recordSession } from "../lib/sessions.mjs";

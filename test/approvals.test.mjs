@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { loadConfig } from "../lib/config.mjs";
-import { approvalMessage, approvalOutput, approvalRequest, decideApproval, parseChoice } from "../lib/approvals.mjs";
+import { approvalMessage, approvalOutput, approvalRequest, decideApproval, parseChoice } from "../lib/approvals.ts";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";

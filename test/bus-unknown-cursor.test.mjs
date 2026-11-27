@@ -7,9 +7,9 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { test, after } from "node:test";
-import { createBusServer } from "../lib/bus.mjs";
-import { openPostgresBusStore } from "../lib/bus-postgres.mjs";
-import { pgUrl } from "../lib/postgres.mjs";
+import { createBusServer } from "../lib/bus.ts";
+import { openPostgresBusStore } from "../lib/bus-postgres.ts";
+import { pgUrl } from "../lib/postgres.ts";
 import { dbosTestDb } from "./helpers/dbos-env.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test, after } from "node:test";
 import { loadConfig } from "../lib/config.mjs";
-import { createRunRequest, decideRun, runStatus, sha256 } from "../lib/run-terminal.mjs";
+import { createRunRequest, decideRun, runStatus, sha256 } from "../lib/run-terminal.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

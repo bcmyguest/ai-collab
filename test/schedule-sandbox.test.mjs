@@ -6,7 +6,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { openTasks } from "../lib/tasks.mjs";
-import { loadSchedules, sandboxRunCommand, SANDBOX_RUN, tickFn } from "../runner/schedules.mjs";
+import { loadSchedules, sandboxRunCommand, SANDBOX_RUN, tickFn } from "../runner/schedules.ts";
 import { parseArgs, runSandboxName, sandboxCommand, sandboxRun } from "../runner/sandbox-run.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

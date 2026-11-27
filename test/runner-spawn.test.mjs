@@ -11,7 +11,7 @@ import { spawnBriefNote, spawnSelfNote } from "../lib/spawn.ts";
 import { listSessions } from "../lib/sessions.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
-import { route } from "../runner/control.mjs";
+import { route } from "../runner/control.ts";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { fileEnd, tempDir } from "./helpers/tmp.mjs";

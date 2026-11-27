@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { loadConfig } from "../lib/config.mjs";
 import { MESSAGE_MAX_BYTES } from "../lib/config.mjs";
-import { askQuestion, openQuestions, waitRequestedAt } from "../lib/questions.mjs";
+import { askQuestion, openQuestions, waitRequestedAt } from "../lib/questions.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 

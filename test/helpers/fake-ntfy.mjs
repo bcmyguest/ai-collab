@@ -1,12 +1,12 @@
 /**
- * In-process fake of the message bus: the production bus server (lib/bus.mjs) on the memory store, with the
+ * In-process fake of the message bus: the production bus server (lib/bus.ts) on the memory store, with the
  * test hooks wired in. Tests exercise the real protocol code; only the storage and the instrumentation differ.
  * No network beyond 127.0.0.1, no API keys, no agents.
  *
  * state keeps the counters tests drive and assert: publishes, polls, subscribes, requests, fileReads,
  * files (seedable Map), and the fault knobs failNext, limitNext, delayMs.
  */
-import { createBusServer, openMemoryStore } from "../../lib/bus.mjs";
+import { createBusServer, openMemoryStore } from "../../lib/bus.ts";
 
 const LIMIT_BODY = JSON.stringify({ code: 42905, http: 429, error: "limit reached: daily bandwidth reached" });
 

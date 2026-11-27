@@ -5,7 +5,7 @@ const [phase, id, markFile, extra] = process.argv.slice(2);
 if (!["start", "relaunch"].includes(phase)) process.exit(0);
 const SRC = process.env.SRC;
 const { openWorkflows } = await import(`${SRC}/lib/workflows.ts`);
-const { pgUrl } = await import(`${SRC}/lib/postgres.mjs`);
+const { pgUrl } = await import(`${SRC}/lib/postgres.ts`);
 const wf = await openWorkflows({ engine: "dbos", pgUrl: pgUrl(), applicationVersion: process.env.AIC_DBOS_APP_VERSION });
 const swallow = (p) => p.catch(() => {}); // keeps a top-level promise chain off the lint rule
 wf.register("av.slow", async (ctx) => {

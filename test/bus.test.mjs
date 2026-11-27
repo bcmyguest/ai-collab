@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
-import { createBusServer, openMemoryStore, parseSince } from "../lib/bus.mjs";
+import { createBusServer, openMemoryStore, parseSince } from "../lib/bus.ts";
 import { pollCached, publish, streamEvents } from "../lib/transport.mjs";
 
 const TOKEN = "tk_bus_test";

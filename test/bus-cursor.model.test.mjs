@@ -1,4 +1,4 @@
-// Model-based test of the bus cursor: publish, poll, subscribe, reconnect, restart and prune against lib/bus.mjs.
+// Model-based test of the bus cursor: publish, poll, subscribe, reconnect, restart and prune against lib/bus.ts.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -7,13 +7,13 @@ import { test, after } from "node:test";
 import diagnostics from "node:diagnostics_channel";
 import fc from "fast-check";
 import { pollCached, streamEvents } from "../lib/transport.mjs";
-import { openPostgresBusStore } from "../lib/bus-postgres.mjs";
-import { pgUrl } from "../lib/postgres.mjs";
+import { openPostgresBusStore } from "../lib/bus-postgres.ts";
+import { pgUrl } from "../lib/postgres.ts";
 import { dbosTestDb } from "./helpers/dbos-env.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 
 // BUS_IMPL points the model at another bus.mjs, e.g. a scratch copy with a planted bug.
-const BUS_IMPL = process.env.BUS_IMPL ? path.resolve(process.env.BUS_IMPL) : fileURLToPath(new URL("../lib/bus.mjs", import.meta.url));
+const BUS_IMPL = process.env.BUS_IMPL ? path.resolve(process.env.BUS_IMPL) : fileURLToPath(new URL("../lib/bus.ts", import.meta.url));
 const { createBusServer, openMemoryStore } = await import(pathToFileURL(BUS_IMPL).href);
 const pgUp = await dbosTestDb();
 
@@ -79,7 +79,7 @@ function lastSeenOf(sub) {
   return sub?.expected.at(-1) ?? "";
 }
 
-/** Poll rule of lib/bus.mjs: an id on this topic reads after it; an unknown id reads the whole topic. */
+/** Poll rule of lib/bus.ts: an id on this topic reads after it; an unknown id reads the whole topic. */
 function expectedPoll(m, topic, since) {
   const events = m.log.filter((e) => e.topic === topic);
   if (isNumeric(since) && events.some((e) => Number(e.id) === Number(since))) return ids(events.filter((e) => Number(e.id) > Number(since)));
@@ -87,7 +87,7 @@ function expectedPoll(m, topic, since) {
   return ids(sinceFilter(events, since));
 }
 
-/** Stream backfill rule of lib/bus.mjs: a known numeric since reads every subscribed event with a larger id; an unknown one replays all. */
+/** Stream backfill rule of lib/bus.ts: a known numeric since reads every subscribed event with a larger id; an unknown one replays all. */
 function expectedBackfill(m, topics, since) {
   const events = m.log.filter((e) => topics.includes(e.topic));
   if (isNumeric(since) && events.some((e) => Number(e.id) === Number(since))) return ids(events.filter((e) => Number(e.id) > Number(since)));
@@ -95,7 +95,7 @@ function expectedBackfill(m, topics, since) {
   return ids(sinceFilter(events, since));
 }
 
-/** Reset rule of lib/bus.mjs resolve: an event id (up to 8 digits) absent from the topics replays all and flags reset. */
+/** Reset rule of lib/bus.ts resolve: an event id (up to 8 digits) absent from the topics replays all and flags reset. */
 function expectedReset(m, topics, since) {
   return /^\d{1,8}$/.test(since) && !m.log.some((e) => topics.includes(e.topic) && Number(e.id) === Number(since));
 }

@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { MESSAGE_MAX_BYTES, loadConfig, sessionLabel } from "../lib/config.mjs";
-import { closeTerminalCards, decideApproval } from "../lib/approvals.mjs";
+import { closeTerminalCards, decideApproval } from "../lib/approvals.ts";
 import { currentModeKnown } from "../lib/mode.ts";
 import { createUi } from "../web/server/ui.mjs";
 import { IN_TERMINAL_STALE } from "../web/lib/a2ui.js";

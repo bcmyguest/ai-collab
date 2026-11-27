@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createClaudeAdapter } from "../runner/adapters/claude.mjs";
 import { activityFor } from "../runner/publish.mjs";
-import { compactionFields } from "../lib/compaction.mjs";
+import { compactionFields } from "../lib/compaction.ts";
 import { envelopeToEvent, eventToEnvelope, parseWireEnvelope } from "../lib/agui.mjs";
 
 const step = (stepName, metadata) => ({ type: EventType.STEP_FINISHED, stepName, ...(metadata ? { metadata: { aiCollab: { compaction: metadata } } } : {}) });

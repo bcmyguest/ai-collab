@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { sessionLabel } from "../lib/config.mjs";
 import { COMMANDS, SUPPORT, commandFor, commandSupport, matchCommands, parseCommand } from "../web/lib/slash-commands.js";
-import { modelRef, slashCommand } from "../lib/slash.mjs";
+import { modelRef, slashCommand } from "../lib/slash.ts";
 
 const HARNESSES = ["claude", "codex", "opencode", "cursor"];
 const OPENCODE_ID = "ses_abcdefghijklmnopqrstuvwxyz";

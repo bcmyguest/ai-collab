@@ -4,8 +4,8 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { broadcastTopic, inboxTopic, loadConfig, receiptsTopic } from "../lib/config.mjs";
 import { claimInbox, sendMessage } from "../lib/inbox.mjs";
-import { respond } from "../lib/agents.mjs";
-import { ackTracker } from "../lib/deliver-push.mjs";
+import { respond } from "../lib/agents.ts";
+import { ackTracker } from "../lib/deliver-push.ts";
 
 const PEERS = "alice,claude,opencode";
 

@@ -3,7 +3,7 @@ import { rmSync } from "node:fs";
 import { test } from "node:test";
 import { compileTrace } from "../lib/pattern-compiler.ts";
 import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, launchPatternRun, runStatus } from "../lib/pattern-runs.mjs";
-import { seedPatternRun } from "../lib/pattern-workflow.mjs";
+import { seedPatternRun } from "../lib/pattern-workflow.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const parallel = {

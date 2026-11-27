@@ -4,7 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig } from "../lib/config.mjs";
-import { awaitReply } from "../lib/agents.mjs";
+import { awaitReply } from "../lib/agents.ts";
 import { sendMessage } from "../lib/inbox.mjs";
 
 // Stands in for the ntfy stream waiter: returns after a short pause, so the loop polls again.

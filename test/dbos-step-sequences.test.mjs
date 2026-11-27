@@ -15,9 +15,9 @@ const src = (file) => readFileSync(fileURLToPath(new URL(`../${file}`, import.me
 const WORKFLOWS = {
   session: [["runner/runner.mjs", "sessionWorkflow"]],
   wake: [["runner/runner.mjs", "wakeWorkflow"]],
-  delivery: [["runner/delivery.mjs", "deliveryWorkflow"]],
-  pattern: [["runner/runner.mjs", "patternWorkflow"], ["runner/runner.mjs", "runPattern"], ["lib/pattern-workflow.mjs", "runPatternWorkflow"]],
-  "scheduled:*": [["runner/schedules.mjs", "tickFn"]],
+  delivery: [["runner/delivery.ts", "deliveryWorkflow"]],
+  pattern: [["runner/runner.mjs", "patternWorkflow"], ["runner/runner.mjs", "runPattern"], ["lib/pattern-workflow.ts", "runPatternWorkflow"]],
+  "scheduled:*": [["runner/schedules.ts", "tickFn"]],
 };
 const OP = /\b(?:wf|ctx)\.(step|recv|sleep)\(/g;
 

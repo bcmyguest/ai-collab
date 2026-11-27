@@ -4,7 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig } from "../lib/config.mjs";
-import { waitForReply } from "../lib/agents.mjs";
+import { waitForReply } from "../lib/agents.ts";
 import { runCli } from "../lib/cli.mjs";
 import { claimInbox, sendMessage } from "../lib/inbox.mjs";
 

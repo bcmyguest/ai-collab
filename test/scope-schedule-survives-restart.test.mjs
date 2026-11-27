@@ -5,7 +5,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { resetScopeProbe, scopeAvailable, systemdRunOnPath } from "../lib/sessions/scope.ts";
-import { runCommand } from "../runner/schedules.mjs";
+import { runCommand } from "../runner/schedules.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const tmp = () => tempDir({ after }, "ai-collab-sched-scope-");
@@ -105,7 +105,7 @@ test("a scheduled agent outlives a stop of the unit that started it, on real sys
   const script = path.join(dir, "runner.mjs");
   // Stand-in for the runner: one scheduled command, started from inside the unit that a deploy restarts.
   writeFileSync(script, `
-import { runCommand } from ${JSON.stringify(new URL("../runner/schedules.mjs", import.meta.url).href)};
+import { runCommand } from ${JSON.stringify(new URL("../runner/schedules.ts", import.meta.url).href)};
 const env = process.env;
 await runCommand([process.execPath, "-e", "require('node:fs').writeFileSync(process.env.PID_FILE, String(process.pid)); setTimeout(() => {}, 120000)"], {
   cwd: process.env.RUN_DIR, env, timeoutMs: 180_000, scope: { env, label: "pm", description: "AI Collab schedule pm" },

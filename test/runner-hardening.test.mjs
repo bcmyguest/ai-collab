@@ -7,8 +7,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
-import { listenControl, route } from "../runner/control.mjs";
-import { loadSchedules, registerSchedules, runCommand } from "../runner/schedules.mjs";
+import { listenControl, route } from "../runner/control.ts";
+import { loadSchedules, registerSchedules, runCommand } from "../runner/schedules.ts";
 import { acquireLock } from "../runner/lock.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 

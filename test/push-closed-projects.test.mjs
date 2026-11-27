@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { askQuestion } from "../lib/questions.mjs";
+import { askQuestion } from "../lib/questions.ts";
 import { loadConfig } from "../lib/config.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";

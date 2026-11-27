@@ -1,4 +1,4 @@
-// Characterizes the two push engines on the same scripted scenarios: the runner's durable workflow (runner/delivery.mjs)
+// Characterizes the two push engines on the same scripted scenarios: the runner's durable workflow (runner/delivery.ts)
 // and the UI dispatcher (web/server/dispatch.mjs). Both run on one clock; the expected pushes and close times are shared.
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync } from "node:fs";
@@ -9,11 +9,11 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { reserveDelivery, sendMessage } from "../lib/inbox.mjs";
-import { busyWithPush, readDispatchLedger, readySession } from "../lib/deliver-push.mjs";
+import { busyWithPush, readDispatchLedger, readySession } from "../lib/deliver-push.ts";
 import { processStart } from "../lib/process.ts";
 import { writeState } from "../lib/state.ts";
 import { openDurable } from "../runner/durable.mjs";
-import { DELIVERY, deliveryWorkflow } from "../runner/delivery.mjs";
+import { DELIVERY, deliveryWorkflow } from "../runner/delivery.ts";
 import { MAX_ATTEMPTS, REDELIVER_MS, TTL_MS, createDispatcher } from "../web/server/dispatch.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

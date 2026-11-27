@@ -10,7 +10,7 @@ import { openDurable } from "../runner/durable.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 
 // DELIVERY_IMPL points the model at another delivery.mjs, e.g. a scratch copy with a planted bug.
-const DELIVERY_IMPL = process.env.DELIVERY_IMPL ? path.resolve(process.env.DELIVERY_IMPL) : fileURLToPath(new URL("../runner/delivery.mjs", import.meta.url));
+const DELIVERY_IMPL = process.env.DELIVERY_IMPL ? path.resolve(process.env.DELIVERY_IMPL) : fileURLToPath(new URL("../runner/delivery.ts", import.meta.url));
 const { DELIVERY, READY_POLL_MS, deliveryWorkflow } = await import(pathToFileURL(DELIVERY_IMPL).href);
 
 const T0 = Date.UTC(2026, 10, 25);

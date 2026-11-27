@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { openDurable } from "../runner/durable.mjs";
-import { deliveryWorkflow } from "../runner/delivery.mjs";
+import { deliveryWorkflow } from "../runner/delivery.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const SESSION = { id: "opencode#abc", harness: "opencode", sessionId: "ses_1", online: true, peer: "opencode", session: "abc" };

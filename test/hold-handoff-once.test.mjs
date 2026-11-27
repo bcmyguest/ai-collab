@@ -9,14 +9,14 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, markDelivered, readInbox, releaseOwned, reserveOwned, sendMessage } from "../lib/messaging.ts";
-import { holdRunning, readDispatchLedger } from "../lib/deliver-push.mjs";
-import { decideStop, handOff, markStopRunning } from "../lib/stop.mjs";
-import { requestWait } from "../lib/questions.mjs";
+import { holdRunning, readDispatchLedger } from "../lib/deliver-push.ts";
+import { decideStop, handOff, markStopRunning } from "../lib/stop.ts";
+import { requestWait } from "../lib/questions.ts";
 import { processStart } from "../lib/process.ts";
 import { statePath, writeState } from "../lib/state.ts";
 import { runWaiter } from "../lib/waiter.ts";
 import { openDurable } from "../runner/durable.mjs";
-import { deliveryWorkflow } from "../runner/delivery.mjs";
+import { deliveryWorkflow } from "../runner/delivery.ts";
 import { createDispatcher } from "../web/server/dispatch.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

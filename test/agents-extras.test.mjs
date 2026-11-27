@@ -9,7 +9,7 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, parseEnvelope } from "../lib/inbox.mjs";
-import { waitForIdle } from "../lib/agents.mjs";
+import { waitForIdle } from "../lib/agents.ts";
 import { agentDirectory } from "../lib/sessions.mjs";
 import { runCli } from "../lib/cli.mjs";
 import { processStart } from "../lib/process.ts";

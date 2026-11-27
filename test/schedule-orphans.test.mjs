@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { runCommand } from "../runner/schedules.mjs";
+import { runCommand } from "../runner/schedules.ts";
 
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 

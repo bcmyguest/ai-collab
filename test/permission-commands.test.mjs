@@ -6,8 +6,8 @@ import { test, after } from "node:test";
 import { sessionLabel } from "../lib/config.mjs";
 import { harnessCommand } from "../lib/sessions/control.ts";
 import { nextPermission, readOwned, setNextPermission, writeOwned } from "../lib/sessions/registry.ts";
-import { slashCommand } from "../lib/slash.mjs";
-import { requestTeamPermission } from "../lib/team-permission.mjs";
+import { slashCommand } from "../lib/slash.ts";
+import { requestTeamPermission } from "../lib/team-permission.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const UUID = "6f1d2c3a-4b5e-4f60-8a7b-9c0d1e2f3a4b";

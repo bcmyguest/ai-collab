@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { publishActivity } from "../lib/activity.ts";
-import { askQuestion } from "../lib/questions.mjs";
+import { askQuestion } from "../lib/questions.ts";
 import { broadcastTopic, loadConfig } from "../lib/config.mjs";
 import { publish } from "../lib/transport.mjs";
 import { sendMessage } from "../lib/inbox.mjs";

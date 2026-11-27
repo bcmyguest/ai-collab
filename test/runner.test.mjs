@@ -22,7 +22,7 @@ import { createRunner } from "../runner/runner.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
 import cursorAdapter, { sandboxName } from "../runner/adapters/cursor.mjs";
 import { wrapOpen } from "./helpers/fake-adapter-hooks.mjs";
-import { listenControl } from "../runner/control.mjs";
+import { listenControl } from "../runner/control.ts";
 import { runnerClient } from "../runner/client.ts";
 import { loadAdapters } from "../runner/main.mjs";
 import { tempDir } from "./helpers/tmp.mjs";

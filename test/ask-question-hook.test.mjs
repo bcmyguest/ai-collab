@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { loadConfig } from "../lib/config.mjs";
-import { decideApproval, decideQuestion } from "../lib/approvals.mjs";
+import { decideApproval, decideQuestion } from "../lib/approvals.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 

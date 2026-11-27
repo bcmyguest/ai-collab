@@ -2,7 +2,7 @@
 // phase=relaunch waits for the recovered workflow and prints what ran. Usage: node dbos-recover-child.mjs <phase> <id> <markerFile>
 import fs from "node:fs";
 import { openWorkflows } from "../../lib/workflows.ts";
-import { pgUrl } from "../../lib/postgres.mjs";
+import { pgUrl } from "../../lib/postgres.ts";
 
 const [phase, id, markFile] = process.argv.slice(2);
 // node --test globs every file under test/; this module only runs as a spawned child of workflows-dbos-recovery.test.mjs.

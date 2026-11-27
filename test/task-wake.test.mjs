@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { watchTaskFinishes } from "../runner/task-wake.mjs";
-import { loadSchedules } from "../runner/schedules.mjs";
+import { loadSchedules } from "../runner/schedules.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const store = (file, statuses) => writeFileSync(file, JSON.stringify({ v: 1, tasks: Object.entries(statuses).map(([id, status]) => ({ id, title: id, status, blockers: [], progress: [], created: 1, updated: 1 })) }));

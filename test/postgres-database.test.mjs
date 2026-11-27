@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { ensureDatabase, pgReachable, pgUrl } from "../lib/postgres.mjs";
+import { ensureDatabase, pgReachable, pgUrl } from "../lib/postgres.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 test("pgUrl honours AI_COLLAB_PG_DATABASE and defaults to ai_collab", (t) => {

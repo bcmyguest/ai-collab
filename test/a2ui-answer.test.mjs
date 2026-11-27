@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cleanQuestions, parseChoice } from "../lib/approvals.mjs";
+import { cleanQuestions, parseChoice } from "../lib/approvals.ts";
 import { approvalOperations, choiceAnswers, surfaceAnswer } from "../web/lib/a2ui.js";
 
 const ID = "0123456789ab";

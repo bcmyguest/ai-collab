@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { parseSince } from "../../lib/bus.mjs";
+import { parseSince } from "../../lib/bus.ts";
 
 const FILE_EXT = /\.(png|jpe?g|gif|webp|txt)$/i;
 const FILE_TYPES = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".txt": "text/plain; charset=utf-8" };

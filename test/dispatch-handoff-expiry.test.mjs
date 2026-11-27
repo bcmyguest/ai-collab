@@ -9,7 +9,7 @@ import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, sendMessage } from "../lib/inbox.mjs";
 import { RESERVE_MS } from "../lib/messaging.ts";
-import { markStopRunning } from "../lib/stop.mjs";
+import { markStopRunning } from "../lib/stop.ts";
 import { processStart } from "../lib/process.ts";
 import { writeState } from "../lib/state.ts";
 import { createDispatcher } from "../web/server/dispatch.mjs";

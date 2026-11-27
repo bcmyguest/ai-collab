@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { openWorkflows } from "../lib/workflows.ts";
-import { pgUrl } from "../lib/postgres.mjs";
+import { pgUrl } from "../lib/postgres.ts";
 import { dbosTestDb } from "./helpers/dbos-env.mjs";
 
 const pgUp = await dbosTestDb();

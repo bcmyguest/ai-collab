@@ -8,8 +8,8 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { claimInbox, readStatuses, sendMessage } from "../lib/messaging.ts";
-import { decideStop, noteHeld, stopHookRunning } from "../lib/stop.mjs";
-import { requestWait } from "../lib/questions.mjs";
+import { decideStop, noteHeld, stopHookRunning } from "../lib/stop.ts";
+import { requestWait } from "../lib/questions.ts";
 import { runWaiter } from "../lib/waiter.ts";
 import { processStart } from "../lib/process.ts";
 import { statePath, writeState } from "../lib/state.ts";
@@ -67,7 +67,7 @@ function handoffFile(cfg) {
   return statePath(cfg).replace(/\.json$/, ".handoff.json");
 }
 
-// The marker a running Stop hook writes for its own pid (lib/stop.mjs).
+// The marker a running Stop hook writes for its own pid (lib/stop.ts).
 function markerFile(cfg, pid) {
   return statePath(cfg).replace(/\.json$/, `.stop-running.${pid}.json`);
 }

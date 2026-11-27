@@ -5,8 +5,8 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { openDurable } from "../runner/durable.mjs";
-import { deliveryWorkflow } from "../runner/delivery.mjs";
-import { handedOff, handOff } from "../lib/stop.mjs";
+import { deliveryWorkflow } from "../runner/delivery.ts";
+import { handedOff, handOff } from "../lib/stop.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -18,8 +18,8 @@ const INPUT = { project: "demo", address: SESSION.id, message: MESSAGE };
 const CHILD = `
 const at = (p) => new URL(p, process.env.ROOT_URL).href;
 const { openDurable } = await import(at("runner/durable.mjs"));
-const { deliveryWorkflow } = await import(at("runner/delivery.mjs"));
-const { handOff } = await import(at("lib/stop.mjs"));
+const { deliveryWorkflow } = await import(at("runner/delivery.ts"));
+const { handOff } = await import(at("lib/stop.ts"));
 const scfg = JSON.parse(process.env.SCFG);
 const session = JSON.parse(process.env.SESSION);
 const durable = openDurable(process.env.DB);

@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { openDurable } from "../lib/durable.mjs";
+import { openDurable } from "../lib/durable.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));

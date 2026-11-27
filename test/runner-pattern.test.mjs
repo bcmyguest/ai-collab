@@ -7,7 +7,7 @@ import { EventType } from "@ag-ui/core";
 import { advanceRun, runStatus, startRun } from "../lib/pattern-runs.mjs";
 import { saveTeamText } from "../lib/patterns.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
-import { listenControl, runnerSocket } from "../runner/control.mjs";
+import { listenControl, runnerSocket } from "../runner/control.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { makeRunner, setup, until } from "./helpers/runner-ctx.mjs";
 

@@ -9,7 +9,7 @@ import { patternFromTeam, validatePattern, withExtras } from "../lib/catalog/pat
 import { runCli } from "../lib/cli.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { launchPatternRun, preparePatternRun } from "../lib/pattern-runs.mjs";
-import { slashCommand } from "../lib/slash.mjs";
+import { slashCommand } from "../lib/slash.ts";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";

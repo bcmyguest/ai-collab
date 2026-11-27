@@ -5,7 +5,7 @@ import { harnessCommand as builderCommand } from "../lib/builder.ts";
 import { harnessCommand as wakeCommand } from "../lib/sessions/control.ts";
 import { codexRequiredRunCodeArgs } from "../lib/code-mode.mjs";
 import { authorCommand } from "../lib/catalog/author.ts";
-import { pushSession } from "../lib/deliver-push.mjs";
+import { pushSession } from "../lib/deliver-push.ts";
 import { acpArgs } from "../runner/adapters/cursor.mjs";
 import { argv, claudePermissionFlag } from "../lib/harness.ts";
 import { WAKE_PROMPT } from "../lib/mode.ts";

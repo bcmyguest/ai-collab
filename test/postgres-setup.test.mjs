@@ -4,7 +4,7 @@ import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
-import { ensurePgPassword, pgReachable, pgUrl, postgresCommand } from "../lib/postgres.mjs";
+import { ensurePgPassword, pgReachable, pgUrl, postgresCommand } from "../lib/postgres.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));

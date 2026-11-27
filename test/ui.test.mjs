@@ -6,7 +6,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { broadcastTopic, inboxTopic, loadConfig, loadProjects, sessionLabel, statusTopic } from "../lib/config.mjs";
 import { claimInbox, publishStatus, replyToOperator, sendMessage } from "../lib/inbox.mjs";
-import { waitForAnswer } from "../lib/questions.mjs";
+import { waitForAnswer } from "../lib/questions.ts";
 import { recordSession } from "../lib/sessions.mjs";
 import { createUi } from "../web/server/ui.mjs";
 import { peerEnv } from "./helpers/env.mjs";

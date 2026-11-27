@@ -6,12 +6,12 @@ import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
 import { sendMessage } from "../lib/inbox.mjs";
 import { parseWireEnvelope } from "../lib/agui.mjs";
-import { awaitReply, waitForIdle, waitForMessages, waitForReply } from "../lib/agents.mjs";
+import { awaitReply, waitForIdle, waitForMessages, waitForReply } from "../lib/agents.ts";
 import { readInbox } from "../lib/messaging.ts";
 import { runWaiter } from "../lib/waiter.ts";
 import { runCli } from "../lib/cli.mjs";
-import { decideStop } from "../lib/stop.mjs";
-import { requestWait } from "../lib/questions.mjs";
+import { decideStop } from "../lib/stop.ts";
+import { requestWait } from "../lib/questions.ts";
 import { claimInbox } from "../lib/inbox.mjs";
 import { settleReceipts } from "../lib/receipts.ts";
 

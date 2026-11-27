@@ -6,7 +6,7 @@ import path, { delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { childEnv } from "../lib/start.mjs";
 import { summaryLine } from "../lib/prune.mjs";
-import { loadSchedules, runCommand } from "../runner/schedules.mjs";
+import { loadSchedules, runCommand } from "../runner/schedules.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 const CLI = fileURLToPath(new URL("../scripts/ai-collab.mjs", import.meta.url));

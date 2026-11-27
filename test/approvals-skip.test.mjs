@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { parseWireEnvelope } from "../lib/agui.mjs";
 import { loadConfig } from "../lib/config.mjs";
-import { END_REASONS, decideApproval, decideQuestion } from "../lib/approvals.mjs";
+import { END_REASONS, decideApproval, decideQuestion } from "../lib/approvals.ts";
 import { peerEnv } from "./helpers/env.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 

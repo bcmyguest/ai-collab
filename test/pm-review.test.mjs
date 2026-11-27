@@ -4,7 +4,7 @@ import path from "node:path";
 import { test, after } from "node:test";
 import { RULES_MAX } from "../lib/mission.ts";
 import { REVIEW_HEADING, REVIEW_MAX_LINES, reviewBlock, withReview } from "../lib/pm-review.ts";
-import { tickFn } from "../runner/schedules.mjs";
+import { tickFn } from "../runner/schedules.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
 function project() {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import { test } from "node:test";
-import { toolClient } from "../lib/tool-api.mjs";
+import { toolClient } from "../lib/tool-api.ts";
 import { addTask, taskStoreFile, writeStore } from "../lib/tasks.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

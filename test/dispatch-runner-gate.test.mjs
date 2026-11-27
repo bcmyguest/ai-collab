@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { createDispatcher } from "../web/server/dispatch.mjs";
-import { listenControl } from "../runner/control.mjs";
+import { listenControl } from "../runner/control.ts";
 import { runnerUp } from "../runner/client.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 

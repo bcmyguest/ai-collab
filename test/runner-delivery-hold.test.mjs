@@ -8,11 +8,11 @@ import { setTimeout as delay } from "node:timers/promises";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig, sessionLabel } from "../lib/config.mjs";
-import { handedOff, markStopRunning } from "../lib/stop.mjs";
+import { handedOff, markStopRunning } from "../lib/stop.ts";
 import { processStart } from "../lib/process.ts";
 import { writeState } from "../lib/state.ts";
 import { openDurable } from "../runner/durable.mjs";
-import { deliveryWorkflow } from "../runner/delivery.mjs";
+import { deliveryWorkflow } from "../runner/delivery.ts";
 import { createRunner } from "../runner/runner.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 

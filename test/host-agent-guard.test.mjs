@@ -9,7 +9,7 @@ import { recordSession } from "../lib/sessions.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
-import { tickFn } from "../runner/schedules.mjs";
+import { tickFn } from "../runner/schedules.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { fileEnd, tempDir } from "./helpers/tmp.mjs";
 

@@ -9,7 +9,7 @@ import { peerEnv } from "./helpers/env.mjs";
 import { loadConfig } from "../lib/config.mjs";
 import { sendMessage } from "../lib/inbox.mjs";
 import { activityEvents, buildActivity } from "../lib/activity.ts";
-import { approvalOutput, approvalRequest } from "../lib/approvals.mjs";
+import { approvalOutput, approvalRequest } from "../lib/approvals.ts";
 import { contextTokens } from "../lib/usage.ts";
 import { sessionName } from "../lib/sessions/registry.ts";
 import { appendContent, createPlugin, permissionInput, resultOutput, runHook, stepTokens } from "../lib/opencode-plugin.mjs";

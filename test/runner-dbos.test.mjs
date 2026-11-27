@@ -8,11 +8,11 @@ import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { setup } from "./helpers/runner-ctx.mjs";
 import { createFakeAdapter } from "../runner/adapters/fake.mjs";
 import { createRunner, WAKE } from "../runner/runner.mjs";
-import { listenControl, runnerSocket } from "../runner/control.mjs";
+import { listenControl, runnerSocket } from "../runner/control.ts";
 import { advanceRun, runStatus, startRun } from "../lib/pattern-runs.mjs";
 import { saveTeamText } from "../lib/patterns.mjs";
 import { openWorkflows } from "../lib/workflows.ts";
-import { pgUrl } from "../lib/postgres.mjs";
+import { pgUrl } from "../lib/postgres.ts";
 import { dbosTestDb } from "./helpers/dbos-env.mjs";
 import { sessionLabel } from "../lib/config.mjs";
 

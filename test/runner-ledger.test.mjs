@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { makeRunner, setup, until } from "./helpers/runner-ctx.mjs";
-import { readDispatchLedger, writeDispatchLedger } from "../lib/deliver-push.mjs";
-import { DELIVERY } from "../runner/delivery.mjs";
+import { readDispatchLedger, writeDispatchLedger } from "../lib/deliver-push.ts";
+import { DELIVERY } from "../runner/delivery.ts";
 
 test("an expect-reply message the dispatcher delivered keeps its redelivery once the runner owns it", async () => {
   const fake = await startFakeNtfy();

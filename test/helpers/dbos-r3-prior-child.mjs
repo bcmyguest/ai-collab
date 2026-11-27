@@ -5,7 +5,7 @@ const [phase, id] = process.argv.slice(2);
 if (!["broken", "healthy"].includes(phase)) process.exit(0);
 const SRC = process.env.SRC;
 const { openWorkflows } = await import(`${SRC}/lib/workflows.ts`);
-const { pgUrl } = await import(`${SRC}/lib/postgres.mjs`);
+const { pgUrl } = await import(`${SRC}/lib/postgres.ts`);
 const broken = phase === "broken" ? { priorStepsQuery: async () => { throw new Error("blip"); }, priorStepsRetry: { attempts: 2, delayMs: 10 } } : {};
 const wf = await openWorkflows({ engine: "dbos", pgUrl: pgUrl(), applicationVersion: process.env.AIC_DBOS_APP_VERSION, ...broken });
 let ran = 0;
