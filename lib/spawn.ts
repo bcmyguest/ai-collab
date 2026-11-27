@@ -58,6 +58,11 @@ export function spawnBriefNote(brief: string, parent: string): string {
   return `${brief.trimEnd()}\n\n[ai-collab] You were started by ${parent}; your result reaches it automatically when your run ends.`;
 }
 
+/** The line a spawned child's first prompt ends with: a runner-owned session has no hook context, so it learns its own label here. */
+export function spawnSelfNote(address: string): string {
+  return `\n\n[ai-collab] Spawned agent: your address is ${address}; pass session "${address.split("#")[1]}" to ai-collab tools.`;
+}
+
 /** The direct message a child sends its parent when a run ends: the outcome and the reply's last REPORT_TEXT_MAX code units. */
 export function spawnReport(child: string, outcome: string, text: string): string {
   const trimmed = text.trim();
