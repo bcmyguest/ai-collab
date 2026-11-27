@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { EventType } from "@ag-ui/core";
 import { sessionLabel } from "../../lib/config.mjs";
 import { opencodeRequest, serviceEndpoint } from "../../lib/opencode-api.mjs";
+import { OPENCODE_NO_SUBAGENTS } from "../../lib/subagent-guard.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, PERMISSION_TABLE } from "../contract.mjs";
 
 const NO_SERVICE = "OpenCode service is not running (no loopback url in its service.json)";
@@ -353,13 +354,15 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
     },
     async open(options, ctx) {
       const model = modelRef(options.model);
-      const created = await call("POST", "/api/session", { location: { directory: options.cwd }, ...(model ? { model } : {}) });
+      // A managed session's own permission rules deny native subagents; the shared service config stays untouched.
+      const created = await call("POST", "/api/session", { location: { directory: options.cwd }, ...(model ? { model } : {}), ...(options.managed ? { permissions: [...OPENCODE_NO_SUBAGENTS] } : {}) });
       const id = created?.data?.id;
       if (typeof id !== "string" || !id) throw new Error("OpenCode created no session");
       return attach(id, ctx, options.permission?.autoReply ?? []);
     },
     async resume(record, ctx) {
       await call("GET", `/api/session/${enc(record.nativeId)}`);
+      if (record.managed) await call("PATCH", `/api/session/${enc(record.nativeId)}`, { permissions: [...OPENCODE_NO_SUBAGENTS] });
       return attach(record.nativeId, ctx, autoReplyFor(record.permissionMode));
     },
     async listModels() {

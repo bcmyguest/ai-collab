@@ -7,6 +7,7 @@ import { sessionLabel } from "../../lib/config.mjs";
 import { childEnv, findExecutable } from "../../lib/start.mjs";
 import { classifyLimit } from "../../lib/limits.ts";
 import { claudeCodeModeSettings } from "../../lib/code-mode.mjs";
+import { CLAUDE_SUBAGENT_TOOLS } from "../../lib/subagent-guard.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, LIMIT, PERMISSION_MODES, permissionSettings } from "../contract.mjs";
 
 // Env marker on the CLI child; hooks stand down by the owned record, this names the harness that spawned the child.
@@ -54,7 +55,7 @@ async function userMessage(input, priority) {
 }
 
 /** Starts one session's query and message pump; attach() awaits the handshake before the handle is used. */
-function startSession({ query, ctx, nativeId, cwd, model, permission, env, resume, codeMode }) {
+function startSession({ query, ctx, nativeId, cwd, model, permission, env, resume, codeMode, managed }) {
   const threadId = `claude#${sessionLabel(nativeId)}`;
   const inputs = inputQueue();
   const pending = new Map();
@@ -73,6 +74,8 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
       permissionMode: permission.permissionMode,
       canUseTool: (toolName, input, extra) => canUseTool(toolName, input, extra),
       ...(model ? { model } : {}),
+      // A managed session has no native subagents; ai-collab spawn_agent replaces them.
+      ...(managed ? { disallowedTools: [...CLAUDE_SUBAGENT_TOOLS] } : {}),
       // Flag settings are the only layer a headless Claude reads code mode from (lib/code-mode.mjs).
       ...(typeof codeMode === "boolean" ? { settings: claudeCodeModeSettings(codeMode) } : {}),
       ...(resume ? { resume: nativeId } : { sessionId: nativeId }),
@@ -328,7 +331,7 @@ export function createClaudeAdapter({ query = sdkQuery, handshakeMs = HANDSHAKE_
       const nativeId = randomUUID();
       await options.beforeStart?.(nativeId);
       const session = startSession({
-        query, ctx, nativeId, cwd: options.cwd, model: options.model, permission: options.permission, env: options.env, codeMode: options.codeMode,
+        query, ctx, nativeId, cwd: options.cwd, model: options.model, permission: options.permission, env: options.env, codeMode: options.codeMode, managed: options.managed === true,
       });
       return attach(session, "claude session", handshakeMs);
     },
@@ -337,7 +340,7 @@ export function createClaudeAdapter({ query = sdkQuery, handshakeMs = HANDSHAKE_
       const { settings: runnerSettings } = permissionSettings("claude", record.permissionMode, record.place);
       const settings = record.claudePermission ? { permissionMode: record.claudePermission } : runnerSettings;
       const session = startSession({
-        query, ctx, nativeId: record.nativeId, cwd: record.cwd, model: record.model, permission: settings, env: childVars, resume: true, codeMode: record.codeMode,
+        query, ctx, nativeId: record.nativeId, cwd: record.cwd, model: record.model, permission: settings, env: childVars, resume: true, codeMode: record.codeMode, managed: record.managed === true,
       });
       return attach(session, "claude resume", handshakeMs);
     },
