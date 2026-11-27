@@ -53,7 +53,7 @@ export const CLAUDE_ENV = {
 };
 
 // The CLI marks itself non-dumpable unless this is set; OpenShell then cannot read its /proc/<pid>/exe and denies its DNS and sockets (measured 2026-11-22).
-// The host traces a Cursor builder from its stream-json (lib/cursor-trace.mjs), so its in-sandbox hooks record nothing.
+// The host traces a Cursor builder from its stream-json (lib/cursor-trace.ts), so its in-sandbox hooks record nothing.
 export const CURSOR_ENV = { CURSOR_AGENT_ALLOW_PROCESS_INSPECTION: "1", [TRACE_ENV]: "launcher" };
 
 // ai-collab MCP tools that would act on sandbox-local state (task store, sessions, runs); the task shim replaces the task ones.

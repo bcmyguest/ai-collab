@@ -522,7 +522,7 @@ export default function cursorAdapter(config = {}) {
     run.text = "";
   }
 
-  // Each run's OTLP trace (lib/cursor-trace.mjs): model and tool calls; ACP reports no token counts. Never awaited.
+  // Each run's OTLP trace (lib/cursor-trace.ts): model and tool calls; ACP reports no token counts. Never awaited.
   function exportRun(run, status) {
     if (run.trace) void exportSpans(run.trace.spans({ status }), { endpoint: otlpEndpoint({ ...process.env, ...envOf }) });
   }
