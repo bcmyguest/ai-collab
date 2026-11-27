@@ -1,16 +1,17 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, Box, Check, ChevronDown, Folder, FolderGit2, X } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { HarnessLogo } from "./logos";
 import { cn } from "@/lib/utils";
-import { activeModel, codeModeField, flatModels, modeChoice, modeOptions, modelGroups, modelLabel, moveActive, harnessPlaces, placeChoice, placeOptions } from "@/lib/new-session";
+import { activeModel, codeModeField, flatModels, modeChoice, modeOptions, modelGroups, modelLabel, moveActive, harnessPlaces } from "@/lib/new-session";
+import { EMPTY_PICK, envChoice, envOptions, envPayload } from "@/lib/branch-picker";
+import { SessionToolbar } from "./session-toolbar";
 import { initialChoice } from "@/lib/start-default";
 
 export const PROMPT_PLACEHOLDER = "Plan, search, build anything";
-const PLACE_ICONS = { folder: Folder, worktree: FolderGit2, openshell: Box };
 const MODE_HINTS = { agent: "Build and edit", ask: "Answers, read-only", plan: "Plans, read-only" };
 
 /** True on a touch-only screen (a phone), where Return types a newline and the round button sends. */
@@ -143,37 +144,6 @@ function CodeModePill({ harness, mode, place, on, set }) {
   </button>;
 }
 
-function PlacePill({ place, places, set }) {
-  const [open, setOpen] = useState(false);
-  const options = placeOptions(places);
-  const current = options.find(option => option.id === place) || options[0];
-  if (!current) return null;
-  const Icon = PLACE_ICONS[current.id] || Folder;
-  // One place is not a choice; the pill then only says where the session starts.
-  return <Popover open={open} onOpenChange={setOpen}>
-    <Pill open={open} label={"Start in: " + current.name} disabled={options.length < 2}
-      title={options.length < 2 ? "Start in: " + current.name : undefined}
-      className={cn(options.length < 2 && "cursor-default [&_svg:last-child]:hidden")}>
-      <Icon className="size-3.5 shrink-0"/><span className="max-w-24 truncate text-foreground">{current.label}</span>
-    </Pill>
-    {options.length > 1 && <PopoverContent className="w-60">
-      <MenuLabel>Start in</MenuLabel>
-      <div role="listbox" aria-label="Start in">
-        {options.map(option => {
-          const OptionIcon = PLACE_ICONS[option.id] || Folder;
-          return <button type="button" role="option" aria-selected={option.id === current.id} key={option.id}
-            onClick={() => { set(option.id); setOpen(false); }}
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent">
-            <OptionIcon className="size-4 shrink-0 text-muted-foreground"/>
-            <span className="min-w-0 flex-1 truncate">{option.name}</span>
-            {option.id === current.id && <Check className="size-3.5 shrink-0 text-primary"/>}
-          </button>;
-        })}
-      </div>
-    </PopoverContent>}
-  </Popover>;
-}
-
 /**
  * The new-agent dialogue, shaped like Cursor's composer: the prompt first, then one pill row (mode, model, place) with
  * a round send button at its end. The harness comes from the chosen model, never from text typed into the prompt.
@@ -182,10 +152,13 @@ export function NewAgentComposer({ project, agents = [], startable = [], places:
   const [choice, setChoice] = useState(() => initialChoice({ startable, models, setting: startDefault }));
   const [codeMode, setCodeMode] = useState(codeModeDefault !== false);
   const [mode, setMode] = useState(() => modeChoice("agent", choice.harness));
-  const [place, setPlace] = useState(() => placeChoice("", harnessPlaces(offered, choice.harness, sandboxHarnesses), startPlace));
-  // A place picked on the pill outranks the configured one while the harness can still use it.
-  const placePicked = useRef(false);
   const places = harnessPlaces(offered, choice.harness, sandboxHarnesses);
+  const [env, setEnv] = useState(() => envChoice("", envOptions(places), startPlace));
+  // An env picked on the toolbar outranks the configured place while the harness can still use it.
+  const envPicked = useRef(false);
+  const [pick, setPick] = useState(EMPTY_PICK);
+  const [current, setCurrent] = useState("");
+  const place = env === "existing" ? "worktree" : env;
   const [result, setResult] = useState(null);
   const [posting, setPosting] = useState(false);
   const [draft, setDraft] = useState("");
@@ -211,9 +184,10 @@ export function NewAgentComposer({ project, agents = [], startable = [], places:
   // A harness change keeps the mode when it still supports it, else takes its first.
   useEffect(() => { setMode(current => modeChoice(current, choice.harness)); }, [choice.harness]);
   // A place can vanish when the project's snapshot changes (a sandbox stopped, a worktree no longer possible).
-  useEffect(() => { setPlace(current => placeChoice(placePicked.current ? current : "", places, startPlace)); }, [places.join(","), startPlace]);
+  useEffect(() => { setEnv(current => envChoice(envPicked.current ? current : "", envOptions(places), startPlace)); }, [places.join(","), startPlace]);
+  useEffect(() => { setPick(EMPTY_PICK); }, [env]);
 
-  const canSend = !busy && Boolean(draft.trim()) && Boolean(choice.harness);
+  const canSend = !busy && Boolean(draft.trim()) && Boolean(choice.harness) && (env !== "existing" || Boolean(pick.worktreePath));
   const failure = result && result.status !== "started" ? [result.status, result.detail].filter(Boolean).join(" · ") : "";
 
   async function submit() {
@@ -222,7 +196,9 @@ export function NewAgentComposer({ project, agents = [], startable = [], places:
     setPosting(true);
     setResult(null);
     try {
-      const payload = { harness: choice.harness, prompt, startMode: mode, place, ...(choice.model ? { model: choice.model } : {}), ...codeModeField(choice.harness, codeMode, mode, place) };
+      // A new worktree always names its base, so the toolbar's "from main" is what git uses.
+      const where = envPayload(env, env === "worktree" ? { ...pick, base: pick.base || current || "HEAD" } : pick);
+      const payload = { harness: choice.harness, prompt, startMode: mode, ...where, ...(choice.model ? { model: choice.model } : {}), ...codeModeField(choice.harness, codeMode, mode, place) };
       const next = await start(payload);
       setResult(next);
       if (next?.status === "started") setDraft("");
@@ -255,13 +231,14 @@ export function NewAgentComposer({ project, agents = [], startable = [], places:
           <div className="flex items-center gap-1 px-0.5 pt-1">
             <ModePill mode={mode} harness={choice.harness} set={setMode}/>
             <ModelPill choice={choice} startable={startable} models={models} set={item => { picked.current = true; setChoice(item); }}/>
-            <PlacePill place={place} places={places} set={(next) => { placePicked.current = true; setPlace(next); }}/>
             <CodeModePill place={place} mode={mode} harness={choice.harness} on={codeMode} set={setCodeMode}/>
             <Button type="button" size="icon" aria-label="Start session" disabled={!canSend} onClick={submit}
               className="ml-auto size-8 shrink-0 rounded-full"><ArrowUp/></Button>
           </div>
         </>}
     </div>
+    {startable.length > 0 && <SessionToolbar project={project} places={places} env={env} setEnv={next => { envPicked.current = true; setEnv(next); }}
+      pick={pick} setPick={setPick} setCurrent={setCurrent} disabled={busy}/>}
     {failure && <p role="status" data-new-session-status="failed" className="px-2 pt-1.5 text-xs text-destructive">{failure}</p>}
     {result?.status === "started" && <p role="status" data-new-session-status="started" className="px-2 pt-1.5 text-xs text-muted-foreground">
       {[result.detail, result.warning].filter(Boolean).join(" · ")}{result.session && !joined ? " · waiting for " + result.session.split("#")[1] + " to report" : ""}</p>}
