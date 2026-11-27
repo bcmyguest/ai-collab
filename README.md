@@ -48,6 +48,7 @@ Then open the UI on your phone: [Quick start](https://bcmyguest.github.io/ai-col
 | [Landing from the phone](docs/phone-ui.md#landing-from-the-phone) | `ai-collab land request` opens a PR; the Land panel merges green PRs; `ai-collab deploy` updates the host |
 | [Builders](docs/builders.md) | One agent per task in OpenShell, with `oncebitten` checks when installed on the host |
 | [Teams and patterns](docs/teams.md) | Define roles and handoffs in DOT and verify their transitions with local traces |
+| [Agents starting agents](docs/messaging.md#agents-starting-agents) | `spawn_agent` (or `ai-collab spawn`) starts a child of any harness that reports to its parent after each run |
 | [Code mode](docs/code-mode.md) | Native code mode and `run_code` for AI Collab reads, required for new sessions launched by tags |
 | [Architecture diagrams](docs/architecture-diagrams.md) | What is off-the-shelf, what is home-grown, and where the network boundaries are |
 | [Security model](https://bcmyguest.github.io/ai-collab/security/) | What is sent and what is trusted |
