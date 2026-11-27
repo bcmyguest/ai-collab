@@ -7,6 +7,8 @@ import { parseWireEnvelope } from "../lib/agui.mjs";
 import { loadConfig } from "../lib/config.mjs";
 import { readOwned, writeOwned } from "../lib/sessions/registry.ts";
 import { MANAGED_ENV } from "../lib/subagent-guard.ts";
+import { PROMPT_MAX_CHARS } from "../lib/sessions/launch.ts";
+import { spawnBriefNote, spawnSelfNote } from "../lib/spawn.ts";
 import { listSessions } from "../lib/sessions.mjs";
 import { openDurable } from "../runner/durable.mjs";
 import { createRunner } from "../runner/runner.mjs";
@@ -280,4 +282,13 @@ test("close-child refuses a session that is not the caller's spawned child", (t)
   await assert.rejects(runner.closeChild(child, "claude#0123456789abcdef"), { status: 403 });
   await assert.rejects(runner.closeChild(PARENT, PARENT), { status: 403 });
   assert.notEqual(runner.get(child).status, "ended");
+}));
+
+test("a spawn brief counts both spawn notes against the 4000-character prompt limit", (t) => withRunner(t, async ({ runner, adapter }) => {
+  const overhead = spawnBriefNote("x", PARENT).length - 1 + spawnSelfNote(`codex#${"0".repeat(16)}`).length;
+  const longest = PROMPT_MAX_CHARS - overhead;
+  await assert.rejects(runner.start(spawnInput("y".repeat(longest + 1))), { status: 400 });
+  await runner.start(spawnInput("z".repeat(longest)));
+  const first = await until(() => adapter.calls.filter((c) => c.op === "send").map((c) => c.text).find((text) => text.startsWith("zzz")), "first prompt");
+  assert.equal(first.length, PROMPT_MAX_CHARS);
 }));
