@@ -36,7 +36,7 @@ UMask=0077
 WantedBy=default.target
 ```
 
-Run `npm ci && npm run build` in the checkout before `systemctl --user restart ai-collab-ui`. Each successful build publishes a fresh directory under `web/.next-builds/`. The running service keeps using its original directory until restart. After restarting, you can remove older build directories once no server uses them. Keep the directory named in `web/.next-builds/current`. `next build` records the absolute path of `web/server/ui.mjs`; rebuild after moving the checkout.
+Run `npm ci && npm run build` in the checkout before `systemctl --user restart ai-collab-ui`. Each successful build publishes a fresh directory under `web/.next-builds/`. The running service keeps using its original directory until restart. After restarting, you can remove older build directories once no server uses them. Keep the directory named in `web/.next-builds/current`. `next build` records the absolute path of `web/server/ui.ts`; rebuild after moving the checkout.
 
 ## Live updates
 
@@ -259,7 +259,7 @@ Context alerts post one context alert to the broadcast topic each time a session
 
 ## Decisions
 
-Home's **Operator decisions** list and the decision inbox (`#inbox`, **Waiting on you**) hold every open decision across projects (`projectDecisions` in `web/server/ui.mjs`): open approval and choice cards, unanswered `ask_question` questions, and usage-limit cards from each broadcast topic, plus suspended pattern runs. Task questions (`task ask`) wait on the task board under **Needs your decision**.
+Home's **Operator decisions** list and the decision inbox (`#inbox`, **Waiting on you**) hold every open decision across projects (`projectDecisions` in `web/server/ui.ts`): open approval and choice cards, unanswered `ask_question` questions, and usage-limit cards from each broadcast topic, plus suspended pattern runs. Task questions (`task ask`) wait on the task board under **Needs your decision**.
 
 **Skip** dismisses a decision without answering it. It sits on every decision row, on open approval and question cards in chat and on Home, and beside **Decide** on a task question. `POST /api/skip` takes `{project, id}` for a card or `{project, taskId}` for a task question:
 

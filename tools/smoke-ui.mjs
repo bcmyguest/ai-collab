@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright-core";
 
 export async function phoneFixture({ homeSessions = false, inactive = false, kanban = false, start, models, peers = "claude" } = {}) {
-  const { createUi, installUi } = await import("../web/server/ui.mjs");
+  const { createUi, installUi } = await import("../web/server/ui.ts");
   const { broadcastTopic, inboxTopic, loadProjects, sessionLabel } = await import("../lib/config.ts");
   const { addTask, taskStoreFile, writeStore } = await import("../lib/tasks.ts");
   const { startFakeNtfy } = await import("../test/helpers/fake-ntfy.mjs");

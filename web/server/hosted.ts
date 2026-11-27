@@ -4,7 +4,7 @@ import type { Auth } from "./auth.ts";
 
 // oxlint-disable-next-line typescript/no-explicit-any -- project configs and UI instances are passed through to createUi
 type Json = any;
-type HostedOptions = { auth: Auth; projects: Json[]; stateDir: string; origin: string; createUi: (options: Json) => Json };
+type HostedOptions = { auth: Auth; projects: Json[]; stateDir: string; origin?: string; createUi: (options: Json) => Json };
 
 function error(status: number, message: string): Response {
   return Response.json({ error: message }, { status, headers: { "cache-control": "no-store" } });

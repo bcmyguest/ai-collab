@@ -1,10 +1,13 @@
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { PHASE_PRODUCTION_SERVER } from "next/constants.js";
 import { productionDistDir } from "../lib/ui-build-output.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const server = fileURLToPath(new URL("server/ui.mjs", import.meta.url));
+// The source tree runs server/ui.ts; the built package ships it compiled as server/ui.js.
+const source = fileURLToPath(new URL("server/ui.ts", import.meta.url));
+const server = existsSync(source) ? source : fileURLToPath(new URL("server/ui.js", import.meta.url));
 // One id per build; the page compares its own with the server's to offer a reload after a deploy.
 const build = Date.now().toString(36);
 

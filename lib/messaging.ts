@@ -314,7 +314,7 @@ function messageEvent(line: string): TransportEvent | null {
   const attachment = a && typeof a.url === "string"
     ? { name: String(a.name || ""), type: String(a.type || ""), size: Number(a.size) || 0, url: a.url }
     : undefined;
-  // The title carries who sent a UI reply (web/server/ui.mjs replyTitle).
+  // The title carries who sent a UI reply (web/server/ui.ts replyTitle).
   const title = typeof ev.title === "string" && ev.title ? { title: ev.title.slice(0, 200) } : {};
   const reset = ev.reset === true ? { reset: true as const } : {};
   return { id: ev.id, time: Number(ev.time) || 0, topic: ev.topic, message: ev.message, ...title, ...(attachment ? { attachment } : {}), ...reset };
