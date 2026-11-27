@@ -79,13 +79,13 @@ test("no target for a non-absolute socket path or a non-Claude session", async (
   assert.equal(claudeTarget({ ...session, harness: "codex" }, { env: { CLAUDE_CONFIG_DIR: fakeHome(t) } }), null);
 });
 
-test("frames are an auth line then a user line; urgent maps to next, normal to later", () => {
-  const urgent = claudeFrames({ token: "t", fromName: "alice", text: "hi", urgent: true }).trimEnd().split("\n").map((l) => JSON.parse(l));
-  assert.deepEqual(urgent[0], { type: "auth", token: "t" });
-  assert.equal(urgent[1].type, "user");
-  assert.equal(urgent[1].message.role, "user");
-  assert.equal(urgent[1].priority, "next");
-  assert.equal(JSON.parse(claudeFrames({ token: null, fromName: "a", text: "x" }).trimEnd()).priority, "later");
+test("frames are an auth line then a user line; every message lands after the current step", () => {
+  const frames = claudeFrames({ token: "t", fromName: "alice", text: "hi" }).trimEnd().split("\n").map((l) => JSON.parse(l));
+  assert.deepEqual(frames[0], { type: "auth", token: "t" });
+  assert.equal(frames[1].type, "user");
+  assert.equal(frames[1].message.role, "user");
+  assert.equal(frames[1].priority, "next");
+  assert.equal(JSON.parse(claudeFrames({ token: null, fromName: "a", text: "x" }).trimEnd()).priority, "next");
   assert.equal(claudeFrames({ token: null, fromName: "a", text: "x" }).split("\n").length, 2);
 });
 
@@ -100,7 +100,7 @@ test("deliverToClaude writes the frames, and reports unconfirmed when the transc
   const sock = await fakeSocket(t);
   const home = fakeHome(t, { socket: sock.path });
   const env = { CLAUDE_CONFIG_DIR: home, AI_COLLAB_CLAUDE_CONFIRM_MS: "300", AI_COLLAB_CLAUDE_WATCH_MS: "0" };
-  const r = await deliverToClaude(session, { text: "ping", fromName: "bob", urgent: true, ids: ["m00000001"] }, { env });
+  const r = await deliverToClaude(session, { text: "ping", fromName: "bob", ids: ["m00000001"] }, { env });
   assert.equal(r.status, "unconfirmed");
   await new Promise((res) => setTimeout(res, 100));
   assert.equal(sock.frames.length, 2);
