@@ -3,7 +3,7 @@
  * itself and the lessons that outlive it land in openmem (a fact about the setup) and MISSION.md (a rule the
  * next run follows). Pure text, appended to the prompt like the mission file; a plain script is left alone.
  */
-import { RULES_MAX } from "./mission.mjs";
+import { RULES_MAX } from "./mission.ts";
 import { harnessOfCommand } from "./schedule-session.mjs";
 
 // The review is the operator's summary of a run, not a report: three lines at most.
