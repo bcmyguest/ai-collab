@@ -7,7 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { loadProjects } from "../lib/config.mjs";
 import { checkBranchName, checkWorktreePath, filterRefs, gitRunner, listBranches, listWorktrees, parseRefs, refInputError, resolveBase, worktreeTarget } from "../lib/sessions/git-refs.ts";
 import { createUi } from "../web/server/ui.mjs";
-import { EMPTY_PICK, createOption, envChoice, envOptions, envPayload, looksLikeBranch, prNumber, shortSha, triggerLabel, worktreeMarks } from "../web/lib/branch-picker.ts";
+import { EMPTY_PICK, createOption, envChoice, envOptions, envPayload, looksLikeBranch, markSegments, prNumber, shortSha, triggerLabel, worktreeMarks } from "../web/lib/branch-picker.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { tempDir } from "./helpers/tmp.mjs";
 
@@ -199,4 +199,12 @@ test("triggerLabel says where the session starts; marks and short shas describe 
   assert.deepEqual(worktreeMarks({ path: "/w", branch: null, head: "", locked: true, dirty: true }), ["dirty", "locked", "detached"]);
   assert.equal(shortSha("0123456789abcdef"), "0123456");
   assert.equal(shortSha("xyz"), "");
+});
+
+test("markSegments marks every case-insensitive match and keeps the whole label", () => {
+  assert.deepEqual(markSegments("feat/Login-login", "login"), [
+    { at: 0, text: "feat/", match: false }, { at: 5, text: "Login", match: true }, { at: 10, text: "-", match: false }, { at: 11, text: "login", match: true },
+  ]);
+  assert.deepEqual(markSegments("main", " "), [{ at: 0, text: "main", match: false }]);
+  assert.equal(markSegments("a/b/c", "x").map(segment => segment.text).join(""), "a/b/c");
 });

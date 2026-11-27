@@ -94,3 +94,22 @@ export function worktreeMarks(row: Worktree): string[] {
 export function shortSha(sha: string): string {
   return SHA.test(sha) ? sha.slice(0, 7) : "";
 }
+
+/** A piece of a label: where it starts, its text, and whether it matched. */
+export type Segment = { at: number; text: string; match: boolean };
+
+/** A label cut into pieces, each marked when it matches the query case-insensitively. */
+export function markSegments(label: string, query: string): Segment[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [{ at: 0, text: label, match: false }];
+  const segments: Segment[] = [];
+  const hay = label.toLowerCase();
+  let from = 0;
+  for (let at = hay.indexOf(needle); at !== -1; at = hay.indexOf(needle, from)) {
+    if (at > from) segments.push({ at: from, text: label.slice(from, at), match: false });
+    segments.push({ at, text: label.slice(at, at + needle.length), match: true });
+    from = at + needle.length;
+  }
+  if (from < label.length) segments.push({ at: from, text: label.slice(from), match: false });
+  return segments;
+}
