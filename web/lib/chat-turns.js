@@ -49,7 +49,8 @@ function takeFinal(turn, body, own) {
   const end = Math.max(turn.stop?.time || 0, final.time || 0) + SLACK_S;
   const text = String(final.output || "").trim();
   const same = own.some(item => item.time >= start && item.time <= end && String(item.body).trim() === text);
-  return !same && text ? { id: "final:" + final.id, time: final.time, kind: "Message", sender: final.agent, from: final.agent, body: final.output } : null;
+  // replyId is the text row's bus id, the id a reply to this message links.
+  return !same && text ? { id: "final:" + final.id, replyId: final.id, time: final.time, kind: "Message", sender: final.agent, from: final.agent, body: final.output } : null;
 }
 
 /** Rows for the session thread plus the final messages to merge into chat; a done turn becomes a "turn" row and its final text a message, a running turn stays flat. */
