@@ -1,8 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { managedShellStartRefusal, SHELL_START_DENIED } from "../lib/agent-guard.mjs";
 import {
-  MANAGED_ENV, SUBAGENT_DENIED, managedEnv, nativeSubagentCall, noSubagentArgs, noSubagentEnv, shellHarnessStart, subagentDenial,
+  MANAGED_ENV, MANAGED_TICKET_ENV, SUBAGENT_DENIED, managedEnv, nativeSubagentCall, noSubagentArgs, noSubagentEnv, shellHarnessStart, subagentDenial,
 } from "../lib/subagent-guard.ts";
 
 test("noSubagentArgs: Claude settings deny, Codex -c pairs, nothing for opencode and cursor", () => {
@@ -12,12 +15,17 @@ test("noSubagentArgs: Claude settings deny, Codex -c pairs, nothing for opencode
   assert.deepEqual(noSubagentArgs("cursor"), []);
 });
 
-test("noSubagentEnv: marks the start managed and merges the OpenCode deny into existing config", () => {
-  assert.deepEqual(noSubagentEnv("claude", {}), { [MANAGED_ENV]: "1" });
-  assert.deepEqual(noSubagentEnv("opencode", {}), { [MANAGED_ENV]: "1", OPENCODE_CONFIG_CONTENT: '{"permission":{"subagent":"deny"}}' });
-  const merged = JSON.parse(noSubagentEnv("opencode", { OPENCODE_CONFIG_CONTENT: '{"model":"x","permission":{"bash":"ask"}}' }).OPENCODE_CONFIG_CONTENT);
+test("noSubagentEnv: marks the start managed and merges the OpenCode deny into existing config", (t) => {
+  // The start ticket goes under the state dir; managed-start-ticket.test.mjs covers it.
+  const dir = mkdtempSync(join(tmpdir(), "ai-collab-guard-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const base = { AI_COLLAB_STATE_DIR: dir };
+  const strip = ({ [MANAGED_TICKET_ENV]: _ticket, ...rest }) => rest;
+  assert.deepEqual(strip(noSubagentEnv("claude", base)), { [MANAGED_ENV]: "1" });
+  assert.deepEqual(strip(noSubagentEnv("opencode", base)), { [MANAGED_ENV]: "1", OPENCODE_CONFIG_CONTENT: '{"permission":{"subagent":"deny"}}' });
+  const merged = JSON.parse(noSubagentEnv("opencode", { ...base, OPENCODE_CONFIG_CONTENT: '{"model":"x","permission":{"bash":"ask"}}' }).OPENCODE_CONFIG_CONTENT);
   assert.deepEqual(merged, { model: "x", permission: { bash: "ask", subagent: "deny" } });
-  assert.throws(() => noSubagentEnv("opencode", { OPENCODE_CONFIG_CONTENT: "{bad" }), /not valid JSON/);
+  assert.throws(() => noSubagentEnv("opencode", { ...base, OPENCODE_CONFIG_CONTENT: "{bad" }), /not valid JSON/);
   assert.equal(managedEnv({ [MANAGED_ENV]: "1" }), true);
   assert.equal(managedEnv({}), false);
 });
