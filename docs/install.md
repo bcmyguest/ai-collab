@@ -2,7 +2,7 @@
 
 [Quick start](quick-start.md) installs everything with one command. This page covers each harness by hand.
 
-Requirements: Node 22.18+. Run `npm ci && npm run build && npm test` in the checkout. The UI uses shadcn/ui, Tailwind CSS, and the prompt-kit chat components with React, built by Next.js into a fresh directory under `web/.next-builds/`. Tests run the real bus server on an in-memory store and need no network or API access.
+Requirements: Node 22.18+. Run `npm ci && npm run build && npm test` in the checkout. The UI uses shadcn/ui, Tailwind CSS, and the prompt-kit chat components with React, built by Next.js into a fresh directory under `web/.next-builds/`. Each publish keeps the new build plus two older ones: the build `current` named before the publish, and the newest of the rest. Tests run the real bus server on an in-memory store and need no network or API access.
 
 Each harness also needs a server to talk to: write `defaults.json` or `projects.json` first (see [Configuration](configuration.md)).
 

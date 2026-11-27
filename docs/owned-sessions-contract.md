@@ -77,6 +77,8 @@ Replay rule: a step whose row is `done` returns its recorded output without runn
 
 One workflow per owned session, id `session-<uuid>`, name `session`, input `{project, harness, place, permissionMode, prompt, model?}`. Code: `sessionWorkflow` in `runner/runner.mjs`.
 
+Each session and wake workflow outside OpenShell gets `TMPDIR`, `TMP`, `TEMP` and `AI_COLLAB_SESSION_TMPDIR` set to `$AI_COLLAB_STATE_DIR/tmp/<workflow id>`. The runner deletes the directory when the session ends, and at boot it deletes every directory whose workflow is not pending. Codex shares one app-server, so the adapter applies the directory per thread through `shell_environment_policy.set` and adds it to the workspace-write `writableRoots`. OpenCode runs in an external service and does not see the directory.
+
 | Step | Does | On replay | When cut |
 |---|---|---|---|
 | `place` | Resolves the project root; for `worktree`, runs `git worktree add -b ai-collab/<harness>-<stamp>` under `.claude/worktrees/` | returns the cwd; never adds a second worktree | re-executes |

@@ -3,7 +3,7 @@ import { isProjectPaused, PROJECT_PAUSED } from "../lib/project-pause.ts";
 import { adaptSqlite } from "../lib/workflows.ts";
 import { randomBytes, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { EventType } from "@ag-ui/core";
@@ -12,7 +12,7 @@ import { getPattern } from "../lib/patterns.mjs";
 import { activatePatternTargets, applyPatternAdvance, cutPatternEnter, cutPatternEntry, cutPatternLeave, cutPatternRun, launchPatternRun, NOTE_MAX, preparePatternRun, RUN_ID, runStatus, sessionsOfRun } from "../lib/pattern-runs.mjs";
 import { patternWorkflowId, runIdOfPatternWorkflow, runPatternWorkflow, seedPatternRun } from "../lib/pattern-workflow.mjs";
 import { statePath } from "../lib/state.mjs";
-import { SESSION_LABEL, broadcastTopic, inboxTopic, isValidName, receiptsTopic, sessionLabel, startPlaceSetting } from "../lib/config.mjs";
+import { SESSION_LABEL, stateDir, broadcastTopic, inboxTopic, isValidName, receiptsTopic, sessionLabel, startPlaceSetting } from "../lib/config.mjs";
 import { RESERVE_MS, ATTACHMENT_BUDGET_MS, claimInbox, markDelivered, mentionsAgent, parseEnvelope, releaseOwned, reserveOwned, reservedMessage } from "../lib/messaging.ts";
 import { parsePhoneReply, parseQuestionText } from "../lib/questions.mjs";
 import { replyDecision, APPROVAL_ID } from "../lib/approvals.mjs";
@@ -167,7 +167,17 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
 
   const sessionCfg = (project, harness, label) => ({ ...configs.get(project), peer: harness, session: label });
   const adapterOf = (harness) => adapters.get(harness) || fail(400, `No ${harness} adapter is loaded`);
-  const ownedEnv = () => childEnv(env);
+  // A session's temp dir, keyed by the workflow that runs it: <stateDir>/tmp/<workflow id>.
+  const tmpRoot = join(stateDir(env), "tmp");
+  const tmpDirOf = (key) => join(tmpRoot, key.replace(/[^\w.-]/g, "_"));
+  const removeTmp = (key) => rmSync(tmpDirOf(key), { recursive: true, force: true });
+  // The child env; a host session gets TMPDIR, TMP and TEMP in its own temp dir. OpenShell sandboxes keep their /tmp.
+  const ownedEnv = (key, place) => {
+    if (!key || place === "openshell") return childEnv(env);
+    const dir = tmpDirOf(key);
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    return { ...childEnv(env), TMPDIR: dir, TMP: dir, TEMP: dir, AI_COLLAB_SESSION_TMPDIR: dir };
+  };
   const find = (address) => sessions.get(address) || fail(404, "Unknown owned session");
 
   function save(s) {
@@ -268,7 +278,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     let wakeAll = () => {};
     const s = {
       record, cfg: sessionCfg(record.project, record.harness, record.label), live: holder.live || null, pending: new Map(), timers: new Map(),
-      publishing: Promise.resolve(), finished: new Map(), signal: wf.signal,
+      publishing: Promise.resolve(), finished: new Map(), signal: wf.signal, tmpKey: wf.id,
       wake: () => wakeAll(),
       changed: () => new Promise((resolve) => { wakeAll = resolve; }),
     };
@@ -277,7 +287,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     sessions.set(record.address, s);
     // A session restored after a restart has no handle: its adapter rebuilds the sandbox claim the restart lost.
     if (!holder.live && record.status !== "ended") {
-      try { adapters.get(record.harness)?.restore?.(record, contextFor(holder, record.harness, wf.signal), ownedEnv()); } catch (error) { log(`${record.harness}: could not restore ${record.address}: ${error.message}`); }
+      try { adapters.get(record.harness)?.restore?.(record, contextFor(holder, record.harness, wf.signal), ownedEnv(wf.id, record.place)); } catch (error) { log(`${record.harness}: could not restore ${record.address}: ${error.message}`); }
     }
     return s;
   }
@@ -293,7 +303,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       // The owned record's /permission value first, else the registry entry's (setNextPermission), for this resume only.
       const cfg = configs.get(s.record.project);
       const claudePermission = s.record.claudePermission ?? (cfg ? nextPermission(cfg, { id: `${s.record.harness}#${s.record.label}`, label: s.record.label }) : undefined);
-      s.live = await adapter.resume({ ...s.record, ...(claudePermission ? { claudePermission } : {}) }, contextFor({ s }, s.record.harness, s.signal), ownedEnv(), staged);
+      s.live = await adapter.resume({ ...s.record, ...(claudePermission ? { claudePermission } : {}) }, contextFor({ s }, s.record.harness, s.signal), ownedEnv(s.tmpKey, s.record.place), staged);
       save(s);
       return s.live;
     })().finally(() => { s.resuming = null; });
@@ -329,6 +339,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     if (s.live) await s.live.close().catch(() => {});
     else await Promise.resolve(adapters.get(s.record.harness)?.release?.(s.record)).catch((error) => log(`${s.record.harness}: could not release ${s.record.address}: ${error.message}`));
     s.live = null;
+    removeTmp(s.tmpKey);
     s.record.status = "ended";
     s.record.run = null;
     save(s);
@@ -404,10 +415,11 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
           ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode), ...(taskId ? { taskId } : {}), status: "starting", run: null, approvals: [], createdAt: now(),
         });
       };
-      const options = { project, cwd, place, permissionMode, permission: permissionSettings(harness, permissionMode, place).settings, env: ownedEnv(), beforeStart, ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode) };
+      const options = { project, cwd, place, permissionMode, permission: permissionSettings(harness, permissionMode, place).settings, env: ownedEnv(wf.id, place), beforeStart, ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode) };
       try {
         holder.live = await adapter.open(staged ? { ...options, cwd: staged.workdir, sandboxArgv: staged.argv } : options, contextFor(holder, harness, wf.signal));
       } catch (error) {
+        removeTmp(wf.id);
         if (continuation && openingLabel) {
           const cfg = sessionCfg(project, harness, openingLabel);
           const record = readOwned(cfg, openingLabel);
@@ -446,6 +458,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     });
     if (claim?.failed) {
       await holder.live?.close().catch(() => {});
+      removeTmp(wf.id);
       if (builder) await wf.step("builder.fail", () => finishOwnedBuilder(builder, staged, 1, env, log, claim.failed));
       return { ended: claim.failed };
     }
@@ -1237,11 +1250,20 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     return { status: s.record.status === "ended" ? "ended" : "closing" };
   }
 
+  // Removes the temp dirs of sessions that neither recover nor run: a runner that stopped mid-session leaves them.
+  function sweepTmp(pendingIds) {
+    const keep = new Set([...pendingIds, ...[...sessions.values()].map((s) => s.tmpKey)].map((key) => tmpDirOf(key)));
+    let names = [];
+    try { names = readdirSync(tmpRoot); } catch { return; }
+    for (const name of names) if (!keep.has(join(tmpRoot, name))) rmSync(join(tmpRoot, name), { recursive: true, force: true });
+  }
+
   /** Re-runs PENDING session workflows from the durable log (restart rules), then watches ntfy. */
   async function boot() {
     // Scheduled ticks recover too, but only session workflows hold the boot until they claim.
     const isSession = async (id) => (await durable.status(id))?.name === "session";
     const pending = await durable.pending();
+    sweepTmp(new Set(pending));
     const sessionIds = [];
     for (const id of pending) if (await isSession(id)) sessionIds.push(id);
     for (const r of await durable.listNamed(DELIVERY, 100)) deliveryIds.add(r.id); // the pump's fresh filter survives restarts for the recent window

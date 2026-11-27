@@ -33,22 +33,47 @@ const threadPolicy = (settings) => ({
 /** Inside OpenShell the sandbox is the boundary: Codex runs with no approvals and full access to the sandbox. */
 export const openshellPermission = (settings) => ({ ...settings, approvalPolicy: "never", sandboxPolicy: { type: "dangerFullAccess" } });
 
-/** Turn-level settings for a mode: the same policy with the sandbox as an object, as `turn/start` takes it. */
-const turnPolicy = (settings) => ({
+/** Turn-level settings for a mode: the same policy with the sandbox as an object, as `turn/start` takes it; a workspace-write sandbox may also write the session temp dir. */
+const turnPolicy = (settings, tmp) => ({
   approvalPolicy: settings.approvalPolicy,
   approvalsReviewer: settings.approvalsReviewer,
-  sandboxPolicy: settings.sandboxPolicy,
+  sandboxPolicy: tmp && settings.sandboxPolicy.type === "workspaceWrite"
+    ? { ...settings.sandboxPolicy, writableRoots: [...(settings.sandboxPolicy.writableRoots ?? []), tmp] }
+    : settings.sandboxPolicy,
 });
 
-/** The thread `config` override for a session's code-mode setting; none when the setting is unknown (older records). */
-const threadConfig = (codeMode) => (typeof codeMode === "boolean" ? { config: codexThreadConfig(codeMode) } : {});
+const TMP_VARS = ["TMPDIR", "TMP", "TEMP"];
+
+/** The per-session temp dir the runner made (AI_COLLAB_SESSION_TMPDIR); none for OpenShell, whose sandbox has its own /tmp. */
+const sessionTmp = (env) => env?.AI_COLLAB_SESSION_TMPDIR || "";
+
+/** The thread `config` overrides: code mode when known (older records lack it), and the session temp dir for the commands Codex runs. */
+const threadConfig = (codeMode, tmp = "") => {
+  const config = {
+    ...(typeof codeMode === "boolean" ? codexThreadConfig(codeMode) : {}),
+    ...(tmp ? Object.fromEntries(TMP_VARS.map((name) => [`shell_environment_policy.set.${name}`, tmp])) : {}),
+  };
+  return Object.keys(config).length ? { config } : {};
+};
+
+/** The shared child serves every thread, so it keeps the runner's own temp vars, not the first session's. */
+function serverEnv(env) {
+  if (!sessionTmp(env)) return env;
+  const out = { ...env };
+  delete out.AI_COLLAB_SESSION_TMPDIR;
+  for (const name of TMP_VARS) {
+    if (process.env[name] === undefined) delete out[name];
+    else out[name] = process.env[name];
+  }
+  return out;
+}
 
 const userInput = (input) => [{ type: "text", text: input.text, text_elements: [] }];
 const text = (value) => (typeof value === "string" ? value : "");
 
 function startServer(pool, env) {
   const { file, args } = pool.command;
-  const child = spawn(file, args, { env: { ...env, AI_COLLAB_OWNED: "codex" }, stdio: ["pipe", "pipe", "ignore"], shell: false });
+  const child = spawn(file, args, { env: { ...serverEnv(env), AI_COLLAB_OWNED: "codex" }, stdio: ["pipe", "pipe", "ignore"], shell: false });
   child.stdin.on("error", () => {});
   const server = { child, pool, nextId: 0, pending: new Map(), sessions: new Map(), exited: false };
   server.write = (message) => child.stdin.write(`${JSON.stringify(message)}\n`);
@@ -324,7 +349,7 @@ function makeHandle(session) {
       // A timed-out turn/start may still have started: the error says so, and the caller never resends.
       // An error response means the server refused the turn, so a retry cannot run it twice (see route()).
       const { turn } = await session.server.request("turn/start", {
-        threadId: session.nativeId, input: userInput(input), cwd: session.cwd, ...turnPolicy(session.settings),
+        threadId: session.nativeId, input: userInput(input), cwd: session.cwd, ...turnPolicy(session.settings, sessionTmp(session.env)),
         ...(session.model ? { model: session.model } : {}),
       }).catch((error) => {
         if (error.timedOut) error.mayHaveStarted = true;
@@ -415,7 +440,7 @@ async function attach(session) {
   try {
     const { thread } = await server.request("thread/resume", {
       threadId: session.nativeId, excludeTurns: true, cwd: session.cwd, ...(session.model ? { model: session.model } : {}), ...threadPolicy(session.settings),
-      ...threadConfig(session.codeMode),
+      ...threadConfig(session.codeMode, sessionTmp(session.env)),
     });
     session.rolloutPath = thread?.path || null;
   } catch (error) {
@@ -435,7 +460,7 @@ async function openThread(pool, options, ctx) {
   const session = newSession({ pool, ctx, env: options.env, cwd: options.cwd, place: options.place, mode: options.permissionMode, model: options.model, settings: options.permission, codeMode: options.codeMode });
   const { thread } = await server.request("thread/start", {
     cwd: options.cwd, ephemeral: false, ...threadPolicy(options.permission), ...(options.model ? { model: options.model } : {}),
-    ...threadConfig(options.codeMode), experimentalRawEvents: true,
+    ...threadConfig(options.codeMode, sessionTmp(options.env)), experimentalRawEvents: true,
   });
   session.nativeId = thread.id;
   session.address = `codex#${sessionLabel(thread.id)}`;

@@ -360,3 +360,22 @@ test("shutdown stops the shared child, and the next open starts a new one", asyn
     await adapter.shutdown();
   }
 });
+
+test("a session temp dir reaches the thread's commands and sandbox, not the shared app-server", async () => {
+  const { adapter, events, ctx, logFile, env } = setup();
+  const tmp = mkdtempSync(join(tmpdir(), "codex-session-tmp-"));
+  try {
+    const handle = await adapter.open(modeOptions({ ...env, TMPDIR: tmp, TMP: tmp, TEMP: tmp, AI_COLLAB_SESSION_TMPDIR: tmp }, "auto"), ctx);
+    const [start] = requests(logFile, "thread/start");
+    assert.deepEqual(start.params.config, {
+      "shell_environment_policy.set.TMPDIR": tmp, "shell_environment_policy.set.TMP": tmp, "shell_environment_policy.set.TEMP": tmp,
+    });
+    assert.equal(starts(logFile)[0].tmpdir, process.env.TMPDIR ?? null);
+    const { runId } = await handle.send({ text: "hello" });
+    await until(() => finished(events, runId));
+    const [turn] = requests(logFile, "turn/start");
+    assert.deepEqual(turn.params.sandboxPolicy, { type: "workspaceWrite", writableRoots: [tmp] });
+  } finally {
+    await adapter.shutdown();
+  }
+});

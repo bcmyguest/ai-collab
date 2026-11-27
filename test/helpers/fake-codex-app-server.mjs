@@ -21,7 +21,7 @@ if (process.argv.includes("--version")) {
   process.exit(0);
 }
 
-log({ kind: "start", argv: process.argv.slice(2), owned: process.env.AI_COLLAB_OWNED ?? null });
+log({ kind: "start", argv: process.argv.slice(2), owned: process.env.AI_COLLAB_OWNED ?? null, tmpdir: process.env.TMPDIR ?? null });
 
 let threads = 0;
 let turns = 0;

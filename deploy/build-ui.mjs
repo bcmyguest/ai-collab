@@ -1,7 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+// Builds kept besides the published one; the UI server pins the build `current` named when it started.
+const KEEP_OLDER = 2;
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const web = path.join(root, "web");
@@ -24,6 +27,10 @@ mkdirSync(builds, { recursive: true });
 const output = mkdtempSync(path.join(builds, "build-"));
 const distDir = path.relative(web, output);
 let published = false;
+const readPointer = () => {
+  try { return readFileSync(path.join(builds, "current"), "utf8").trim(); } catch { return ""; }
+};
+const previous = readPointer();
 try {
   const build = spawnSync(process.execPath, args, {
     stdio: "inherit",
@@ -40,6 +47,16 @@ try {
   }
 } finally {
   if (!published) rmSync(output, { recursive: true, force: true });
+}
+
+// Keeps the published build and KEEP_OLDER others: the one `current` named before (a running server's), then the newest.
+if (published) {
+  const current = readPointer();
+  const older = readdirSync(builds, { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && entry.name.startsWith("build-") && entry.name !== current)
+    .map(entry => ({ name: entry.name, mtime: entry.name === previous ? Infinity : statSync(path.join(builds, entry.name)).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime);
+  for (const { name } of older.slice(KEEP_OLDER)) rmSync(path.join(builds, name), { recursive: true, force: true });
 }
 
 if (published && deployAndVerify) {
