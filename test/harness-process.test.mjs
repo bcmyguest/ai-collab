@@ -30,10 +30,11 @@ test("a harness run as `node …/cli.js` is found by its script", { skip: !linux
 });
 
 test("a harness started under another argv[0] (exec -a) is found by its executable", { skip: !linux }, async (t) => {
+  // A copy of node, not /bin/sleep: a multicall coreutils binary dispatches on argv[0] and exits under "worker".
   const codex = join(tmp(t), "codex");
-  copyFileSync("/bin/sleep", codex);
+  copyFileSync(process.execPath, codex);
   chmodSync(codex, 0o755);
-  const child = await run(t, codex, ["30"], { argv0: "worker" });
+  const child = await run(t, codex, ["-e", "setTimeout(() => {}, 30_000)"], { argv0: "worker" });
   assert.equal(harnessProcess("codex", child.pid)?.pid, child.pid);
 });
 
