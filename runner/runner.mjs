@@ -1294,6 +1294,13 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   }
 
   /** Interrupts a running run, then ends the workflow; resolves once the session ended or CLOSE_WAIT_MS passed. */
+  // close_agent: a parent closes one of its own spawned children, freeing a slot under SPAWN_MAX_CHILDREN.
+  async function closeChild(address, parent) {
+    const s = find(address);
+    if (!s.record.spawn || typeof parent !== "string" || s.record.parent !== parent) fail(403, `${address} is not a spawned child of ${parent}`);
+    return close(address);
+  }
+
   async function close(address) {
     const s = find(address);
     await reconcileFailedBuilder(s.record);
@@ -1486,7 +1493,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   };
 
   return {
-    start, continueBuilder, startPattern, advancePattern, send, interrupt, compact, respond, setModel, setMode, close, boot, stop, harnesses, deliveries, pump: pumpDeliveries,
+    start, continueBuilder, startPattern, advancePattern, send, interrupt, compact, respond, setModel, setMode, close, closeChild, boot, stop, harnesses, deliveries, pump: pumpDeliveries,
     list: () => [...sessions.values()].map(view),
     // Each schedule with the command and folder its schedules.json entry names, and the session it resumes.
     schedules: async () => ({ schedules: (await durable.schedules()).map((s) => ({ ...s, ...entryOf(s.name) })), configError: scheduleErrors }),

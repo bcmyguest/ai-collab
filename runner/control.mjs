@@ -88,6 +88,7 @@ export async function route(runner, method, url, input) {
   if (action === "context" && method === "GET") return [200, { context: await runner.context(target) }];
   if (method !== "POST") fail(405, "Method not allowed");
   if (action === "send") return [202, await runner.send(target, { text: input.text, steer: input.steer === true })];
+  if (action === "close-child") return [200, await runner.closeChild(target, input.parent)];
   if (action === "interrupt") return [202, await runner.interrupt(target)];
   // Real in-place compaction through the harness's own trigger (Claude /compact, Codex thread/compact/start, OpenCode
   // session.compact); 409 when the session is mid-turn, "unsupported" when the harness has no outside trigger.
