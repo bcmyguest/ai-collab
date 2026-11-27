@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { HOST_CHECKOUT } from "../lib/merge-cli.mjs";
+import { HOST_CHECKOUT } from "../lib/land.mjs";
 import { LandRefused, autoDeployEntry, checkState, deployHost, listOpenPrs, mergePr, requestLand, restartServices, startDeploy } from "../lib/land.mjs";
 import { deploy, land } from "../lib/land-cli.ts";
 import { autoDeployEnabled } from "../lib/config.mjs";
