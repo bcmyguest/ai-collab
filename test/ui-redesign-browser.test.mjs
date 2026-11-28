@@ -59,7 +59,7 @@ test("on a phone the header opens tasks and the session panel as a bottom sheet"
   await sheet.waitFor({ state: "hidden" });
   const lead = fixture.threads[0].sessions[0];
   await page.goto(fixture.url + "/#project=" + fixture.project + "&level=session&harness=claude&session=" + encodeURIComponent(lead));
-  await page.getByRole("button", { name: "Switch thread" }).waitFor();
+  await page.getByRole("button", { name: "Switch agent" }).waitFor();
   await page.getByRole("button", { name: "Open panel", exact: true }).click();
   await sheet.getByRole("tab", { name: "Activity" }).waitFor();
   await sheet.getByRole("tab", { name: "Tasks" }).click();
