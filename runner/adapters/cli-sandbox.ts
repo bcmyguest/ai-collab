@@ -3,14 +3,15 @@
 // worktree is uploaded as a git clone and landed on the host worktree on close, as Cursor's and OpenCode's are.
 import { spawn as nodeSpawn } from "node:child_process";
 import type { ChildProcess, SpawnOptions as NodeSpawnOptions } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { builderPolicy, CLAUDE_DIR, CODEX_DIR } from "../../lib/builder/policy.ts";
+import { sharedLibs, toolSources } from "../../lib/builder/stage.ts";
 import {
-  destroyOwnedSandboxes, ensureSandbox, execArgv, executables, harnessLogins, harnessSandboxName, HOME_IN, runTool, sandboxLabels, uploadFile, uploadSecret, uploadTree, WORK,
+  DEPS, destroyOwnedSandboxes, ensureSandbox, execArgv, executables, harnessLogins, harnessSandboxName, HOME_IN, runTool, sandboxLabels, TOOLS, uploadFile, uploadSecret, uploadTree, WORK,
 } from "../../lib/sandbox.ts";
 import { findExecutable } from "../../lib/sessions/scope.ts";
 import { MANAGED_ENV } from "../../lib/subagent-guard.ts";
@@ -32,6 +33,11 @@ const CLAUDE_QUIET = { CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1", DISABLE_TE
 // SDK and ai-collab variables a sandboxed Claude keeps from the env the SDK hands its spawner; secrets never.
 const CLAUDE_PASS = /^(CLAUDE_CODE_|CLAUDE_AGENT_SDK_|AI_COLLAB_(OWNED|PARENT|MANAGED)$)/;
 const SECRET = /TOKEN|SECRET|PASSWORD|KEY|CREDENTIAL/;
+// The sandbox image has no git or node, so a session gets the host's under /sandbox/tools, as builders do.
+export const TOOL_ENV = {
+  PATH: `${TOOLS}/bin:${TOOLS}/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`, GIT_EXEC_PATH: `${TOOLS}/git-core`, LD_LIBRARY_PATH: `${TOOLS}/lib`,
+};
+const TOOLCHAIN_MARK = `${TOOLS}/.toolchain`;
 const EXIT_WAIT_MS = 5_000;
 const STDERR_LINE_MAX = 500;
 
@@ -77,7 +83,7 @@ export function claudeSandboxEnv(sdkEnv: Record<string, string | undefined>) {
 export function claudeSpawner({ openshell, env, sandbox, workdir, log, spawn = nodeSpawn }: { openshell: string; env: NodeJS.ProcessEnv; sandbox: string; workdir: string; log: Log; spawn?: Spawn }) {
   const children = new Set<ChildProcess>();
   const spawner = (o: { command: string; args: string[]; cwd?: string; env: Record<string, string | undefined>; signal?: AbortSignal }) => {
-    const argv = execArgv({ openshell, sandbox, workdir: o.cwd || workdir, env: claudeSandboxEnv(o.env), command: [CLAUDE_IN, ...o.args] });
+    const argv = execArgv({ openshell, sandbox, workdir: o.cwd || workdir, env: { ...claudeSandboxEnv(o.env), ...TOOL_ENV }, command: [CLAUDE_IN, ...o.args] });
     const child = spawn(argv[0], argv.slice(1), { env, stdio: ["pipe", "pipe", "pipe"], shell: false });
     const destroy = () => { for (const stream of [child.stdin, child.stdout, child.stderr]) if (stream && !stream.destroyed) stream.destroy(); };
     const kill = child.kill.bind(child);
@@ -99,6 +105,25 @@ export function claudeSpawner({ openshell, env, sandbox, workdir, log, spawn = n
     })));
   };
   return { spawner, stopped };
+}
+
+/** Stages the host's git, git-core, node and npm under dir, plus their non-glibc libraries; `key` changes when any of them does. */
+export async function stageToolchain(dir: string, env: NodeJS.ProcessEnv) {
+  const src = toolSources({ root: "", harness: "" }, env);
+  const tools = join(dir, "tools");
+  mkdirSync(join(tools, "bin"), { recursive: true });
+  if (src.git) { copyFileSync(src.git, join(tools, "bin", "git")); chmodSync(join(tools, "bin", "git"), 0o755); }
+  const libs = [...new Set((await Promise.all([src.git, src.node].filter(Boolean).map((bin) => sharedLibs(bin, env)))).flat())];
+  if (libs.length) mkdirSync(join(tools, "lib"), { recursive: true });
+  // Named by the soname ldd printed, not the real file's name, or the loader misses it.
+  for (const lib of libs) copyFileSync(realpathSync(lib), join(tools, "lib", basename(lib)));
+  if (src.npm) {
+    symlinkSync(`${TOOLS}/node/lib/node_modules/npm/bin/npm-cli.js`, join(tools, "bin", "npm"));
+    symlinkSync(`${TOOLS}/node/lib/node_modules/npm/bin/npx-cli.js`, join(tools, "bin", "npx"));
+  }
+  const key = createHash("sha256").update([src.git, src.gitCore, src.node, src.npm].join("\n")).digest("hex").slice(0, 16);
+  writeFileSync(join(tools, basename(TOOLCHAIN_MARK)), `${key}\n`);
+  return { tools, gitCore: src.gitCore, node: src.node, npm: src.npm, key };
 }
 
 // cursor.mjs is untyped JS; its inferred log parameter takes no argument.
@@ -143,11 +168,49 @@ export function createCliSandbox({ env = process.env, harness, label, trailer, i
         await uploadTree({ openshell, env, sandbox: box.name, local: inst.local, remote: inst.dir, gitIgnore: false });
       }
     }
+    await uploadToolchain(box, log);
     for (const login of harnessLogins(env, home).filter((l) => l.harness === harness)) {
       await uploadSecret({ openshell, env, sandbox: box.name, file: login.file, remoteDir: login.remoteDir, tmpPrefix: `ai-collab-${harness}-secret-` })
         .catch((error: Error) => log(`${label}: could not copy the login into ${box.name}: ${error.message.split("\n")[0]}`));
     }
     box.bin = inst.bin;
+  }
+
+  // Uploads git, git-core, node and npm unless the sandbox already has this host's set (TOOLCHAIN_MARK holds its key).
+  async function uploadToolchain(box: Box, log: Log) {
+    const dir = mkdtempSync(join(tmpdir(), `ai-collab-${harness}-tools-`));
+    try {
+      const staged = await stageToolchain(dir, env);
+      if ((await exec(box.name, ["cat", TOOLCHAIN_MARK])).stdout.trim() === staged.key) return;
+      if (!staged.node) log(`${label}: no node found on the host; the sandbox has none`);
+      if (!existsSync(join(staged.tools, "bin", "git"))) log(`${label}: no git found on the host; the sandbox has none`);
+      const mark = join(staged.tools, basename(TOOLCHAIN_MARK));
+      const key = readFileSync(mark, "utf8");
+      rmSync(mark);
+      await uploadTree({ openshell, env, sandbox: box.name, local: staged.tools, remote: dirname(TOOLS), gitIgnore: false });
+      if (staged.gitCore) await uploadTree({ openshell, env, sandbox: box.name, local: staged.gitCore, remote: TOOLS, gitIgnore: false });
+      if (staged.node) await uploadFile({ openshell, env, sandbox: box.name, local: staged.node, remoteDir: `${TOOLS}/node/bin` });
+      if (staged.npm) await uploadTree({ openshell, env, sandbox: box.name, local: staged.npm, remote: `${TOOLS}/node/lib/node_modules`, gitIgnore: false });
+      // The mark goes last, so an upload cut short is redone on the next start.
+      writeFileSync(mark, key);
+      await uploadFile({ openshell, env, sandbox: box.name, local: mark, remoteDir: TOOLS });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  // Links the worktree's node_modules into the sandbox clone, uploading it once per package-lock.json content.
+  async function linkDeps(box: Box, cwd: string, workdir: string) {
+    const local = real(join(cwd, "node_modules"));
+    const lock = join(cwd, "package-lock.json");
+    if (!local || !existsSync(lock)) return;
+    const remote = `${DEPS}/${createHash("sha256").update(readFileSync(lock)).digest("hex").slice(0, 16)}`;
+    if ((await exec(box.name, ["test", "-d", `${remote}/${basename(local)}`])).code !== 0) {
+      await uploadTree({ openshell, env, sandbox: box.name, local, remote, gitIgnore: false });
+    }
+    // The repo's "node_modules/" pattern does not ignore a symlink, so the clone's own exclude file does.
+    const linked = await exec(box.name, ["sh", "-c", 'ln -sfn "$1" "$2/node_modules" && grep -qx node_modules "$2/.git/info/exclude" 2>/dev/null || { mkdir -p "$2/.git/info" && echo node_modules >> "$2/.git/info/exclude"; }', "sh", `${remote}/${basename(local)}`, workdir]);
+    if (linked.code !== 0) throw new Error(`could not link node_modules in ${box.name}: ${linked.stderr.trim()}`);
   }
 
   async function boxFor(project: string, home: string, log: Log): Promise<Box> {
@@ -175,6 +238,7 @@ export function createCliSandbox({ env = process.env, harness, label, trailer, i
       if (existsSync(join(cwd, ".git"))) await uploadClone({ openshell, env, sandbox: box.name, cwd, remote: WORK });
       else await uploadTree({ openshell, env, sandbox: box.name, local: cwd, remote: WORK });
     }
+    await linkDeps(box, cwd, workdir);
     box.uploaded.add(cwd);
     return workdir;
   }
@@ -196,7 +260,7 @@ export function createCliSandbox({ env = process.env, harness, label, trailer, i
   }
 
   async function syncBack(name: string, cwd: string, log: Log) {
-    const status = await exec(name, ["git", "-C", `${WORK}/${basename(cwd)}`, "status", "--porcelain"]);
+    const status = await exec(name, [`${TOOLS}/bin/git`, "-C", `${WORK}/${basename(cwd)}`, "status", "--porcelain"]);
     if (status.code !== 0) throw new Error(`git status in the sandbox failed: ${status.stderr.trim() || `exit ${status.code}`}`);
     if (status.stdout.trim()) throw new Error("commit your work in the sandbox first");
     if (!(await landWork({ openshell, env, sandbox: name, cwd, log, label, trailer }))) throw new Error("could not copy the sandbox commits to the host worktree");
@@ -220,7 +284,7 @@ export function createCliSandbox({ env = process.env, harness, label, trailer, i
         return {
           name, workdir,
           /** Argv that runs the CLI with args in the session's workdir. */
-          argv: (args: string[], vars: Record<string, string>) => execArgv({ openshell, sandbox: name, workdir, env: vars, command: [bin, ...args] }),
+          argv: (args: string[], vars: Record<string, string>) => execArgv({ openshell, sandbox: name, workdir, env: { ...vars, ...TOOL_ENV }, command: [bin, ...args] }),
           syncBack: (sessionLog: Log) => syncBack(name, cwd, sessionLog),
           /** Lands the work and releases the claim once. */
           close: async (sessionLog: Log) => {
