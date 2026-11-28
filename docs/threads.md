@@ -87,7 +87,7 @@ Callers:
 
 - The bus runs `sync` for every registered project on open (`scripts/ai-collab-bus.mjs`): the backfill.
 - The UI server posts unassigned sessions to `POST /threads/sync` when a project's registry changes, so hook-recorded sessions get a thread within one change.
-- A UI start creates a thread titled from the first prompt and attaches the new session, or attaches it to the `thread` the request names. A start in a thread runs in the thread's worktree as a folder start.
+- A UI start creates a thread titled from the first prompt's first line (60 characters; `Untitled` without a prompt) and attaches the new session, or attaches it to the `thread` the request names. A start in a thread runs in the thread's worktree as a folder start.
 - An operator message sent with `thread` carries `threadId` in its envelope and `thread_id` on its event row.
 
 ## Naming
@@ -102,7 +102,7 @@ The agent names its thread. `sync` titles a thread from its lead session (`leadS
 
 `title_source` records who set the title. `auto` follows the lead; `operator` (a rename, or a create with a title) freezes it. Rows from before the column hold NULL: `sync` retitles one only when its title contains `#` or equals its worktree folder name, then marks it `auto`. A retitle leaves `updated_at` alone, so naming never reorders the sidebar. `sync` returns `retitled` when it renamed any thread, and the bus backfill logs that count.
 
-Every new thread gets a title at once: a UI start from its prompt, a synced or spawned session from `sessionTitle` or the fallback, a pattern run's thread from its session's title (`run <id>` until it has one). A prompt title replaces only a fallback, `run <id>`, or a title cut from that same prompt (a UI start keeps 8 words until the next sync), so a later prompt never replaces the first.
+Every new thread gets a title at once: a UI start from its prompt, a synced or spawned session from `sessionTitle` or the fallback, a pattern run's thread from its session's title (`run <id>` until it has one). A prompt title replaces only a fallback, `run <id>`, or a title cut from that same prompt, so a later prompt never replaces the first.
 
 The UI server's sync posts a known lead again when `nextTitle` says its thread's title would change. A prompt in the activity stream triggers that sync, as a registry change does.
 

@@ -65,7 +65,7 @@ const TEXT_MAX = 200;
 const URL_MAX = 500;
 const SYNC_MAX = 2000;
 const PROMPT_TITLE_MAX = 60;
-const UNTITLED = "Untitled";
+export const UNTITLED = "Untitled";
 // A worktree or subagent label repeats the address and names nothing.
 const MACHINE_NAME = /^agent-[0-9a-f]{8,}$/i;
 

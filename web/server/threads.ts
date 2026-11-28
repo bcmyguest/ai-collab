@@ -3,13 +3,12 @@ import { isAbsolute, sep } from "node:path";
 import { listProjects } from "../../lib/config.ts";
 import { listOwned, listSessions, type SessionCfg } from "../../lib/sessions/registry.ts";
 import { threadClient, type ThreadClientConfig } from "../../lib/thread-routes.ts";
-import { THREAD_ID, leadOf, nextTitle, threadPlace, threadSessionsOf } from "../../lib/threads.ts";
+import { THREAD_ID, UNTITLED, leadOf, nextTitle, sessionTitle, threadPlace, threadSessionsOf } from "../../lib/threads.ts";
 import { channelClient, type ChannelClient } from "../../lib/thread-channel-store.ts";
 
 const SYNC_DELAY_MS = 1000;
 const OPS = ["list", "get", "create", "rename", "status", "pin", "archive", "attach-pr", "detach-pr", "move-session", "listen"];
 const ARCHIVE_MAX = 500;
-const TITLE_WORDS = 8;
 
 // oxlint-disable-next-line typescript/no-explicit-any -- threads and op inputs are JSON from the bus and the browser
 type Json = any;
@@ -20,9 +19,9 @@ function reject(status: number, message: string): never {
   throw Object.assign(new Error(message), { status });
 }
 
-/** A thread title from a first prompt: its first words, at most 80 characters. */
+/** A thread title from a first prompt: its first line, at most 60 characters, as sync gives (docs/threads.md "Naming"). */
 export function promptTitle(prompt: unknown): string {
-  return String(prompt || "").replace(/\s+/g, " ").trim().split(" ").slice(0, TITLE_WORDS).join(" ").slice(0, 80);
+  return sessionTitle({ prompt });
 }
 
 /** Each thread with its stored listening settings, `listeners: [{session, listening}]`; unchanged when they are unknown. */
@@ -114,7 +113,7 @@ export function projectThreads(cfg: ThreadsCfg, { env = process.env, broadcast =
   async function claim(session: unknown, { thread, prompt }: { thread?: Json; prompt?: string } = {}): Promise<Json> {
     if (!available || typeof session !== "string") return null;
     try {
-      const target = thread || await client.create({ project: cfg.project, title: promptTitle(prompt) });
+      const target = thread || await client.create({ project: cfg.project, title: promptTitle(prompt) || UNTITLED });
       const joined = await client.moveSession(target.id, session);
       await refresh();
       return joined;
