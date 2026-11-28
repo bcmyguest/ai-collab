@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
-import { toolClient } from "../lib/tool-api.ts";
-import { READ_TOOLS, readsThroughRunCode } from "../lib/code-run.ts";
-import { runCodeReadRecipe } from "../lib/store-read.ts";
 import { serveMcp } from "../lib/surfaces/render-mcp.ts";
+import { toolWorkers } from "../lib/surfaces/mcp-reload.ts";
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 const INSTRUCTIONS = "AI Collab connects this session to the human operator over a private local message bus. "
@@ -21,20 +19,21 @@ const INSTRUCTIONS = "AI Collab connects this session to the human operator over
   + "Reads (list_agents, list_sessions, channel_history, task_list, team_status, pattern_list, pattern_status) go through run_code: batch them in one program.";
 
 const host = process.argv[2] || "";
-// Tag launches and machine defaults can require reads through run_code.
-const runCodeFirst = readsThroughRunCode();
-const client = toolClient({ host });
-// With reads through run_code, read tools stay listed (hidden, a probe fell back to the CLI) but say where to call them.
-const redirect = (tool) => ({ ...tool, description: `Do not call directly: call run_code (ai-collab-code server) with ai.${tool.name}(...) and batch your other reads in the same program. ${tool.description}` });
-
-serveMcp({
+// The tools run in a worker; a deploy that replaces the plugin copy restarts it and the session gets the new list.
+let mcp;
+const workers = toolWorkers({
+  script: new URL("./ai-collab-mcp-tools.mjs", import.meta.url),
+  args: [host],
+  watch: new URL("../package.json", import.meta.url),
+  onToolsChanged: () => mcp?.toolsChanged(),
+});
+mcp = serveMcp({
   name: "ai-collab",
   version: VERSION,
   instructions: INSTRUCTIONS,
-  listTools: () => client.listTools().map((tool) => (runCodeFirst && READ_TOOLS.includes(tool.name) ? redirect(tool) : tool)),
-  callTool: async (name, args, signal) => {
-    if (runCodeFirst && READ_TOOLS.includes(name)) return { isError: true, text: runCodeReadRecipe(name, args) };
-    const result = await client.callTool(name, args, { signal });
-    return { text: JSON.stringify(result) };
-  },
+  listChanged: true,
+  listTools: () => workers.listTools(),
+  callTool: (name, args, signal) => workers.callTool(name, args, signal),
 });
+await mcp.closed;
+await workers.stop();
