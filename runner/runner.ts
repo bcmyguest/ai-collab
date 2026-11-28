@@ -98,8 +98,7 @@ const RESTART_RESUME_PROMPT = "The runner restarted during your last turn. Check
 
 const fail: (status: Json, message: string) => never = (status, message) => { throw Object.assign(new Error(message), { status }); };
 // Approvals off outside OpenShell is an unguarded agent on the host (lib/agent-guard.ts); only the operator's env lifts it.
-const hostFullAccess = (mode: Json, place: Json, env: Json) => mode === "full-access" && place !== "openshell" && env[ALLOW_HOST_AGENT_ENV] !== "1"
-  ? `full-access runs only in openshell; set ${ALLOW_HOST_AGENT_ENV}=1 on the runner to allow it on the host` : "";
+const hostFullAccessAllowed = (place: Json, env: Json) => place === "openshell" || env[ALLOW_HOST_AGENT_ENV] === "1";
 
 // This process as {pid, start}, the shape lib/process.ts isRunning checks.
 function selfProcess() {
@@ -195,8 +194,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
 
   const sessionCfg = (project: Json, harness: Json, label: string) => ({ ...configs.get(project), peer: harness, session: label });
   const adapterOf = (harness: string) => adapters.get(harness) || fail(400, `No ${harness} adapter is loaded`);
-  // Spawns per parent between the child-cap check and the claim.
-  const spawning = new Map();
+  // Spawn workflow ids per parent, from the child-cap check until start() returns.
+  const spawning = new Map<Json, Set<string>>();
   // Session workflow id -> managed, from the workflow's durable input; the owned record file is writable by the session itself.
   const managedByWorkflow = new Map();
   const ownedEnv = (managed: Json, harness: Json) => {
@@ -366,7 +365,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       // The owned record's /permission value first, else the registry entry's (setNextPermission), for this resume only.
       const cfg = configs.get(s.record.project);
       const claudePermission = s.record.claudePermission ?? (cfg ? nextPermission(cfg, { id: `${s.record.harness}#${s.record.label}`, label: s.record.label }) : undefined);
-      s.live = await adapter.resume({ ...s.record, ...(claudePermission ? { claudePermission } : {}), allowFullAccess: !hostFullAccess("full-access", s.record.place, env) }, contextFor({ s }, s.record.harness, s.signal), ownedEnv(s.record.managed, s.record.harness), staged);
+      s.live = await adapter.resume({ ...s.record, ...(claudePermission ? { claudePermission } : {}), allowFullAccess: hostFullAccessAllowed(s.record.place, env) }, contextFor({ s }, s.record.harness, s.signal), ownedEnv(s.record.managed, s.record.harness), staged);
       save(s);
       return s.live;
     })().finally(() => { s.resuming = null; });
@@ -547,7 +546,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
           ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode), ...(taskId ? { taskId } : {}), ...family, status: "starting", run: null, approvals: [], createdAt: now(),
         });
       };
-      const options = { project, cwd, place, permissionMode, permission: permissionSettings(harness, permissionMode, place).settings, env: ownedEnv(managed, harness), allowFullAccess: !hostFullAccess("full-access", place, env), beforeStart, ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode), ...(managed ? { managed: true } : {}) };
+      const options = { project, cwd, place, permissionMode, permission: permissionSettings(harness, permissionMode, place).settings, env: ownedEnv(managed, harness), allowFullAccess: hostFullAccessAllowed(place, env), beforeStart, ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode), ...(managed ? { managed: true } : {}) };
       try {
         holder.live = await adapter.open(staged ? { ...options, cwd: staged.workdir, sandboxArgv: staged.argv } : options, contextFor(holder, harness, wf.signal));
       } catch (error: Json) {
@@ -1037,10 +1036,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     const mappedMode = mapped && adapter.capabilities.permissionModes.includes(mapped) ? mapped : null;
     const memberMode = adapter.capabilities.permissionModes.includes("auto") ? "auto" : defaultPermission(harness, place);
     const mode = place === "openshell" ? OPENSHELL_PERMISSION : permissionMode ?? configuredMode ?? mappedMode ?? (member ? memberMode : "supervised");
-    if (!PERMISSION_MODES.includes(mode) || !adapter.capabilities.permissionModes.includes(mode)) fail(400, `${harness} does not support permission mode ${mode}`);
-    const permission = permissionSettings(harness, mode, place);
-    if (permission.error) fail(400, permission.error);
-    if (hostFullAccess(mode, place, env)) fail(400, hostFullAccess(mode, place, env));
+    checkMode(harness, mode, place);
     const checked: Json = checkPrompt(spawned && typeof prompt === "string" ? spawnBriefNote(prompt, parent) : prompt);
     if (checked.error) fail(400, checked.error);
     // The self note joins the first prompt once the address is known; every label is 16 hex digits, so its length is known now.
@@ -1070,7 +1066,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     const workflowId = `session-${randomUUID()}`;
     if (spawned) {
       if (liveChildren(parent) >= SPAWN_MAX_CHILDREN) fail(429, `this session already has ${SPAWN_MAX_CHILDREN} live spawned agents`);
-      spawning.set(parent, new Set(spawning.get(parent)).add(workflowId));
+      const ids = spawning.get(parent) ?? new Set<string>();
+      spawning.set(parent, ids.add(workflowId));
     }
     const managed = Boolean(builder || patternRun || continuation || spawned || managedInput === true);
     const claimed = claims.take(workflowId);
@@ -1100,7 +1097,11 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     } finally {
       timer.abort();
       claims.drop(workflowId);
-      if (spawned) spawning.get(parent)?.delete(workflowId);
+      if (spawned) {
+        const ids = spawning.get(parent);
+        ids?.delete(workflowId);
+        if (ids?.size === 0) spawning.delete(parent);
+      }
     }
   }
 
@@ -1116,7 +1117,6 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     return depth;
   }
 
-  // Spawned children of a parent that are live or still opening.
   // Ends whatever session a cancelled start's workflow claimed, so it holds no cap slot and no harness.
   async function releaseCancelled(project: Json, workflowId: string) {
     const late = [...sessions.values()].find(({ record }) => record.workflowId === workflowId && record.status !== "ended");
@@ -1142,6 +1142,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     }
   }
 
+  // Spawned children of a parent that are live or still opening.
   function liveChildren(parent: Json) {
     // A start counts once: as its pending workflow until its session claims, then as that live session.
     const live = [...sessions.values()].filter(({ record }) => record.parent === parent && record.spawn && record.status !== "ended");
@@ -1422,6 +1423,14 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     return s.switchingModel;
   }
 
+  /** Refuses a mode the harness, its adapter, the place or the host does not allow; start() and setMode share it. */
+  function checkMode(harness: string, mode: Json, place: Json) {
+    if (!PERMISSION_MODES.includes(mode) || !adapterOf(harness).capabilities.permissionModes.includes(mode)) fail(400, `${harness} does not support permission mode ${mode}`);
+    const permission = permissionSettings(harness, mode, place);
+    if (permission.error) fail(400, permission.error);
+    if (mode === "full-access" && !hostFullAccessAllowed(place, env)) fail(400, `full-access runs only in openshell; set ${ALLOW_HOST_AGENT_ENV}=1 on the runner to allow it on the host`);
+  }
+
   /** Changes an owned session's permission mode; reached only through the control socket, never through the bus or MCP. */
   async function setMode(address: string, mode: Json) {
     const named = PERMISSION_MODES.includes(mode) ? mode : runnerModeOfClaude(mode) ?? mode;
@@ -1429,10 +1438,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     const r = s.record;
     if (r.status === "ended") fail(409, "The owned session has ended");
     if (r.place === "openshell" && named !== OPENSHELL_PERMISSION) fail(400, "An OpenShell session always runs with full access");
-    if (!PERMISSION_MODES.includes(named) || !adapterOf(r.harness).capabilities.permissionModes.includes(named)) fail(400, `${r.harness} does not support permission mode ${named}`);
-    const permission = permissionSettings(r.harness, named, r.place);
-    if (permission.error) fail(400, permission.error);
-    if (hostFullAccess(named, r.place, env)) fail(400, hostFullAccess(named, r.place, env));
+    checkMode(r.harness, named, r.place);
     const handle = await liveHandle(s);
     if (!handle.setPermissionMode) fail(409, `${r.harness} cannot change its permission mode while open`);
     await handle.setPermissionMode(named).catch((error: Error) => fail(409, `${r.harness} refused permission mode ${named}: ${error.message}`));
