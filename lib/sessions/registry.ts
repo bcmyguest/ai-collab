@@ -43,6 +43,7 @@ export type SessionCfg = { stateDir: string; project: string; peer: string; sess
 
 const ACTIVITY_MAX = 200;
 const TAGS_MAX = 10;
+export const SHARED_PROCESS_IDLE_MS = 15 * 60_000;
 const TAG = /^[a-zA-Z0-9:./#_-]{1,40}$/;
 const ADDRESS = /^[a-z0-9-]+#[a-f0-9]{16}$/;
 const NAME = /^[a-zA-Z0-9][a-zA-Z0-9 ._-]{0,39}$/;
@@ -69,6 +70,12 @@ const RESUME: Record<string, (id: string, requireRunCode: boolean) => string> = 
   cursor: (id) => `agent -p --resume ${id} "<prompt>"`,
   opencode: (id) => `opencode run --session ${id} "<prompt>"`,
 };
+
+// Every OpenCode session shares the long-lived `opencode serve` pid, so a live pid alone says nothing about one session.
+function isOnline(session: Session, now = Date.now()): boolean {
+  if (!isRunning({ pid: session.pid as number, start: session.pidStart as string })) return false;
+  return session.harness !== "opencode" || now - (session.seenAt || 0) < SHARED_PROCESS_IDLE_MS;
+}
 
 function registry(cfg: Pick<SessionCfg, "stateDir" | "project">): string {
   return join(cfg.stateDir, cfg.project, "registry");
@@ -220,7 +227,7 @@ export function listSessions(cfg: Pick<SessionCfg, "stateDir" | "project" | "pee
       return [{
         ...session, peer, session: label,
         ...(jobs ? { runningJobs: jobs } : {}),
-        online: isRunning({ pid: session.pid as number, start: session.pidStart as string }),
+        online: isOnline(session),
       }];
     } catch {
       return [];
