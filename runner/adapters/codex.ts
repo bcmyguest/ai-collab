@@ -9,6 +9,8 @@ import { sessionLabel } from "../../lib/config.ts";
 import { CLIENT } from "../../lib/codex-compact.ts";
 import { codexThreadConfig } from "../../lib/code-mode.ts";
 import { CODEX_NO_SUBAGENT_ARGS } from "../../lib/subagent-guard.ts";
+import { codexSandboxEnv, createCodexSandbox } from "./cli-sandbox.ts";
+import type { CliBox, CliSandbox } from "./cli-sandbox.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, ERROR, NOTICE, PERMISSION_MODES, permissionSettings } from "../contract.ts";
 
 import type { Decision, SessionContext, UserInput } from "../types.d.ts";
@@ -450,16 +452,59 @@ async function openThread(pool: Json, options: Json, ctx: SessionContext) {
   return makeHandle(session);
 }
 
-/** Default export of runner/adapters/codex.ts. `command` overrides the child argv; requestMs the RPC timeout (tests). */
-export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND, requestMs = REQUEST_MS } = {}) {
+/** The handle with a close that lands the sandbox work and releases the sandbox, and a syncBack for land finish. */
+function boxedHandle(handle: Json, box: CliBox, log: (line: string) => void) {
+  let closed = false;
+  return {
+    ...handle,
+    syncBack: () => box.syncBack(log),
+    async close() {
+      if (closed) return;
+      closed = true;
+      await handle.close();
+      await box.close(log);
+    },
+  };
+}
+
+/**
+ * Default export of runner/adapters/codex.ts. `command` overrides the child argv; requestMs the RPC timeout (tests).
+ * `sandbox` stages plain OpenShell starts in the project's Codex sandbox; a command override has no install to upload, so it gets none.
+ */
+export default function codexAdapter({ env = process.env, command = DEFAULT_COMMAND, requestMs = REQUEST_MS, sandbox = command === DEFAULT_COMMAND ? createCodexSandbox({ env }) : null }: {
+  env?: NodeJS.ProcessEnv; command?: Json; requestMs?: number; sandbox?: CliSandbox | null;
+} = {}) {
   const pool: Json = { command, requestMs, server: null, starting: null, booting: null };
   // Managed sessions share a second app-server with native subagents off and AI_COLLAB_MANAGED in its env (spec answer 5).
   const managedPool: Json = { command: { ...command, args: [...command.args, ...CODEX_NO_SUBAGENT_ARGS] }, requestMs, server: null, starting: null, booting: null };
   // The argv tail a managed session's own launcher gets, so an OpenShell child runs without subagents too.
   const launcherArgs = (args: Json, managed: Json) => (managed ? [...args, ...CODEX_NO_SUBAGENT_ARGS] : args);
-  return {
+  // OpenShell sessions' own app-server pools, so shutdown stops their exec clients too; exited ones are dropped.
+  const launched = new Set<Json>();
+  function launcherPool(file: string, args: string[]) {
+    for (const each of launched) if (each.server?.exited) launched.delete(each);
+    const made: Json = { command: { file, args }, requestMs };
+    launched.add(made);
+    return made;
+  }
+  // Stages the project's sandbox for one session and returns its box and the app-server argv there.
+  async function openBox(project: string, cwd: string, vars: Json, managed: boolean, ctx: SessionContext, resumeId: string | null) {
+    if (!sandbox) throw new Error("codex has no OpenShell sandbox in this runner");
+    const box = await sandbox.open({ project, cwd, home: vars?.HOME, log: ctx.log, ...(resumeId ? { id: resumeId, resume: true } : {}) });
+    return { box, argv: box.argv(APP_SERVER_ARGS, codexSandboxEnv(managed)) };
+  }
+  async function boxed(box: CliBox, ctx: SessionContext, start: () => Promise<Json>) {
+    try {
+      return boxedHandle(await start(), box, ctx.log);
+    } catch (error) {
+      await box.close(ctx.log);
+      throw error;
+    }
+  }
+  const adapter = {
     harness: "codex",
-    capabilities: { steer: true, images: false, resume: "transcript", permissionModes: PERMISSION_MODES, places: ["folder", "worktree", "openshell"] },
+    // openshellStarts: whether a start without a builder's launcher can run in OpenShell.
+    capabilities: { steer: true, images: false, resume: "transcript", permissionModes: PERMISSION_MODES, places: ["folder", "worktree", "openshell"], openshellStarts: Boolean(sandbox), openshellTeams: false },
     available(probeEnv: Json) {
       return new Promise((resolve) => {
         execFile(command.file, command.version, { env: probeEnv, timeout: 10_000 }, (error, stdout) => {
@@ -473,7 +518,7 @@ export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND, requ
       if (options.place === "openshell" && (!file || args[0] !== "sandbox" || args[1] !== "exec" || !commandAt || !args[commandAt])) {
         throw new Error("Codex OpenShell sessions require a prepared OpenShell launcher");
       }
-      const sessionPool = file ? { command: { file, args: launcherArgs(args, options.managed) }, requestMs } : options.managed ? managedPool : pool;
+      const sessionPool = file ? launcherPool(file, launcherArgs(args, options.managed)) : options.managed ? managedPool : pool;
       const opened = options.place === "openshell" ? { ...options, permission: openshellPermission(options.permission) } : options;
       try {
         return await openThread(sessionPool, opened, ctx);
@@ -487,7 +532,7 @@ export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND, requ
       const { settings, error } = permissionSettings("codex", record.permissionMode, record.place);
       if (error) throw new Error(error);
       const [file, ...args] = staged?.argv ?? [];
-      const sessionPool = file ? { command: { file, args: launcherArgs(args, record.managed) }, requestMs } : record.managed ? managedPool : pool;
+      const sessionPool = file ? launcherPool(file, launcherArgs(args, record.managed)) : record.managed ? managedPool : pool;
       const session = newSession({
         pool: sessionPool, ctx, env: resumeEnv, cwd: staged?.workdir ?? record.cwd, place: record.place,
         mode: record.permissionMode, model: record.model, settings: staged ? openshellPermission(settings) : settings, codeMode: record.codeMode,
@@ -519,13 +564,31 @@ export default function codexAdapter({ env = {}, command = DEFAULT_COMMAND, requ
       return (page.data || []).flatMap((entry: Json) => entry.skills || []).map((skill: Json) => ({ name: skill.name, description: skill.description }));
     },
     async shutdown() {
-      for (const each of [pool, managedPool]) {
+      for (const each of [pool, managedPool, ...launched]) {
         const server = each.server;
         each.server = null;
         server?.child.kill();
         each.booting?.child.kill();
         each.booting = null;
       }
+    },
+    restore: (record: Json) => sandbox?.restore(record),
+    release: (record: Json) => (sandbox ? sandbox.release(record) : Promise.resolve(true)),
+  };
+  if (!sandbox) return adapter;
+  const { open, resume } = adapter;
+  return {
+    ...adapter,
+    // A builder start brings its own launcher; a plain one stages the project's sandbox.
+    async open(options: Json, ctx: SessionContext) {
+      if (options.place !== "openshell" || options.sandboxArgv) return open(options, ctx);
+      const { box, argv } = await openBox(options.project, options.cwd, options.env, options.managed === true, ctx, null);
+      return boxed(box, ctx, () => open({ ...options, cwd: box.workdir, sandboxArgv: argv }, ctx));
+    },
+    async resume(record: Json, ctx: SessionContext, resumeEnv: Json, staged: Json) {
+      if (record.place !== "openshell" || staged?.argv || record.builder) return resume(record, ctx, resumeEnv, staged);
+      const { box, argv } = await openBox(record.project, record.cwd, resumeEnv, record.managed === true, ctx, record.address);
+      return boxed(box, ctx, () => resume(record, ctx, resumeEnv, { argv, workdir: box.workdir }));
     },
   };
 }
