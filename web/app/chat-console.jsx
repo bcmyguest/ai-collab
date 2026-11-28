@@ -316,8 +316,8 @@ export function Console({ account }) {
     return Number.isSafeInteger(from) && Number.isSafeInteger(to) ? activity.filter(row => row.time * 1000 >= from && row.time * 1000 <= to) : activity;
   }, [activity, selected.window]);
   const rows = useMemo(() => watching || inline ? groupSubagents(activityRows(windowRows)) : [], [watching, inline, windowRows]);
-  // The raw panel keeps every tool call as its own row.
-  const rawRows = useMemo(() => raw ? activityRows(windowRows) : [], [raw, windowRows]);
+  // The raw panel keeps every tool call as its own row, newest first.
+  const rawRows = useMemo(() => raw ? activityRows(windowRows).slice().reverse() : [], [raw, windowRows]);
   const goRun = row => navigate({ project, level: "session", harness: peerOf(row.agent), session: row.agent, tab: "subagents", run: row.run });
   // Answers whose card is listed show in the card, so their bubbles stay out of both threads.
   const queue = level === "session" && ready ? data.messages.filter(item => item.queued && item.to === target) : [];
