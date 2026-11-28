@@ -439,13 +439,14 @@ export function Console({ account }) {
           {level === "session" ? <>
             <div className="flex min-w-0 items-center gap-2">
               <h1 className="min-w-0 truncate text-base font-semibold" title={selected.session}>
-                {selected.session ? <AgentName address={selected.session} name={sessionName}/> : title}
+                {currentThread?.title || (selected.session ? <AgentName address={selected.session} name={sessionName}/> : title)}
               </h1>
               {agent && <span className="shrink-0 max-md:hidden"><StateChip state={sessionState(agent, now)}/></span>}
               {agent && <span className="shrink-0 max-md:hidden"><RunningCount runs={agent.subagents} now={now}/></span>}
             </div>
             <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground">
-              <span className="truncate">{currentThread?.title && currentThread.title !== sessionName ? currentThread.title : project}</span>
+              {/* The thread names the header; the open agent goes beneath it. */}
+              <span className="truncate">{currentThread?.title && selected.session ? <AgentName address={selected.session} name={sessionName}/> : project}</span>
               {currentThread && <ThreadPlace place={currentThread.place} branch={currentThread.branch} className="shrink"/>}
               {level === "session" && agent?.parent && <button type="button" data-tap onClick={() => openAddress(agent.parent)} title={"Started by " + agent.parent}
                 aria-label={"Back to parent " + agent.parent} className="flex min-w-0 items-center gap-1 underline-offset-2 hover:underline">
