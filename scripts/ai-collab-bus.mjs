@@ -112,4 +112,4 @@ export async function main(env = process.env, { err = process.stderr } = {}) {
   return 0;
 }
 
-if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) await main();
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) process.exitCode = await main();

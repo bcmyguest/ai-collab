@@ -11,6 +11,7 @@
  * InstructionsLoaded (Claude) records the instruction file it loaded in the session's context state (lib/usage.ts).
  * A prompt the operator typed records operatorPromptAt for this session; AFK mode changes only when the operator sets it.
  * --host opencode takes Claude-shaped input from the OpenCode plugin (lib/opencode-plugin.mjs) and answers in Claude's shapes.
+ * PermissionDenied (Claude auto mode) posts the blocked call to the channel in AFK mode on or quiet (lib/blocked.ts).
  * PermissionRequest (Claude, Codex, OpenCode) and Cursor beforeShellExecution / beforeMCPExecution ask the operator's phone in AFK
  * mode on or quiet (lib/approvals.ts); no answer means no decision, so the harness shows its own prompt.
  * In mode off a Claude or Codex prompt becomes a view-only card; PostToolUse(Failure), Stop, StopFailure, UserPromptSubmit
@@ -25,10 +26,11 @@
  */
 import path from "node:path";
 import { loadConfig, ownEnv, sessionLabel } from "../lib/config.ts";
-import { claimInbox, publishStatus } from "../lib/messaging.ts";
+import { claimInbox, publishStatus, sendMessage } from "../lib/messaging.ts";
 import { childHint, exportParent, greetParent, parentLine, subagentToolHint } from "../lib/family.ts";
+import { blockedHint, deniedNote } from "../lib/blocked.ts";
 import { formatInbox, hookOutput, identityLine, stopOutput } from "../lib/format.ts";
-import { currentMode, operatorPrompt, takeModeNote } from "../lib/mode.ts";
+import { currentMode, operatorPrompt, storedMode, takeModeNote } from "../lib/mode.ts";
 import { SYSTEM_PROMPT_ENV } from "../lib/machine-prompt.ts";
 import { decideStop, markStopRunning, noteHeld, takeHeld } from "../lib/stop.ts";
 import { REQUIRE_RUN_CODE_ENV } from "../lib/code-mode.ts";
@@ -60,6 +62,7 @@ const EVENTS = new Map([
   ["precompact", "PreCompact"],
   ["postcompact", "PostCompact"],
   ["permissionrequest", "PermissionRequest"],
+  ["permissiondenied", "PermissionDenied"],
   ["beforeshellexecution", "PermissionRequest"],
   ["beforemcpexecution", "PermissionRequest"],
 ]);
@@ -132,6 +135,12 @@ async function deliver(cfg, host, event, msg, key) {
     for (const name of ["SIGTERM", "SIGINT", "SIGHUP"]) process.once(name, () => ctrl.abort());
     return decideApproval(cfg, { host, key, input: msg, signal: ctrl.signal });
   }
+  // An auto-mode denial never prompts, so in AFK mode on or quiet the operator hears of it on the channel.
+  if (event === "PermissionDenied") {
+    const { mode } = await currentMode(cfg).catch(() => storedMode(cfg));
+    if (mode !== "off" && cfg.session) await sendMessage(cfg, "all", deniedNote(msg, `${cfg.peer}#${cfg.session}`)).catch(() => {});
+    return {};
+  }
   // A subagent shares its parent's session id; its messages stay queued for the root session.
   if (typeof msg.agent_id === "string" && msg.agent_id) return neutral(host, key);
   if (["PostToolUse", "Stop", "PreCompact"].includes(event)) {
@@ -165,7 +174,7 @@ async function deliver(cfg, host, event, msg, key) {
     await currentMode(cfg).catch(() => {});
     if (host === "claude") exportParent(cfg, process.env.CLAUDE_ENV_FILE);
     await greetParent(cfg, { harness: host, cwd: msg.cwd }).catch(() => {});
-    family = [parentLine(cfg), childHint(cfg)].filter(Boolean).join("\n");
+    family = [parentLine(cfg), childHint(cfg), blockedHint(cfg, host)].filter(Boolean).join("\n");
   }
   const messages = await claimInbox(cfg, { throttle: event !== "SessionStart", limit: 4 });
   sendReceipts(cfg, messages.map((m) => m.id));

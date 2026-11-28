@@ -76,8 +76,10 @@ function busToken(): string {
 }
 
 function busUnit(root: string, port: number): string {
+  // No start limit: a bus that exits while Postgres restarts keeps retrying every RestartSec until Postgres is back.
   return `[Unit]
 Description=AI Collab message bus
+StartLimitIntervalSec=0
 
 [Service]
 ExecStart=${process.execPath} ${path.join(root, "scripts", "ai-collab-bus.mjs")}
