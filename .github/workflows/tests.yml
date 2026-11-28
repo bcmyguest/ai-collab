@@ -40,11 +40,20 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build:package && node dist/scripts/ai-collab.mjs --help
+      # Postgres 17 as deploy/postgres/compose.yaml runs it, pinned by digest, so the bus, DBOS and model tests run instead of skipping.
+      # max_connections: the default 100 runs out when every test file opens its pools at once.
+      - name: Postgres
+        run: |
+          docker run -d --name pg -p 127.0.0.1:5432:5432 -e POSTGRES_USER=ai_collab -e POSTGRES_DB=ai_collab -e POSTGRES_PASSWORD=ci-only \
+            postgres@sha256:87c8b42f423b45d5247e6aa8fdb2e7762fec164c68a50fe3eb07e7bfcaf4dbcf -c max_connections=300
+          for i in $(seq 60); do docker exec pg pg_isready -U ai_collab -d ai_collab -q && exit 0; sleep 1; done
+          docker logs pg; exit 1
       # Isolated HOME: tests never read the runner's agent configs; the in-process bus (test/helpers/fake-ntfy.mjs) replaces a server.
       # A step cap below the job cap keeps the log when a test file hangs.
       - name: npm test
         timeout-minutes: 20
         run: |
           H=$(mktemp -d)
+          mkdir -p $H/.config/ai-collab && printf ci-only > $H/.config/ai-collab/pg-password && chmod 600 $H/.config/ai-collab/pg-password
           HOME=$H CODEX_HOME=$H/.codex npm test -- --test-timeout=180000
       - run: npm run build
