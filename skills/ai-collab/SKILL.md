@@ -25,6 +25,9 @@ Prefer these MCP tools; pass your session label from the hook context as `sessio
 | `respond` | Answer a message id: `working` when you start, `reply` or `done` when finished, `declined` if you cannot (`ai-collab respond <id> <state> "…"`). |
 | `wait` | Block up to 45 s for your next message instead of a sleep loop (`ai-collab wait 45`). `until: "idle:<address>"` blocks until that agent has no turn running (`ai-collab wait idle:<address> 45`). |
 | `inbox` | Read new messages and mark them read (`ai-collab inbox`). |
+| `send` to `thread:<id>` | Post to a thread channel: every session listening in thread `th_…` gets a copy, plus anyone the post @mentions (`ai-collab send thread:<id> "…"`). |
+| `thread_listen` | Turn listening on or off for your session in a thread (`ai-collab thread listen <id> on\|off`). Members listen by default; subagents (sessions with a parent) are muted by default and get only posts that @mention them. |
+| `thread_messages` | Read a thread's posts, oldest first, listening or not; `since` (ISO time or message id) and `limit` (default 30, max 100) page them (`ai-collab thread messages <id> [--since ISO\|ID] [--limit N]`). |
 | `set_identity` | When you start a task, set an activity line and tags such as `pr:1402` or `role:reviewer` (`ai-collab identity --activity "…" --tag pr:1402`). |
 
 `send_to_peer` and `send_to_all` are aliases of `send`; `list_sessions` adds cwd and the resume command to `list_agents`. A message ending "The sender is waiting for your reply" carries an id: call `respond` (`working` at once, then `reply` or `done`); "attempt N of 5" means the sender redelivered it, so check what you already did before you redo it. `ai-collab interrupt <peer#session>` stops a running Codex or OpenCode turn (Claude and Cursor: unsupported). A message marked `URGENT` reached you at your next hook instead of the next 10-second poll: handle it before continuing.
