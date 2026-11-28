@@ -1,5 +1,5 @@
 // Claude and Codex in OpenShell against the fake openshell: staging, the sandboxed CLI argv, landing on close.
-import { test, after } from "node:test";
+import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -13,7 +13,7 @@ import { harnessSandboxName, opencodeSandboxName, sandboxName } from "../lib/san
 import { openshellHarnesses } from "../lib/sessions/launch.ts";
 import { permissionSettings } from "../runner/contract.ts";
 import { fakeClaudeQuery } from "./helpers/fake-claude-query.mjs";
-import { tempDir } from "./helpers/tmp.mjs";
+import { fileEnd, tempDir } from "./helpers/tmp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OPENSHELL = path.join(HERE, "helpers", "fake-openshell.mjs");
@@ -26,7 +26,7 @@ process.stdout.write(JSON.stringify({ argv: process.argv.slice(2), cwd: process.
 
 // A host git worktree, a Claude and a Codex login, a fake Codex release tree, a fake Claude binary, and the fakes' env.
 function lab() {
-  const home = tempDir({ after }, "ai-collab-cli-sandbox-");
+  const home = tempDir(fileEnd, "ai-collab-cli-sandbox-");
   const root = path.join(home, "repo");
   mkdirSync(root, { recursive: true });
   writeFileSync(path.join(root, "host.txt"), "host\n");
