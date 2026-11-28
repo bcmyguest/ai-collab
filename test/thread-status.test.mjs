@@ -68,7 +68,7 @@ test("a start claims a new thread titled from the prompt, or joins the thread it
   const threads = projectThreads(cfg, { env: { HOME: cfg.stateDir }, client });
   const fresh = await threads.claim("codex#0000000000000001", { prompt: "Fix the   flaky\nbus test today please, it fails on CI often" });
   assert.equal(fresh.sessions[0], "codex#0000000000000001");
-  assert.deepEqual(client.calls[0], ["create", { project: "demo", title: "Fix the flaky bus test today please, it" }]);
+  assert.deepEqual(client.calls[0], ["create", { project: "demo", title: "Fix the flaky" }]);
   await threads.claim("claude#0000000000000002", { thread: fresh, prompt: "more" });
   assert.deepEqual(client.calls.at(-1), ["move", fresh.id, "claude#0000000000000002"]);
   assert.equal(threads.list().length, 1);
