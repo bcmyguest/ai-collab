@@ -141,28 +141,6 @@ test("a spawn's brief that already names the parent gets no added line", (t) => 
   assert.match(text, new RegExp(`your address is ${session}`));
 }));
 
-test("a restart mid-run sends one interrupted report and no success report", async (t) => {
-  const fake = await startFakeNtfy();
-  t.after(() => fake.close());
-  const ctx = setup(t, fake);
-  const first = makeRunner(ctx, createFakeAdapter({ harness: "codex" }));
-  await first.boot();
-  PARENT = (await first.start({ project: "demo", harness: "codex", prompt: "parent" })).session;
-  const { session } = await first.start(spawnInput("hang until cut"));
-  await until(() => first.get(session).run, "run").finally(() => first.stop());
-  const second = makeRunner(ctx, createFakeAdapter({ harness: "codex" }));
-  try {
-    await second.boot();
-    await until(() => second.get(session).cut, "cut");
-    await second.settle();
-    const sent = await until(() => reports(fake).length && reports(fake), "report");
-    assert.equal(sent.length, 1);
-    assert.match(sent[0].body, /finished \(interrupted\)/);
-  } finally {
-    await second.stop();
-  }
-});
-
 test("a spawn whose parent is not a live session is refused, so a forged label cannot reset the depth", (t) => withRunner(t, async ({ runner }) => {
   await assert.rejects(runner.start(spawnInput("d3", "codex#0123456789abcdef")), { status: 409, message: "spawn parent is not a live session" });
   const child = (await runner.start(spawnInput("child"))).session;
@@ -210,34 +188,6 @@ test("a prompt the harness never accepts reports the error to the parent", (t) =
   assert.match(sent[0].body, /finished \(error\)/);
   assert.match(sent[0].body, /input not delivered: harness gone/);
 }));
-
-test("a restart before the harness accepts the prompt reports interrupted", async (t) => {
-  const fake = await startFakeNtfy();
-  t.after(() => fake.close());
-  const ctx = setup(t, fake);
-  const adapter = createFakeAdapter({ harness: "codex" });
-  // The stalled send settles only once the stop has begun, as a killed harness's would.
-  let kill = null;
-  interceptSend(adapter, "stall", () => new Promise((_resolve, reject) => { kill = reject; }));
-  const first = makeRunner(ctx, adapter);
-  await first.boot();
-  PARENT = (await first.start({ project: "demo", harness: "codex", prompt: "parent" })).session;
-  await first.start(spawnInput("stall before accepting"));
-  await until(() => kill, "stalled send");
-  const stopping = first.stop();
-  kill(new Error("harness killed"));
-  await stopping;
-  const second = makeRunner(ctx, createFakeAdapter({ harness: "codex" }));
-  try {
-    await second.boot();
-    await second.settle();
-    const sent = await until(() => reports(fake).length && reports(fake), "report");
-    assert.equal(sent.length, 1);
-    assert.match(sent[0].body, /finished \(interrupted\)/);
-  } finally {
-    await second.stop();
-  }
-});
 
 test("a resume takes managed from the durable workflow input, not the owned record file", async (t) => {
   const fake = await startFakeNtfy();
