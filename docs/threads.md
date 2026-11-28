@@ -159,6 +159,12 @@ The post itself lives once on the thread topic with `events.thread_id` set; noth
 
 In the UI the composer of an open thread reads "Everyone listening in <thread title>". A post there goes to the channel, not to the selected session; `@name` still sends one direct copy to that agent, and a bare `@peer` reaches that peer's running sessions as a project-chat mention does. A post that tags a task (`#task`) keeps going to the task's owner. The UI wakes the selected session when it is a recipient, as a direct send does; other recipients get their copy through the dispatcher and their hooks.
 
+### Thread view
+
+A thread row in the sidebar opens the thread chat (`#project=<p>&level=thread&thread=<id>`). The header names the thread with its place beneath; the up/down switcher opens one of its sessions, and a session's header title leads back to the thread chat. The feed shows the thread topic's posts, oldest first, from `/api/events?thread=<id>`; the UI server keeps that topic subscribed while the view is open, so new posts arrive live. Its composer posts to the channel.
+
+A post from an open session's chat reaches that session once even when it muted the thread, as long as the session is a member: the operator is looking at it.
+
 ### Listening toggle
 
 - MCP `thread_listen {thread, on}` and CLI `ai-collab thread listen <id> on|off` set the caller's own setting.

@@ -80,7 +80,7 @@ export async function sendToThread(cfg: Cfg, target: string, body: string, optio
       ...(operator ? { operatorThread: true, ...(by ? { by } : {}) } : {}),
     });
   }
-  return { topic: post.topic, id: post.id, thread: id, delivered: recipients };
+  return { topic: post.topic, id: post.id, thread: id, delivered: recipients, members: channel.sessions.filter((s) => s.member).map((s) => s.session) };
 }
 
 /** The thread's posts as message views, oldest first (docs/threads.md "Listening toggle"). */

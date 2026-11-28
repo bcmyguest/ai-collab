@@ -20,7 +20,7 @@ import { ThreadPlace } from "./thread-place";
 import { TasksStrip } from "./tasks-strip";
 
 type Project = { id: string; waiting?: number; paused?: boolean };
-type Selected = { level: string; project?: string; session?: string; tab?: string };
+type Selected = { level: string; project?: string; session?: string; tab?: string; thread?: string };
 type Navigate = (next: Record<string, unknown>) => void;
 type Data = {
   project?: string; projects: Project[]; agents: Agent[]; threads?: Thread[]; closedProjects?: string[]; autoProjects?: string[];
@@ -164,12 +164,11 @@ function ThreadItem({ row, all, selected, now, navigate, project, listen, disabl
   row: ThreadRow; all: Agent[]; selected: Selected; now: number; navigate: Navigate; project: string; listen?: ListenSession; disabled?: boolean; stop?: (session: string) => void;
   act?: ThreadAction; rename: (row: ThreadRow) => void;
 }) {
-  const open = selected.level === "session" && Boolean(selected.session) && (row.sessions || []).includes(selected.session || "");
-  const target = threadSession(row, row.agents);
+  const open = (selected.level === "thread" && selected.thread === row.id)
+    || (selected.level === "session" && Boolean(selected.session) && (row.sessions || []).includes(selected.session || ""));
   const working = workingTime(row, now);
   const waiting = row.shown === "waiting";
-  const go = (session: string) => session ? navigate({ project, level: "session", harness: session.split("#")[0], session, ...(open && selected.tab ? { tab: selected.tab } : {}) })
-    : navigate({ project, level: "project" });
+  const go = (session: string) => navigate({ project, level: "session", harness: session.split("#")[0], session, ...(open && selected.level === "session" && selected.tab ? { tab: selected.tab } : {}) });
   const byId = new Map(all.map(agent => [agent.id, agent]));
   const sessions = (row.sessions || []).map(id => byId.get(id) || missingSession(id));
   const busy = workingCount(sessions, all, now);
@@ -180,7 +179,7 @@ function ThreadItem({ row, all, selected, now, navigate, project, listen, disabl
   const label = row.title || row.branch || row.id;
   return <li className="flex min-w-0 flex-col">
     <div className="flex min-w-0 items-start">
-      <button type="button" data-thread={row.id} data-working={busy || undefined} aria-current={open ? "true" : undefined} onClick={() => go(target)}
+      <button type="button" data-thread={row.id} data-working={busy || undefined} aria-current={open ? "true" : undefined} onClick={() => navigate({ project, level: "thread", thread: row.id })}
         className={cn("flex min-w-0 flex-1 flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left hover:bg-sidebar-accent max-md:py-2.5", open && "bg-sidebar-accent/60")}>
       <span className="flex min-w-0 items-center gap-2">
         {waiting && <span role="img" aria-label="Waiting on you" className="size-1.5 shrink-0 rounded-full bg-primary"/>}

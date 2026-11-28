@@ -19,7 +19,10 @@ export function streamOf(selected) {
   const stream = new URLSearchParams();
   const home = selected.level === "home" || selected.level === "inbox";
   const session = selected.level === "session" && Boolean(selected.session);
+  // The thread view streams its thread topic as the feed; the project's threads and agents ride along.
+  const threadView = selected.level === "thread" && Boolean(selected.thread);
   if (selected.project && !home) stream.set("project", selected.project);
+  if (threadView) stream.set("thread", selected.thread);
   if (session) stream.set("session", selected.session);
   // The project chat reads activity for its completion and live rows; a session's chat and its side panels read it too.
   const watching = selected.level === "project";
@@ -37,7 +40,7 @@ export function streamOf(selected) {
   else if (home) stream.set("view", "home");
   else if (listing || compactions) stream.set("view", "sessions");
   if (compactions) stream.set("history", "1");
-  return { home, watching, subagents, inline, raw, listing, tasks, compactions, requested: stream.toString() };
+  return { home, watching, subagents, inline, raw, listing, tasks, compactions, threadView, requested: stream.toString() };
 }
 
 export async function api(path, payload, image) {

@@ -263,13 +263,14 @@ export function Console({ account }) {
   // its own name; Home and the inbox are not inside a project.
   const projectView = level === "project" ? "Chat" : level === "tasks" ? "Tasks" : level === "patterns" ? "Teams" : level === "compactions" ? "History" : "";
   const title = inbox ? "Decision inbox" : home ? "Home" : level === "session" ? identity || sessionLabel || short(selected.session) || "Sessions"
-    : projectView || project;
+    : level === "thread" ? "Thread" : projectView || project;
   // A home or Sessions card opens its session, or one of its subagent runs.
   const openCard = (node, run = "") => navigate({ project: node.project, level: "session", harness: node.harness || peerOf(node.id), session: node.id, ...(run ? { tab: "subagents", run } : {}) });
   // The session's ⋯ menu opens its raw activity: every tool call, unfolded.
   const openRaw = node => navigate({ project: node.project, level: "session", harness: node.harness || peerOf(node.id), session: node.id, tab: "raw" });
   const placeholder = composeTask ? `Message about #${composeTask}…` : "Write a message…";
-  const currentThread = level === "session" && selected.session ? (data.threads || []).find(item => (item.sessions || []).includes(selected.session)) : undefined;
+  const currentThread = level === "thread" ? (data.threads || []).find(item => item.id === selected.thread)
+    : level === "session" && selected.session ? (data.threads || []).find(item => (item.sessions || []).includes(selected.session)) : undefined;
   const routing = { project, target, session: level === "session" && Boolean(target), tasks: data.tasks?.tasks || [],
     thread: currentThread ? { id: currentThread.id, title: currentThread.title } : null,
     peers: data.projects.find(item => item.id === project)?.peers || [],
@@ -445,19 +446,29 @@ export function Console({ account }) {
           {level === "session" ? <>
             <div className="flex min-w-0 items-center gap-2">
               <h1 className="min-w-0 truncate text-base font-semibold" title={selected.session}>
-                {currentThread?.title || (selected.session ? <AgentName address={selected.session} name={sessionName}/> : title)}
+                {/* The thread names the header and opens the thread chat; the agent goes beneath it. */}
+                {currentThread?.title ? <button type="button" className="max-w-full truncate text-left underline-offset-2 hover:underline" title={"Open the " + currentThread.title + " thread chat"}
+                  onClick={() => navigate({ project, level: "thread", thread: currentThread.id })}>{currentThread.title}</button>
+                  : selected.session ? <AgentName address={selected.session} name={sessionName}/> : title}
               </h1>
               {agent && <span className="shrink-0 max-md:hidden"><StateChip state={sessionState(agent, now)}/></span>}
               {agent && <span className="shrink-0 max-md:hidden"><RunningCount runs={agent.subagents} now={now}/></span>}
             </div>
             <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground">
               {/* The thread names the header; the open agent goes beneath it. */}
-              <span className="truncate">{currentThread?.title && selected.session ? <AgentName address={selected.session} name={sessionName}/> : project}</span>
+              <span className="truncate">{currentThread?.title && selected.session ? <button type="button" className="min-w-0 max-w-full underline-offset-2 hover:underline" aria-label={"Open " + (sessionName || selected.session) + " chat"}
+                onClick={() => navigate({ project, level: "session", harness: peerOf(selected.session), session: selected.session })}><AgentName address={selected.session} name={sessionName}/></button> : project}</span>
               {currentThread && <ThreadPlace place={currentThread.place} branch={currentThread.branch} className="shrink"/>}
               {level === "session" && (agent?.modelControl?.current || agent?.model) && <span className="shrink-0 truncate" title="Model">{agent.modelControl?.current || agent.model}</span>}
               {level === "session" && agent?.parent && <button type="button" data-tap onClick={() => openAddress(agent.parent)} title={"Started by " + agent.parent}
                 aria-label={"Back to parent " + agent.parent} className="flex min-w-0 items-center gap-1 underline-offset-2 hover:underline">
                 <CornerLeftUp className="size-3.5 shrink-0"/><span className="truncate">parent {short(agent.parent)}</span></button>}
+            </p>
+          </> : level === "thread" ? <>
+            <h1 className="min-w-0 truncate text-base font-semibold">{currentThread?.title || "Thread"}</h1>
+            <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground">
+              <span className="truncate">{project}</span>
+              {currentThread && <ThreadPlace place={currentThread.place} branch={currentThread.branch} className="shrink"/>}
             </p>
           </> : <>
             <p className="truncate text-xs text-muted-foreground">{home ? "All projects" : project ? "Project · " + project : "Project"}</p>
@@ -468,7 +479,7 @@ export function Console({ account }) {
         {/* A phone hides the sidebar, so New thread repeats here as the header's second stop. */}
         {project && !home && !inbox && <Button variant="ghost" size="icon" className="md:hidden" aria-label={"New thread in " + project}
           title={paused ? "New work is paused" : "New thread"} disabled={working || paused} onClick={() => newSession(project)}><Plus/></Button>}
-        {level === "session" && <ThreadSwitcher thread={currentThread} agents={data.agents || []} current={selected.session}
+        {(level === "session" || level === "thread") && <ThreadSwitcher thread={currentThread} agents={data.agents || []} current={selected.session}
           open={session => session && navigate({ project, level: "session", harness: session.split("#")[0], session })}/>}
         {level === "session" && agent?.session && <div className="flex shrink-0 items-center gap-1">
           {agent.modelControl && modelsOf(models, "claude").length > 0 && <select
@@ -587,7 +598,7 @@ export function Console({ account }) {
         </ul>
       </section>}
       {!home && !listing && !patterns && !tasksView && !composing && <ChatRuntimeProvider key={requested + ":" + composeTask} entries={NO_ENTRIES} operator={data.operator} onSend={body => sendBridgeRef.current?.(body)}>
-        <Composer sendBridgeRef={sendBridgeRef} conversation={conversationKey(project, composeTask ? "#" + composeTask : level === "session" ? selected.session : "")} initialDraft={composeTask ? `#${composeTask} ` : ""} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
+        <Composer sendBridgeRef={sendBridgeRef} conversation={conversationKey(project, composeTask ? "#" + composeTask : level === "session" ? selected.session : level === "thread" ? "thread:" + selected.thread : "")} initialDraft={composeTask ? `#${composeTask} ` : ""} disabled={!ready || working || missing} agents={data.agents} harnesses={data.harnesses} teams={data.teams} startable={data.startable} models={models} now={now} harness={level === "session" && agent?.peer || ""}
         placeholder={placeholder} routing={routing} urgentable replying={replyTo} cancelReply={() => setReplyTo(null)}
         onSend={async (body, urgent, command, sendAnyway, image) => {
           // Project chat never runs commands: a leading / there is ordinary chat.

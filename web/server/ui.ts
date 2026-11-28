@@ -12,7 +12,7 @@ import { mkdirSync, watch } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { buzzes, readAlertLevel, writeAlertLevel } from "../../lib/alerts.ts";
-import { loadConfig, loadProjects, activityTopic, startDefaultSetting, startPlaceSetting, broadcastTopic, configDir, stateDir, inboxTopic, receiptsTopic, statusTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.ts";
+import { loadConfig, loadProjects, activityTopic, startDefaultSetting, startPlaceSetting, broadcastTopic, configDir, stateDir, inboxTopic, receiptsTopic, statusTopic, threadTopic, SESSION_LABEL, isGithubLogin, isValidName } from "../../lib/config.ts";
 import { ACTIVITY_TYPES } from "../../lib/activity.ts";
 import { stripControl } from "../../lib/format.ts";
 import { MESSAGE_MAX_BYTES, latestStatuses, changeQueuedMessage, queuedMessage, markUrgent, parseEnvelope, sendMessage } from "../../lib/messaging.ts";
@@ -1035,6 +1035,15 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       });
   }
 
+  // The thread view's feed (docs/threads.md "Thread view"): the thread's channel posts, oldest first, in the chat
+  // message shape; the thread itself is the addressee, so rows read like the session chat's.
+  function threadPosts(project: Json, id: string): Json[] {
+    return project.hub.events(threadTopic(project.cfg.project, id))
+      .map(entry).filter((item: Json) => item?.kind === "Message")
+      .sort((a: Json, b: Json) => a.time - b.time || String(a.id).localeCompare(String(b.id)))
+      .map((item: Json) => ({ ...item, to: "all" }));
+  }
+
   // Show system prompts and typed prompts in chat, with typed echoes removed.
   function terminalPrompts(activity: Json, sent: Json) {
     const prompts = activity.filter((item: Json) => item.type === "prompt" && item.input && (item.system || operatorPrompt(item.input)));
@@ -1216,7 +1225,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     return stdout;
   }
 
-  function snapshot({ project, harness, session, scope, history: wantHistory }: { project: Json; harness: string; session: string; scope?: string; history?: boolean }) {
+  function snapshot({ project, harness, session, scope, thread, history: wantHistory }: { project: Json; harness: string; session: string; scope?: string; thread?: string; history?: boolean }) {
     const last = lastMessages(project);
     const list = agents(project, last);
     // A session whose worktree was deleted has no card to answer on, so it does not count as waiting either.
@@ -1272,7 +1281,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         const withHistory = history.has(agent.id) ? { ...withContext, history: history.get(agent.id) } : withContext;
         return waiting.has(agent.id) ? { ...withHistory, waiting: true } : withHistory;
       }),
-      messages: scope === "home" ? [] : messages(project, { harness, session }, list),
+      messages: thread ? threadPosts(project, thread) : scope === "home" ? [] : messages(project, { harness, session }, list),
       ...(cards ? { sessions: cards } : {}),
       ...(scope === "home" ? {
         ...(!hosted ? { shipped: shown.flatMap(item => item.failed ? [] :
@@ -1390,6 +1399,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     try {
       const required = [project.status, project.topic];
       if (harness) required.push(inboxOf(project, harness));
+      // The thread view reads its channel posts from the thread's own topic (docs/threads.md "Thread channels").
+      if (client.thread) {
+        const topic = threadTopic(project.cfg.project, client.thread);
+        // The hub keeps a topic's subscription only while it is known, so a new post reaches the open view.
+        known.add(topic);
+        required.push(topic);
+      }
       // Project and session chats need activity for typed prompts in their first snapshot.
       const activity = hub.open(project.activity, { tailBytes: ACTIVITY_TAIL_BYTES });
       const needsActivity = client.activity || client.scope || session || !harness;
@@ -1427,7 +1443,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const mode = url.searchParams.get("view");
     // view=home adds every project's session cards; view=sessions this project's.
     const scope = mode === "home" || mode === "sessions" ? mode : "";
-    return { project, harness: scope === "home" ? "" : harness, session: scope === "home" ? "" : session, activity: mode === "activity", scope, history: url.searchParams.get("history") === "1" };
+    // thread=<id> makes the feed that thread's channel posts (docs/threads.md "Thread view").
+    const thread = url.searchParams.get("thread") || "";
+    if (thread && !THREAD_ID.test(thread)) reject(400, "Unknown thread");
+    return { project, harness: scope === "home" ? "" : harness, session: scope === "home" ? "" : session, activity: mode === "activity", scope, thread, history: url.searchParams.get("history") === "1" };
   }
 
   // GET /api/land: the open PRs into main with their checks, and the last deploy result.
@@ -2086,6 +2105,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           const posted = await sendToThread(operator, `thread:${thread}`, text, { ...(project.threads?.channels ? { client: project.threads.channels } : {}), onPublished: project.hub.record, attachment, urgent: urgent === true, ...envelopeReply, ...(by ? { by } : {}) });
           channelSent = new Set(posted.delivered);
           notes.push(`Thread: ${posted.delivered.length} listening`);
+          // The session the operator is reading always gets the post, once, even when it muted the thread (docs/threads.md).
+          if (target.includes("#") && !channelSent.has(target) && posted.members.includes(target)) {
+            await sendMessage(operator, target, text, { threadId: thread, channelOf: posted.id, operatorThread: true, onPublished: project.hub.record, attachment, urgent: urgent === true, ...envelopeReply, ...(by ? { by } : {}) });
+            channelSent.add(target);
+            notes.push("To " + target);
+          }
           if (channelSent.has(target)) wake = wakeAgent(project, target, listSessions(cfg).find(item => item.id === target));
         } else for (const to of destinations) {
           const direct = action === "send" && to.includes("#");

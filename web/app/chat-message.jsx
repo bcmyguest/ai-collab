@@ -76,7 +76,9 @@ export function ChatMessage({ message, operator, me, now, replyFrom, open, act, 
           className="font-medium text-foreground underline-offset-2 hover:underline">{label}</button>
           : <span className="font-medium text-foreground" title={message.by ? shown + " · " + message.by : shown}>{outgoing ? other || "You" : label}</span>}
         {detail && <span data-agent-detail className="text-xs text-muted-foreground">{"· " + detail}</span>}
-        {message.to && message.to !== "all" && <span title={message.to}>→ {short(message.to)}</span>}
+        {message.to && message.to !== "all" && (message.to.includes("#") && message.to !== operator
+          ? <button type="button" title={message.to} aria-label={"Open " + message.to} onClick={() => open(message.to)} className="underline-offset-2 hover:underline">→ {short(message.to)}</button>
+          : <span title={message.to}>→ {short(message.to)}</span>)}
         {message.terminal && <Badge variant="outline" data-terminal title="Typed in the agent's terminal" className="h-4 px-1.5 text-xs">terminal</Badge>}
         {message.replyTo && <Badge variant="outline" data-answer title={"Answers question " + message.replyTo} className="h-4 px-1.5 text-xs">answer</Badge>}
         {at > 0 && <time dateTime={new Date(at).toISOString()} title={clock.format(at)}>{ago(at, now)}</time>}

@@ -2,6 +2,8 @@ import { isTaskId } from "./task-tags.js";
 
 // Location hash → console selection: the level, project, session, view tab and subagent run a URL names.
 export const LEVELS = [["project", "Project"], ["session", "Sessions"], ["tasks", "Tasks"], ["patterns", "Teams"], ["compactions", "History"]];
+// A thread id in the hash (lib/threads.ts THREAD_ID); the thread level is named by it, like home and inbox are by their flags.
+const THREAD_ID = /^th_[a-f0-9]{16}$/;
 // Views each level accepts in the hash: a session's chat alone (activity), or beside its subagents, raw activity, diff or PR panel.
 export const TABS = { project: [], session: ["activity", "subagents", "raw", "diff", "pr", "tasks"], tasks: [], patterns: [] };
 
@@ -13,6 +15,7 @@ export function selectionHash(next = {}) {
   if (next.level === "home" || next.level === "inbox") return next.level;
   const params = new URLSearchParams();
   for (const key of ["project", "level", "harness", "session"]) if (next[key]) params.set(key, next[key]);
+  if (next.level === "thread" && THREAD_ID.test(next.thread || "")) params.set("thread", next.thread);
   if ((TABS[next.level || "project"] || []).includes(next.tab)) params.set("tab", next.tab);
   if (next.tab === "subagents" && next.run) params.set("run", next.run);
   if (next.level === "patterns") {
@@ -43,6 +46,10 @@ export function parseSelection(hash) {
   const level = params.get("level");
   if (!hash || params.has("home") || level === "home") return { project: "", level: "home", harness: "", session: "", tab: "chat", run: "" };
   if (params.has("inbox") || level === "inbox") return { project: "", level: "inbox", harness: "", session: "", tab: "chat", run: "" };
+  // The thread level names one thread of a project (docs/threads.md "Thread view"); without a valid id the hash falls through to the project chat.
+  if (level === "thread" && THREAD_ID.test(params.get("thread") || "")) {
+    return { project: params.get("project") || "", level: "thread", harness: "", session: "", tab: "chat", run: "", thread: params.get("thread") };
+  }
   const tab = params.get("tab");
   // An old link to the board (level=project&tab=tasks) opens the Tasks level.
   const named = level === "project" && tab === "tasks" ? "tasks" : level;
