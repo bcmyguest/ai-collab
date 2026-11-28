@@ -432,11 +432,17 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   }
 
   // Merges a spawned child's commits into the branch it was cut from; a failure becomes the report line, never a throw.
+  // An OpenShell child's commits come back to its host worktree first; its branch stays as the sandbox has it (docs/threads.md).
   async function mergeChild(s: Json): Promise<string> {
     const run = hostGit();
     if (!run) return "not merged: git is not installed";
+    const boxed = s.record.place === "openshell";
     try {
-      return await mergeIntoParent(run, s.record.cwd, s.record.spawn.mergeInto);
+      if (boxed) {
+        if (!s.live?.syncBack) return `not merged: ${s.record.harness} cannot copy sandbox work to the host`;
+        await s.live.syncBack();
+      }
+      return await mergeIntoParent(run, s.record.cwd, s.record.spawn.mergeInto, { keepBranch: boxed });
     } catch (error: Json) {
       return `not merged: ${error.message}`;
     }
@@ -1010,13 +1016,14 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       fail(409, `spawn_agent runs ${harness} children in OpenShell with full access, and OpenShell is not installed on the runner host (set AI_COLLAB_OPENSHELL_BIN or install openshell)`);
     }
     if (!PLACES.includes(place)) fail(400, "Unknown start place");
-    // One branch per thread: a worktree child of a parent on a thread branch starts from it and merges back (docs/threads.md).
-    if (spawned && place === "worktree" && mergeInto === undefined && !pickBase && !pickBranch && !worktreePath) {
+    // One branch per thread: a worktree or OpenShell child of a parent on a thread branch starts from it and merges back (docs/threads.md).
+    const branchChild = spawned && (place === "worktree" || place === "openshell");
+    if (branchChild && mergeInto === undefined && !pickBase && !pickBranch && !worktreePath) {
       const branch = await parentCheckoutBranch(project, parent);
       if (branch) [pickBase, mergeInto] = [branch, branch];
     }
-    if (mergeInto !== undefined && (!spawned || place !== "worktree" || typeof mergeInto !== "string" || !BRANCH_NAME.test(mergeInto))) fail(400, "mergeInto needs a spawned worktree child and a branch name");
-    const pick = await startPick(project, place, { base: pickBase, branch: pickBranch, worktreePath });
+    if (mergeInto !== undefined && (!branchChild || typeof mergeInto !== "string" || !BRANCH_NAME.test(mergeInto))) fail(400, "mergeInto needs a spawned worktree or OpenShell child and a branch name");
+    const pick = await startPick(project, branchChild ? "worktree" : place, { base: pickBase, branch: pickBranch, worktreePath });
     // OpenShell is the boundary: every harness there runs with approvals off, whatever mode the caller named.
     // An unnamed Claude start takes the configured claudePermissionMode when it names a runner mode.
     // A non-Claude start maps claudePermission through runnerModeOfClaude when the adapter supports the mode.
