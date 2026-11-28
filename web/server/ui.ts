@@ -418,10 +418,16 @@ function statusOnline(state: Json) {
   return Boolean(state) && (state.event === "start" || state.event === "hold") && Date.now() - (Date.parse(state.ts) || 0) < ONLINE_MS;
 }
 
+// The runner's owned record for a session address, or null when the runner does not own that session.
+function ownedRecord(cfg: Json, address: Json): Json {
+  const owned: Json = readOwned(cfg, String(address).split("#")[1] ?? "");
+  return owned?.address === address ? owned : null;
+}
+
 // True when the runner holds this session (starting, running or idle-waiting); the runner delivers its messages itself.
 function runnerHeld(cfg: Json, target: Json) {
-  const owned: Json = readOwned(cfg, String(target).split("#")[1]);
-  return owned?.address === target && owned.status !== "ended";
+  const owned = ownedRecord(cfg, target);
+  return Boolean(owned) && owned.status !== "ended";
 }
 
 // A reply whose id the server cannot accept goes out as plain text quoting the original's first and last words.
@@ -2064,14 +2070,13 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         // /permission stores the next-start mode on the session; /team-permission asks the operator before writing team.dot.
         // The runner rewrites its owned record from memory, so a stored value never reaches a runner-owned session's wake.
         const setPermission = (peer: Json, mode: Json) => {
-          const label = String(peer.id).split("#")[1] ?? "";
-          if (readOwned(cfg, label)?.address === peer.id) throw new Error(`The runner owns this session; /mode ${mode} changes its mode now and for later wakes`);
-          return setNextPermission(cfg, { id: peer.id, label, value: mode });
+          if (ownedRecord(cfg, peer.id)) throw new Error(`The runner owns this session; /mode ${mode} changes its mode now and for later wakes`);
+          return setNextPermission(cfg, { id: peer.id, label: String(peer.id).split("#")[1] ?? "", value: mode });
         };
         const askTeamPermission = (team: Json, mode: Json) => { const { done, ...reply }: { done?: Promise<string>; status: string; detail: string } = requestTeamPermission(cfg, team, mode, { env }); void done; return reply; };
         // /mode changes a runner-owned session's live mode; the runner applies the start checks again.
         const setSessionMode = async (peer: Json, mode: Json) => {
-          if (readOwned(cfg, String(peer.id).split("#")[1] ?? "")?.address !== peer.id) throw new Error("/mode needs a runner-owned session; /permission sets a terminal Claude session's next start");
+          if (!ownedRecord(cfg, peer.id)) throw new Error("/mode needs a runner-owned session; /permission sets a terminal Claude session's next start");
           const result = await runner({ socket: runnerSocket(env) }).setMode(peer.id, mode).catch(() => { throw new Error("The session runner is unavailable"); });
           if (result.status !== 200) throw new Error(result.body?.error || "The runner refused the mode change");
           broadcast();
@@ -2081,8 +2086,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       }
       if (action === "model") {
         const harness = recipient(cfg, target, true);
-        const owned = readOwned(cfg, target.split("#")[1]);
-        if (harness !== "claude" || owned?.address !== target) reject(404, "Select a runner-owned Claude session");
+        if (harness !== "claude" || !ownedRecord(cfg, target)) reject(404, "Select a runner-owned Claude session");
         const result = await runner({ socket: runnerSocket(env) }).setModel(target, model)
           .catch(() => reject(503, "The session runner is unavailable"));
         if (result.status !== 200) reject(result.status, result.body.error || "The runner refused the model switch");
