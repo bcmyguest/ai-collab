@@ -206,7 +206,8 @@ export function Console({ account }) {
   function pullStart(event) {
     if (!event.currentTarget.firstElementChild) return;
     const list = event.currentTarget.firstElementChild;
-    const typing = document.activeElement?.id === "composer";
+    // The composer keeps focus after a send, so only a draft in it means the operator is typing.
+    const typing = document.activeElement?.id === "composer" && Boolean(document.activeElement.value?.trim());
     const selecting = Boolean(window.getSelection?.()?.toString());
     const top = atTop(list), bottom = atBottom(list);
     pullFrom.current = (top || bottom) && !typing && !selecting && event.touches.length === 1 ? { y: event.touches[0].clientY, top, bottom } : null;

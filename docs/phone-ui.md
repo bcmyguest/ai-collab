@@ -42,7 +42,7 @@ Run `npm ci && npm run build` in the checkout before `systemctl --user restart a
 
 The browser reads one AG-UI SSE stream from `/api/events` using `@ag-ui/client`. A `STATE_SNAPSHOT` refreshes the chat and session view. In an Activity view (`view=activity`), the same stream replays activity events and then sends new ones as they arrive. See the [AG-UI event protocol](ag-ui.md). The server holds a single bus streaming subscription (`/<topic1>,<topic2>/json`) shared by all browsers and by every project on the same bus. It fetches stored events (`poll=1&since=all`) when it loads a project and reconnects from the last observed timestamp with a one-second overlap. The activity topic's history keeps the newest 3 MB of stored events, and the hub keeps 500 events per topic.
 
-On a phone, drag the list down from its top, or up from its bottom, past 70 px to refresh: the app reconnects its stream like **Retry** and shows the same toasts. The gesture uses touch events only and is ignored while text is selected or the composer has focus; the page keeps `overscroll-none`, so the browser's own reload never fires.
+On a phone, drag the list down from its top, or up from its bottom, past 70 px to refresh: the app reconnects its stream like **Retry** and shows the same toasts. The gesture uses touch events only and is ignored while text is selected or the focused composer holds a draft; the page keeps `overscroll-none`, so the browser's own reload never fires.
 
 After a deploy, an open page shows an "Update available" toast when it reconnects; tap Reload to load the new build. The page compares its build id with `GET /api/version`.
 
