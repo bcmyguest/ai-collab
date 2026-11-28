@@ -50,7 +50,7 @@ After a deploy, an open page shows an "Update available" toast when it reconnect
 
 ## Home
 
-**Thread chat** (`#project=<p>&level=thread&thread=<id>`, a sidebar thread row) shows the thread's channel posts, oldest first, and posts to its listeners; see [Threads](threads.md#thread-view).
+**Thread chat** (`#project=<p>&level=thread&thread=<id>`, a sidebar thread row) shows the thread's channel posts, oldest first, and posts to its listeners; see [Threads](threads.md#thread-view). Its header's Add agent button starts an agent inside the thread; the new-session composer's `Start in <project> →` picker chooses New thread or an existing thread. The sidebar's Project chat row opens the project chat.
 
 **Home** (`#home`, the landing page, the header's house button, or the sidebar logo) shows one card per session across every project: avatar, human name, `harness#label`, project, state, last action (tool and summary), last active, "started by …", and running subagents nested under the card. A child session whose registry `parent` is listed nests under its parent. Cards group by state; Offline starts collapsed:
 

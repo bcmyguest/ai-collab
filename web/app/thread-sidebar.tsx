@@ -2,7 +2,7 @@
 // The left column: wordmark, project switcher, the project's threads grouped by what they need, and the app menu.
 // Rendered beside the chat on a desktop and as the whole screen on a phone.
 import { useState, type FormEvent, type ReactNode } from "react";
-import { Check, ChevronDown, ChevronRight, Ellipsis, GitPullRequest, Plus, Settings2 } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Ellipsis, GitPullRequest, MessagesSquare, Plus, Settings2 } from "lucide-react";
 import { AlertDialog, AlertDialogClose, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from "@ui-sdk/react/alert-dialog";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@ui-sdk/react/dialog";
 import { Field, FieldLabel } from "@ui-sdk/react/field";
@@ -345,6 +345,10 @@ export function ThreadSidebar(props: SidebarProps) {
       <button type="button" aria-label={"New thread in " + current} onClick={() => newThread(current)} disabled={disabled || paused} title={paused ? "New work is paused" : undefined}
         className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-foreground hover:bg-sidebar-accent disabled:opacity-50 max-md:min-h-11">
         <Plus aria-hidden className="size-4 text-muted-foreground"/>New thread
+      </button>
+      <button type="button" onClick={() => navigate({ project: current, level: "project" })} aria-current={selected.level === "project" ? "page" : undefined}
+        className={cn("flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-foreground hover:bg-sidebar-accent max-md:min-h-11", selected.level === "project" && "bg-sidebar-accent/60")}>
+        <MessagesSquare aria-hidden className="size-4 text-muted-foreground"/>Project chat
       </button>
     </div>}
     <nav aria-label="Threads" className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-3">

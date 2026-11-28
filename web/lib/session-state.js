@@ -116,3 +116,14 @@ function isAncestor(byId, id, parentId) {
   }
   return false;
 }
+
+/**
+ * Whether the Stop button shows: a turn the runner holds is running, or a working session can take an interrupt
+ * (any runner-held harness; outside the runner only Codex and OpenCode, lib/sessions/control.ts interruptSession).
+ */
+export function canStop(s, now) {
+  if (s.runnerStatus === "running") return true;
+  if (sessionState(s, now) !== "working") return false;
+  const peer = String(s.id || "").split("#")[0];
+  return Boolean(s.runnerStatus) || (shownOnline(s) && ["codex", "opencode"].includes(peer));
+}

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Bell, BellOff, ChevronRight, CircleStop } from "lucide-react";
 import { Toggle } from "@ui-sdk/react/toggle";
 import { cn } from "@/lib/utils";
-import { isLive, sessionState } from "@/lib/session-state";
+import { canStop, isLive, sessionState } from "@/lib/session-state";
 import { runState, subagentModel } from "@/lib/activity-rows";
 import { agentDetail } from "@/lib/agent-detail";
 import { shortName, type Agent } from "@/lib/thread-groups";
@@ -91,7 +91,7 @@ function SessionItem({ agent, name, selected, now, open, listen, stop, children 
         {detail && <span className="min-w-0 truncate text-xs text-muted-foreground" title={detail}>{detail}</span>}
       </span>
     </button>
-    {stop && agent.runnerStatus === "running" && <button type="button" aria-label={"Stop " + (name || short(agent.id))} title="Stop this agent's turn" onClick={() => stop(agent.id)}
+    {stop && canStop(agent, now) && <button type="button" aria-label={"Stop " + (name || short(agent.id))} title="Stop this agent's turn" onClick={() => stop(agent.id)}
       className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground max-md:mt-0 max-md:size-11">
       <CircleStop aria-hidden className="size-3.5"/>
     </button>}

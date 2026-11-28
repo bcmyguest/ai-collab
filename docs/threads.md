@@ -163,6 +163,10 @@ In the UI the composer of an open thread reads "Everyone listening in <thread ti
 
 A thread row in the sidebar opens the thread chat (`#project=<p>&level=thread&thread=<id>`). The header names the thread with its place beneath; the up/down switcher opens one of its sessions, and a session's header title leads back to the thread chat. The feed shows the thread topic's posts, oldest first, from `/api/events?thread=<id>`; the UI server keeps that topic subscribed while the view is open, so new posts arrive live. Its composer posts to the channel.
 
+**Add agent** (the person-plus button in the thread chat's and a thread session's header) opens the new-session composer with that thread picked. The composer reads `Start in <project> → <thread>`; its picker lists **New thread** (the default) and the project's threads that aren't archived. A start in a thread sends `thread` and no place or code mode, and the server runs the agent in the thread's worktree and adds it to the thread.
+
+The sidebar's **Project chat** row, under New thread, opens the project chat.
+
 A post from an open session's chat reaches that session once even when it muted the thread, as long as the session is a member: the operator is looking at it.
 
 ### Listening toggle

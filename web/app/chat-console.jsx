@@ -2,7 +2,7 @@
 // The console shell: hash routing, the header for each level, the streamed screen (via useStream),
 // pull-to-refresh, scroll memory, and the wiring from every action to its /api call.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, CircleStop, CornerLeftUp, ListTodo, PanelRight, Plus, RotateCw } from "lucide-react";
+import { ArrowLeft, CircleStop, CornerLeftUp, ListTodo, PanelRight, Plus, RotateCw, UserPlus } from "lucide-react";
 import { ThreadPrimitive, getExternalStoreMessages } from "@assistant-ui/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,7 @@ import { TaskBoard } from "./tasks";
 import { liveRows, projectThread, sessionTurns, withoutAnswered } from "@/lib/project-feed";
 import { projectViewCounts, selectionHash } from "@/lib/selection";
 import { agentName } from "@/lib/sidebar";
-import { sessionState } from "@/lib/session-state";
+import { canStop, sessionState } from "@/lib/session-state";
 import { ActivityRow, Working } from "./activity";
 import { RunRequests } from "./run-requests";
 import { SurfaceContext } from "@/components/a2ui/surface";
@@ -128,6 +128,8 @@ export function Console({ account }) {
   const [notice, setNotice] = useState("");
   const [replyTo, setReplyTo] = useState(null);
   const [creating, setCreating] = useState("");
+  // The thread a new agent joins; "" starts a new thread.
+  const [startThread, setStartThread] = useState("");
   const [working, setWorking] = useState(false);
   const latestAction = useRef(0);
   const [now, setNow] = useState(Date.now);
@@ -271,6 +273,8 @@ export function Console({ account }) {
   const placeholder = composeTask ? `Message about #${composeTask}…` : "Write a message…";
   const currentThread = level === "thread" ? (data.threads || []).find(item => item.id === selected.thread)
     : level === "session" && selected.session ? (data.threads || []).find(item => (item.sessions || []).includes(selected.session)) : undefined;
+  const openThreads = (data.threads || []).filter(item => item.status !== "archived");
+  const startingIn = startThread ? openThreads.find(item => item.id === startThread) : undefined;
   const routing = { project, target, session: level === "session" && Boolean(target), tasks: data.tasks?.tasks || [],
     thread: currentThread ? { id: currentThread.id, title: currentThread.title } : null,
     peers: data.projects.find(item => item.id === project)?.peers || [],
@@ -340,7 +344,7 @@ export function Console({ account }) {
   const thread = useMemo(() => inline ? chatThread(scoped, rows, selected.session)
     : watching ? projectThread(visible, turns)
     : visible.map(message => ({ message })), [visible, scoped, turns, rows, inline, watching, selected.session]);
-  const newSession = id => { setCreating(id); if (id !== project || level !== "project") navigate({ project: id, level: "project" }); else setNavOpen(false); };
+  const newSession = (id, thread = "") => { setStartThread(thread); setCreating(id); if (id !== project || level !== "project") navigate({ project: id, level: "project" }); else setNavOpen(false); };
   async function startSession(payload) {
     try { return await api("start", { project, ...payload }); } catch (err) { return { status: "failed", detail: err.message }; }
   }
@@ -479,6 +483,8 @@ export function Console({ account }) {
         {/* A phone hides the sidebar, so New thread repeats here as the header's second stop. */}
         {project && !home && !inbox && <Button variant="ghost" size="icon" className="md:hidden" aria-label={"New thread in " + project}
           title={paused ? "New work is paused" : "New thread"} disabled={working || paused} onClick={() => newSession(project)}><Plus/></Button>}
+        {(level === "session" || level === "thread") && currentThread && !paused && <Button variant="ghost" size="icon" aria-label={"Add agent to " + (currentThread.title || "this thread")}
+          title="Add agent to this thread" disabled={working} onClick={() => newSession(project, currentThread.id)}><UserPlus/></Button>}
         {(level === "session" || level === "thread") && <ThreadSwitcher thread={currentThread} agents={data.agents || []} current={selected.session}
           open={session => session && navigate({ project, level: "session", harness: session.split("#")[0], session })}/>}
         {level === "session" && agent?.session && <div className="flex shrink-0 items-center gap-1">
@@ -491,7 +497,7 @@ export function Console({ account }) {
               .map(model => <option key={model} value={model}>{model}</option>)}
           </select>}
           <span className="max-sm:hidden"><ContextChip context={agent.context || {}} rows={rows.filter(row => row.agent === agent.id)}/></span>
-          {agent.runnerStatus === "running" && <Button variant="ghost" size="icon" aria-label={"Stop " + selected.session} title="Stop this agent's turn" disabled={!ready}
+          {canStop(agent, now) && <Button variant="ghost" size="icon" aria-label={"Stop " + selected.session} title="Stop this agent's turn" disabled={!ready}
             onClick={() => action("interrupt", { target: selected.session }, "Interrupt requested")}><CircleStop/></Button>}
           <SessionMenu node={{ ...agent, project }} disabled={working} map={() => navigate({ project, level: "compactions" })} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}
             raw={openRaw} label={"Session actions for " + selected.session} detailsAction={<>
@@ -509,11 +515,12 @@ export function Console({ account }) {
       </header>
       <div className={cn("flex flex-col gap-2 px-3 empty:hidden", composing && "min-h-0 flex-1 justify-end pb-3")}>
         {composing && <div className="mx-auto w-full max-w-3xl px-1 pb-2">
-          <h2 className="text-xl font-semibold">New thread</h2>
-          <p className="text-sm text-muted-foreground">Describe the work; the first words become its title.</p>
+          <h2 className="text-xl font-semibold">{startingIn ? "New agent in " + (startingIn.title || "Untitled") : "New thread"}</h2>
+          <p className="text-sm text-muted-foreground">{startingIn ? "It joins the thread and works in its worktree." : "Describe the work; the first words become its title."}</p>
         </div>}
         {composing && <NewAgentComposer key={project + ":" + (data.startable || []).join(",")} project={project} startable={data.startable || []} places={data.startPlaces || ["folder"]} startPlace={data.startPlace || "folder"} sandboxHarnesses={data.openshellHarnesses || []}
-          startDefault={data.startDefault} codeModeDefault={data.codeModeDefault !== false} agents={data.agents} models={models} disabled={!ready} start={startSession} close={() => setCreating("")} open={openAddress}/>}
+          startDefault={data.startDefault} codeModeDefault={data.codeModeDefault !== false} agents={data.agents} models={models} disabled={!ready} start={startSession} close={() => setCreating("")}
+          threads={openThreads} thread={startThread} setThread={setStartThread} open={openAddress}/>}
         {agent?.wake?.status && <div className="mx-auto mt-2 flex w-full max-w-3xl flex-wrap items-center gap-2 rounded-xl border bg-muted/50 px-3 py-2 text-sm">
           Wake · {agent.wake.status}{agent.wake.detail && " · " + agent.wake.detail}
           {agent.wake.status === "failed" && !agent.online && <Button size="sm" variant="outline" disabled={working} onClick={() => action("wake", { target: selected.session }, "Wake requested")}>Retry wake</Button>}

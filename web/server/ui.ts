@@ -138,6 +138,8 @@ const REPLY_TITLE = /^Reply from operator \(([^)]+)\)$/;
 const encoder = new TextEncoder();
 const runFile = promisify(execFile);
 
+// A channel copy's post id (lib/messaging.ts MESSAGE_ID).
+const CHANNEL_POST_ID = /^[a-zA-Z0-9-]{1,64}$/;
 const peerOf = (address: string) => String(address || "").split("#")[0];
 const replyTitle = (cfg: Json, by?: string) => "Reply from " + cfg.peer + (by ? ` (${by})` : "");
 const replyBy = (event: Json) => { const by = REPLY_TITLE.exec(event.title || "")?.[1]; return isGithubLogin(by) ? by : undefined; };
@@ -235,7 +237,7 @@ function baseEntry(event: Json): Json {
     const to = envelope.toSession ? `${envelope.to}#${envelope.toSession}` : envelope.to;
     const by = !system && envelope.from === "operator" && isGithubLogin(envelope.by) ? { by: envelope.by } : {};
     // A reply to a message names it as replyOf; replyTo stays the answer link to a question.
-    return { id, time, kind: "Message", sender, from: sender, to, body: envelope.body, thread: envelope.operatorThread === true, ...(system ? { system: true } : {}), ...(envelope.urgent === true ? { urgent: true } : {}), ...(envelope.startOnly === true ? { startOnly: true } : {}), ...(typeof envelope.replyTo === "string" && envelope.replyTo ? { replyOf: envelope.replyTo } : {}), ...(typeof envelope.mentionedIn === "string" ? { mentionedIn: envelope.mentionedIn } : {}), ...by };
+    return { id, time, kind: "Message", sender, from: sender, to, body: envelope.body, thread: envelope.operatorThread === true, ...(typeof envelope.channel === "string" && CHANNEL_POST_ID.test(envelope.channel) ? { channelOf: envelope.channel } : {}), ...(system ? { system: true } : {}), ...(envelope.urgent === true ? { urgent: true } : {}), ...(envelope.startOnly === true ? { startOnly: true } : {}), ...(typeof envelope.replyTo === "string" && envelope.replyTo ? { replyOf: envelope.replyTo } : {}), ...(typeof envelope.mentionedIn === "string" ? { mentionedIn: envelope.mentionedIn } : {}), ...by };
   }
   const reply = readReply(event);
   const by = replyBy(event);
@@ -1037,12 +1039,19 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
 
   // The thread view's feed (docs/threads.md "Thread view"): the thread's channel posts, oldest first, in the chat
   // message shape; the thread itself is the addressee, so rows read like the session chat's.
-  function threadPosts(project: Json, id: string): Json[] {
-    return project.hub.events(threadTopic(project.cfg.project, id))
+  function threadPosts(project: Json, id: string, agentList: Json): Json[] {
+    const posts = project.hub.events(threadTopic(project.cfg.project, id))
       .map(entry).filter((item: Json) => item?.kind === "Message")
-      .sort((a: Json, b: Json) => a.time - b.time || String(a.id).localeCompare(String(b.id)))
       .map((item: Json) => ({ ...item, to: "all" }));
+    // Agents answer the operator directly, so each thread session's chat joins the feed; a channel post's per-recipient copies stay out.
+    const sessions: string[] = project.threads?.list()?.find((thread: Json) => thread.id === id)?.sessions || [];
+    const direct = sessions.flatMap(session => messages(project, { harness: peerOf(session), session }, agentList))
+      .filter((item: Json) => !item.channelOf && !item.queued);
+    const seen = new Set();
+    return [...posts, ...direct].filter((item: Json) => !seen.has(item.id) && seen.add(item.id))
+      .sort((a: Json, b: Json) => a.time - b.time || String(a.id).localeCompare(String(b.id)));
   }
+
 
   // Show system prompts and typed prompts in chat, with typed echoes removed.
   function terminalPrompts(activity: Json, sent: Json) {
@@ -1281,7 +1290,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         const withHistory = history.has(agent.id) ? { ...withContext, history: history.get(agent.id) } : withContext;
         return waiting.has(agent.id) ? { ...withHistory, waiting: true } : withHistory;
       }),
-      messages: thread ? threadPosts(project, thread) : scope === "home" ? [] : messages(project, { harness, session }, list),
+      messages: thread ? threadPosts(project, thread, list) : scope === "home" ? [] : messages(project, { harness, session }, list),
       ...(cards ? { sessions: cards } : {}),
       ...(scope === "home" ? {
         ...(!hosted ? { shipped: shown.flatMap(item => item.failed ? [] :
