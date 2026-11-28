@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { FAKE_OPENSHELL } from "./helpers/runner-ctx.mjs";
 import { loadConfig } from "../lib/config.ts";
 import { openDurable } from "../lib/durable.ts";
 import { createRunner } from "../runner/runner.ts";
@@ -23,14 +24,14 @@ test("parallel worktree spawns in the same second each get their own worktree an
   execFileSync("git", ["-C", root, ...ID, "commit", "--quiet", "--allow-empty", "-m", "init"]);
   writeFileSync(path.join(home, ".config", "ai-collab", "projects.json"), JSON.stringify([{ root, project: "demo" }]));
   const env = {
-    PATH: process.env.PATH, HOME: home, XDG_CONFIG_HOME: path.join(home, ".config"), AI_COLLAB_STATE_DIR: path.join(home, "state"),
+    PATH: process.env.PATH, HOME: home, XDG_CONFIG_HOME: path.join(home, ".config"), AI_COLLAB_STATE_DIR: path.join(home, "state"), AI_COLLAB_OPENSHELL_BIN: FAKE_OPENSHELL,
     AI_COLLAB_URL: fake.url, AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "runner", AI_COLLAB_PEERS: "codex,operator,runner", AI_COLLAB_TIMEOUT_MS: "2000",
   };
-  const adapter = createFakeAdapter({ harness: "codex" });
+  const adapter = createFakeAdapter({ harness: "codex", capabilities: { places: ["folder", "worktree", "openshell"], openshellStarts: true } });
   const runner = createRunner({ projects: [loadConfig(env, { cwd: root })], adapters: new Map([["codex", adapter]]), durable: openDurable(":memory:"), env, startGapMs: 0, watch: false, startTimeoutMs: 2000, now: () => 1_800_000_000_000 });
   await runner.boot();
   t.after(() => runner.stop());
-  const parent = (await runner.start({ project: "demo", harness: "codex", prompt: "parent" })).session;
+  const parent = (await runner.start({ project: "demo", harness: "codex", prompt: "parent", place: "folder" })).session;
   const spawn = (prompt) => runner.start({ project: "demo", harness: "codex", prompt, place: "worktree", managed: true, parent, spawn: true, system: false });
   const children = await Promise.all(["first", "second", "third", "fourth"].map(spawn));
   assert.deepEqual(children.map((c) => c.status), ["started", "started", "started", "started"]);

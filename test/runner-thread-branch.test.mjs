@@ -28,7 +28,7 @@ test("a worktree child of a parent on a thread branch starts from it and records
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
   const ctx = setup(t, fake);
-  const runner = makeRunner(ctx, createFakeAdapter({ harness: "codex" }));
+  const runner = makeRunner(ctx, createFakeAdapter({ harness: "codex", capabilities: { places: ["folder", "worktree", "openshell"], openshellStarts: true } }));
   await runner.boot();
   t.after(() => runner.stop());
   const parent = (await runner.start({ project: "demo", harness: "codex", prompt: "parent", place: "folder" })).session;

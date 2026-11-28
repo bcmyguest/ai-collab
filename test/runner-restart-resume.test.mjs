@@ -4,13 +4,14 @@ import { rmSync } from "node:fs";
 import { parseWireEnvelope } from "../lib/agui.ts";
 import { createFakeAdapter } from "../runner/adapters/fake.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
-import { makeRunner as makeCtxRunner, setup as setupCtx, until } from "./helpers/runner-ctx.mjs";
+import { gitRepo, makeRunner as makeCtxRunner, setup as setupCtx, until } from "./helpers/runner-ctx.mjs";
 
 const TO_CODEX = "ai-collab-demo--to--codex";
 
 // The shared runner test home, removed after the test.
 function setup(t, fake) {
   const ctx = setupCtx(fake);
+  gitRepo(ctx.root);
   t.after(() => rmSync(ctx.home, { recursive: true, force: true }));
   return ctx;
 }
@@ -25,7 +26,7 @@ async function restartMidRun(t, prompt, { stall = false } = {}) {
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
   const ctx = setup(t, fake);
-  const firstAdapter = createFakeAdapter({ harness: "codex" });
+  const firstAdapter = createFakeAdapter({ harness: "codex", capabilities: { places: ["folder", "worktree", "openshell"], openshellStarts: true } });
   let kill = null;
   if (stall) {
     const open = firstAdapter.open.bind(firstAdapter);
@@ -38,7 +39,7 @@ async function restartMidRun(t, prompt, { stall = false } = {}) {
   }
   const first = makeRunner(ctx, firstAdapter);
   await first.boot();
-  const parent = (await first.start({ project: "demo", harness: "codex", prompt: "parent" })).session;
+  const parent = (await first.start({ project: "demo", harness: "codex", prompt: "parent", place: "folder" })).session;
   const { session } = await first.start(spawnInput(prompt, parent));
   if (stall) {
     await until(() => kill, "stalled send");
@@ -48,7 +49,7 @@ async function restartMidRun(t, prompt, { stall = false } = {}) {
   } else {
     await until(() => first.get(session).run, "run").finally(() => first.stop());
   }
-  const adapter = createFakeAdapter({ harness: "codex" });
+  const adapter = createFakeAdapter({ harness: "codex", capabilities: { places: ["folder", "worktree", "openshell"], openshellStarts: true } });
   const second = makeRunner(ctx, adapter);
   t.after(() => second.stop());
   await second.boot();

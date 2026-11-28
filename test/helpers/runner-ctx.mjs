@@ -1,11 +1,22 @@
 // Shared setup for runner tests: a throwaway HOME with one project on the fake ntfy, and a runner over a durable log.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
 import { loadConfig } from "../../lib/config.ts";
 import { openDurable } from "../../lib/durable.ts";
 import { createRunner } from "../../runner/runner.ts";
 import { fileEnd, tempDir } from "./tmp.mjs";
+
+// Spawned codex and claude children need OpenShell; the fake stands in so the tests never depend on the host.
+export const FAKE_OPENSHELL = fileURLToPath(new URL("./fake-openshell.mjs", import.meta.url));
+
+// A spawned OpenShell child starts on its own worktree, so the project must be a git repo with one commit.
+export function gitRepo(root) {
+  execFileSync("git", ["init", "--quiet", "--template=", "-b", "main", root]);
+  execFileSync("git", ["-C", root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "--allow-empty", "-m", "init"]);
+}
 
 export function setup(fake) {
   const home = tempDir(fileEnd, "ai-collab-runner-ctx-");
@@ -16,7 +27,7 @@ export function setup(fake) {
   const env = {
     PATH: process.env.PATH, HOME: home, XDG_CONFIG_HOME: path.join(home, ".config"), AI_COLLAB_URL: fake.url,
     AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "runner", AI_COLLAB_PEERS: "codex,claude,operator,runner",
-    AI_COLLAB_STATE_DIR: path.join(home, "state"), AI_COLLAB_TIMEOUT_MS: "2000",
+    AI_COLLAB_STATE_DIR: path.join(home, "state"), AI_COLLAB_TIMEOUT_MS: "2000", AI_COLLAB_OPENSHELL_BIN: FAKE_OPENSHELL,
   };
   const cfg = loadConfig(env, { cwd: root });
   assert.equal(cfg.enabled, true, cfg.reason);

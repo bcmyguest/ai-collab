@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { FAKE_OPENSHELL, gitRepo } from "./helpers/runner-ctx.mjs";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
 import { wrapOpen } from "./helpers/fake-adapter-hooks.mjs";
 import { loadConfig } from "../lib/config.ts";
@@ -20,12 +21,13 @@ function setup(t, fake) {
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const root = path.join(home, "demo");
   mkdirSync(root);
+  gitRepo(root);
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
   writeFileSync(path.join(home, ".config", "ai-collab", "projects.json"), JSON.stringify([{ root, project: "demo" }]));
   const env = {
     PATH: process.env.PATH, HOME: home, XDG_CONFIG_HOME: path.join(home, ".config"), AI_COLLAB_URL: fake.url,
     AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "runner", AI_COLLAB_PEERS: "codex,claude,operator,runner",
-    AI_COLLAB_STATE_DIR: path.join(home, "state"), AI_COLLAB_TIMEOUT_MS: "2000",
+    AI_COLLAB_STATE_DIR: path.join(home, "state"), AI_COLLAB_OPENSHELL_BIN: FAKE_OPENSHELL, AI_COLLAB_TIMEOUT_MS: "2000",
   };
   const cfg = loadConfig(env, { cwd: root });
   return { home, root, env, cfg, db: path.join(home, "state", "runner.db") };
@@ -85,7 +87,7 @@ test("a spawn whose claim lands after its 504 ends that child, so it does not co
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
   const ctx = setup(t, fake);
-  const adapter = createFakeAdapter({ harness: "codex" });
+  const adapter = createFakeAdapter({ harness: "codex", capabilities: { places: ["folder", "worktree", "openshell"], openshellStarts: true } });
   const durable = openDurable(ctx.db);
   const cancel = durable.cancel.bind(durable);
   const held = gate();
@@ -126,7 +128,7 @@ test("a late child whose release fails is still marked ended and frees its cap s
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
   const ctx = setup(t, fake);
-  const adapter = createFakeAdapter({ harness: "codex" });
+  const adapter = createFakeAdapter({ harness: "codex", capabilities: { places: ["folder", "worktree", "openshell"], openshellStarts: true } });
   const durable = openDurable(ctx.db);
   const cancel = durable.cancel.bind(durable);
   const held = gate();
