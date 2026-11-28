@@ -44,7 +44,7 @@ import { sessionOfCommand } from "../lib/schedule-session.ts";
 import { ALLOW_HOST_AGENT_ENV } from "../lib/agent-guard.ts";
 import { noSubagentEnv } from "../lib/subagent-guard.ts";
 import { SPAWN_MAX_CHILDREN, SPAWN_MAX_DEPTH, spawnBriefNote, spawnReport, spawnSelfNote } from "../lib/spawn.ts";
-import { opencodeSandboxName, sandboxCapRefusal, sandboxName, teamSandboxName } from "../lib/sandbox.ts";
+import { harnessSandboxName, sandboxCapRefusal, teamSandboxName } from "../lib/sandbox.ts";
 import { DELIVERY, deliveryWorkflow } from "./delivery.ts";
 import { publishApproval, publishApprovalEnd, publishEnded, publishEvent, publishReceipts } from "./publish.ts";
 
@@ -480,7 +480,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
 
   /**
    * The place a start gets when the caller names none: defaults.json startPlace (default openshell) when this harness's
-   * adapter can run there and openshell is installed, else the project folder. Codex in OpenShell needs a builder.
+   * adapter can run there and openshell is installed, else the project folder. A Codex adapter that cannot stage its
+   * own sandbox runs in OpenShell only as a builder.
    */
   function defaultPlace(harness: string) {
     const preferred = startPlaceSetting(env);
@@ -488,7 +489,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     const places = adapterOf(harness).capabilities.places ?? ["folder", "worktree"];
     if (!places.includes(preferred)) return "folder";
     if (preferred !== "openshell") return preferred;
-    if (harness === "codex") return "folder";
+    if (!openshellStarts(harness)) return "folder";
     return openshellInstalled() ? "openshell" : "folder";
   }
 
@@ -497,8 +498,13 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     return Boolean(bin.startsWith("/") ? existsSync(bin) : findExecutable(bin, childEnv(env).PATH));
   }
 
+  // Codex in OpenShell needs a launcher: a builder's, or one its adapter stages itself (capabilities.openshellStarts).
+  function openshellStarts(harness: string) {
+    return harness !== "codex" || adapterOf(harness).capabilities.openshellStarts === true;
+  }
+
   function checkOpenShellLaunch(harness: string, place: Json, builder?: Json) {
-    if (harness === "codex" && place === "openshell" && !builder) {
+    if (place === "openshell" && !builder && !openshellStarts(harness)) {
       fail(400, "Codex OpenShell starts require a tracked builder to prepare the launcher");
     }
   }
@@ -1048,7 +1054,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     checkOpenShellLaunch(harness, place, builder);
     // A builder passed the cap at `builder start`; any other OpenShell start that would add a sandbox is checked here.
     if (place === "openshell" && !builder) {
-      const capped = await sandboxCapRefusal({ openshell: env.AI_COLLAB_OPENSHELL_BIN || "openshell", env, name: patternRun ? teamSandboxName(project, patternRun) : harness === "opencode" ? opencodeSandboxName(project) : sandboxName(project) });
+      const capped = await sandboxCapRefusal({ openshell: env.AI_COLLAB_OPENSHELL_BIN || "openshell", env, name: patternRun ? teamSandboxName(project, patternRun) : harnessSandboxName(harness, project) });
       if (capped) fail(409, capped);
     }
     // Spawns skip the gap; the per-parent child cap bounds their rate.
@@ -1301,8 +1307,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       initial = { ...(await preparePatternRun(cfg, pattern, task, env, { now, openshell: true })), runner: true };
       for (const { harness } of initial.definition.roles) {
         checkOpenShellLaunch(harness, "openshell");
-        // OpenCode runs in its own per-project sandbox (opencode-sandbox.ts), not in the team sandbox the members share.
-        if (harness === "opencode" || !adapterOf(harness).capabilities.places?.includes("openshell")) throw new Error(harness + " does not support OpenShell team roles");
+        // OpenCode and openshellTeams:false adapters run in per-project sandboxes (opencode-sandbox.ts, cli-sandbox.ts), not the team sandbox.
+        if (harness === "opencode" || adapterOf(harness).capabilities.openshellTeams === false || !adapterOf(harness).capabilities.places?.includes("openshell")) throw new Error(harness + " does not support OpenShell team roles");
       }
     } catch (error: Json) {
       fail(400, error.message);

@@ -10,6 +10,8 @@ import { classifyLimit } from "../../lib/limits.ts";
 import { claudeCodeModeSettings } from "../../lib/code-mode.ts";
 import { CLAUDE_SUBAGENT_TOOLS } from "../../lib/subagent-guard.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, LIMIT, PERMISSION_MODES, permissionSettings } from "../contract.ts";
+import { CLAUDE_IN, claudeSpawner, createClaudeSandbox } from "./cli-sandbox.ts";
+import type { CliBox, CliSandbox } from "./cli-sandbox.ts";
 
 import type { Decision, SessionContext, UserInput } from "../types.d.ts";
 
@@ -61,7 +63,7 @@ async function userMessage(input: UserInput, priority?: Json) {
 }
 
 /** Starts one session's query and message pump; attach() awaits the handshake before the handle is used. */
-function startSession({ query, ctx, nativeId, cwd, model, permission, env, resume, codeMode, managed }: Json) {
+function startSession({ query, ctx, nativeId, cwd, model, permission, env, resume, codeMode, managed, launch }: Json) {
   const threadId = `claude#${sessionLabel(nativeId)}`;
   const inputs = inputQueue();
   const pending = new Map();
@@ -85,6 +87,8 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
       // Flag settings are the only layer a headless Claude reads code mode from (lib/code-mode.ts).
       ...(typeof codeMode === "boolean" ? { settings: claudeCodeModeSettings(codeMode) } : {}),
       ...(resume ? { resume: nativeId } : { sessionId: nativeId }),
+      // An OpenShell session's CLI runs in its sandbox through this spawner (createClaudeAdapter's sandbox).
+      ...(launch ?? {}),
     },
   });
 
@@ -319,14 +323,50 @@ async function probe(query: Json, options: Json, read: Json) {
   }
 }
 
+/** The handle with a close that waits for the sandboxed CLI, lands the work and releases the sandbox, and a syncBack for land finish. */
+function boxedHandle(handle: Json, box: CliBox, stopped: () => Promise<void>, log: (line: string) => void) {
+  let closed = false;
+  return {
+    ...handle,
+    syncBack: () => box.syncBack(log),
+    async close() {
+      if (closed) return;
+      closed = true;
+      await handle.close();
+      await stopped();
+      await box.close(log);
+    },
+  };
+}
+
 /**
  * The Claude adapter with an injected query function (tests pass a fake; the default export uses the SDK).
- * handshakeMs bounds the CLI handshake at open and resume.
+ * handshakeMs bounds the CLI handshake at open and resume. `sandbox` runs place openshell sessions in the project's
+ * Claude sandbox (cli-sandbox.ts); without one the adapter offers no openshell place.
  */
-export function createClaudeAdapter({ query = sdkQuery, handshakeMs = HANDSHAKE_MS } = {}) {
+export function createClaudeAdapter({ query = sdkQuery, handshakeMs = HANDSHAKE_MS, sandbox = null }: { query?: Json; handshakeMs?: number; sandbox?: CliSandbox | null } = {}) {
+  // Stages the sandbox and returns the query options that run the CLI there, with the box and a wait for the CLI's exit.
+  async function openBox(project: string, cwd: string, vars: Json, ctx: SessionContext, resumeId: string | null) {
+    if (!sandbox) throw new Error("claude has no OpenShell sandbox in this runner");
+    const box = await sandbox.open({ project, cwd, home: vars?.HOME, log: ctx.log, ...(resumeId ? { id: resumeId, resume: true } : {}) });
+    const { spawner, stopped } = claudeSpawner({ openshell: sandbox.openshell, env: vars ?? process.env, sandbox: box.name, workdir: box.workdir, log: ctx.log });
+    return { box, stopped, launch: { spawnClaudeCodeProcess: spawner, pathToClaudeCodeExecutable: CLAUDE_IN, mcpServersDelivery: "initialize" } };
+  }
+
+  async function started(session: Json, label: string, boxed: Json, ctx: SessionContext) {
+    if (!boxed) return attach(session, label, handshakeMs);
+    try {
+      return boxedHandle(await attach(session, label, handshakeMs), boxed.box, boxed.stopped, ctx.log);
+    } catch (error) {
+      await boxed.stopped();
+      await boxed.box.close(ctx.log);
+      throw error;
+    }
+  }
+
   return {
     harness: "claude",
-    capabilities: { steer: true, images: true, resume: "transcript", permissionModes: PERMISSION_MODES },
+    capabilities: { steer: true, images: true, resume: "transcript", permissionModes: PERMISSION_MODES, ...(sandbox ? { places: ["folder", "worktree", "openshell"], openshellTeams: false } : {}) },
     async available(childVars: Json) {
       const path = findExecutable("claude", childEnv(childVars).PATH);
       return path ? { ok: true, detail: path } : { ok: false, detail: "claude is not on PATH" };
@@ -336,19 +376,22 @@ export function createClaudeAdapter({ query = sdkQuery, handshakeMs = HANDSHAKE_
     async open(options: Json, ctx: SessionContext) {
       const nativeId = randomUUID();
       await options.beforeStart?.(nativeId);
+      const boxed = options.place === "openshell" ? await openBox(options.project, options.cwd, options.env, ctx, null) : null;
       const session = startSession({
-        query, ctx, nativeId, cwd: options.cwd, model: options.model, permission: options.permission, env: options.env, codeMode: options.codeMode, managed: options.managed === true,
+        query, ctx, nativeId, cwd: boxed ? boxed.box.workdir : options.cwd, model: options.model, permission: options.permission, env: options.env, codeMode: options.codeMode, managed: options.managed === true, launch: boxed?.launch,
       });
-      return attach(session, "claude session", handshakeMs);
+      return started(session, "claude session", boxed, ctx);
     },
     async resume(record: Json, ctx: SessionContext, childVars: Json) {
       // A /permission value is the SDK mode for this resume; without one the runner's mode for the record stands.
       const { settings: runnerSettings } = permissionSettings("claude", record.permissionMode, record.place);
       const settings = record.claudePermission ? { permissionMode: record.claudePermission } : runnerSettings;
+      // A restored record holds its sandbox claim under its address; the transcript stays in the sandbox's home.
+      const boxed = record.place === "openshell" ? await openBox(record.project, record.cwd, childVars, ctx, record.address) : null;
       const session = startSession({
-        query, ctx, nativeId: record.nativeId, cwd: record.cwd, model: record.model, permission: settings, env: childVars, resume: true, codeMode: record.codeMode, managed: record.managed === true,
+        query, ctx, nativeId: record.nativeId, cwd: boxed ? boxed.box.workdir : record.cwd, model: record.model, permission: settings, env: childVars, resume: true, codeMode: record.codeMode, managed: record.managed === true, launch: boxed?.launch,
       });
-      return attach(session, "claude resume", handshakeMs);
+      return started(session, "claude resume", boxed, ctx);
     },
     async listModels(childVars: Json) {
       return probe(query, { env: childEnv(childVars) }, (init: Json) => init.models.map((m: Json) => ({ id: m.value, label: m.displayName })));
@@ -358,11 +401,14 @@ export function createClaudeAdapter({ query = sdkQuery, handshakeMs = HANDSHAKE_
         name: c.name, ...(c.description ? { description: c.description } : {}), ...(c.argumentHint ? { argumentHint: c.argumentHint } : {}),
       })));
     },
+    restore: (record: Json) => sandbox?.restore(record),
+    release: (record: Json) => (sandbox ? sandbox.release(record) : Promise.resolve(true)),
+    // Sandboxes outlive the runner, so their sessions resume after a restart.
     async shutdown() {},
   };
 }
 
-// The env arrives per call from the runner, so the factory takes no options.
-export default function claudeAdapter() {
-  return createClaudeAdapter();
+// The env arrives per call from the runner; the runner's env locates openshell and the CLI to upload.
+export default function claudeAdapter({ env = process.env }: { env?: NodeJS.ProcessEnv } = {}) {
+  return createClaudeAdapter({ sandbox: createClaudeSandbox({ env }) });
 }

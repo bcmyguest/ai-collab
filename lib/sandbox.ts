@@ -65,6 +65,14 @@ export function opencodeSandboxName(project: string): string {
   return prefixedName("aic-oc-", project);
 }
 
+/** The sandbox the runner's sessions of one harness share in a project: Cursor's ai-collab-<p>, OpenCode's aic-oc-<p>, Claude's aic-cl-<p>, Codex's aic-cx-<p>. */
+export function harnessSandboxName(harness: string, project: string): string {
+  if (harness === "opencode") return opencodeSandboxName(project);
+  if (harness === "claude") return prefixedName("aic-cl-", project);
+  if (harness === "codex") return prefixedName("aic-cx-", project);
+  return sandboxName(project);
+}
+
 // prefix plus the project's slug, or plus 8 hex of its hash when the slug is empty or too long.
 function prefixedName(prefix: string, project: string): string {
   const slug = String(project).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
