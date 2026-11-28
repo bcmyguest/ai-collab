@@ -4,6 +4,8 @@ import { isTaskId } from "./task-tags.js";
 export const LEVELS = [["project", "Project"], ["session", "Sessions"], ["tasks", "Tasks"], ["patterns", "Teams"], ["compactions", "History"]];
 // A thread id in the hash (lib/threads.ts THREAD_ID); the thread level is named by it, like home and inbox are by their flags.
 const THREAD_ID = /^th_[a-f0-9]{16}$/;
+// A native subagent run id (Claude's agentId) whose transcript replaces a session's chat.
+const RUN_ID = /^[\w-]{1,128}$/;
 // Views each level accepts in the hash: a session's chat alone (activity), or beside its subagents, raw activity, diff or PR panel.
 export const TABS = { project: [], session: ["activity", "subagents", "raw", "diff", "pr", "tasks"], tasks: [], patterns: [] };
 
@@ -18,6 +20,7 @@ export function selectionHash(next = {}) {
   if (next.level === "thread" && THREAD_ID.test(next.thread || "")) params.set("thread", next.thread);
   if ((TABS[next.level || "project"] || []).includes(next.tab)) params.set("tab", next.tab);
   if (next.tab === "subagents" && next.run) params.set("run", next.run);
+  if (next.level === "session" && next.session && RUN_ID.test(next.subagent || "")) params.set("subagent", next.subagent);
   if (next.level === "patterns") {
     for (const key of ["pattern", "run"]) if (next[key]) params.set(key, next[key]);
     if (next.raw) params.set("raw", "1");
@@ -78,7 +81,9 @@ export function parseSelection(hash) {
   if (at === "project" && isTaskId(params.get("composeTask"))) return { ...base, composeTask: params.get("composeTask") };
   // from/to (epoch ms) cut a session's timeline to one schedule run; no other session tab reads them.
   const window = at === "session" && base.tab === "activity" ? timeWindow(params) : null;
-  return window ? { ...base, window } : base;
+  // subagent names a native run of the session whose transcript the chat pane shows (docs/phone-ui.md "Subagents").
+  const subagent = at === "session" && base.session && RUN_ID.test(params.get("subagent") || "") ? params.get("subagent") : "";
+  return { ...base, ...(window ? { window } : {}), ...(subagent ? { subagent } : {}) };
 }
 
 // The {from, to} range a hash names, or null when a bound is missing, out of order or not a positive epoch time.

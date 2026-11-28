@@ -173,8 +173,9 @@ function ThreadItem({ row, all, selected, now, navigate, project, listen, disabl
   const sessions = (row.sessions || []).map(id => byId.get(id) || missingSession(id));
   const busy = workingCount(sessions, all, now);
   const [shut, setShut] = useState(false);
+  // A run row opens the run's transcript as the chat (hash subagent=<run id>).
   const openRun: OpenSession = (session, run) => run
-    ? navigate({ project, level: "session", harness: session.split("#")[0], session, tab: "subagents", run })
+    ? navigate({ project, level: "session", harness: session.split("#")[0], session, subagent: run })
     : go(session);
   const label = row.title || row.branch || row.id;
   return <li className="flex min-w-0 flex-col">

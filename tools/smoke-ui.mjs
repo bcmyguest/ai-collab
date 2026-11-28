@@ -179,7 +179,9 @@ async function threadFixture({ cfg, root, address, label, inject, settled = 0 })
   const missing = "opencode#" + label("redesign-missing");
   const agent = { ...cfg, peer: "claude", session: lead.split("#")[1] };
   const now = Date.now();
-  const events = [];
+  // The lead started its codex child with spawn_agent; the result names the child's address (lib/spawn.ts SpawnResult).
+  const events = [{ type: "tool_result", tool: "mcp__plugin_ai-collab_ai-collab__spawn_agent", callId: "spawn1", input: { harness: "codex", brief: "Check harness contrast" },
+    output: JSON.stringify({ status: "started", session: child, harness: "codex", model: "gpt-5.5-codex", cwd: "", note: "It reports to you by message when each run ends." }) }];
   for (const [index, task] of ["Survey sidebar tokens", "Check harness contrast", "Draft the bell popover"].entries()) {
     events.push({ type: "tool_result", tool: "Grep", callId: "g" + index, input: { pattern: "radius" }, output: "hit", agent: { id: "done-" + index, type: index === 1 ? "Plan" : "Explore" } });
     events.push({ type: "tool_result", tool: "Agent", callId: "a" + index, output: JSON.stringify({ status: "completed", agentId: "done-" + index, description: task }) });

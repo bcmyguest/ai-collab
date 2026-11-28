@@ -13,7 +13,7 @@ import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { contextMeter, filesRead } from "@/lib/context-view";
 import { agentDetail } from "@/lib/agent-detail";
-import { chatThread } from "@/lib/chat-turns";
+import { chatThread, subagentThread } from "@/lib/chat-turns";
 import { NewAgentComposer } from "./new-session";
 import { PatternsPage } from "./patterns-page";
 import { LandReviews } from "./land-reviews";
@@ -33,7 +33,7 @@ import { SessionList, SessionMenu, StateChip, SubagentList } from "./home";
 import { RunningCount } from "./subagent-runs";
 import { Shipped } from "./shipped";
 import { CompactionMap } from "./compactions";
-import { activityRows, groupSubagents } from "@/lib/activity-rows";
+import { activityRows, groupSubagents, subagentLabel } from "@/lib/activity-rows";
 import { conversationKey, views } from "@/lib/view-memory";
 import { ChatRuntimeProvider } from "@/components/chat/thread";
 import { ago, peerOf, seatOf, short } from "./chat-shared";
@@ -128,6 +128,8 @@ export function Console({ account }) {
   const [notice, setNotice] = useState("");
   const [replyTo, setReplyTo] = useState(null);
   const [creating, setCreating] = useState("");
+  // The selection the new-agent composer opened from; closing it goes back there.
+  const composeFrom = useRef(null);
   // The thread a new agent joins; "" starts a new thread.
   const [startThread, setStartThread] = useState("");
   const [working, setWorking] = useState(false);
@@ -158,7 +160,7 @@ export function Console({ account }) {
     // Leaving the bottom lock first stops use-stick-to-bottom pulling the restored list down on its next resize.
     stick.current.stopScroll();
     list.scrollTop = saved;
-  }, [ready, requested, home, compactions]);
+  }, [ready, requested, home, compactions, selected.subagent]);
   useEffect(() => {
     const list = stick.current?.scrollRef.current;
     if (!ready || !memoryKey || !list) return;
@@ -328,7 +330,11 @@ export function Console({ account }) {
   const rows = useMemo(() => watching || inline ? groupSubagents(activityRows(windowRows)) : [], [watching, inline, windowRows]);
   // The raw panel keeps every tool call as its own row, newest first.
   const rawRows = useMemo(() => raw ? activityRows(windowRows).slice().reverse() : [], [raw, windowRows]);
-  const goRun = row => navigate({ project, level: "session", harness: peerOf(row.agent), session: row.agent, tab: "subagents", run: row.run });
+  // A run's Go-to opens its transcript as the chat; an open panel on the same session stays open.
+  const goRun = row => navigate({ project, level: "session", harness: peerOf(row.agent), session: row.agent, subagent: row.run, ...(row.agent === selected.session ? { tab: selected.tab, run: selected.run } : {}) });
+  // The native subagent run whose transcript replaces the session's chat (hash subagent=<run id>).
+  const subagentRun = level === "session" && selected.subagent ? rows.find(row => row.type === "subagent" && row.agent === selected.session && row.run === selected.subagent) : undefined;
+  const leaveRun = () => navigate({ ...selected, project, subagent: "" });
   // Answers whose card is listed show in the card, so their bubbles stay out of both threads.
   const queue = level === "session" && ready ? data.messages.filter(item => item.queued && item.to === target) : [];
   const visible = useMemo(() => withoutAnswered(level === "session" ? data.messages.filter(item => !item.queued) : data.messages), [data.messages, level]);
@@ -341,10 +347,23 @@ export function Console({ account }) {
   const turns = useMemo(() => sessionTurns(rows), [rows]);
   // The project chat shows finished turns and busy sessions, not every tool call.
   const live = useMemo(() => watching ? liveRows(turns, rows, now) : [], [turns, rows, watching, now]);
-  const thread = useMemo(() => inline ? chatThread(scoped, rows, selected.session)
+  const thread = useMemo(() => inline && selected.subagent ? (subagentRun ? subagentThread(subagentRun) : [])
+    : inline ? chatThread(scoped, rows, selected.session)
     : watching ? projectThread(visible, turns)
-    : visible.map(message => ({ message })), [visible, scoped, turns, rows, inline, watching, selected.session]);
-  const newSession = (id, thread = "") => { setStartThread(thread); setCreating(id); if (id !== project || level !== "project") navigate({ project: id, level: "project" }); else setNavOpen(false); };
+    : visible.map(message => ({ message })), [visible, scoped, turns, rows, inline, watching, selected.session, selected.subagent, subagentRun]);
+  const newSession = (id, thread = "") => {
+    setStartThread(thread); setCreating(id);
+    const away = id !== project || level !== "project";
+    composeFrom.current = away && id === project ? selected : null;
+    if (away) navigate({ project: id, level: "project" }); else setNavOpen(false);
+  };
+  // Closing the composer returns to the chat it opened from; one opened in the project chat stays there.
+  const closeComposer = () => {
+    setCreating("");
+    const from = composeFrom.current;
+    composeFrom.current = null;
+    if (from && location.hash.slice(1) === selectionHash({ project, level: "project" })) navigate(from);
+  };
   async function startSession(payload) {
     try { return await api("start", { project, ...payload }); } catch (err) { return { status: "failed", detail: err.message }; }
   }
@@ -519,8 +538,15 @@ export function Console({ account }) {
           <p className="text-sm text-muted-foreground">{startingIn ? "It joins the thread and works in its worktree." : "Describe the work; the first words become its title."}</p>
         </div>}
         {composing && <NewAgentComposer key={project + ":" + (data.startable || []).join(",")} project={project} startable={data.startable || []} places={data.startPlaces || ["folder"]} startPlace={data.startPlace || "folder"} sandboxHarnesses={data.openshellHarnesses || []}
-          startDefault={data.startDefault} codeModeDefault={data.codeModeDefault !== false} agents={data.agents} models={models} disabled={!ready} start={startSession} close={() => setCreating("")}
+          startDefault={data.startDefault} codeModeDefault={data.codeModeDefault !== false} agents={data.agents} models={models} disabled={!ready} start={startSession} close={closeComposer}
           threads={openThreads} thread={startThread} setThread={setStartThread} open={openAddress}/>}
+        {level === "session" && selected.subagent && <div data-subagent-chat={selected.subagent} className="mx-auto mt-2 flex w-full min-w-0 max-w-3xl items-center gap-2 rounded-xl border border-dashed bg-muted/50 px-3 py-2 text-sm">
+          <Button size="sm" variant="outline" className="shrink-0" aria-label={"Back to " + (sessionName || "session") + " chat"} onClick={leaveRun}><CornerLeftUp/>Back</Button>
+          <h2 className="min-w-0 flex-1 font-medium" title={subagentRun?.description || selected.subagent}>
+            <span className="block truncate">Subagent · {subagentRun ? subagentRun.kind || "agent" : selected.subagent}{subagentRun?.description && " · " + subagentRun.description}</span>
+            {subagentRun && <span className="block truncate text-xs font-normal text-muted-foreground">{subagentLabel(subagentRun, now)}</span>}
+          </h2>
+        </div>}
         {agent?.wake?.status && <div className="mx-auto mt-2 flex w-full max-w-3xl flex-wrap items-center gap-2 rounded-xl border bg-muted/50 px-3 py-2 text-sm">
           Wake · {agent.wake.status}{agent.wake.detail && " · " + agent.wake.detail}
           {agent.wake.status === "failed" && !agent.online && <Button size="sm" variant="outline" disabled={working} onClick={() => action("wake", { target: selected.session }, "Wake requested")}>Retry wake</Button>}
@@ -540,8 +566,8 @@ export function Console({ account }) {
           : <p className="py-16 text-center text-sm text-muted-foreground">Loading patterns…</p>}
       </div>}
       {!patterns && !composing && (tasksView ? <TaskBoard key={project} {...boardProps} taskId={selected.task}/> : <ChatContainerRoot key={inbox ? "inbox" : home ? "home" : "conversation"} initial={home || compactions ? false : "instant"} contextRef={stick} className="relative min-h-0 flex-1" onTouchStart={pullStart} onTouchMove={pullMove} onTouchEnd={pullEnd} onTouchCancel={() => pullTo(0)}>
-        <ChatRuntimeProvider key={requested} entries={thread} operator={data.operator}>
-        <ChatContainerContent key={requested} className="mx-auto w-full max-w-3xl gap-5 px-3 py-4">
+        <ChatRuntimeProvider key={requested + ":" + (selected.subagent || "")} entries={thread} operator={data.operator}>
+        <ChatContainerContent key={requested + ":" + (selected.subagent || "")} className="mx-auto w-full max-w-3xl gap-5 px-3 py-4">
           {!ready && (home || listing || compactions) && !loadError && <p className="py-16 text-center text-sm text-muted-foreground">Loading sessions…</p>}
           {ready && (home || listing) && <>
             {home && data.unavailable?.length > 0 && <p role="alert" className="text-xs text-destructive">Unavailable: {data.unavailable.join(", ")}</p>}
@@ -567,14 +593,14 @@ export function Console({ account }) {
           </>}
           {ready && compactions && <CompactionMap agents={data.agents || []} now={now}/>}
           {!home && !listing && !(ready && compactions) && (!ready || (thread.length + live.length === 0 && queue.length === 0)) && <p className="py-16 text-center text-sm text-muted-foreground">
-            {ready ? (ended ? "This session has ended, and the recent history holds none of its messages." : "No messages yet.") : loadError ? "" : watching ? "Loading project chat…" : "Loading conversation…"}</p>}
+            {ready ? (level === "session" && selected.subagent ? "That subagent run is not in the recent activity." : ended ? "This session has ended, and the recent history holds none of its messages." : "No messages yet.") : loadError ? "" : watching ? "Loading project chat…" : "Loading conversation…"}</p>}
           {ready && !home && !listing && <ThreadPrimitive.Messages>
               {({ message }) => {
                 const [entry] = getExternalStoreMessages(message) || [];
                 if (!entry) return null;
                 if (entry.activity) return entry.activity.type === "completion"
                   ? <CompletionRow row={{ ...entry.activity, seat: seatOf(data.agents, entry.activity.agent) }} when={at => ago(at, now)} open={openAddress}/>
-                  : <ActivityRow row={entry.activity} when={at => ago(at, now)} now={now} goRun={goRun}/>;
+                  : <ActivityRow row={entry.activity} when={at => ago(at, now)} now={now} goRun={goRun} openSession={openAddress}/>;
                 return <ChatMessage message={entry.message} operator={data.operator} me={account.user?.login} now={now} open={openAddress} disabled={!ready || working} taskLinks={taskLinks}
                   detail={agentDetail(data.agents.find(agent => agent.id === entry.message.from))} name={shortName(data.agents.find(agent => agent.id === entry.message.from))}
                   act={payload => action("approve", payload, "Sent")} answer={(id, body) => action("reply", { question: id, body }, "Reply sent")}
@@ -583,7 +609,7 @@ export function Console({ account }) {
               }}
             </ThreadPrimitive.Messages>}
           {ready && watching && live.map(row => <LiveRow key={row.id} row={{ ...row, seat: seatOf(data.agents, row.agent) }} open={openAddress}/>)}
-          {ready && inline && <Working rows={rows} now={now} agents={data.agents}/>}
+          {ready && inline && !selected.subagent && <Working rows={rows} now={now} agents={data.agents}/>}
           <ChatContainerScrollAnchor/>
         </ChatContainerContent>
         </ChatRuntimeProvider>

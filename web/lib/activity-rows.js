@@ -8,6 +8,10 @@ const RUN_ACTIVE_MS = 2 * 60_000;
 const AGENT_TOOL =/^(Agent|Task)$/;
 const AGENT_ID = /"agentId"\s*:\s*"([\w-]{1,128})"/;
 const TASK_DONE = /<task-id>([\w-]{1,128})<\/task-id>[\s\S]*?<status>(?:completed|failed|killed|stopped)<\/status>/;
+// The ai-collab spawn_agent tool under any MCP prefix (mcp__…__spawn_agent, ai-collab.spawn_agent).
+const SPAWN_TOOL = /(^|[_.:/])spawn_agent$/;
+// The child address in spawn_agent's result (lib/spawn.ts SpawnResult), its quotes escaped or not.
+const SPAWNED = /\\*"session\\*"\s*:\s*\\*"((?:claude|codex|cursor|opencode)#[a-f0-9]{16})/;
 const DIFF =/^(diff --git |--- \S|\+\+\+ \S|@@ -\d)/m;
 
 /** One-line summary of a tool input: the command, path, pattern or URL when the input is JSON (even truncated JSON). */
@@ -24,6 +28,13 @@ export function summarize(input) {
   const field = SUMMARY_FIELD.exec(input);
   if (field) return field[2].replace(/\\n/g, " ").replace(/\\(.)/g, "$1");
   return input.split("\n")[0];
+}
+
+/** The child session address a spawn_agent call or result row started, or "". */
+export function spawnedSession(row) {
+  if (!SPAWN_TOOL.test(row?.tool || "")) return "";
+  const output = row.type === "tool_call" ? row.result?.output : row.output;
+  return typeof output === "string" ? SPAWNED.exec(output)?.[1] || "" : "";
 }
 
 /** Blocks to show for a tool input: a shell command as bash plus any other fields as JSON; other input as JSON when it is JSON. */

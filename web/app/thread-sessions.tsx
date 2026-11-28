@@ -13,7 +13,7 @@ import { HarnessMark } from "./agent-mark";
 import { Dot, ago, short } from "./chat-shared";
 
 type Run = { id: string; agent?: string; run?: string; kind?: string; model?: string; description?: string; steps?: number; time?: number; lastTime?: number; done?: boolean; child?: boolean };
-type Selected = { level: string; session?: string; run?: string };
+type Selected = { level: string; session?: string; run?: string; subagent?: string };
 export type OpenSession = (session: string, run?: string) => void;
 export type ListenSession = (thread: string, session: string, on: boolean) => void;
 /** The thread a tree belongs to, for the listening toggles: its members and stored settings. */
@@ -98,9 +98,9 @@ function SessionItem({ agent, name, selected, now, open, listen, stop, children 
     {listen && !agent.gone && <ListenToggle agent={agent} name={name || short(agent.id)} listen={listen}/>}
     </div>
     {(runs.length > 0 || finished.length > 0 || kids.length > 0) && <ul aria-label={"Inside " + (name || short(agent.id))} className="ml-3 flex flex-col gap-px pl-1">
-      {runs.map(run => <RunItem key={run.id} run={run} parent={agent} now={now} current={current && selected.run === run.run} onOpen={() => open(agent.id, run.run)}/>)}
+      {runs.map(run => <RunItem key={run.id} run={run} parent={agent} now={now} current={current && (selected.subagent || selected.run) === run.run} onOpen={() => open(agent.id, run.run)}/>)}
       {kids}
-      {finished.length > 0 && <FinishedRuns runs={finished} parent={agent} now={now} selected={current ? selected.run : undefined} onOpen={run => open(agent.id, run)}/>}
+      {finished.length > 0 && <FinishedRuns runs={finished} parent={agent} now={now} selected={current ? selected.subagent || selected.run : undefined} onOpen={run => open(agent.id, run)}/>}
     </ul>}
   </li>;
 }
