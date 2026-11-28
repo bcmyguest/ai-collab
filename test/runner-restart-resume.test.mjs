@@ -89,11 +89,13 @@ test("a restart mid-run resumes a spawned child with a continue prompt and repor
   assert.equal(second.get(session).restartResumes, undefined);
 });
 
-test("a restart before the harness accepts a spawned child's prompt sends the prompt again", async (t) => {
+test("a restart before the harness accepts a spawned child's prompt sends the prompt again behind a check-first note", async (t) => {
   const { fake, adapter, second } = await restartMidRun(t, "stall before accepting", { stall: true });
   const sent = await until(() => reports(fake).length && reports(fake), "report");
   await second.settle();
   assert.equal(sent.length, 1);
   assert.match(sent[0].body, /finished \(success\)/);
-  assert.match(adapter.calls.find((c) => c.op === "send").text, /^stall before accepting/);
+  const text = adapter.calls.find((c) => c.op === "send").text;
+  assert.match(text, /^The runner restarted during your last turn/);
+  assert.match(text, /in case it never arrived:\nstall before accepting/);
 });

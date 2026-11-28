@@ -623,9 +623,9 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
           return { error: error.message };
         }
       }, { onCut: async () => reportCut(await cut(null, "runner restarted before the harness accepted the input")) });
-      // Never accepted by the harness, so sending it again cannot repeat work.
+      // The cut may fall after the harness accepted the input, so the resend asks the child to check before redoing it.
       if (sent.resumeChild) {
-        next = turn;
+        next = { ...turn, text: `${RESTART_RESUME_PROMPT}\n\nThe input of that turn, in case it never arrived:\n${turn.text}` };
         continue;
       }
       if (!sent.runId && !builder) continue;
