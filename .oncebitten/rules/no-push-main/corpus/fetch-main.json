@@ -1,0 +1,1 @@
+{"event": "tool", "tool": "shell", "command": "git fetch origin main"}

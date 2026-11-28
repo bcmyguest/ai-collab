@@ -1,0 +1,13 @@
+id = "no-service-restart"
+description = "Agents never restart, stop or kill the ai-collab bus, UI or runner: each restart killed every running agent mid-turn."
+mode = "steer"
+status = "active"
+engine = "steer"
+
+[steer]
+action = "deny"
+message = "Restarting, stopping or killing an ai-collab service ends every running agent's turn, yours included. Push your branch and ask your parent or the operator to land it: after the push to main, auto-deploy restarts the services once no runner turn is in flight, and `ai-collab deploy` refuses while turns run."
+
+[steer.trigger]
+tool = "{bash,shell,run_shell_command}"
+command = '(^|[;&|(\n])\s*((sudo\s+)?systemctl\b[^;&|\n]*\s(restart|stop|kill|try-restart|reload-or-restart|try-reload-or-restart)\b[^;&|\n]*ai-collab|(pkill|killall)\b[^;&|\n]*ai-collab)'

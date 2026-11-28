@@ -1,0 +1,12 @@
+id = "existing-test-patch"
+description = "An agent changes an existing test only as a patch the operator applies; new test files are fine."
+mode = "steer"
+status = "active"
+engine = "steer"
+
+[steer]
+action = "inform"
+message = "Is this file new? Add new test files freely. To change an existing test or golden, do not edit it: write the change as a patch under $CLAUDE_JOB_DIR/tmp/ (else /tmp/dbg/tmp/), say why the old assertion is wrong, and report the patch path to your parent and the operator."
+
+[steer.trigger]
+paths = ["test/**", "**/goldens/**"]

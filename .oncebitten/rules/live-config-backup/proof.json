@@ -1,0 +1,9 @@
+{
+  "rule": "live-config-backup",
+  "dir_sha256": "661459ca695157bac85c5e60785609c8e84bbfabe5ecfe94de7ed8c5c1b28d03",
+  "checker_version": "0.5.0",
+  "checker_sha256": "9b858c3e3f520409a27327851f6db4b034017640b88bd2ed1a57e71044be4bc2",
+  "backend": "matcher",
+  "timestamp": 1795835801,
+  "result": "proven"
+}

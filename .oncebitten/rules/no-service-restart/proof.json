@@ -1,0 +1,9 @@
+{
+  "rule": "no-service-restart",
+  "dir_sha256": "d32683dc73ce9fca8a186bca667add53ba608658a55d9a052421a6cbdfb73b4b",
+  "checker_version": "0.5.0",
+  "checker_sha256": "9b858c3e3f520409a27327851f6db4b034017640b88bd2ed1a57e71044be4bc2",
+  "backend": "matcher",
+  "timestamp": 1795835801,
+  "result": "proven"
+}

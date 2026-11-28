@@ -1,0 +1,13 @@
+id = "no-push-main"
+description = "Agents never push main: they push their branch and the operator lands it."
+mode = "steer"
+status = "active"
+engine = "steer"
+
+[steer]
+action = "deny"
+message = "The operator lands main. Push your branch (git push -u origin <branch>), rebased onto origin/main so it fast-forwards, and report the branch, its commits and the test results to your parent or the operator."
+
+[steer.trigger]
+tool = "{bash,shell,run_shell_command}"
+command = '(^|[;&|(\n])\s*git\s+(-C\s+\S+\s+)?(-c\s+\S+\s+)*push\b[^;&|\n]*(\s|:)(refs/heads/)?main(\s|$|[;&|)])'

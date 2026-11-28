@@ -1,0 +1,1 @@
+{"event": "tool", "tool": "Bash", "command": "npm run build && systemctl --user restart ai-collab-bus ai-collab-ui ai-collab-runner"}

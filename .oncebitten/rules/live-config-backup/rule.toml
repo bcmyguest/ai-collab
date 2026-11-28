@@ -1,0 +1,13 @@
+id = "live-config-backup"
+description = "A shell write to the live config under ~/.config/ai-collab is allowed after a backup, and is reported."
+mode = "steer"
+status = "active"
+engine = "steer"
+
+[steer]
+action = "inform"
+message = "This writes the live ai-collab config, which every running service reads. Before it, copy the file to <file>.bak-$(date +%s); after it, tell your parent and the operator which file changed, what changed and where the backup is."
+
+[steer.trigger]
+tool = "{bash,shell,run_shell_command}"
+command = '(>>?|\btee\b|\bsed\s+-i|\bcp\b|\bmv\b|\brm\b|\binstall\b|\btruncate\b|\bln\b)[^;&|\n]*\.config/ai-collab/'

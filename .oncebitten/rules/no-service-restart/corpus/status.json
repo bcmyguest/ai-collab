@@ -1,0 +1,1 @@
+{"event": "tool", "tool": "Bash", "command": "systemctl --user status ai-collab-runner --no-pager; journalctl --user -u ai-collab-runner -n 50"}

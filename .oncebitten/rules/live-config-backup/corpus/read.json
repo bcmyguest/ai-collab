@@ -1,0 +1,1 @@
+{"event": "tool", "tool": "Bash", "command": "ls -la ~/.config/ai-collab/ && grep -c token ~/.config/ai-collab/projects.json"}

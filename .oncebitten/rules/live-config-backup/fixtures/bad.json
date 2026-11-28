@@ -1,0 +1,1 @@
+{"event": "tool", "tool": "Bash", "command": "jq '.autoDeploy = false' ~/.config/ai-collab/defaults.json > /tmp/d && mv /tmp/d ~/.config/ai-collab/defaults.json"}

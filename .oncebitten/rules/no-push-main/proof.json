@@ -1,0 +1,9 @@
+{
+  "rule": "no-push-main",
+  "dir_sha256": "13c8456d5a24c3b8ce90b51b87ebf04a99f66ff47dbce03772015603e6cc0a0f",
+  "checker_version": "0.5.0",
+  "checker_sha256": "9b858c3e3f520409a27327851f6db4b034017640b88bd2ed1a57e71044be4bc2",
+  "backend": "matcher",
+  "timestamp": 1795835801,
+  "result": "proven"
+}
