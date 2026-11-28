@@ -26,7 +26,6 @@ import { analyze } from "./analyze-run-code.ts";
 import { builder } from "./builder/cli.ts";
 import { spawn } from "./spawn-cli.ts";
 import { prune } from "./prune.ts";
-import { busCommand } from "./bus-migrate.ts";
 import { STATUSES } from "./tasks.ts";
 import { postToChannel } from "./surfaces/channel-post.ts";
 import { REQUIRE_RUN_CODE_ENV } from "./code-mode.ts";
@@ -40,8 +39,6 @@ export const USAGE = `usage: ai-collab <command>
   setup [--agent claude,codex,cursor,opencode] [--port N] [--no-ui]
                               install the local message bus, the plugin for each agent (default: every one on PATH) and the UI service
   postgres <up|down|status>   manage the local Postgres the message bus and the DBOS workflow engine use (docker compose, loopback only)
-  bus migrate --to postgres [--dry-run] [--resume]
-                              copy the SQLite bus store into Postgres with the original ids (--dry-run prints counts, --resume continues a partial copy)
   peers                       list AI_COLLAB_PEERS with the last status each reported
   send <peer|peer#session|all|thread:<id>> [message] [--file /abs/image.png] [--urgent] [--priority normal|urgent|fyi] [--expect-reply] [--await SECONDS] [--reply-to ID] [--progress]
                               send one message (or pipe the body on stdin), optionally with an image;
@@ -440,7 +437,6 @@ export async function runCli(argv: string[], io: CliIo = {}): Promise<number> {
 
   if (cmd === "setup") return setup(rest, { env, out });
   if (cmd === "postgres") return postgresCommand(rest, { env });
-  if (cmd === "bus") return busCommand(rest, { env, out, err });
   if (cmd === "afk") return afk(rest, { env, out, err, now: io.now, input: io.stdin || process.stdin });
   if (cmd === "sessions") return sessions(env, { out, err });
   if (cmd === "agents") return agents(env, rest, { out, err });

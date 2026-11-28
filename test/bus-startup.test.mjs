@@ -49,7 +49,7 @@ async function closedPort() {
 test("resolveBusStoreKind defaults to postgres and refuses the retired sqlite store", () => {
   assert.equal(resolveBusStoreKind({}, {}), "postgres");
   assert.equal(resolveBusStoreKind({}, { busStore: "postgres" }), "postgres");
-  assert.throws(() => resolveBusStoreKind({ AI_COLLAB_BUS_STORE: "sqlite" }, {}), /retired.*ai-collab bus migrate --to postgres/);
+  assert.throws(() => resolveBusStoreKind({ AI_COLLAB_BUS_STORE: "sqlite" }, {}), /retired.*set busStore to postgres/);
   assert.throws(() => resolveBusStoreKind({}, { busStore: "sqlite" }), /retired/);
   assert.throws(() => resolveBusStoreKind({ AI_COLLAB_BUS_STORE: "redis" }, {}), /unknown store redis/);
 });

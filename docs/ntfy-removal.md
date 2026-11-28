@@ -14,6 +14,7 @@ Landing commits:
 | `df041ce9` | 2026-11-26 | Bus Postgres cutover runbook |
 | `37278860` | 2026-11-27 | SQLite bus store (`bus.db`) retired; Postgres only |
 | `3c513c10` | 2026-11-27 | Bus, Postgres and delivery modules ported to TypeScript |
+| this change | 2026-11-27 | `ai-collab bus migrate` removed: no release shipped the SQLite bus store, so no install has a `bus.db` to copy |
 
 ## What replaced ntfy
 
@@ -71,8 +72,6 @@ SQLite durable log (`runner.db`) stays the code default; see [DBOS workflow engi
    cached client config keeps working with nothing to do. To decouple, write the token to
    `~/.config/ai-collab/bus-token` and point `tokenFile` (or `AI_COLLAB_BUS_TOKEN_FILE`) at it.
 4. Start the bus: `systemctl --user enable --now ai-collab-bus` (rerun `ai-collab setup` to install the unit).
-   An install that ran the SQLite bus has a `bus.db`; copy it first with `ai-collab bus migrate --to postgres`
-   ([Upgrading from the SQLite store](configuration.md#upgrading-from-the-sqlite-store-busdb)).
 5. Restart the UI: a rebuilt `.next` under a running `next start` serves stale chunks. Restart the runner to
    load the new code. Old ntfy cursors are unknown ids to the bus, so the first read replays the topic and
    dedupe keys absorb the replay.

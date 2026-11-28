@@ -72,7 +72,7 @@ const unescapeQuery = (text: string | null | undefined) => String(text ?? "").re
 /** The store kind: AI_COLLAB_BUS_STORE, else defaults.json busStore, else postgres; the SQLite store is retired. */
 export function resolveBusStoreKind(env: NodeJS.ProcessEnv = process.env, defaults: { busStore?: string } = {}): string {
   const kind = env.AI_COLLAB_BUS_STORE || defaults.busStore || "postgres";
-  if (kind === "sqlite") throw new Error("bus: the SQLite store (bus.db) is retired; copy it with `ai-collab bus migrate --to postgres`, then set busStore to postgres or remove it (docs/configuration.md#bus-store)");
+  if (kind === "sqlite") throw new Error("bus: the SQLite store (bus.db) is retired; set busStore to postgres or remove it (docs/configuration.md#bus-store)");
   if (kind !== "postgres") throw new Error(`bus: unknown store ${kind}; use postgres`);
   return kind;
 }
