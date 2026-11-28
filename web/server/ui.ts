@@ -2062,7 +2062,12 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           ? async (peer: Json) => (await runnerCompact(peer.id, runner, env)) ?? control("compact", peer, { cfg })
           : (peer: Json) => control("compact", peer, { cfg });
         // /permission stores the next-start mode on the session; /team-permission asks the operator before writing team.dot.
-        const setPermission = (peer: Json, mode: Json) => setNextPermission(cfg, { id: peer.id, label: String(peer.id).split("#")[1] ?? "", value: mode });
+        // The runner rewrites its owned record from memory, so a stored value never reaches a runner-owned session's wake.
+        const setPermission = (peer: Json, mode: Json) => {
+          const label = String(peer.id).split("#")[1] ?? "";
+          if (readOwned(cfg, label)?.address === peer.id) throw new Error(`The runner owns this session; /mode ${mode} changes its mode now and for later wakes`);
+          return setNextPermission(cfg, { id: peer.id, label, value: mode });
+        };
         const askTeamPermission = (team: Json, mode: Json) => { const { done, ...reply }: { done?: Promise<string>; status: string; detail: string } = requestTeamPermission(cfg, team, mode, { env }); void done; return reply; };
         // /mode changes a runner-owned session's live mode; the runner applies the start checks again.
         const setSessionMode = async (peer: Json, mode: Json) => {

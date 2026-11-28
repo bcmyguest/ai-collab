@@ -27,7 +27,7 @@ export const SUPPORT = {
   claude: {
     compact: partial("A runner-owned session compacts in place: /compact on its live query. A terminal session compacts through the Agent SDK when saved, or gets a request to finish its step, then /compact in its terminal."),
     model: unsupported("Claude's messaging socket delivers text only; no model switch is documented."),
-    permission: supported("Stored for the session's next start or wake (--permission-mode); the running turn keeps its mode."),
+    permission: supported("Stored for a terminal session's next start or wake (--permission-mode); the running turn keeps its mode. A runner-owned session takes /mode instead."),
     mode: partial("Runner-owned sessions only: the runner changes the live session's mode (supervised, accept-edits, auto, full-access; Claude names map)."),
     "team-permission": supported("Asks the operator to Apply or Cancel on a phone card; Apply rewrites team.dot."),
     clear: unsupported("No clear is documented for Claude's messaging socket."),
