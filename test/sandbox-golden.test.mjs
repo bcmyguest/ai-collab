@@ -101,7 +101,7 @@ function walk(dir, rel = "", out = []) {
   return out;
 }
 
-// Drops per-run randomness (temp dirs, schedule hashes, builder ids, stamps) and the lab's home path.
+// Drops per-run randomness (temp dirs, schedule hashes, builder ids, stamps), the package version and the lab's home path.
 function normalize(value, home) {
   const text = JSON.stringify(value)
     .split(home).join("<HOME>")
@@ -109,6 +109,7 @@ function normalize(value, home) {
     .replace(/\/tmp\b/g, "<TMP>")
     .replace(/(ai-collab-(sandbox-run-auth|builder-auth|sandbox-secret|golden)-|sandbox-run-|download-)[A-Za-z0-9]{6}/g, "$1<R>")
     .replace(/s-pm-[0-9a-f]{6}/g, "s-pm-<H>")
+    .replace(/ai-collab\.version=[0-9][0-9A-Za-z.+-]*/g, "ai-collab.version=<V>")
     .replace(/sandbox\/pm-\d{8}T\d{6}Z/g, "sandbox/pm-<STAMP>")
     .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, "<UUID>");
   return JSON.parse(text);

@@ -9,7 +9,9 @@ const UPDATE = process.env.UPDATE_SURFACE_GOLDEN === "1";
 const golden = (name) => fileURLToPath(new URL(`./golden/surfaces/${name}`, import.meta.url));
 const script = (name) => fileURLToPath(new URL(`../scripts/${name}`, import.meta.url));
 
+// The server version is package.json's, which a release bumps; the golden pins the surface, not the version.
 function check(name, actual) {
+  if (actual.initialize?.serverInfo?.version) actual.initialize.serverInfo.version = "<package version>";
   const text = `${JSON.stringify(actual, null, 2)}\n`;
   if (UPDATE) writeFileSync(golden(name), text);
   assert.equal(text, readFileSync(golden(name), "utf8"), `${name} differs from the golden`);

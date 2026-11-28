@@ -9,6 +9,9 @@ import cursorAdapter, { acpArgs, execArgv, sandboxName } from "../runner/adapter
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, eventProblem } from "../runner/contract.ts";
 import { tempDir } from "./helpers/tmp.mjs";
 
+// Sandboxes carry the package version as a label; a release bumps it.
+const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CURSOR = path.join(HERE, "helpers", "fake-cursor-agent.mjs");
 const OPENSHELL = path.join(HERE, "helpers", "fake-openshell.mjs");
@@ -179,7 +182,7 @@ test("full-access creates the project sandbox and runs acp --force inside it", a
   const handle = await adapter.open(optionsFor(t, { place: "openshell", permissionMode: "full-access", permission: { force: true } }), ctx);
   const calls = readLines(t.env.FAKE_OPENSHELL_LOG);
   assert.deepEqual(calls[0], ["sandbox", "list", "-o", "json"]);
-  assert.deepEqual(calls[1], ["sandbox", "create", "--name", "ai-collab-demo", "--no-tty", "--detach", "--label", "ai-collab.managed=true", "--label", "ai-collab.project=demo", "--label", "ai-collab.kind=session", "--label", "ai-collab.owner=demo", "--label", "ai-collab.version=0.11.0"]);
+  assert.deepEqual(calls[1], ["sandbox", "create", "--name", "ai-collab-demo", "--no-tty", "--detach", "--label", "ai-collab.managed=true", "--label", "ai-collab.project=demo", "--label", "ai-collab.kind=session", "--label", "ai-collab.owner=demo", "--label", `ai-collab.version=${VERSION}`]);
   const exec = calls.find((c) => c[1] === "exec");
   assert.deepEqual(exec.slice(0, 7), ["sandbox", "exec", "--no-tty", "-n", "ai-collab-demo", "--env", "AI_COLLAB_OWNED=cursor"]);
   assert.deepEqual(exec.slice(exec.indexOf("--") + 1), ["cursor-agent", "--force", "acp"]);

@@ -31,7 +31,7 @@
         "--label",
         "ai-collab.owner=smoke-task",
         "--label",
-        "ai-collab.version=0.11.0"
+        "ai-collab.version=<V>"
       ],
       [
         "sandbox",
@@ -473,7 +473,7 @@
         "--label",
         "ai-collab.owner=smoke-task",
         "--label",
-        "ai-collab.version=0.11.0"
+        "ai-collab.version=<V>"
       ],
       [
         "sandbox",
@@ -897,7 +897,7 @@
         "--label",
         "ai-collab.owner=pm",
         "--label",
-        "ai-collab.version=0.11.0"
+        "ai-collab.version=<V>"
       ],
       [
         "sandbox",
@@ -1224,7 +1224,7 @@
         "--label",
         "ai-collab.owner=pm",
         "--label",
-        "ai-collab.version=0.11.0"
+        "ai-collab.version=<V>"
       ],
       [
         "sandbox",
@@ -1510,7 +1510,7 @@
         "--label",
         "ai-collab.owner=pm",
         "--label",
-        "ai-collab.version=0.11.0"
+        "ai-collab.version=<V>"
       ],
       [
         "sandbox",

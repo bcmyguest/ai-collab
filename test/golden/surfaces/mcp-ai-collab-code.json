@@ -6,7 +6,7 @@
     },
     "serverInfo": {
       "name": "ai-collab-code",
-      "version": "0.11.0"
+      "version": "<package version>"
     },
     "instructions": "run_code runs one JavaScript program in an OpenShell sandbox with an `ai` client for the ai-collab tools; use it when a task needs many ai-collab calls (list, filter, join) and only the answer should come back. Use run_read_code to gather evidence through the read-only ai API."
   },
