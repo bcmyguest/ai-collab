@@ -14,7 +14,7 @@ import { contextMeter } from "@/lib/context-view";
 import { HARNESS_LABELS } from "@/lib/new-session";
 import { ActivityRow, GoToAgent } from "./activity";
 import { ApprovalCard, QuestionCard } from "./cards";
-import { Avatar, ago } from "./chat-shared";
+import { Avatar, Dot, ago } from "./chat-shared";
 
 const SUBAGENT_DOT = { running: "bg-live", finished: "bg-muted-foreground/40", stale: "bg-primary" };
 const CHIP = {
@@ -83,7 +83,11 @@ function SessionCard({ node, now, open, openAddress, act, answer, skip, dispose,
       </div> : <div className="flex min-w-0 items-start gap-1">
       <button type="button" onClick={() => open(node)} aria-label={"Open " + node.id + (node.name ? " · " + node.name : "")}
         className="flex min-w-0 flex-1 items-start gap-2.5 text-left">
-        <Avatar address={node.id} className="size-8 text-xs"/>
+        <span className="relative shrink-0">
+          <Avatar address={node.id} className="size-8 text-xs"/>
+          <span className="absolute -right-0.5 -bottom-0.5 flex rounded-full ring-2 ring-card"><Dot online={Boolean(node.online)}/></span>
+          <span className="sr-only">{node.online ? "online" : "offline"}</span>
+        </span>
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="flex min-w-0 items-start gap-2">
             <span className="line-clamp-2 min-w-0 flex-1 break-words font-medium" title={node.name || node.id}>{node.name || short(node.id)}</span>
