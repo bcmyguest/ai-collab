@@ -122,7 +122,7 @@ test("opencode open creates a session; send starts a run that streams AG-UI even
     const ctx = fakeCtx();
     const handle = await adapter.open({ cwd: "/work", model: "anthropic/claude-x", permission: { autoReply: [], reply: "once" } }, ctx);
     assert.equal(handle.nativeId, SID);
-    assert.deepEqual(svc.posts("/api/session")[0].body, { location: { directory: "/work" }, model: { providerID: "anthropic", modelID: "claude-x" } });
+    assert.deepEqual(svc.posts("/api/session")[0].body, { location: { directory: "/work" }, model: { providerID: "anthropic", id: "claude-x" } });
     await until(() => svc.streams.length, "event stream");
 
     const { runId } = await handle.send({ text: "hello" });
