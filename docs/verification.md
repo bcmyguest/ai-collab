@@ -22,7 +22,7 @@ FC_SEED=<seed> FC_PATH=<path> FC_REPLAY=<replayPath> node --test test/pattern-ru
 
 `FC_RUNS` and `FC_SEED` work for every model. `FC_PATH` and `FC_REPLAY` are in the pattern model only. `BUS_IMPL`, `STORE_IMPL` and `DELIVERY_IMPL` point a model at a scratch copy of the code, for checking that it catches a planted bug.
 
-`npm run tlc` runs TLC on every `spec/tla/*.cfg`. It skips and exits 0 without Java or `tla2tools.jar`. It finds Java through `TLC_JAVA`, then `$JAVA_HOME/bin/java`, then `java` on `PATH`. It finds the jar through `TLA2TOOLS_JAR`, then `~/.cache/tlaplus/tla2tools.jar`; download the jar from the [tlaplus releases](https://github.com/tlaplus/tlaplus/releases). `npm run tlc -- Delivery` runs one spec.
+`npm run tlc` runs TLC on every `spec/tla/*.cfg` and fails when TLC cannot run; CI runs it in the `tlc` job of `.github/workflows/tests.yml`. It finds Java through `TLC_JAVA`, then `$JAVA_HOME/bin/java`, then `java` on `PATH`, and otherwise runs the pinned `eclipse-temurin:21-jre` image in Docker (`TLC_DOCKER=1` forces Docker). The jar is `TLA2TOOLS_JAR`, else `~/.cache/tlaplus/tla2tools.jar`; when that is missing the script downloads [tlaplus v1.7.4](https://github.com/tlaplus/tlaplus/releases/tag/v1.7.4) `tla2tools.jar` and checks its SHA-256. `npm run tlc -- Delivery` runs one spec.
 
 TLC 2.19 results (32 workers, 7 s for both):
 
