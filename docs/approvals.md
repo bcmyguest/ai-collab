@@ -28,6 +28,10 @@ The hook publishes an approval card in the project’s [wire format](ag-ui.md) t
 
 The wait ends with no decision when `AI_COLLAB_APPROVAL_S` (540 s) passes, when the operator turns AFK mode off, when the operator taps **Skip** (an `approval-end` with reason `skipped` from `operator`; the hook publishes no second end), or when the harness kills the hook. The hook never allows or denies on its own; any failure is no decision. The UI shows closed requests as "Timed out: the terminal prompt took over" or "Closed: answered in the terminal or the agent stopped".
 
+### Auto-mode denials (Claude)
+
+A Claude auto-mode denial shows no dialog, so `PermissionRequest` never fires and no card appears. The `PermissionDenied` hook posts `auto mode blocked <session>: <tool> <command or path> (<reason>)` to the channel in AFK mode `on` or `quiet`, and returns `{}`; it cannot reverse the denial ([hooks reference](https://code.claude.com/docs/en/hooks#permissiondenied-decision-control)). Claude's SessionStart context (`lib/blocked.ts`) tells the session to write the blocked change as a patch with one command that applies it, then ask the operator with `ask_question` (`important=true`) and wait, instead of ending its turn.
+
 ### View-only cards (AFK off)
 
 An answer from the UI cannot reach a terminal prompt that is already showing, so in mode `off` the card only mirrors it. The Claude Code or Codex `PermissionRequest` hook publishes the approval fields, cleaned and size-capped as in mode `on`, as a view-only card with `mode: "terminal"` (priority 2, no web push), records the card in the session's `.terminal.json` state file, and returns `{}` at once; the publish is capped at 1.5 s. The UI shows the question and options without answer buttons, labelled "Answer in the terminal", and `POST /api/approve` answers 409. A separate kind keeps readers that answer `approval` envelopes from offering buttons that nothing reads.
