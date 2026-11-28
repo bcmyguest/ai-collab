@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { FAKE_OPENSHELL, gitRepo } from "./helpers/runner-ctx.mjs";
 import { parseWireEnvelope } from "../lib/agui.ts";
 import { loadConfig } from "../lib/config.ts";
 import { readOwned, writeOwned } from "../lib/sessions/registry.ts";
@@ -25,12 +26,13 @@ function setup(t, fake) {
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const root = path.join(home, "demo");
   mkdirSync(root);
+  gitRepo(root);
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
   writeFileSync(path.join(home, ".config", "ai-collab", "projects.json"), JSON.stringify([{ root, project: "demo" }]));
   const env = {
     PATH: process.env.PATH, HOME: home, XDG_CONFIG_HOME: path.join(home, ".config"), AI_COLLAB_URL: fake.url,
     AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "runner", AI_COLLAB_PEERS: "codex,claude,operator,runner",
-    AI_COLLAB_STATE_DIR: path.join(home, "state"), AI_COLLAB_TIMEOUT_MS: "2000",
+    AI_COLLAB_STATE_DIR: path.join(home, "state"), AI_COLLAB_OPENSHELL_BIN: FAKE_OPENSHELL, AI_COLLAB_TIMEOUT_MS: "2000",
   };
   const cfg = loadConfig(env, { cwd: root });
   assert.equal(cfg.enabled, true, cfg.reason);
@@ -58,11 +60,11 @@ const spawnInput = (prompt, parent = PARENT) => ({ project: "demo", harness: "co
 async function withRunner(t, run, options = {}) {
   const fake = await startFakeNtfy();
   const ctx = setup(t, fake);
-  const adapter = createFakeAdapter({ harness: "codex" });
+  const adapter = createFakeAdapter({ harness: "codex", capabilities: { places: ["folder", "worktree", "openshell"], openshellStarts: true } });
   const runner = makeRunner(ctx, adapter, options);
   await runner.boot();
   try {
-    PARENT = (await runner.start({ project: "demo", harness: "codex", prompt: "parent" })).session;
+    PARENT = (await runner.start({ project: "demo", harness: "codex", prompt: "parent", place: "folder" })).session;
     await run({ fake, ctx, adapter, runner });
   } finally {
     await runner.stop();
@@ -73,7 +75,8 @@ async function withRunner(t, run, options = {}) {
 test("a spawn returns at once and records managed, parent and depth on the owned record and registry", (t) => withRunner(t, async ({ ctx, runner, adapter }) => {
   const started = await runner.start(spawnInput("say hi"));
   assert.equal(started.status, "started");
-  assert.equal(started.cwd, ctx.root);
+  // A spawned codex child runs in OpenShell on its own worktree of the project.
+  assert.ok(started.cwd.startsWith(path.join(ctx.root, ".claude", "worktrees") + path.sep), started.cwd);
   const label = started.session.split("#")[1];
   const record = readOwned(ctx.cfg, label);
   assert.equal(record.managed, true);
@@ -193,15 +196,15 @@ test("a resume takes managed from the durable workflow input, not the owned reco
   const fake = await startFakeNtfy();
   t.after(() => fake.close());
   const ctx = setup(t, fake);
-  const first = makeRunner(ctx, createFakeAdapter({ harness: "codex" }));
+  const first = makeRunner(ctx, createFakeAdapter({ harness: "codex", capabilities: { places: ["folder", "worktree", "openshell"], openshellStarts: true } }));
   await first.boot();
-  PARENT = (await first.start({ project: "demo", harness: "codex", prompt: "parent" })).session;
+  PARENT = (await first.start({ project: "demo", harness: "codex", prompt: "parent", place: "folder" })).session;
   const { session } = await first.start(spawnInput("first turn"));
   await until(() => reports(fake).length === 1, "first report").finally(() => first.stop());
   // The session itself can write its owned record; turning managed off there must not reach the harness.
   const label = session.split("#")[1];
   writeOwned(ctx.cfg, { ...readOwned(ctx.cfg, label), managed: false });
-  const adapter = createFakeAdapter({ harness: "codex" });
+  const adapter = createFakeAdapter({ harness: "codex", capabilities: { places: ["folder", "worktree", "openshell"], openshellStarts: true } });
   const resumed = [];
   const resume = adapter.resume.bind(adapter);
   adapter.resume = (record, rctx, env) => { resumed.push({ managed: record.managed, env: env?.[MANAGED_ENV] }); return resume(record, rctx, env); };

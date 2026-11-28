@@ -58,11 +58,11 @@ async function recorded(record, name) {
   throw new Error("fake " + name + " never ran");
 }
 
-test("with a runner and openshell, the snapshot offers openshell, names it the start place, and lists cursor as able", async (t) => {
+test("with a runner and openshell, the snapshot offers openshell, names it the start place, and lists every start harness as able", async (t) => {
   const snapshot = await (await setup(t)).state();
   assert.deepEqual(snapshot.startPlaces, ["folder", "worktree", "openshell"]);
   assert.equal(snapshot.startPlace, "openshell");
-  assert.deepEqual(snapshot.openshellHarnesses, ["cursor"]);
+  assert.deepEqual(snapshot.openshellHarnesses, ["claude", "codex", "cursor", "opencode"]);
   const none = await (await setup(t, { socket: false })).state();
   assert.deepEqual([none.startPlaces, none.startPlace, none.openshellHarnesses], [["folder", "worktree"], "folder", []]);
   assert.equal((await (await setup(t, { defaults: { startPlace: "worktree" } })).state()).startPlace, "worktree");
@@ -76,15 +76,12 @@ test("a cursor start with no place goes to the runner in openshell; nothing runs
   assert.equal(existsSync(path.join(record, "cursor-agent.jsonl")), false);
 });
 
-test("a claude start with no place falls back to the folder; an explicit openshell for it is refused", async (t) => {
+test("a claude start with no place goes to the runner in openshell; nothing runs on the host", async (t) => {
   const { post, starts, record } = await setup(t);
-  const refused = await post({ project: "demo", harness: "claude", prompt: "x", place: "openshell" });
-  assert.equal(refused.status, 400);
-  assert.match((await refused.json()).error, /claude cannot start in OpenShell yet/);
-  const started = await (await post({ project: "demo", harness: "claude", prompt: "fix it" })).json();
-  assert.equal(started.status, "started");
-  assert.deepEqual((await recorded(record, "claude"))[0].argv, ["--bg", "--permission-mode", "default", "fix it"]);
-  assert.deepEqual(starts, []);
+  const result = await (await post({ project: "demo", harness: "claude", prompt: "fix it" })).json();
+  assert.equal(result.status, "started");
+  assert.deepEqual(starts, [{ project: "demo", harness: "claude", prompt: "fix it", place: "openshell", system: false }]);
+  assert.equal(existsSync(path.join(record, "claude.jsonl")), false);
 });
 
 test("an explicit folder start stays on the host even when openshell is the start place", async (t) => {

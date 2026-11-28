@@ -2,7 +2,9 @@
   "initialize": {
     "protocolVersion": "2025-11-25",
     "capabilities": {
-      "tools": {}
+      "tools": {
+        "listChanged": true
+      }
     },
     "serverInfo": {
       "name": "ai-collab",
