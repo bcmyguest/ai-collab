@@ -189,7 +189,10 @@ export async function respond(cfg: Cfg, id: unknown, state: string, body: unknow
     await replyToOperator(cfg, id, text, { state });
     return { sent: true, to: "operator", state };
   }
-  const to = found.broadcast || m.from === "operator" ? "all" : (typeof m.session === "string" && m.session ? `${m.from}#${m.session}` : m.from);
+  const shared = found.broadcast || m.from === "operator";
+  // A bare peer name reaches every session of that peer, so a reply needs the sender's session.
+  if (!shared && !(typeof m.session === "string" && m.session)) throw new Error(`"${m.from}" sent this without a session, so a reply would reach every ${m.from} session; send to one session address instead`);
+  const to = shared ? "all" : `${m.from}#${m.session}`;
   await sendMessage(cfg, to, text, { replyTo: id, state });
   return { sent: true, to, state };
 }
