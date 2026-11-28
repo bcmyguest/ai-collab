@@ -358,7 +358,9 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
       return r.ok ? { ok: true } : { ok: false, detail: r.error };
     },
     async open(options: Json, ctx: SessionContext) {
-      const model = modelRef(options.model);
+      const ref = modelRef(options.model);
+      // OpenCode 2.x session create takes the model as {providerID, id}.
+      const model = ref ? { providerID: ref.providerID, id: ref.modelID } : undefined;
       // A managed session's own permission rules deny native subagents; the shared service config stays untouched.
       const created = await call("POST", "/api/session", { location: { directory: options.cwd }, ...(model ? { model } : {}), ...(options.managed ? { permissions: [...OPENCODE_NO_SUBAGENTS] } : {}) });
       const id = created?.data?.id;
