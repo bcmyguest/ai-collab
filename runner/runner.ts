@@ -90,6 +90,9 @@ const MANAGED_ENV_HARNESSES = new Set(["claude", "codex"]);
 const SPAWN_IN_OPENSHELL = new Set(["cursor"]);
 // A worktree add that fails, most often on a name a parallel start just took, retries this many times in all.
 const WORKTREE_ATTEMPTS = 4;
+// A spawned child cut by a restart gets this turn instead of an "interrupted" report, up to RESTART_RESUMES times in a row.
+const RESTART_RESUMES = 3;
+const RESTART_RESUME_PROMPT = "The runner restarted during your last turn. Check what you already did (git status, files, messages), then finish the task and report as before.";
 
 const fail: (status: Json, message: string) => never = (status, message) => { throw Object.assign(new Error(message), { status }); };
 // Approvals off outside OpenShell is an unguarded agent on the host (lib/agent-guard.ts); only the operator's env lifts it.
@@ -570,12 +573,21 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       }
       const turn = next;
       next = null;
-      const cut = async (runId: string | null, reason: Json) => {
-        const result = await cutRun(s, runId, reason);
-        return builder ? { ...result, resumeBuilder: true } : result;
-      };
       // A spawned child reports each run inside its steps, so the step sequence (the DBOS golden) is unchanged.
       const reports = Boolean(s.record.spawn && s.record.parent);
+      const cut = async (runId: string | null, reason: Json) => {
+        const result = await cutRun(s, runId, reason);
+        if (builder) return { ...result, resumeBuilder: true };
+        if (!reports) return result;
+        s.record.restartResumes = (s.record.restartResumes || 0) + 1;
+        save(s);
+        return s.record.restartResumes <= RESTART_RESUMES ? { ...result, resumeChild: true } : result;
+      };
+      // A child that resumes keeps its parent waiting on the real result instead of an "interrupted" report.
+      const reportCut = async (done: Json) => {
+        if (reports && !done.resumeChild) await reportToParent(s, { outcome: "interrupted" });
+        return done;
+      };
       const sent = await wf.step("run.send", async () => {
         try {
           const handle = await liveHandle(s, staged);
@@ -596,11 +608,12 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
           if (reports) await reportToParent(s, { outcome: "error", message: `input not delivered: ${error.message}` });
           return { error: error.message };
         }
-      }, { onCut: async () => {
-        const done = await cut(null, "runner restarted before the harness accepted the input");
-        if (reports) await reportToParent(s, { outcome: "interrupted" });
-        return done;
-      } });
+      }, { onCut: async () => reportCut(await cut(null, "runner restarted before the harness accepted the input")) });
+      // Never accepted by the harness, so sending it again cannot repeat work.
+      if (sent.resumeChild) {
+        next = turn;
+        continue;
+      }
       if (!sent.runId && !builder) continue;
       const interrupted = () => cut(sent.runId, "runner restarted");
       const finished = sent.runId && await wf.step("run.wait", async () => {
@@ -609,11 +622,15 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
         if (patternRun && done?.landFinish) await finishSandboxedMember(s, staged, done.landFinish);
         if (reports) await reportToParent(s, done);
         return done;
-      }, { onCut: async () => {
-        const done = await interrupted();
-        if (reports) await reportToParent(s, { outcome: "interrupted" });
-        return done;
-      } });
+      }, { onCut: async () => reportCut(await interrupted()) });
+      if (finished?.resumeChild) {
+        next = { text: RESTART_RESUME_PROMPT, messageIds: [], system: true };
+        continue;
+      }
+      if (finished && !finished.cut && s.record.restartResumes) {
+        delete s.record.restartResumes;
+        save(s);
+      }
       if (sent.resumeBuilder || finished?.resumeBuilder) {
         next = { text: builderResumePrompt(input.prompt), messageIds: [], system: true };
         continue;

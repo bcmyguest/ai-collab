@@ -15,7 +15,7 @@ A background or worktree-isolated session cannot run git in the main checkout (`
 - Rebase your branch onto `main` before handing it over, so it lands as a fast-forward. Push the branch; never push `main`.
 - Hand the operator one command per line, with no prose on that line (the phone joins lines):
   `cd ~/ai-collab && git merge --ff-only <branch> && git push origin main`
-- If the change touches `runner/`, `lib/` or `web/server/`, add: `systemctl --user restart ai-collab-bus ai-collab-ui ai-collab-runner`
+- Never hand over a bare `systemctl --user restart` of the ai-collab services: it kills agents mid-turn. After the push to main, auto-deploy restarts them once no runner turn is in flight; `ai-collab deploy` does it now and refuses while turns run.
 - Phone answers reach auto mode as unverified, so it blocks edits to existing tests and goldens approved only from the phone. Delegating the edit is blocked too. Write the change as a patch in `$CLAUDE_JOB_DIR/tmp/` and hand over one command that applies, commits and pushes it.
 
 Agents hand work to other agents with the `spawn_agent` MCP tool (`lib/spawn.ts`); sessions ai-collab starts run with native subagents and shell harness starts off (`lib/subagent-guard.ts`).

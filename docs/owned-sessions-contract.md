@@ -99,6 +99,7 @@ The first prompt is the first input; the loop starts with it, not with `recv`.
 | Waiting in `recv:input` (idle) | Workflow replays to `recv`; no harness call until the next input, which resumes the native session lazily |
 | Cut inside `run.send` | Marked interrupted with `RUN_FINISHED {outcome:{type:"cancelled"}}` with the reason in metadata; the operator resends by hand |
 | Cut inside `run.wait` | Marked interrupted (`turn ended · interrupted · runner restarted`); `record.cut = {runId, at, reason}`; open approval cards end with reason `cancelled` |
+| Spawned child (`spawn` and `parent` set) cut in either step | The cut is still recorded, but the parent gets no `interrupted` report: a cut `run.send` sends the same input again, and a cut `run.wait` sends "The runner restarted during your last turn…" so the child finishes and reports its real result. `record.restartResumes` counts consecutive resumes; after 3 the parent gets `interrupted` as before, and a finished run clears the count |
 | `resume: "none"` | Next input fails with 409; the operator closes the session |
 | Adapter module missing at boot | The workflow fails (status ERROR); its owned record stays as it was |
 | Messages that arrived on the bus while the runner was down | Read from the stored `ntfy-cursor:<project>` and deduplicated by `ntfy:<event id>` |
