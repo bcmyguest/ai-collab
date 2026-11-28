@@ -1,17 +1,22 @@
 "use client";
 // The left column: wordmark, project switcher, the project's threads grouped by what they need, and the app menu.
 // Rendered beside the chat on a desktop and as the whole screen on a phone.
-import { useState, type ReactNode } from "react";
-import { Check, ChevronDown, ChevronRight, GitPullRequest, Plus, Settings2 } from "lucide-react";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { Check, ChevronDown, ChevronRight, Ellipsis, GitPullRequest, Plus, Settings2 } from "lucide-react";
+import { AlertDialog, AlertDialogClose, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from "@ui-sdk/react/alert-dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@ui-sdk/react/dialog";
+import { Field, FieldLabel } from "@ui-sdk/react/field";
+import { Input } from "@ui-sdk/react/input";
 import { Menu, MenuContent, MenuGroup, MenuGroupLabel, MenuItem, MenuItemIndicator, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuSub, MenuSubContent, MenuSubTrigger, MenuTrigger } from "@ui-sdk/react/menu";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { isLive, sessionState } from "@/lib/session-state";
-import { COLLAPSED, GROUPS, SETTLED_OPEN, elapsed, shortName, threadGroups, threadSession, unthreaded, workingTime, type Agent, type GroupId, type Thread, type ThreadRow } from "@/lib/thread-groups";
+import { COLLAPSED, GROUPS, SETTLED_OPEN, elapsed, inactiveThreads, shortName, threadGroups, threadSession, unthreaded, workingTime, type Agent, type GroupId, type Thread, type ThreadRow } from "@/lib/thread-groups";
 import { AgentName, HarnessMark } from "./agent-mark";
 import { SessionTree, missingSession, workingCount, type ListenSession, type OpenSession } from "./thread-sessions";
 import { Dot, ago } from "./chat-shared";
 import { Logo } from "./logo";
+import { ThreadPlace } from "./thread-place";
 import { TasksStrip } from "./tasks-strip";
 
 type Project = { id: string; waiting?: number; paused?: boolean };
@@ -27,13 +32,19 @@ export type SidebarProps = {
   counts: { tasks: number; waiting: number; patterns: number }; decisions: number;
   pause: () => void; openSchedules: () => void; signOut?: () => void; account?: string;
   controls?: ReactNode; openTasks?: () => void; listen?: ListenSession;
+  threadAction?: ThreadAction; archiveThreads?: (ids: string[]) => void;
 };
+// One POST /api/thread op on one thread: rename {title}, pin {pinned}, status {status}.
+export type ThreadAction = (op: "rename" | "pin" | "status", thread: string, fields: Record<string, unknown>, done: string) => void;
 
 const MENU = "z-50 min-w-56 rounded-xl bg-popover p-1 text-sm text-popover-foreground shadow-raised outline-none";
 const ITEM = "flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2 focus-visible:-outline-offset-2 data-highlighted:bg-accent data-disabled:cursor-default data-disabled:opacity-50 max-sm:min-h-11";
 const LABEL = "px-2 pb-1 pt-2 text-xs text-muted-foreground";
 const SEP = "my-1 h-px bg-border";
 const THEMES = [["system", "System"], ["light", "Light"], ["dark", "Dark"]];
+const DIALOG = "m-auto w-[min(28rem,calc(100vw-2rem))] rounded-xl bg-popover p-4 text-sm text-popover-foreground shadow-raised outline-none backdrop:bg-black/40";
+const BUTTON = "inline-flex min-h-9 items-center rounded-md px-3 text-sm hover:bg-accent focus-visible:outline-2 max-md:min-h-11";
+const SOLID = "bg-primary text-primary-foreground hover:bg-primary/90";
 const PR_TONE = { merged: "text-foreground", open: "text-foreground", draft: "text-muted-foreground", closed: "text-muted-foreground line-through" } satisfies Record<string, string>;
 
 /** The mark and wordmark; together they are the way home. */
@@ -78,9 +89,80 @@ function PrBadges({ prs }: { prs?: Thread["prs"] }) {
   </span>;
 }
 
-/** One thread: waiting mark, title, its age or working time, harness marks and PRs, then every session it holds. */
-function ThreadItem({ row, all, selected, now, navigate, project, listen, disabled }: {
+/** A thread's actions: rename, pin, and the stored status the operator sets. */
+function ThreadMenu({ row, label, act, rename, disabled }: { row: ThreadRow; label: string; act: ThreadAction; rename: (row: ThreadRow) => void; disabled?: boolean }) {
+  const status = row.status || "active";
+  const set = (next: string, done: string) => act("status", row.id, { status: next }, done);
+  return <Menu presentation="auto">
+    <MenuTrigger aria-label={"Thread actions for " + label} data-thread-menu={row.id} disabled={disabled}
+      className="mt-1 grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground data-open:bg-sidebar-accent max-md:mt-0 max-md:size-11">
+      <Ellipsis aria-hidden className="size-3.5"/>
+    </MenuTrigger>
+    <MenuContent align="end" className={MENU}>
+      <MenuItem className={ITEM} onSelect={() => rename(row)}>Rename…</MenuItem>
+      <MenuItem className={ITEM} onSelect={() => act("pin", row.id, { pinned: !row.pinned }, row.pinned ? "Unpinned" : "Pinned")}>{row.pinned ? "Unpin" : "Pin"}</MenuItem>
+      <MenuSeparator className={SEP}/>
+      {(status === "snoozed" || status === "settled") && <MenuItem className={ITEM} onSelect={() => set("active", "Marked active")}>Mark active</MenuItem>}
+      {status !== "settled" && status !== "archived" && <MenuItem className={ITEM} onSelect={() => set("settled", "Settled")}>Settle</MenuItem>}
+      {status !== "snoozed" && status !== "archived" && <MenuItem className={ITEM} onSelect={() => set("snoozed", "Snoozed")}>Snooze</MenuItem>}
+      {status === "archived" ? <MenuItem className={ITEM} onSelect={() => set("active", "Unarchived")}>Unarchive</MenuItem>
+        : <MenuItem className={ITEM} onSelect={() => set("archived", "Archived")}>Archive</MenuItem>}
+    </MenuContent>
+  </Menu>;
+}
+
+/** The rename form for one thread; a rename stops the agent from renaming it. */
+function RenameDialog({ thread, close, act }: { thread: ThreadRow | null; close: () => void; act?: ThreadAction }) {
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const title = String(new FormData(event.currentTarget).get("title") || "").trim();
+    if (thread && act && title) act("rename", thread.id, { title }, "Renamed");
+    close();
+  };
+  return <Dialog open={Boolean(thread)} onOpenChange={open => { if (!open) close(); }}>
+    <DialogContent className={DIALOG}>
+      <DialogTitle className="text-base font-semibold">Rename thread</DialogTitle>
+      <DialogDescription className="mt-1 text-muted-foreground">The agent stops renaming it after this.</DialogDescription>
+      <form className="mt-3 flex flex-col gap-3" onSubmit={submit}>
+        <Field className="flex flex-col gap-1">
+          <FieldLabel className="text-xs text-muted-foreground">Title</FieldLabel>
+          <Input name="title" required maxLength={200} defaultValue={thread?.title || ""} key={thread?.id}
+            className="min-h-9 rounded-md border bg-background px-2 text-sm max-md:min-h-11"/>
+        </Field>
+        <div className="flex justify-end gap-2">
+          <DialogClose className={BUTTON}>Cancel</DialogClose>
+          <button type="submit" className={cn(BUTTON, SOLID)}>Rename</button>
+        </div>
+      </form>
+    </DialogContent>
+  </Dialog>;
+}
+
+/** Asks before Archive inactive archives every thread it found. */
+function ArchiveInactiveDialog({ ids, close, archive }: { ids: string[]; close: () => void; archive?: (ids: string[]) => void }) {
+  const count = ids.length;
+  return <AlertDialog open={count > 0} onOpenChange={(open, details) => {
+    if (open) return;
+    if ((details as { returnValue?: string } | undefined)?.returnValue === "confirm" && archive) archive(ids);
+    close();
+  }}>
+    <AlertDialogContent className={DIALOG}>
+      <AlertDialogTitle className="text-base font-semibold">Archive {count} inactive {count === 1 ? "thread" : "threads"}?</AlertDialogTitle>
+      <AlertDialogDescription className="mt-1 text-muted-foreground">
+        Each has had no update for 24 hours and no session online. They move to the Archived group; Unarchive brings one back.
+      </AlertDialogDescription>
+      <div className="mt-4 flex justify-end gap-2">
+        <AlertDialogClose className={BUTTON}>Cancel</AlertDialogClose>
+        <AlertDialogClose value="confirm" className={cn(BUTTON, SOLID)}>Archive {count}</AlertDialogClose>
+      </div>
+    </AlertDialogContent>
+  </AlertDialog>;
+}
+
+/** One thread: waiting mark, title, its age or working time, where it runs, harness marks and PRs, then every session it holds. */
+function ThreadItem({ row, all, selected, now, navigate, project, listen, disabled, act, rename }: {
   row: ThreadRow; all: Agent[]; selected: Selected; now: number; navigate: Navigate; project: string; listen?: ListenSession; disabled?: boolean;
+  act?: ThreadAction; rename: (row: ThreadRow) => void;
 }) {
   const open = selected.level === "session" && Boolean(selected.session) && (row.sessions || []).includes(selected.session || "");
   const target = threadSession(row, row.agents);
@@ -107,14 +189,15 @@ function ThreadItem({ row, all, selected, now, navigate, project, listen, disabl
           {working || (row.updatedAt ? elapsed(now - row.updatedAt) : "")}
         </span>
       </span>
-      {(row.harnesses.length > 0 || (row.prs?.length || 0) > 0 || row.branch) && <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+      {(row.harnesses.length > 0 || (row.prs?.length || 0) > 0 || row.branch || row.place) && <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
         <span className="flex shrink-0 items-center">{row.harnesses.map(peer => <HarnessMark key={peer} peer={peer} className="size-3.5"/>)}</span>
-        {row.branch && <span className="min-w-0 flex-1 truncate font-mono" title={row.branch}>{row.branch}</span>}
-        {!row.branch && <span className="flex-1"/>}
+        <ThreadPlace place={row.place} branch={row.branch} className="flex-1"/>
+        {!row.branch && !row.place && <span className="flex-1"/>}
         <PrBadges prs={row.prs}/>
       </span>}
       {busy > 0 && <span className="flex items-center gap-1.5 text-xs text-foreground"><Dot online/>{busy} working</span>}
       </button>
+      {act && <ThreadMenu row={row} label={label} act={act} rename={rename} disabled={disabled}/>}
       {sessions.length > 0 && <button type="button" aria-expanded={!shut} aria-label={(shut ? "Show" : "Hide") + " sessions in " + label} onClick={() => setShut(!shut)}
         className="mt-1 grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground max-md:mt-0 max-md:size-11">
         <ChevronDown aria-hidden className={cn("size-3.5 transition-transform motion-reduce:transition-none", shut && "-rotate-90")}/>
@@ -158,7 +241,7 @@ function Group({ id, label, rows, children }: { id: GroupId | "sessions" | "inac
 }
 
 /** The app menu at the sidebar's foot: project views, decisions, schedules, the project's pause switch, theme and account. */
-function AppMenu({ data, current, navigate, counts, decisions, pause, openSchedules, projectAction, signOut, account, disabled, ready }: SidebarProps & { current: string }) {
+function AppMenu({ data, current, navigate, counts, decisions, pause, openSchedules, projectAction, signOut, account, disabled, ready, inactive, askArchive }: SidebarProps & { current: string; inactive: number; askArchive?: () => void }) {
   const { theme, setTheme } = useTheme();
   const project = data.projects.find(item => item.id === current);
   const managed = Boolean(current) && !data.autoProjects?.includes(current);
@@ -183,6 +266,9 @@ function AppMenu({ data, current, navigate, counts, decisions, pause, openSchedu
         </MenuItem>
         <MenuItem className={ITEM} onSelect={() => navigate({ project: current, level: "session" })}><span className="flex-1">All sessions</span></MenuItem>
         <MenuItem className={ITEM} onSelect={() => navigate({ project: current, level: "compactions" })}><span className="flex-1">History</span></MenuItem>
+        {askArchive && <MenuItem className={ITEM} disabled={disabled || inactive === 0} onSelect={askArchive}>
+          <span className="flex-1">Archive inactive…</span><span className="text-xs text-muted-foreground tabular-nums">{inactive}</span>
+        </MenuItem>}
         {ready && !data.hosted && <MenuItem className={ITEM} disabled={disabled} onSelect={pause}>
           <span className="flex-1">{project?.paused ? "Resume new work" : "Pause new work"}</span>
           {project?.paused && <span className="text-xs text-muted-foreground">paused</span>}
@@ -240,6 +326,9 @@ export function ThreadSidebar(props: SidebarProps) {
   const live = loose.filter(agent => isLive(agent, now) || agent.online);
   const idle = loose.filter(agent => !(isLive(agent, now) || agent.online));
   const paused = data.projects.some(item => item.id === current && item.paused);
+  const inactive = inactiveThreads(threads, all, now);
+  const [renaming, setRenaming] = useState<ThreadRow | null>(null);
+  const [archiving, setArchiving] = useState<string[]>([]);
   const sessionRow = (agent: Agent) => <SessionItem key={agent.id} agent={agent} name={shortName(agent)} selected={selected} now={now}
     onOpen={() => navigate({ project: current, level: "session", harness: agent.peer || agent.id.split("#")[0], session: agent.id })}/>;
   return <div className="flex h-full min-h-0 flex-col">
@@ -271,7 +360,8 @@ export function ThreadSidebar(props: SidebarProps) {
         </li>)}
       </ul> : <>
         {GROUPS.map(([id, label]) => <Group key={id} id={id} label={label} rows={groups[id].length}>
-          {groups[id].map(row => <ThreadItem key={row.id} row={row} all={all} selected={selected} now={now} navigate={navigate} project={current} listen={props.listen} disabled={disabled}/>)}
+          {groups[id].map(row => <ThreadItem key={row.id} row={row} all={all} selected={selected} now={now} navigate={navigate} project={current} listen={props.listen} disabled={disabled}
+            act={props.threadAction} rename={setRenaming}/>)}
         </Group>)}
         <Group id="sessions" label={threads.length ? "Sessions outside threads" : "Sessions"} rows={live.length}>{live.map(sessionRow)}</Group>
         <Group id="inactive" label="Inactive sessions" rows={idle.length}>{idle.map(sessionRow)}</Group>
@@ -279,9 +369,11 @@ export function ThreadSidebar(props: SidebarProps) {
       </>}
     </nav>
     <footer className="flex items-center gap-1 px-2 py-1.5 shadow-[0_-1px_0_var(--sidebar-border)]">
-      <AppMenu {...props} current={current}/>
+      <AppMenu {...props} current={current} inactive={inactive.length} askArchive={props.archiveThreads && current ? () => setArchiving(inactive.map(thread => thread.id)) : undefined}/>
       <span className="flex-1"/>
       {controls}
     </footer>
+    <RenameDialog thread={renaming} close={() => setRenaming(null)} act={props.threadAction}/>
+    <ArchiveInactiveDialog ids={archiving} close={() => setArchiving([])} archive={props.archiveThreads}/>
   </div>;
 }

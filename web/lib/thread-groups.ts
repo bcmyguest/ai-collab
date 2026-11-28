@@ -10,6 +10,7 @@ export type ThreadPr = { id?: string; number?: number; url?: string; state?: str
 export type Thread = {
   id: string; title?: string; branch?: string; worktree?: string; baseRef?: string; status?: string; pinned?: boolean;
   leadSession?: string; sessions?: string[]; prs?: ThreadPr[]; createdAt?: number; updatedAt?: number;
+  place?: string; titleSource?: string | null;
 };
 export type ThreadRow = Thread & { shown: string; agents: Agent[]; harnesses: string[] };
 export type GroupId = "pinned" | "waiting" | "working" | "active" | "settled" | "snoozed" | "archived";
@@ -22,6 +23,8 @@ export const GROUPS: [GroupId, string][] = [
 export const COLLAPSED: GroupId[] = ["snoozed", "archived"];
 // Settled threads past this many start collapsed behind their count.
 export const SETTLED_OPEN = 5;
+// Archive inactive takes threads untouched for this long whose sessions are all offline or ended.
+export const INACTIVE_MS = 24 * 3_600_000;
 const NAME_WORDS = 5;
 const NAME_CHARS = 40;
 
@@ -40,6 +43,16 @@ export function threadGroups(threads: Thread[] = [], agents: Agent[] = [], now: 
   }
   for (const rows of Object.values(groups)) rows.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   return groups;
+}
+
+/** Threads Archive inactive takes: not archived, updated over 24 h ago, and every listed session offline, ended or gone. */
+export function inactiveThreads(threads: Thread[] = [], agents: Agent[] = [], now: number): Thread[] {
+  const byId = new Map(agents.map(agent => [agent.id, agent]));
+  return threads.filter(thread => thread.status !== "archived" && now - (thread.updatedAt || 0) > INACTIVE_MS
+    && (thread.sessions || []).every(id => {
+      const agent = byId.get(id);
+      return !agent || agent.gone || sessionState(agent, now) === "offline";
+    }));
 }
 
 /** Live sessions no thread lists, so a store without threads still shows every session. */

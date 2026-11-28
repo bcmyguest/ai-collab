@@ -23,6 +23,7 @@ erDiagram
     text lead_session "nullable session address"
     text pattern_run "nullable: the pattern run this thread holds"
     text status "active | snoozed | settled | archived"
+    text title_source "auto | operator; NULL on rows from before the column"
     boolean pinned
     bigint created_at "ms"
     bigint updated_at "ms"
@@ -88,6 +89,28 @@ Callers:
 - The UI server posts unassigned sessions to `POST /threads/sync` when a project's registry changes, so hook-recorded sessions get a thread within one change.
 - A UI start creates a thread titled from the first prompt and attaches the new session, or attaches it to the `thread` the request names. A start in a thread runs in the thread's worktree as a folder start.
 - An operator message sent with `thread` carries `threadId` in its envelope and `thread_id` on its event row.
+
+## Naming
+
+The agent names its thread. `sync` titles a thread from its lead session (`leadSession`, else its first session; `sessionTitle` and `nextTitle` in `lib/threads.ts`):
+
+| Source | Title |
+|---|---|
+| the lead's `set_identity` activity line | its first line, whitespace collapsed; updated when it changes |
+| else the lead's first prompt (UI-server memory) | its first line, clipped to 60 characters |
+| else | the session's name unless it is an address or `agent-<hex>`, else the worktree folder, else `Untitled`; never the session address |
+
+`title_source` records who set the title. `auto` follows the lead; `operator` (a rename, or a create with a title) freezes it. Rows from before the column hold NULL: `sync` retitles one only when its title contains `#` or equals its worktree folder name, then marks it `auto`. A retitle leaves `updated_at` alone, so naming never reorders the sidebar. `sync` returns `retitled` when it renamed any thread, and the bus backfill logs that count.
+
+The UI server's sync posts a known lead again when `nextTitle` says its thread's title would change.
+
+## Sidebar
+
+Each thread row and the thread header show where the thread runs (`threadPlace`): `main` for the project root, else the worktree folder name, then the branch.
+
+The row's `…` menu holds Rename…, Pin or Unpin, Mark active (snoozed or settled threads), Settle, Snooze, and Archive or Unarchive. Archived threads stay in the collapsed Archived group; the UI snapshot lists them with the rest.
+
+The sidebar's Menu holds Archive inactive…: it archives every thread not already archived whose `updated_at` is older than 24 h and whose sessions are all offline, ended or gone (`inactiveThreads` in `web/lib/thread-groups.ts`). A confirm shows the count first.
 
 ## Thread channels
 
@@ -178,9 +201,9 @@ All JSON, behind the bus token.
 | `POST /threads/<id>/prs` | attach `{number?, url?, head, base, state, position?}`; without position it goes on top |
 | `DELETE /threads/<id>/prs/<prId>` | detach; positions above it close the gap |
 | `POST /threads/<id>/sessions` | move `{session}` into the thread |
-| `POST /threads/sync` | `{project, root, sessions}`: assign unassigned sessions |
+| `POST /threads/sync` | `{project, root, sessions}`: assign unassigned sessions and retitle auto-named threads; returns `{assigned, created, retitled?}` |
 
-The UI server's `POST /api/thread` takes `{project, op, ...}` with `op` one of `list`, `get`, `create`, `rename`, `status`, `pin`, `attach-pr`, `detach-pr`, `move-session`, and forwards to the bus. The UI snapshot carries `threads` for the current project.
+The UI server's `POST /api/thread` takes `{project, op, ...}` with `op` one of `list`, `get`, `create`, `rename`, `status`, `pin`, `archive`, `attach-pr`, `detach-pr`, `move-session`, and forwards to the bus. `archive` takes `{threads: [id, …]}` (1–500) and sets each to `archived`. The UI snapshot carries `threads` for the current project, archived ones included, each with its `place`.
 
 ## Migration
 
@@ -190,3 +213,5 @@ On the next bus restart:
 2. The backfill reads every registered project's registry and owned records and inserts threads and memberships. It deletes nothing and edits no session file.
 
 To reverse it, stop the bus and run `DROP TABLE bus.thread_prs, bus.thread_sessions, bus.threads; ALTER TABLE bus.events DROP COLUMN thread_id;`. Events and files are untouched by both directions.
+
+`title_source` arrives with `ALTER TABLE threads ADD COLUMN IF NOT EXISTS title_source` under the same lock; existing rows keep NULL. To reverse it: `ALTER TABLE bus.threads DROP COLUMN title_source;`.

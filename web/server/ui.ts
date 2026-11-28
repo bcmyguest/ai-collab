@@ -478,7 +478,9 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     const registry = join(item.stateDir, item.project, "registry");
     mkdirSync(registry, { recursive: true, mode: 0o700 });
     // A registry change may be a new session: it gets a thread at the next sync (docs/threads.md).
-    const threads = hosted ? null : projectThreads(item, { env, broadcast, ...(threadClientOf ? { client: threadClientOf(item) } : {}) });
+    let named: Json = null;
+    // First prompts name a thread until its lead sets an activity line (docs/threads.md "Naming").
+    const threads = hosted ? null : projectThreads(item, { env, broadcast, prompts: () => named ? firstPrompts(named) : new Map(), ...(threadClientOf ? { client: threadClientOf(item) } : {}) });
     const watcher = watch(registry, () => { threads?.sync(); broadcast(); });
     watcher.unref();
     threads?.sync();
@@ -496,6 +498,7 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
     };
     for (const name of [project.topic, project.status, project.activity, project.receipts, ...project.inboxes.values()]) known.add(name);
     projects.set(item.project, project);
+    named = project;
     // Archive incoming events even while every browser tab is closed.
     const open = (name: Json) => project.hub.open(name, name === project.activity ? { tailBytes: ACTIVITY_TAIL_BYTES } : undefined).catch(() => {
       if (!closed) setTimeout(() => open(name), NOTIFY_RETRY_MS).unref?.();

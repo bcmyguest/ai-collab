@@ -43,6 +43,7 @@ import { AfkToggle } from "./chat-sidebar";
 import { ThreadSidebar } from "./thread-sidebar";
 import { SessionPanel } from "./session-panel";
 import { ThreadSwitcher } from "./thread-switcher";
+import { ThreadPlace } from "./thread-place";
 import { AgentName } from "./agent-mark";
 import { ScheduledJobs } from "./scheduled";
 import { shortName } from "@/lib/thread-groups";
@@ -377,6 +378,8 @@ export function Console({ account }) {
     data, selected, now, navigate, ready, disabled: working, counts: viewCounts, decisions: data.decisions?.length || 0, openTasks,
     newThread: newSession, projectAction,
     listen: (thread, session, on) => action("thread", { op: "listen", thread, session, on }, on ? "Listening" : "Muted"),
+    threadAction: (op, thread, fields, done) => action("thread", { op, thread, ...fields }, done),
+    archiveThreads: ids => action("thread", { op: "archive", threads: ids }, "Archived " + ids.length),
     openSchedules: () => setSchedulesOpen(true), account: account.user?.login, signOut: account.user ? signOut : undefined,
     pause: () => action("project-pause", { paused: !paused }, paused ? "New work resumed" : "New work paused"),
     controls: <>
@@ -442,6 +445,7 @@ export function Console({ account }) {
             </div>
             <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground">
               <span className="truncate">{currentThread?.title && currentThread.title !== sessionName ? currentThread.title : project}</span>
+              {currentThread && <ThreadPlace place={currentThread.place} branch={currentThread.branch} className="shrink"/>}
               {level === "session" && agent?.parent && <button type="button" data-tap onClick={() => openAddress(agent.parent)} title={"Started by " + agent.parent}
                 aria-label={"Back to parent " + agent.parent} className="flex min-w-0 items-center gap-1 underline-offset-2 hover:underline">
                 <CornerLeftUp className="size-3.5 shrink-0"/><span className="truncate">parent {short(agent.parent)}</span></button>}

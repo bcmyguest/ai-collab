@@ -50,8 +50,9 @@ export async function backfillThreads(threads, env, log) {
     const root = roots.get(cfg.project) || "";
     try {
       const sessions = threadSessionsOf({ sessions: listSessions(cfg), owned: listOwned(cfg), root });
-      const { assigned, created } = await threads.sync({ project: cfg.project, root, sessions });
+      const { assigned, created, retitled } = await threads.sync({ project: cfg.project, root, sessions });
       if (assigned.length) log(`threads: ${cfg.project}: ${assigned.length} session(s) assigned, ${created} thread(s) created`);
+      if (retitled) log(`threads: ${cfg.project}: ${retitled} thread(s) renamed from their lead session`);
     } catch (error) {
       log(`threads: ${cfg.project}: backfill failed: ${error.message}`);
     }

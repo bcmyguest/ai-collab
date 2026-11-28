@@ -3,11 +3,12 @@ import { isAbsolute, sep } from "node:path";
 import { listProjects } from "../../lib/config.ts";
 import { listOwned, listSessions, type SessionCfg } from "../../lib/sessions/registry.ts";
 import { threadClient, type ThreadClientConfig } from "../../lib/thread-routes.ts";
-import { THREAD_ID, threadSessionsOf } from "../../lib/threads.ts";
+import { THREAD_ID, leadOf, nextTitle, threadPlace, threadSessionsOf } from "../../lib/threads.ts";
 import { channelClient, type ChannelClient } from "../../lib/thread-channel-store.ts";
 
 const SYNC_DELAY_MS = 1000;
-const OPS = ["list", "get", "create", "rename", "status", "pin", "attach-pr", "detach-pr", "move-session", "listen"];
+const OPS = ["list", "get", "create", "rename", "status", "pin", "archive", "attach-pr", "detach-pr", "move-session", "listen"];
+const ARCHIVE_MAX = 500;
 const TITLE_WORDS = 8;
 
 // oxlint-disable-next-line typescript/no-explicit-any -- threads and op inputs are JSON from the bus and the browser
@@ -34,8 +35,8 @@ function withListeners(threads: Json[], listeners: Json[] | null | undefined): J
 }
 
 /** Threads of one project: list() is the cached snapshot value; sync() posts unassigned sessions to the bus. */
-export function projectThreads(cfg: ThreadsCfg, { env = process.env, broadcast = () => {}, client = { ...threadClient(cfg), ...channelClient(cfg) }, delayMs = SYNC_DELAY_MS }: {
-  env?: NodeJS.ProcessEnv; broadcast?: () => void; client?: ThreadClient; delayMs?: number;
+export function projectThreads(cfg: ThreadsCfg, { env = process.env, broadcast = () => {}, client = { ...threadClient(cfg), ...channelClient(cfg) }, delayMs = SYNC_DELAY_MS, prompts = () => new Map() }: {
+  env?: NodeJS.ProcessEnv; broadcast?: () => void; client?: ThreadClient; delayMs?: number; prompts?: () => Map<string, string>;
 } = {}) {
   let threads: Json[] = [];
   let available = true;
@@ -45,10 +46,13 @@ export function projectThreads(cfg: ThreadsCfg, { env = process.env, broadcast =
 
   async function refresh(): Promise<void> {
     try {
-      const listed = await client.list(cfg.project);
+      // Archived threads stay listed: the sidebar keeps them in its collapsed Archived group.
+      const listed = await client.list(cfg.project, { archived: true });
       if (!Array.isArray(listed)) return;
       available = true;
-      const next = withListeners(listed, await client.listeners?.(cfg.project).catch(() => null));
+      const base = root();
+      const placed = listed.map(thread => ({ ...thread, place: threadPlace(thread.worktree, base) }));
+      const next = withListeners(placed, await client.listeners?.(cfg.project).catch(() => null));
       if (JSON.stringify(next) !== JSON.stringify(threads)) {
         threads = next;
         broadcast();
@@ -64,9 +68,16 @@ export function projectThreads(cfg: ThreadsCfg, { env = process.env, broadcast =
     try {
       // Sessions of a thread without a worktree go too: the sync gives the thread their folder.
       const known = new Set(threads.filter(thread => thread.worktree).flatMap(thread => thread.sessions));
-      const sessions = threadSessionsOf({ sessions: listSessions(cfg), owned: listOwned(cfg), root: root() })
-        .filter(session => !known.has(session.address));
-      if (sessions.length) await client.sync({ project: cfg.project, root: root(), sessions });
+      const base = root();
+      const all = threadSessionsOf({ sessions: listSessions(cfg), owned: listOwned(cfg), root: base, prompts: prompts() });
+      // A known lead goes too when its thread's title would change, so the sync renames the thread.
+      const byAddress = new Map(all.map(session => [session.address, session]));
+      const retitle = new Set(threads.flatMap(thread => {
+        const lead = byAddress.get(leadOf(thread));
+        return lead && nextTitle(thread, lead, base) !== null ? [lead.address] : [];
+      }));
+      const sessions = all.filter(session => !known.has(session.address) || retitle.has(session.address));
+      if (sessions.length) await client.sync({ project: cfg.project, root: base, sessions });
     } catch { /* the next registry change retries */ }
     await refresh();
   }
@@ -122,7 +133,13 @@ export function projectThreads(cfg: ThreadsCfg, { env = process.env, broadcast =
     else if (op === "create") {
       const { title, worktree, branch, baseRef, parentThreadId } = input;
       if (parentThreadId !== undefined && parentThreadId !== null) await own(parentThreadId);
-      result = await client.create({ project: cfg.project, title, worktree, branch, baseRef, parentThreadId });
+      result = await client.create({ project: cfg.project, title, worktree, branch, baseRef, parentThreadId, ...(title ? { titleSource: "operator" } : {}) });
+    } else if (op === "archive") {
+      const ids = input.threads;
+      if (!Array.isArray(ids) || !ids.length || ids.length > ARCHIVE_MAX) reject(400, `threads must list 1-${ARCHIVE_MAX} threads`);
+      for (const each of ids) await own(each);
+      for (const each of ids) await client.update(each, { status: "archived" });
+      result = { archived: ids.length };
     } else {
       await own(id);
       if (op === "get") result = await client.get(id);

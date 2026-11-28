@@ -33,6 +33,7 @@ interface Thread {
   patternRun: string | null;
   status: string;
   pinned: boolean;
+  titleSource: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -55,12 +56,18 @@ interface ThreadWithParts extends Thread {
 export const THREAD_STATUSES = ["active", "snoozed", "settled", "archived"];
 export const PR_STATES = ["draft", "open", "merged", "closed"];
 export const THREAD_ID = /^th_[a-f0-9]{16}$/;
+// auto: the sync names the thread from its lead session; operator: a rename froze it; NULL: a row from before the column.
+export const TITLE_SOURCES = ["auto", "operator"];
 const SYNC_LOCK = 7306459; // pg_advisory_xact_lock key: one sync assigns at a time
 const SESSION = /^[a-z0-9-]+#[a-f0-9]{16}$/;
 const BRANCH = /^\S{1,200}$/;
 const TEXT_MAX = 200;
 const URL_MAX = 500;
 const SYNC_MAX = 2000;
+const PROMPT_TITLE_MAX = 60;
+const UNTITLED = "Untitled";
+// A worktree or subagent label repeats the address and names nothing.
+const MACHINE_NAME = /^agent-[0-9a-f]{8,}$/i;
 
 function bad(message: string, status = 400) {
   return Object.assign(new Error(message), { status });
@@ -98,6 +105,7 @@ const rowThread = (row: Json): Thread => ({
   patternRun: row.pattern_run,
   status: row.status,
   pinned: row.pinned,
+  titleSource: row.title_source ?? null,
   createdAt: Number(row.created_at),
   updatedAt: Number(row.updated_at),
 });
@@ -157,6 +165,49 @@ export async function migrateThreads(client: Queryable, schema: string): Promise
   await client.query(`CREATE INDEX IF NOT EXISTS thread_sessions_thread ON ${schema}.thread_sessions(thread_id)`);
   await client.query(`CREATE INDEX IF NOT EXISTS thread_prs_thread ON ${schema}.thread_prs(thread_id, position)`);
   await client.query(`ALTER TABLE ${schema}.events ADD COLUMN IF NOT EXISTS thread_id TEXT`);
+  const sources = TITLE_SOURCES.map((s) => `'${s}'`).join(",");
+  await client.query(`ALTER TABLE ${schema}.threads ADD COLUMN IF NOT EXISTS title_source TEXT CHECK (title_source IN (${sources}))`);
+}
+
+type TitleInput = { activity?: unknown; prompt?: unknown; name?: unknown };
+
+/** The title a lead session gives its thread: its set_identity activity line, else its first prompt's first line, clipped to 60. */
+export function sessionTitle({ activity, prompt }: TitleInput): string {
+  const line = (value: unknown) => String(value ?? "").split(/\r?\n/).map((l) => l.replace(/\s+/g, " ").trim()).find(Boolean) || "";
+  return clean(line(activity)) || clean(line(prompt), PROMPT_TITLE_MAX);
+}
+
+/** A title when the session has given none: its name, else the worktree folder; never the session address. */
+function fallbackTitle(s: TitleInput, worktree: string, base: string): string {
+  const name = typeof s.name === "string" ? clean(s.name) : "";
+  if (name && !name.includes("#") && !MACHINE_NAME.test(name)) return name;
+  return worktree && worktree !== base ? path.basename(worktree) : UNTITLED;
+}
+
+// The names the sync gave before sessions named their threads: an address, or the worktree folder.
+const placeholder = (title: string, worktree: string) => title.includes("#") || Boolean(worktree && title === path.basename(worktree));
+
+/**
+ * The thread's next title from its lead session, or null to keep it: an operator rename keeps it; a row from before
+ * title_source changes only while its title is a placeholder; an auto title follows the session's own title.
+ */
+export function nextTitle(thread: { title: string; titleSource?: string | null; worktree?: string }, lead: TitleInput, base = ""): string | null {
+  if (thread.titleSource === "operator") return null;
+  const worktree = thread.worktree || "";
+  const own = sessionTitle(lead);
+  const stale = placeholder(thread.title, worktree);
+  if (thread.titleSource !== "auto" && !stale) return null;
+  const next = own || (stale ? fallbackTitle(lead, worktree, base) : thread.title);
+  return next !== thread.title ? next : null;
+}
+
+/** The session a thread is named after: its lead, else its first member. */
+export const leadOf = (thread: { leadSession?: string | null; sessions?: string[] }): string => thread.leadSession || thread.sessions?.[0] || "";
+
+/** Where a thread runs: "main" for the project root, else its worktree folder; "" without a worktree. */
+export function threadPlace(worktree: unknown, root = ""): string {
+  if (typeof worktree !== "string" || !worktree) return "";
+  return root && worktree === root ? "main" : path.basename(worktree);
 }
 
 /** The thread store over one pool; `schema` is already validated by the caller. */
@@ -218,15 +269,17 @@ export function createThreadStore({ pool, schema, now = Date.now }: { pool: DbPo
     const baseRef = text(fields.baseRef, "baseRef");
     if (branch && !BRANCH.test(branch)) throw bad("Invalid branch");
     if (baseRef && !BRANCH.test(baseRef)) throw bad("Invalid baseRef");
+    const titleSource = fields.titleSource === undefined ? "auto" : fields.titleSource;
+    if (!TITLE_SOURCES.includes(titleSource)) throw bad("Invalid titleSource");
     const at = stamp();
     const row: Json[] = [
       `th_${randomBytes(8).toString("hex")}`, project, text(fields.title, "title"), folder(fields.worktree, "worktree"), branch, baseRef,
       optional(fields.parentThreadId, THREAD_ID, "parentThreadId"), optional(fields.leadSession, SESSION, "leadSession"),
-      text(fields.patternRun, "patternRun") || null, at,
+      text(fields.patternRun, "patternRun") || null, at, titleSource,
     ];
     await client.query(
-      `INSERT INTO ${schema}.threads (id, project, title, worktree, branch, base_ref, parent_thread_id, lead_session, pattern_run, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)`,
+      `INSERT INTO ${schema}.threads (id, project, title, worktree, branch, base_ref, parent_thread_id, lead_session, pattern_run, created_at, updated_at, title_source)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $11)`,
       row,
     );
     return get(row[0], client);
@@ -237,7 +290,10 @@ export function createThreadStore({ pool, schema, now = Date.now }: { pool: DbPo
     const sets: string[] = [];
     const values: unknown[] = [id];
     const set = (column: string, value: unknown) => sets.push(`${column} = $${values.push(value)}`);
-    if (title !== undefined) set("title", text(title, "title"));
+    if (title !== undefined) {
+      set("title", text(title, "title"));
+      set("title_source", "operator");
+    }
     if (status !== undefined) {
       if (!THREAD_STATUSES.includes(status)) throw bad("Invalid status");
       set("status", status);
@@ -320,7 +376,7 @@ export function createThreadStore({ pool, schema, now = Date.now }: { pool: DbPo
       let created = 0;
       const tree = (s: Json) => (typeof s.worktree === "string" && path.isAbsolute(s.worktree) && s.worktree) || (base && (s.cwd === base || s.cwd.startsWith(base + path.sep)) ? base : s.cwd);
       const branchOf = (s: Json) => (typeof s.branch === "string" && BRANCH.test(s.branch) ? s.branch : "");
-      const nameOf = (s: Json) => (typeof s.name === "string" ? clean(s.name) : "");
+      const titleOf = (s: Json, where: string) => sessionTitle(s) || fallbackTitle(s, where, base);
       const open = async (fields: Json) => {
         const thread = await create({ project, ...fields }, client);
         threads.set(thread.id, thread);
@@ -332,16 +388,16 @@ export function createThreadStore({ pool, schema, now = Date.now }: { pool: DbPo
         const parent = typeof s.parent === "string" ? member.get(s.parent) : undefined;
         if (parent && (parent.worktree === where || !parent.worktree)) return parent;
         const titled = { worktree: where, branch: branchOf(s) };
-        if (parent) return open({ ...titled, title: nameOf(s) || path.basename(where), parentThreadId: parent.id });
+        if (parent) return open({ ...titled, title: titleOf(s, where), parentThreadId: parent.id });
         if (typeof s.patternRun === "string" && s.patternRun) {
           const run = [...threads.values()].find((t) => t.patternRun === s.patternRun);
           return run || open({ ...titled, title: `run ${s.patternRun}`, patternRun: s.patternRun });
         }
         if (where !== base) {
           const shared = [...threads.values()].find((t) => t.worktree === where);
-          return shared || open({ ...titled, title: nameOf(s) || path.basename(where) });
+          return shared || open({ ...titled, title: titleOf(s, where) });
         }
-        return open({ ...titled, title: nameOf(s) || s.address });
+        return open({ ...titled, title: titleOf(s, where) });
       };
 
       // Threads a UI start created before the session had a folder take the folder of their first session.
@@ -369,7 +425,23 @@ export function createThreadStore({ pool, schema, now = Date.now }: { pool: DbPo
         const done = new Set(ready.map((s) => s.address));
         pending = pending.filter((s) => !done.has(s.address));
       }
-      return { assigned, created };
+
+      // Each thread takes its lead's title (docs/threads.md "Naming"); a rename stops it. updated_at stays: naming is not work.
+      const byAddress = new Map<string, Json>(input.map((s) => [s.address, s]));
+      const members = new Map<string, string[]>();
+      for (const row of (await client.query(`SELECT thread_id, session FROM ${schema}.thread_sessions WHERE project = $1 ORDER BY joined_at, session`, [project])).rows) {
+        members.set(row.thread_id, [...(members.get(row.thread_id) || []), row.session]);
+      }
+      let retitled = 0;
+      for (const thread of threads.values()) {
+        const lead = byAddress.get(leadOf({ leadSession: thread.leadSession, sessions: members.get(thread.id) }));
+        const title = lead ? nextTitle(thread, lead, base) : null;
+        if (title === null) continue;
+        await client.query(`UPDATE ${schema}.threads SET title = $2, title_source = 'auto' WHERE id = $1`, [thread.id, title]);
+        thread.title = title;
+        retitled += 1;
+      }
+      return { assigned, created, ...(retitled ? { retitled } : {}) };
     });
   }
 
@@ -377,11 +449,11 @@ export function createThreadStore({ pool, schema, now = Date.now }: { pool: DbPo
 }
 
 /** The sync input for one project: registry sessions and owned records merged by address, owned fields first. */
-export function threadSessionsOf({ sessions = [], owned = [], root = "" }: { sessions?: Json[]; owned?: Json[]; root?: string }) {
+export function threadSessionsOf({ sessions = [], owned = [], root = "", prompts }: { sessions?: Json[]; owned?: Json[]; root?: string; prompts?: Map<string, string> }) {
   const byAddress = new Map<string, Json>();
   for (const s of sessions) {
     if (!s || typeof s.id !== "string") continue;
-    byAddress.set(s.id, { address: s.id, cwd: s.cwd, parent: s.parent, name: s.identityName || s.name, branch: s.branch });
+    byAddress.set(s.id, { address: s.id, cwd: s.cwd, parent: s.parent, name: s.identityName || s.name, branch: s.branch, activity: s.activity });
   }
   for (const o of owned) {
     if (!o || typeof o.address !== "string") continue;
@@ -398,5 +470,7 @@ export function threadSessionsOf({ sessions = [], owned = [], root = "" }: { ses
       patternRun: typeof s.patternRun === "string" ? s.patternRun : null,
       name: typeof s.name === "string" ? s.name : "",
       branch: typeof s.branch === "string" ? s.branch : "",
+      activity: typeof s.activity === "string" ? s.activity : "",
+      prompt: prompts?.get(s.address) || "",
     }));
 }

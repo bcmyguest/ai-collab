@@ -191,8 +191,8 @@ async function threadFixture({ cfg, root, address, label, inject, settled = 0 })
   events.forEach((event, index) => inject(activityTopic(cfg.project), buildActivity(agent, "claude", event, new Date(now - (events.length - index) * 1000).toISOString()).message));
   const thread = (id, title, sessions, extra = {}) => ({ id, project: cfg.project, title, sessions, leadSession: sessions[0], status: "active", createdAt: now - 7200_000, updatedAt: now - 60_000, ...extra });
   return [
-    thread("th_00000000000000a1", "UI redesign", [lead, child, gone, missing], { branch: "feat/ui-redesign-v2", updatedAt: now - 5000, prs: [{ number: 812, state: "open" }] }),
-    thread("th_00000000000000a2", "Composer keeps focus", [address], { branch: "fix/composer-keep-focus" }),
+    thread("th_00000000000000a1", "UI redesign", [lead, child, gone, missing], { branch: "feat/ui-redesign-v2", worktree: tree("switchover-plan"), updatedAt: now - 5000, prs: [{ number: 812, state: "open" }] }),
+    thread("th_00000000000000a2", "Composer keeps focus", [address], { branch: "fix/composer-keep-focus", worktree: root }),
     thread("th_00000000000000a3", "Old layout spike", [gone, missing], { updatedAt: now - 3 * 3600_000 }),
     // threads: N adds N old threads whose only session is gone, as a long-lived store accumulates.
     ...Array.from({ length: settled }, (_, index) => thread("th_" + String(index).padStart(16, "b"), "Old thread " + (index + 1), [missing], { updatedAt: now - (4 + index) * 3600_000 })),
