@@ -62,6 +62,7 @@ Then open the UI on your phone: [Quick start](https://bcmyguest.github.io/ai-col
 | [Landing policy](docs/teams.md#landing-policy) | A team's `landing` attribute picks PR, packet or branch; agents never push `main` |
 | [Builders](docs/builders.md) | One agent per task in OpenShell, with `oncebitten` checks when installed on the host |
 | [Teams and patterns](docs/teams.md) | Define roles and handoffs in DOT and verify their transitions with local traces |
+| [Threads](docs/threads.md) | A thread is a channel: `send` to `thread:<id>` reaches every listening session; `thread_listen` mutes or unmutes it (subagents start muted); `thread_messages` reads it |
 | [Agents starting agents](docs/messaging.md#agents-starting-agents) | `spawn_agent` (or `ai-collab spawn`) starts a child of any harness that reports to its parent after each run |
 | [Code mode](docs/code-mode.md) | Native code mode and `run_code` for AI Collab reads, required for new sessions launched by tags |
 | [Architecture diagrams](docs/architecture-diagrams.md) | What is off-the-shelf, what is home-grown, and where the network boundaries are |
