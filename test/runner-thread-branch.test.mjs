@@ -1,49 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import { rmSync } from "node:fs";
 import { parseWireEnvelope } from "../lib/agui.ts";
-import { loadConfig } from "../lib/config.ts";
 import { readOwned } from "../lib/sessions/registry.ts";
-import { openDurable } from "../lib/durable.ts";
-import { createRunner } from "../runner/runner.ts";
 import { createFakeAdapter } from "../runner/adapters/fake.ts";
 import { startFakeNtfy } from "./helpers/fake-ntfy.mjs";
-import { fileEnd, tempDir } from "./helpers/tmp.mjs";
+import { makeRunner as makeCtxRunner, setup as setupCtx, until } from "./helpers/runner-ctx.mjs";
 
 const TO_CODEX = "ai-collab-demo--to--codex";
 
+// The shared runner test home, removed after the test.
 function setup(t, fake) {
-  const home = tempDir(fileEnd, "ai-collab-runner-thread-branch-");
-  t.after(() => rmSync(home, { recursive: true, force: true }));
-  const root = path.join(home, "demo");
-  mkdirSync(root);
+  const ctx = setupCtx(fake);
+  t.after(() => rmSync(ctx.home, { recursive: true, force: true }));
   const gitEnv = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" };
-  for (const args of [["init", "-q", "-b", "main"], ["commit", "-q", "--allow-empty", "-m", "init"], ["checkout", "-q", "-b", "thread/x"], ["commit", "-q", "--allow-empty", "-m", "thread work"]]) execFileSync("git", args, { cwd: root, env: gitEnv });
-  mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
-  writeFileSync(path.join(home, ".config", "ai-collab", "projects.json"), JSON.stringify([{ root, project: "demo" }]));
-  const env = {
-    PATH: process.env.PATH, HOME: home, XDG_CONFIG_HOME: path.join(home, ".config"), AI_COLLAB_URL: fake.url,
-    AI_COLLAB_PROJECT: "demo", AI_COLLAB_PEER: "runner", AI_COLLAB_PEERS: "codex,claude,operator,runner",
-    AI_COLLAB_STATE_DIR: path.join(home, "state"), AI_COLLAB_TIMEOUT_MS: "2000",
-  };
-  const cfg = loadConfig(env, { cwd: root });
-  assert.equal(cfg.enabled, true, cfg.reason);
-  return { root, env, cfg, db: path.join(home, "state", "runner.db") };
+  for (const args of [["init", "-q", "-b", "main"], ["commit", "-q", "--allow-empty", "-m", "init"], ["checkout", "-q", "-b", "thread/x"], ["commit", "-q", "--allow-empty", "-m", "thread work"]]) execFileSync("git", args, { cwd: ctx.root, env: gitEnv });
+  return ctx;
 }
 
-const makeRunner = (ctx, adapter) => createRunner({ projects: [ctx.cfg], adapters: new Map([[adapter.harness, adapter]]), durable: openDurable(ctx.db), env: ctx.env, startGapMs: 0, watch: false });
-
-async function until(check, what, ms = 4000) {
-  const end = Date.now() + ms;
-  for (;;) {
-    const value = check();
-    if (value) return value;
-    if (Date.now() > end) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((r) => setTimeout(r, 10));
-  }
-}
+const makeRunner = (ctx, adapter) => makeCtxRunner(ctx, [adapter]).runner;
 
 const reports = (fake) => fake.state.publishes.filter((p) => p.topic === TO_CODEX).map((p) => parseWireEnvelope(p.message)).filter((e) => e?.body?.startsWith("[spawn_agent]"));
 const spawnInput = (prompt, parent) => ({ project: "demo", harness: "codex", prompt, place: "folder", managed: true, parent, spawn: true, system: false });

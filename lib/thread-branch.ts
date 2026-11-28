@@ -3,7 +3,7 @@
  * rebases the child's commits onto that branch and fast-forwards it. docs/threads.md "One branch per thread".
  */
 import { existsSync } from "node:fs";
-import type { GitRun } from "./sessions/git-refs.ts";
+import { parseWorktreeList, type GitRun } from "./sessions/git-refs.ts";
 
 // Branches a child never merges into: the operator lands those.
 const PROTECTED = new Set(["main", "master", "HEAD"]);
@@ -49,11 +49,6 @@ export async function mergeIntoParent(run: GitRun, childCwd: string, into: strin
 
 // The worktree that has `branch` checked out, or null.
 async function checkoutOf(run: GitRun, cwd: string, branch: string): Promise<string | null> {
-  const listed = (await run(["worktree", "list", "--porcelain"], cwd)).stdout;
-  let path: string | null = null;
-  for (const line of listed.split("\n")) {
-    if (line.startsWith("worktree ")) path = line.slice("worktree ".length);
-    else if (line === `branch refs/heads/${branch}`) return path;
-  }
-  return null;
+  const rows = parseWorktreeList((await run(["worktree", "list", "--porcelain"], cwd)).stdout);
+  return rows.find((row) => row.branch === `refs/heads/${branch}`)?.path ?? null;
 }

@@ -421,16 +421,22 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   // The branch checked out where the parent runs now: its owned record, else its registry entry (hooks keep cwd current).
   async function parentCheckoutBranch(project: Json, parent: Json): Promise<string | null> {
     const cwd = sessions.get(parent)?.record.cwd ?? listSessions(configs.get(project)).find((e: Json) => e.id === parent)?.cwd;
-    const gitFile = cwd && findExecutable("git", childEnv(env).PATH);
-    return gitFile ? parentBranch(gitRunner(gitFile, childEnv(env)), cwd) : null;
+    const run = cwd && hostGit();
+    return run ? parentBranch(run, cwd) : null;
+  }
+
+  // Git on the host as lib/sessions/git-refs.ts runs it, or null when git is missing.
+  function hostGit() {
+    const gitFile = findExecutable("git", childEnv(env).PATH);
+    return gitFile ? gitRunner(gitFile, childEnv(env)) : null;
   }
 
   // Merges a spawned child's commits into the branch it was cut from; a failure becomes the report line, never a throw.
   async function mergeChild(s: Json): Promise<string> {
-    const gitFile = findExecutable("git", childEnv(env).PATH);
-    if (!gitFile) return "not merged: git is not installed";
+    const run = hostGit();
+    if (!run) return "not merged: git is not installed";
     try {
-      return await mergeIntoParent(gitRunner(gitFile, childEnv(env)), s.record.cwd, s.record.spawn.mergeInto);
+      return await mergeIntoParent(run, s.record.cwd, s.record.spawn.mergeInto);
     } catch (error: Json) {
       return `not merged: ${error.message}`;
     }
