@@ -54,6 +54,19 @@ test("nextTitle follows an auto title, keeps an operator rename, and fixes only 
   assert.equal(nextTitle({ title: "Ship it", titleSource: "auto", worktree: TREE }, { name: "planner" }, ROOT), null);
 });
 
+test("the first prompt names a thread at once and a later prompt never replaces it; the activity line still does", () => {
+  const first = "Fix the   flaky\nbus test today please, it fails on CI often";
+  assert.equal(nextTitle({ title: "Untitled", titleSource: "auto", worktree: ROOT }, { prompt: first }, ROOT), "Fix the flaky");
+  assert.equal(nextTitle({ title: "ai-collab-codex-1", titleSource: "auto", worktree: TREE }, { prompt: first }, ROOT), "Fix the flaky");
+  assert.equal(nextTitle({ title: "run r_1", titleSource: "auto", worktree: TREE }, { prompt: first }, ROOT), "Fix the flaky");
+  // A UI start's title cut from the same prompt becomes its first line.
+  assert.equal(nextTitle({ title: "Fix the flaky bus test today please, it", titleSource: "auto", worktree: ROOT }, { prompt: first }, ROOT), "Fix the flaky");
+  // Once the first prompt leaves memory, the oldest one left is a later prompt: the title stays.
+  assert.equal(nextTitle({ title: "Fix the flaky", titleSource: "auto", worktree: ROOT }, { prompt: "now run the linter" }, ROOT), null);
+  assert.equal(nextTitle({ title: "Fix the flaky", titleSource: "auto", worktree: ROOT }, { prompt: "now run the linter", activity: "Bus test fix" }, ROOT), "Bus test fix");
+  assert.equal(nextTitle({ title: "Fix the flaky", titleSource: "operator", worktree: ROOT }, { activity: "Bus test fix" }, ROOT), null);
+});
+
 test("threadPlace names the main checkout main and a worktree by its folder", () => {
   assert.equal(threadPlace(ROOT, ROOT), "main");
   assert.equal(threadPlace(TREE, ROOT), "ai-collab-codex-1");
@@ -68,12 +81,14 @@ test("sync names new threads from the lead, follows its activity, and stops afte
     { address: lead, cwd: TREE, worktree: TREE, prompt: "Fix the flaky bus test\nit fails on CI" },
     { address: child, cwd: TREE, worktree: TREE, parent: lead, activity: "child work" },
     { address: loner, cwd: ROOT },
+    { address: address("claude", 6), cwd: TREE, patternRun: "r_7", prompt: "Review the stack" },
   ];
   await store.threads.sync({ project: "demo", root: ROOT, sessions });
   const byLead = async (s) => (await store.threads.list({ project: "demo" })).find((t) => t.sessions.includes(s));
   assert.equal((await byLead(lead)).title, "Fix the flaky bus test");
   assert.equal((await byLead(lead)).titleSource, "auto");
   assert.equal((await byLead(loner)).title, "Untitled", "a root session never titles its thread with its address");
+  assert.equal((await byLead(address("claude", 6))).title, "Review the stack", "a pattern run's thread takes its first prompt");
 
   const before = await byLead(lead);
   const second = await store.threads.sync({ project: "demo", root: ROOT, sessions: [{ ...sessions[0], activity: "Rewrite the bus retry" }] });

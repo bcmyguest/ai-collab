@@ -186,10 +186,14 @@ function fallbackTitle(s: TitleInput, worktree: string, base: string): string {
 
 // The names the sync gave before sessions named their threads: an address, or the worktree folder.
 const placeholder = (title: string, worktree: string) => title.includes("#") || Boolean(worktree && title === path.basename(worktree));
+// A pattern run's thread before its session names it.
+const RUN_TITLE = /^run \S+$/;
+const flat = (value: unknown) => String(value ?? "").replace(/\s+/g, " ").trim();
 
 /**
  * The thread's next title from its lead session, or null to keep it: an operator rename keeps it; a row from before
- * title_source changes only while its title is a placeholder; an auto title follows the session's own title.
+ * title_source changes only while its title is a placeholder; an auto title follows the activity line, and takes a prompt
+ * title only over a fallback or a title cut from that same prompt, so a later prompt never replaces the first.
  */
 export function nextTitle(thread: { title: string; titleSource?: string | null; worktree?: string }, lead: TitleInput, base = ""): string | null {
   if (thread.titleSource === "operator") return null;
@@ -197,7 +201,11 @@ export function nextTitle(thread: { title: string; titleSource?: string | null; 
   const own = sessionTitle(lead);
   const stale = placeholder(thread.title, worktree);
   if (thread.titleSource !== "auto" && !stale) return null;
-  const next = own || (stale ? fallbackTitle(lead, worktree, base) : thread.title);
+  const fallback = fallbackTitle(lead, worktree, base);
+  const filler = stale || thread.title === fallback || thread.title === UNTITLED || RUN_TITLE.test(thread.title);
+  const activity = sessionTitle({ activity: lead.activity });
+  const fromPrompt = Boolean(thread.title) && flat(lead.prompt).startsWith(flat(thread.title));
+  const next = activity || (own && (filler || fromPrompt) ? own : stale ? fallback : thread.title);
   return next !== thread.title ? next : null;
 }
 
@@ -391,7 +399,7 @@ export function createThreadStore({ pool, schema, now = Date.now }: { pool: DbPo
         if (parent) return open({ ...titled, title: titleOf(s, where), parentThreadId: parent.id });
         if (typeof s.patternRun === "string" && s.patternRun) {
           const run = [...threads.values()].find((t) => t.patternRun === s.patternRun);
-          return run || open({ ...titled, title: `run ${s.patternRun}`, patternRun: s.patternRun });
+          return run || open({ ...titled, title: sessionTitle(s) || `run ${s.patternRun}`, patternRun: s.patternRun });
         }
         if (where !== base) {
           const shared = [...threads.values()].find((t) => t.worktree === where);

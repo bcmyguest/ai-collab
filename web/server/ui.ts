@@ -470,6 +470,8 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           if (project.hub !== hub) continue;
           if (name === project.status) latestStatuses(events, project.statuses);
           if (name === project.receipts) readReceipts(events, project.reads);
+          // A first prompt names its thread before any set_identity (docs/threads.md "Naming").
+          if (name === project.activity && events.some((event: Json) => activityItem(event)?.type === "prompt")) project.threads?.sync();
           if (notifier) notifyActions(project, name, events);
         }
         broadcast();

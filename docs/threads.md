@@ -97,12 +97,14 @@ The agent names its thread. `sync` titles a thread from its lead session (`leadS
 | Source | Title |
 |---|---|
 | the lead's `set_identity` activity line | its first line, whitespace collapsed; updated when it changes |
-| else the lead's first prompt (UI-server memory) | its first line, clipped to 60 characters |
+| else the lead's first prompt (UI-server memory) | its first line, clipped to 60 characters, set as soon as the prompt arrives |
 | else | the session's name unless it is an address or `agent-<hex>`, else the worktree folder, else `Untitled`; never the session address |
 
 `title_source` records who set the title. `auto` follows the lead; `operator` (a rename, or a create with a title) freezes it. Rows from before the column hold NULL: `sync` retitles one only when its title contains `#` or equals its worktree folder name, then marks it `auto`. A retitle leaves `updated_at` alone, so naming never reorders the sidebar. `sync` returns `retitled` when it renamed any thread, and the bus backfill logs that count.
 
-The UI server's sync posts a known lead again when `nextTitle` says its thread's title would change.
+Every new thread gets a title at once: a UI start from its prompt, a synced or spawned session from `sessionTitle` or the fallback, a pattern run's thread from its session's title (`run <id>` until it has one). A prompt title replaces only a fallback, `run <id>`, or a title cut from that same prompt (a UI start keeps 8 words until the next sync), so a later prompt never replaces the first.
+
+The UI server's sync posts a known lead again when `nextTitle` says its thread's title would change. A prompt in the activity stream triggers that sync, as a registry change does.
 
 ## Sidebar
 
