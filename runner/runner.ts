@@ -1067,12 +1067,12 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     // Spawns skip the gap; the per-parent child cap bounds their rate.
     if (!patternRun && !builder && !spawned && now() - lastStartAt < startGapMs) fail(429, "Wait 10 seconds between starts");
     if (!patternRun && !builder && !spawned) lastStartAt = now();
+    const workflowId = `session-${randomUUID()}`;
     if (spawned) {
       if (liveChildren(parent) >= SPAWN_MAX_CHILDREN) fail(429, `this session already has ${SPAWN_MAX_CHILDREN} live spawned agents`);
-      spawning.set(parent, (spawning.get(parent) ?? 0) + 1);
+      spawning.set(parent, new Set(spawning.get(parent)).add(workflowId));
     }
     const managed = Boolean(builder || patternRun || continuation || spawned || managedInput === true);
-    const workflowId = `session-${randomUUID()}`;
     const claimed = claims.take(workflowId);
     const timer = new AbortController();
     const timeout = builder ? BUILDER_START_TIMEOUT_MS : startTimeoutMs;
@@ -1100,7 +1100,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     } finally {
       timer.abort();
       claims.drop(workflowId);
-      if (spawned) spawning.set(parent, spawning.get(parent) - 1);
+      if (spawned) spawning.get(parent)?.delete(workflowId);
     }
   }
 
@@ -1143,8 +1143,10 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   }
 
   function liveChildren(parent: Json) {
-    const live = [...sessions.values()].filter(({ record }) => record.parent === parent && record.spawn && record.status !== "ended").length;
-    return live + (spawning.get(parent) ?? 0);
+    // A start counts once: as its pending workflow until its session claims, then as that live session.
+    const live = [...sessions.values()].filter(({ record }) => record.parent === parent && record.spawn && record.status !== "ended");
+    const claimed = new Set(live.map(({ record }) => record.workflowId));
+    return live.length + [...(spawning.get(parent) ?? [])].filter((id) => !claimed.has(id)).length;
   }
 
   async function continueBuilder({ project, taskId, harness }: Json) {

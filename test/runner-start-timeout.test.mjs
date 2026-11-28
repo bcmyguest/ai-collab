@@ -96,7 +96,7 @@ test("a spawn whose claim lands after its 504 ends that child, so it does not co
   const runner = createRunner({ projects: [ctx.cfg], adapters: new Map([["codex", adapter]]), durable, env: ctx.env, startGapMs: 0, watch: false, startTimeoutMs: 1000 });
   await runner.boot();
   try {
-    const parent = (await runner.start({ project: "demo", harness: "codex", prompt: "parent" })).session;
+    const parent = (await runner.start({ project: "demo", harness: "codex", prompt: "parent", place: "folder" })).session;
     const spawnInput = (prompt) => ({ project: "demo", harness: "codex", prompt, place: "folder", managed: true, parent, spawn: true, system: false });
     const open = adapter.open.bind(adapter);
     const slow = gate();
@@ -119,6 +119,8 @@ test("a spawn whose claim lands after its 504 ends that child, so it does not co
     await new Promise((resolve) => setTimeout(resolve, 300));
     assert.deepEqual(listOwned(ctx.cfg).filter((r) => r.spawn).map((r) => r.status), ["ended"]);
     for (let i = 0; i < 4; i++) assert.equal((await runner.start(spawnInput(`child ${i}`))).status, "started");
+    // Each child's run end merges back with git before its idle write; let that land before the home is removed.
+    await until(() => listOwned(ctx.cfg).filter((r) => r.spawn && r.status !== "ended").every((r) => r.status === "idle"), "children idle");
   } finally {
     await runner.stop();
   }
@@ -137,7 +139,7 @@ test("a late child whose release fails is still marked ended and frees its cap s
   const runner = createRunner({ projects: [ctx.cfg], adapters: new Map([["codex", adapter]]), durable, env: ctx.env, startGapMs: 0, watch: false, startTimeoutMs: 1000 });
   await runner.boot();
   try {
-    const parent = (await runner.start({ project: "demo", harness: "codex", prompt: "parent" })).session;
+    const parent = (await runner.start({ project: "demo", harness: "codex", prompt: "parent", place: "folder" })).session;
     const spawnInput = (prompt) => ({ project: "demo", harness: "codex", prompt, place: "folder", managed: true, parent, spawn: true, system: false });
     const open = adapter.open.bind(adapter);
     const slow = gate();
@@ -161,6 +163,8 @@ test("a late child whose release fails is still marked ended and frees its cap s
     await until(() => runner.get(record.address).status === "ended", "late child ended in memory");
     rmSync(file, { recursive: true });
     for (let i = 0; i < 4; i++) assert.equal((await runner.start(spawnInput(`child ${i}`))).status, "started");
+    // Each child's run end merges back with git before its idle write; let that land before the home is removed.
+    await until(() => listOwned(ctx.cfg).filter((r) => r.spawn && r.status !== "ended").every((r) => r.status === "idle"), "children idle");
   } finally {
     await runner.stop();
   }
