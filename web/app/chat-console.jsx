@@ -448,6 +448,7 @@ export function Console({ account }) {
               {/* The thread names the header; the open agent goes beneath it. */}
               <span className="truncate">{currentThread?.title && selected.session ? <AgentName address={selected.session} name={sessionName}/> : project}</span>
               {currentThread && <ThreadPlace place={currentThread.place} branch={currentThread.branch} className="shrink"/>}
+              {level === "session" && (agent?.modelControl?.current || agent?.model) && <span className="shrink-0 truncate" title="Model">{agent.modelControl?.current || agent.model}</span>}
               {level === "session" && agent?.parent && <button type="button" data-tap onClick={() => openAddress(agent.parent)} title={"Started by " + agent.parent}
                 aria-label={"Back to parent " + agent.parent} className="flex min-w-0 items-center gap-1 underline-offset-2 hover:underline">
                 <CornerLeftUp className="size-3.5 shrink-0"/><span className="truncate">parent {short(agent.parent)}</span></button>}
