@@ -137,6 +137,11 @@ export function chatThread(messages, rows, session) {
   return interleave(merged, splitAtMessages(flow.rows, merged.map(item => item.time || 0)));
 }
 
+/** A native subagent run's transcript as chat entries: its start, texts, tool groups and stop rows in order; live until the run is done. */
+export function subagentThread(run) {
+  return flowRows(run.rows, Boolean(run.done)).map(activity => ({ activity }));
+}
+
 /** "Ran Bash · npm test" for one tool use, "Ran 2 tools · Bash, Read" for several. */
 export function groupLabel(group) {
   if (group.steps !== 1) return "Ran " + group.steps + " tools · " + group.tools.join(", ");

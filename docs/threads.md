@@ -183,6 +183,10 @@ A thread row in the sidebar opens the thread chat (`#project=<p>&level=thread&th
 
 The sidebar's **Project chat** row, under New thread, opens the project chat.
 
+Closing the new-session composer (its X or Escape) returns to the chat it was opened from: the thread chat, a session chat, or the project chat.
+
+A subagent run row under a session in the sidebar opens the run's transcript as the main chat ([Subagents](phone-ui.md#subagents)).
+
 A post from an open session's chat reaches that session once even when it muted the thread, as long as the session is a member: the operator is looking at it.
 
 ### Listening toggle

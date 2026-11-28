@@ -6,7 +6,7 @@ import { MessageContent } from "@/components/ui/message";
 import { cn } from "@/lib/utils";
 import { groupLabel } from "@/lib/chat-turns";
 import { clearText, compactionText, modelText } from "@/lib/compaction-view";
-import { activeAgents, inputBlocks, readableText, resultLanguage, runState, subagentLabel, subagentModel, summarize } from "@/lib/activity-rows";
+import { activeAgents, inputBlocks, readableText, resultLanguage, runState, spawnedSession, subagentLabel, subagentModel, summarize } from "@/lib/activity-rows";
 import { toolDiff } from "@/lib/tool-diff";
 import { elapsed } from "@/lib/thread-groups";
 import { ChoiceCard, askedQuestions } from "./cards";
@@ -16,6 +16,7 @@ import { peerOf } from "./chat-shared";
 
 const PREVIEW_LINES = 3;
 const TOOL_ICONS = [
+  [/spawn_agent$/i, Bot],
   [/^(bash|shell|exec_command|run_terminal_cmd|terminal)/i, Terminal],
   [/^(read|view|cat|read_file)/i, FileText],
   [/(edit|write|patch|apply_patch|multiedit|notebookedit|delete_file)/i, Pencil],
@@ -154,16 +155,21 @@ function SubagentRun({ row, when, now, goRun }) {
 }
 
 // One row per run of tool uses between two messages: "Ran …" when collapsed; the live run stays open until a message follows.
-function ToolGroupRun({ row, when, now, goRun }) {
+function ToolGroupRun({ row, when, now, goRun, openSession }) {
   const [manual, setManual] = useState(null);
   const open = manual ?? row.live;
+  // Each child session a spawn_agent call in the group started gets its own Go-to button.
+  const children = openSession ? [...new Set(row.rows.map(spawnedSession).filter(Boolean))] : [];
   return <div className="flex min-w-0 flex-col gap-2">
-    <button type="button" aria-expanded={open} onClick={() => setManual(!open)}
-      className="flex min-w-0 items-center gap-2 rounded-lg border border-dashed bg-card px-2.5 py-1.5 text-left text-sm">
-      {row.live ? <LoaderCircle className="size-4 shrink-0 animate-spin text-muted-foreground"/> : <Wrench className="size-4 shrink-0 text-muted-foreground"/>}
-      <span className="min-w-0 flex-1 truncate">{groupLabel(row)}</span>
-      <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")}/>
-    </button>
+    <div className="flex min-w-0 items-center gap-1.5">
+      <button type="button" aria-expanded={open} onClick={() => setManual(!open)}
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-dashed bg-card px-2.5 py-1.5 text-left text-sm">
+        {row.live ? <LoaderCircle className="size-4 shrink-0 animate-spin text-muted-foreground"/> : <Wrench className="size-4 shrink-0 text-muted-foreground"/>}
+        <span className="min-w-0 flex-1 truncate">{groupLabel(row)}</span>
+        <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")}/>
+      </button>
+      {children.map(child => <GoToAgent key={child} label={"Go to spawned agent " + child} onClick={() => openSession(child)}/>)}
+    </div>
     {open && <div data-group={row.id} className="ml-3 flex min-w-0 flex-col gap-3 border-l pl-3">
       {row.rows.map(item => <ActivityRow key={item.id} row={item} when={when} now={now} goRun={goRun}/>)}
     </div>}
@@ -178,12 +184,12 @@ export function GoToAgent({ label = "Go to agent", onClick, className }) {
   </button>;
 }
 
-/** One activity row; goRun opens a subagent run. */
-export function ActivityRow({ row, when, now, goRun }) {
+/** One activity row; goRun opens a subagent run, openSession a session spawn_agent started. */
+export function ActivityRow({ row, when, now, goRun, openSession }) {
   if (row.type === "subagent") return <article data-type="subagent" className="flex min-w-0 flex-col gap-1">
     <SubagentRun row={row} when={when} now={now} goRun={goRun}/>
   </article>;
-  if (row.type === "group") return <article data-type="group" data-agent={row.agent} className="flex min-w-0 flex-col gap-1"><p className="font-mono text-xs text-muted-foreground">{row.agent}</p><ToolGroupRun row={row} when={when} now={now} goRun={goRun}/></article>;
+  if (row.type === "group") return <article data-type="group" data-agent={row.agent} className="flex min-w-0 flex-col gap-1"><p className="font-mono text-xs text-muted-foreground">{row.agent}</p><ToolGroupRun row={row} when={when} now={now} goRun={goRun} openSession={openSession}/></article>;
   return <article data-type={row.type} data-agent={row.agent} className={cn("flex min-w-0 flex-col gap-1", row.type === "prompt" && "items-end")}>
     <div className="flex max-w-full items-center gap-1.5 text-xs text-muted-foreground">
       {row.type === "prompt" && <span className="font-medium text-foreground">Prompt</span>}

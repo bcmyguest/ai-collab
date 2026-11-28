@@ -113,6 +113,10 @@ A run is **running** while it has a row from the last 2 minutes, **idle** after 
 
 The session's **Subagents** tab lists each run: type, parent session, running or done, step count, description, start time and last action. Tap one to see only its rows (`&tab=subagents&run=<id>`).
 
+A run row's **Go to subagent** button, and a run row in the thread sidebar, open the run's transcript as the main chat: `level=session&session=<parent>&subagent=<run id>`. A bar above the chat names it (**Subagent · <type> · <description>**, then its state and step count) and its **Back** button returns to the parent session's chat; browser back does the same. The chat shows the run's start, texts, tool groups and stop row. An open side panel stays beside it. A run no longer in the recent activity shows "That subagent run is not in the recent activity."
+
+A tool group that holds a `spawn_agent` call gets a **Go to spawned agent** button per child address its result names (`status`, `session` in `lib/spawn.ts`); it opens that child's session chat.
+
 On 2026-11-21 the `ai-collab-ai-collab--activity` topic held only `tool_result` rows inside subagents and no `tool_call`, `text`, or subagent start/stop rows at all: none of Claude's `"async": true` registrations (PreToolUse, MessageDisplay, SubagentStart, SubagentStop) had published, so runs showed 0 steps before the step-counting rule above.
 
 ## Composer
