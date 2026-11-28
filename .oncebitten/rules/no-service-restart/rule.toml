@@ -10,4 +10,4 @@ message = "Restarting, stopping or killing an ai-collab service ends every runni
 
 [steer.trigger]
 tool = "{bash,shell,run_shell_command}"
-command = '(^|[;&|(\n])\s*((sudo\s+)?systemctl\b[^;&|\n]*\s(restart|stop|kill|try-restart|reload-or-restart|try-reload-or-restart)\b[^;&|\n]*ai-collab|(pkill|killall)\b[^;&|\n]*ai-collab)'
+command = '(^|[;&|(\n\x22\x27\x60])\s*((sudo\s+|env\s+(\S+=\S+\s+)*)?systemctl\b[^;&|\n]*\s(restart|stop|kill|try-restart|reload-or-restart|try-reload-or-restart)\b[^;&|\n]*ai-collab|(pkill|killall)\b[^;&|\n]*ai-collab)'

@@ -1,0 +1,1 @@
+{"event": "tool", "tool": "Bash", "command": "git -c core.x=1 push -u origin docs/main-notes"}

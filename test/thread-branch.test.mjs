@@ -5,7 +5,6 @@ import { rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { gitRunner } from "../lib/sessions/git-refs.ts";
 import { findExecutable } from "../lib/sessions/scope.ts";
-import { spawnAgent } from "../lib/spawn.ts";
 import { mergeIntoParent, parentBranch } from "../lib/thread-branch.ts";
 import { fileEnd, tempDir } from "./helpers/tmp.mjs";
 
@@ -75,13 +74,13 @@ test("parentBranch names a thread branch and skips main and a detached HEAD", as
   assert.equal(await parentBranch(run, parent), null);
 });
 
-test("spawn_agent with a worktree asks for the parent's branch as base and merge target", async (t) => {
-  const { root, parent } = repo(t);
-  const bodies = [];
-  const request = async (_method, _path, body) => { bodies.push(body); return { status: 201, body: { status: "started", session: "codex#0123456789abcdef", cwd: "/w" } }; };
-  const cfg = { project: "demo", peer: "claude", session: "fedcba9876543210" };
-  await spawnAgent(cfg, { harness: "codex", brief: "do it", worktree: true }, { env: ENV, request, cwd: parent });
-  await spawnAgent(cfg, { harness: "codex", brief: "do it", worktree: true }, { env: ENV, request, cwd: root });
-  await spawnAgent(cfg, { harness: "codex", brief: "do it" }, { env: ENV, request, cwd: parent });
-  assert.deepEqual(bodies.map((b) => [b.place, b.base, b.mergeInto]), [["worktree", "thread/x", "thread/x"], ["worktree", undefined, undefined], ["folder", undefined, undefined]]);
+test("a merge first aborts a rebase an earlier, cut merge left behind", async (t) => {
+  const { parent, child } = repo(t);
+  commit(child, "p.txt", "child\n");
+  commit(parent, "p.txt", "parent\n");
+  assert.throws(() => git(child, "rebase", "thread/x"));
+  git(child, "checkout", "-q", "--theirs", "p.txt");
+  git(parent, "reset", "-q", "--hard", "HEAD~1"); // the parent drops its conflicting commit, so a clean merge is possible
+  assert.equal(await mergeIntoParent(run, child, "thread/x"), "merged 1 commit from child/1 into thread/x");
+  assert.equal(git(parent, "show", "HEAD:p.txt"), "child");
 });

@@ -2,7 +2,8 @@
  * One thread, one branch: a spawned child's worktree branch is cut from its parent's branch, and each successful run
  * rebases the child's commits onto that branch and fast-forwards it. docs/threads.md "One branch per thread".
  */
-import type { GitRun } from "./sessions/git-refs.ts";
+import { existsSync } from "node:fs";
+import { parseWorktreeList, type GitRun } from "./sessions/git-refs.ts";
 
 // Branches a child never merges into: the operator lands those.
 const PROTECTED = new Set(["main", "master", "HEAD"]);
@@ -18,6 +19,11 @@ export async function parentBranch(run: GitRun, cwd: string): Promise<string | n
 /** Rebases the branch checked out in childCwd onto `into` and fast-forwards `into`; returns the line for the parent's report, "" when there is nothing to merge. */
 export async function mergeIntoParent(run: GitRun, childCwd: string, into: string): Promise<string> {
   if (PROTECTED.has(into)) return `not merged: ${into} is landed by the operator`;
+  // A restart can cut an earlier merge mid-rebase; start from the branch as it was.
+  for (const dir of ["rebase-merge", "rebase-apply"]) {
+    const path = (await run(["rev-parse", "--path-format=absolute", "--git-path", dir], childCwd)).stdout.trim();
+    if (path && existsSync(path)) await run(["rebase", "--abort"], childCwd);
+  }
   const branch = (await run(["rev-parse", "--abbrev-ref", "HEAD"], childCwd)).stdout.trim();
   if (!branch || branch === "HEAD" || branch === into) return "";
   if ((await run(["rev-parse", "--verify", "--quiet", `refs/heads/${into}`], childCwd)).code !== 0) return `not merged: branch ${into} no longer exists`;
@@ -43,11 +49,6 @@ export async function mergeIntoParent(run: GitRun, childCwd: string, into: strin
 
 // The worktree that has `branch` checked out, or null.
 async function checkoutOf(run: GitRun, cwd: string, branch: string): Promise<string | null> {
-  const listed = (await run(["worktree", "list", "--porcelain"], cwd)).stdout;
-  let path: string | null = null;
-  for (const line of listed.split("\n")) {
-    if (line.startsWith("worktree ")) path = line.slice("worktree ".length);
-    else if (line === `branch refs/heads/${branch}`) return path;
-  }
-  return null;
+  const rows = parseWorktreeList((await run(["worktree", "list", "--porcelain"], cwd)).stdout);
+  return rows.find((row) => row.branch === `refs/heads/${branch}`)?.path ?? null;
 }

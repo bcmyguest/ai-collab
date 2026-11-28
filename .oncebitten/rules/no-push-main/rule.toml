@@ -10,4 +10,4 @@ message = "The operator lands main. Push your branch (git push -u origin <branch
 
 [steer.trigger]
 tool = "{bash,shell,run_shell_command}"
-command = '(^|[;&|(\n])\s*git\s+(-C\s+\S+\s+)?(-c\s+\S+\s+)*push\b[^;&|\n]*(\s|:)(refs/heads/)?main(\s|$|[;&|)])'
+command = '(^|[;&|(\n\x22\x27\x60])\s*(env\s+(\S+=\S+\s+)*)?git\s+((-C|-c)\s+\S+\s+)*push\b[^;&|\n]*(\s|:|\+)(refs/heads/)?main(\s|$|[;&|)\x22\x27\x60])'
