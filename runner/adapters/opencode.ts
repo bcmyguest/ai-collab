@@ -20,6 +20,11 @@ const enc = encodeURIComponent;
 /** The auto-reply actions of a mode (PERMISSION_TABLE.opencode), empty for a mode without them. */
 export const autoReplyFor = (mode: Json) => PERMISSION_TABLE.opencode[mode]?.autoReply ?? [];
 
+/** A tool event's call id: `id` in OpenCode 2.2, `callID` before. */
+export function callId(data: Json): string {
+  return String(data?.callID ?? data?.id ?? "");
+}
+
 /** {providerID, modelID} for a "provider/model" name, else undefined. */
 export function modelRef(model: Json) {
   const at = typeof model === "string" ? model.indexOf("/") : -1;
@@ -147,9 +152,9 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
   function toolResult(s: Json, data: Json, failed: Json) {
     if (!s.run) return;
     s.ctx.emit({
-      type: EventType.TOOL_CALL_RESULT, toolCallId: data.callID, messageId: `${data.callID}:result`, role: "tool",
+      type: EventType.TOOL_CALL_RESULT, toolCallId: callId(data), messageId: `${callId(data)}:result`, role: "tool",
       content: failed ? errorText(data) : contentText(data.content),
-      metadata: { aiCollab: { toolCallName: s.tools.get(data.callID) ?? "tool", failed } },
+      metadata: { aiCollab: { toolCallName: s.tools.get(callId(data)) ?? "tool", failed } },
     });
   }
 
@@ -213,10 +218,17 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
       case "session.text.ended":
         if (s.run) s.ctx.emit({ type: EventType.TEXT_MESSAGE_CHUNK, messageId: data.assistantMessageID, role: "assistant", delta: String(data.text ?? "") });
         return;
-      case "session.tool.called":
+      // OpenCode 2.2 names the tool on input.started and keys calls by id; earlier builds sent callID and name on called.
+      case "session.tool.input.started":
+        if (data.name) s.tools.set(callId(data), String(data.name));
+        return;
+      case "session.tool.called": {
         if (!s.run) return;
-        s.tools.set(data.callID, String(data.name));
-        return s.ctx.emit({ type: EventType.TOOL_CALL_CHUNK, toolCallId: data.callID, toolCallName: String(data.name), delta: JSON.stringify(data.input ?? {}) });
+        const id = callId(data);
+        const name = String(data.name ?? s.tools.get(id) ?? "tool");
+        s.tools.set(id, name);
+        return s.ctx.emit({ type: EventType.TOOL_CALL_CHUNK, toolCallId: id, toolCallName: name, delta: JSON.stringify(data.input ?? {}) });
+      }
       case "session.tool.success": return toolResult(s, data, false);
       case "session.tool.failed": return toolResult(s, data, true);
       case "session.compaction.started":
