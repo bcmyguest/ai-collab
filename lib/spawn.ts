@@ -5,7 +5,10 @@
  */
 import { modelShape, parseHarnessModel } from "./harness.ts";
 import { runnerRequest, runnerSocket } from "./runner-request.ts";
+import { gitRunner } from "./sessions/git-refs.ts";
 import { checkPrompt } from "./sessions/launch.ts";
+import { findExecutable } from "./sessions/scope.ts";
+import { parentBranch } from "./thread-branch.ts";
 
 export const SPAWN_MAX_CHILDREN = 4; // live spawned children per parent
 export const SPAWN_MAX_DEPTH = 2; // a spawned agent may spawn once more
@@ -23,7 +26,7 @@ type SpawnCfg = { project: string; peer: string; session?: string };
 type Request = (method: string, path: string, body: unknown, options: { socket: string }) => Promise<{ status: number; body: Record<string, unknown> | null }>;
 
 /** Starts a managed child session through the runner and returns its address at once. */
-export async function spawnAgent(cfg: SpawnCfg, input: SpawnInput, { env = process.env, request = runnerRequest as Request }: { env?: NodeJS.ProcessEnv; request?: Request } = {}): Promise<SpawnResult> {
+export async function spawnAgent(cfg: SpawnCfg, input: SpawnInput, { env = process.env, request = runnerRequest as Request, cwd = process.cwd() }: { env?: NodeJS.ProcessEnv; request?: Request; cwd?: string } = {}): Promise<SpawnResult> {
   if (!cfg.session || !cfg.peer) throw new Error("spawn_agent needs this session's address; pass session");
   const parent = `${cfg.peer}#${cfg.session}`;
   const parsed = parseHarnessModel(input.harness);
@@ -36,6 +39,10 @@ export async function spawnAgent(cfg: SpawnCfg, input: SpawnInput, { env = proce
     project: cfg.project, harness: parsed.harness, prompt: checked.text, place: input.worktree ? "worktree" : "folder",
     managed: true, parent, spawn: true, system: false, ...(model ? { model } : {}),
   };
+  // One thread, one branch: a worktree child starts from the parent's branch and merges back into it.
+  const gitFile = input.worktree ? findExecutable("git", env.PATH) : null;
+  const branch = gitFile ? await parentBranch(gitRunner(gitFile, env), cwd) : null;
+  if (branch) Object.assign(body, { base: branch, mergeInto: branch });
   let reply;
   try {
     reply = await request("POST", "/v1/sessions", body, { socket: runnerSocket(env) });

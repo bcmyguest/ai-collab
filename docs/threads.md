@@ -90,6 +90,22 @@ Callers:
 - A UI start creates a thread titled from the first prompt's first line (60 characters; `Untitled` without a prompt) and attaches the new session, or attaches it to the `thread` the request names. A start in a thread runs in the thread's worktree as a folder start.
 - An operator message sent with `thread` carries `threadId` in its envelope and `thread_id` on its event row.
 
+## One branch per thread
+
+A thread lands as one branch. `spawn_agent` with `worktree: true` cuts the child's worktree from the branch checked out in the parent's folder and records it as `spawn.mergeInto` on the child's owned record (`lib/spawn.ts`, `lib/thread-branch.ts`). The parent on `main`, a detached HEAD or outside git gives the child a branch from the default base, as before.
+
+After each successful run with new commits, the runner rebases the child's branch onto `mergeInto` in the child's own worktree and fast-forwards `mergeInto`: by `git merge --ff-only` in the worktree that has it checked out, else by `git branch -f`. The first line of the parent's report says what happened:
+
+| Case | Report line |
+|---|---|
+| merged | `merged <n> commits from <child branch> into <branch>` |
+| conflict | `not merged into <branch>: <child branch> conflicts with it in <files>; both branches are unchanged` |
+| uncommitted edits in the child | `not merged into <branch>: <child branch> has uncommitted changes; commit them` |
+| the parent's checkout refuses the fast-forward | `not merged into <branch>: its checkout at <path> refused the fast-forward …` |
+| nothing new | no line |
+
+`main` and `master` are never a merge target; the operator lands the thread's branch.
+
 ## Naming
 
 The agent names its thread. `sync` titles a thread from its lead session (`leadSession`, else its first session; `sessionTitle` and `nextTitle` in `lib/threads.ts`):

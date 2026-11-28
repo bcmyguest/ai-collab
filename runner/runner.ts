@@ -27,7 +27,8 @@ import { MAX_ATTEMPTS } from "../lib/delivery.ts";
 import { sessionIdleState } from "../lib/idle.ts";
 import { opencodeRequest } from "../lib/opencode-api.ts";
 import { BUILDER_START_TIMEOUT_MS, builderPaths, builderResumePrompt, stoppedBuilder, ownedBuilder, stageOwnedBuilder, claimOwnedBuilder, finishOwnedBuilder, markOwnedBuilderFailed } from "../lib/builder.ts";
-import { pickedWorktree } from "../lib/sessions/git-refs.ts";
+import { gitRunner, pickedWorktree } from "../lib/sessions/git-refs.ts";
+import { mergeIntoParent } from "../lib/thread-branch.ts";
 import { PROMPT_MAX_CHARS, childEnv, checkPrompt, claudePermissionFor, projectRoot, worktreeNames } from "../lib/sessions/launch.ts";
 import { findExecutable } from "../lib/sessions/scope.ts";
 import { modelShape } from "../lib/harness.ts";
@@ -92,6 +93,7 @@ const SPAWN_IN_OPENSHELL = new Set(["cursor"]);
 const WORKTREE_ATTEMPTS = 4;
 // A spawned child cut by a restart gets this turn instead of an "interrupted" report, up to RESTART_RESUMES times in a row.
 const RESTART_RESUMES = 3;
+const BRANCH_NAME = /^(?!-)[A-Za-z0-9._/-]{1,200}$/;
 const RESTART_RESUME_PROMPT = "The runner restarted during your last turn. Check what you already did (git status, files, messages), then finish the task and report as before.";
 
 const fail: (status: Json, message: string) => never = (status, message) => { throw Object.assign(new Error(message), { status }); };
@@ -410,9 +412,21 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
 
   // A spawned child's run ended: its parent gets the result as a direct message from the child (lib/spawn.ts spawnReport).
   async function reportToParent(s: Json, finished: Json) {
-    const text = finished?.outcome === "success" ? s.lastReply?.text ?? "" : finished?.message ?? "";
+    const reply = finished?.outcome === "success" ? s.lastReply?.text ?? "" : finished?.message ?? "";
+    const text = finished?.merge ? `${finished.merge}\n${reply}` : reply;
     await sendMessage(s.cfg, s.record.parent, spawnReport(s.record.address, finished?.outcome ?? "unknown", text))
       .catch((error: Json) => log(`spawn report failed: ${error.message}`));
+  }
+
+  // Merges a spawned child's commits into the branch it was cut from; a failure becomes the report line, never a throw.
+  async function mergeChild(s: Json): Promise<string> {
+    const gitFile = findExecutable("git", childEnv(env).PATH);
+    if (!gitFile) return "not merged: git is not installed";
+    try {
+      return await mergeIntoParent(gitRunner(gitFile, childEnv(env)), s.record.cwd, s.record.spawn.mergeInto);
+    } catch (error: Json) {
+      return `not merged: ${error.message}`;
+    }
   }
 
   // The folder a session runs in: the project root, a fresh worktree, or (OpenShell) a worktree the sandbox syncs.
@@ -620,6 +634,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
         const done = builder && !s.live ? await interrupted() : await waitRun(s, sent.runId);
         // Inside run.wait, so the recorded op sequence is unchanged; before the handoff, so the next role finds the PR or packet.
         if (patternRun && done?.landFinish) await finishSandboxedMember(s, staged, done.landFinish);
+        if (reports && done?.outcome === "success" && s.record.spawn?.mergeInto) done.merge = await mergeChild(s);
         if (reports) await reportToParent(s, done);
         return done;
       }, { onCut: async () => reportCut(await interrupted()) });
@@ -964,7 +979,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
   durable.register("session", sessionWorkflow);
 
   /** Starts an owned session; resolves {status:"started", session, nativeId, workflowId, detail}. */
-  async function start({ project, harness, prompt, model, place: named, permissionMode, claudePermission, codeMode, taskId, builder: builderId, system = true, managed: managedInput, parent, spawn, base: pickBase, branch: pickBranch, worktreePath }: Json = {}, patternRun?: Json, continuation?: Json) {
+  async function start({ project, harness, prompt, model, place: named, permissionMode, claudePermission, codeMode, taskId, builder: builderId, system = true, managed: managedInput, parent, spawn, base: pickBase, branch: pickBranch, worktreePath, mergeInto }: Json = {}, patternRun?: Json, continuation?: Json) {
     if (!configs.has(project)) fail(400, "Unknown project");
     const spawned = spawn === true;
     const depth = spawned ? spawnDepth(configs.get(project), parent) : 0;
@@ -976,6 +991,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       fail(409, `spawn_agent runs ${harness} children in OpenShell with full access, and OpenShell is not installed on the runner host (set AI_COLLAB_OPENSHELL_BIN or install openshell)`);
     }
     if (!PLACES.includes(place)) fail(400, "Unknown start place");
+    if (mergeInto !== undefined && (!spawned || place !== "worktree" || typeof mergeInto !== "string" || !BRANCH_NAME.test(mergeInto))) fail(400, "mergeInto needs a spawned worktree child and a branch name");
     const pick = await startPick(project, place, { base: pickBase, branch: pickBranch, worktreePath });
     // OpenShell is the boundary: every harness there runs with approvals off, whatever mode the caller named.
     // An unnamed Claude start takes the configured claudePermissionMode when it names a runner mode.
@@ -1031,7 +1047,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     const timeout = builder ? BUILDER_START_TIMEOUT_MS : startTimeoutMs;
     let run = null;
     try {
-      run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, system: Boolean(builder || patternRun) || system !== false, ...(continuation ? { continuation } : {}), ...(builder ? { builder } : {}), ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...(Object.keys(pick).length ? { pick } : {}), codeMode: resolveCodeMode(codeMode, env), ...(managed ? { managed: true } : {}), ...(spawned ? { parent, spawn: { depth } } : {}) });
+      run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, system: Boolean(builder || patternRun) || system !== false, ...(continuation ? { continuation } : {}), ...(builder ? { builder } : {}), ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...(Object.keys(pick).length ? { pick } : {}), codeMode: resolveCodeMode(codeMode, env), ...(managed ? { managed: true } : {}), ...(spawned ? { parent, spawn: { depth, ...(mergeInto ? { mergeInto } : {}) } } : {}) });
       if (builder) watchBuilderFailure(workflowId, run);
       const ended = run.then((out: Json) => fail(502, `${harness} session ended at once: ${out?.ended || "no reason"}`));
       ended.catch(() => {});
