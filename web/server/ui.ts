@@ -215,7 +215,16 @@ function activityFrame(source: Json) {
 }
 
 // One chat entry per bus event; status and alert envelopes are skipped.
+// Decoded once per bus event: the thread feed decodes the project topic once per thread session, and every view re-reads it.
+const entryCache = new WeakMap<object, Json>();
+
 function entry(event: Json): Json {
+  if (!event || typeof event !== "object") return decodeEntry(event);
+  if (!entryCache.has(event)) entryCache.set(event, Object.freeze(decodeEntry(event)));
+  return entryCache.get(event);
+}
+
+function decodeEntry(event: Json): Json {
   const item = baseEntry(event);
   const attachment = item && attachmentOf(event);
   return attachment ? { ...item, attachment } : item;

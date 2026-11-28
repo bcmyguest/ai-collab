@@ -92,9 +92,9 @@ Callers:
 
 ## One branch per thread
 
-A thread lands as one branch. `spawn_agent` with `worktree: true` cuts the child's worktree from the branch checked out in the parent's folder and records it as `spawn.mergeInto` on the child's owned record (`lib/spawn.ts`, `lib/thread-branch.ts`). The parent on `main`, a detached HEAD or outside git gives the child a branch from the default base, as before.
+A thread lands as one branch. `spawn_agent` with `worktree: true` cuts the child's worktree from the branch checked out where the parent runs now (its owned record's cwd, else its registry entry, which hooks keep current) and records it as `spawn.mergeInto` on the child's owned record (`lib/spawn.ts`, `lib/thread-branch.ts`). The parent on `main`, a detached HEAD or outside git gives the child a branch from the default base, as before.
 
-After each successful run with new commits, the runner rebases the child's branch onto `mergeInto` in the child's own worktree and fast-forwards `mergeInto`: by `git merge --ff-only` in the worktree that has it checked out, else by `git branch -f`. The first line of the parent's report says what happened:
+After each successful run with new commits, the runner rebases the child's branch onto `mergeInto` in the child's own worktree and fast-forwards `mergeInto`: by `git merge --ff-only` in the worktree that has it checked out, else by `git branch -f`. A rebase an earlier merge left behind (a restart cut it) is aborted first. The first line of the parent's report says what happened:
 
 | Case | Report line |
 |---|---|

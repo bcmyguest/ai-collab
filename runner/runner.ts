@@ -28,7 +28,7 @@ import { sessionIdleState } from "../lib/idle.ts";
 import { opencodeRequest } from "../lib/opencode-api.ts";
 import { BUILDER_START_TIMEOUT_MS, builderPaths, builderResumePrompt, stoppedBuilder, ownedBuilder, stageOwnedBuilder, claimOwnedBuilder, finishOwnedBuilder, markOwnedBuilderFailed } from "../lib/builder.ts";
 import { gitRunner, pickedWorktree } from "../lib/sessions/git-refs.ts";
-import { mergeIntoParent } from "../lib/thread-branch.ts";
+import { mergeIntoParent, parentBranch } from "../lib/thread-branch.ts";
 import { PROMPT_MAX_CHARS, childEnv, checkPrompt, claudePermissionFor, projectRoot, worktreeNames } from "../lib/sessions/launch.ts";
 import { findExecutable } from "../lib/sessions/scope.ts";
 import { modelShape } from "../lib/harness.ts";
@@ -416,6 +416,13 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     const text = finished?.merge ? `${finished.merge}\n${reply}` : reply;
     await sendMessage(s.cfg, s.record.parent, spawnReport(s.record.address, finished?.outcome ?? "unknown", text))
       .catch((error: Json) => log(`spawn report failed: ${error.message}`));
+  }
+
+  // The branch checked out where the parent runs now: its owned record, else its registry entry (hooks keep cwd current).
+  async function parentCheckoutBranch(project: Json, parent: Json): Promise<string | null> {
+    const cwd = sessions.get(parent)?.record.cwd ?? listSessions(configs.get(project)).find((e: Json) => e.id === parent)?.cwd;
+    const gitFile = cwd && findExecutable("git", childEnv(env).PATH);
+    return gitFile ? parentBranch(gitRunner(gitFile, childEnv(env)), cwd) : null;
   }
 
   // Merges a spawned child's commits into the branch it was cut from; a failure becomes the report line, never a throw.
@@ -991,6 +998,11 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       fail(409, `spawn_agent runs ${harness} children in OpenShell with full access, and OpenShell is not installed on the runner host (set AI_COLLAB_OPENSHELL_BIN or install openshell)`);
     }
     if (!PLACES.includes(place)) fail(400, "Unknown start place");
+    // One branch per thread: a worktree child of a parent on a thread branch starts from it and merges back (docs/threads.md).
+    if (spawned && place === "worktree" && mergeInto === undefined && !pickBase && !pickBranch && !worktreePath) {
+      const branch = await parentCheckoutBranch(project, parent);
+      if (branch) [pickBase, mergeInto] = [branch, branch];
+    }
     if (mergeInto !== undefined && (!spawned || place !== "worktree" || typeof mergeInto !== "string" || !BRANCH_NAME.test(mergeInto))) fail(400, "mergeInto needs a spawned worktree child and a branch name");
     const pick = await startPick(project, place, { base: pickBase, branch: pickBranch, worktreePath });
     // OpenShell is the boundary: every harness there runs with approvals off, whatever mode the caller named.

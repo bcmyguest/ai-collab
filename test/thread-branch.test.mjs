@@ -85,3 +85,14 @@ test("spawn_agent with a worktree asks for the parent's branch as base and merge
   await spawnAgent(cfg, { harness: "codex", brief: "do it" }, { env: ENV, request, cwd: parent });
   assert.deepEqual(bodies.map((b) => [b.place, b.base, b.mergeInto]), [["worktree", "thread/x", "thread/x"], ["worktree", undefined, undefined], ["folder", undefined, undefined]]);
 });
+
+test("a merge first aborts a rebase an earlier, cut merge left behind", async (t) => {
+  const { parent, child } = repo(t);
+  commit(child, "p.txt", "child\n");
+  commit(parent, "p.txt", "parent\n");
+  assert.throws(() => git(child, "rebase", "thread/x"));
+  git(child, "checkout", "-q", "--theirs", "p.txt");
+  git(parent, "reset", "-q", "--hard", "HEAD~1"); // the parent drops its conflicting commit, so a clean merge is possible
+  assert.equal(await mergeIntoParent(run, child, "thread/x"), "merged 1 commit from child/1 into thread/x");
+  assert.equal(git(parent, "show", "HEAD:p.txt"), "child");
+});
