@@ -32,8 +32,9 @@ TLC 2.19 results (32 workers, 7 s for both):
 |---|---|---|---|---|
 | Delivery | 3 attempts, 2 crashes | 2,286 | 798 | 22 |
 | StoreLock | 3 processes, 1 respawn per pid, 1 acquisition each | 7,990,054 | 1,489,766 | 65 |
+| SpawnCap | 4 starts, cap 3 | 56,845 | 16,240 | 21 |
 
-Each spec has a constant that switches its fix off: `OwnerWriteExclusive = FALSE` in StoreLock and `ResumeChecks = FALSE` in Delivery. TLC then finds the counterexample below.
+Each spec has a constant that switches its fix off: `OwnerWriteExclusive = FALSE` in StoreLock, `ResumeChecks = FALSE` in Delivery and `DeferRelease = FALSE` in SpawnCap. TLC then finds the counterexample below.
 
 ## Bugs found
 
@@ -42,6 +43,8 @@ Each spec has a constant that switches its fix off: `OwnerWriteExclusive = FALSE
 **owner.json overwrite** (StoreLock, fixed in `lib/store.ts` `takeLock`). Trace: p1 makes the lock dir and stalls past `staleMs` before writing `owner.json`; p2 breaks the ownerless dir; p3 makes a new dir and writes its owner; p1's `writeJson` overwrites p3's owner and both enter. A suspend or SIGSTOP between mkdir and the write is enough. `takeLock` now writes a temp file into the dir and links it to `owner.json`: the write fails on a broken dir and the link fails on an existing owner, so the stalled process retries. Regression: `test/store-lock-owner-race.test.mjs`.
 
 **Push after a restart skipped its checks** (Delivery, fixed in `runner/delivery.ts`). Trace: the first copy lands and the target works on it; it goes idle; the redelivery attempt records its reserve step and the runner dies; the runner restarts and the target turns busy (or answers); replay skips `target()` and the answer re-check, and the push goes out. A push step that runs live in a resumed attempt now checks `nextAction` on live facts first: an answer, TTL or cap ends the message, and a busy target fails the attempt so it retries after backoff. The delivery model's `RestartRunner` cannot reach this split, because it restarts only between commands, while workflows wait. Regression: `test/runner-delivery-resume.test.mjs`.
+
+**Spawn cap overshoot after a timed-out start** (SpawnCap, fixed in `runner/runner.ts` `start`). Trace, cap 2: s1 and s2 are admitted; s1's claim passes its abort check; s1's start times out (504), and `finally` drops it from `spawning`; s3 is admitted because the count is 1; s1 registers its session. Three children are live until `releaseCancelled` ends s1. A cancelled spawn now leaves `spawning` only when its workflow stops. Regression: `test/runner-spawn-late-claim.test.mjs` holds the late child after its claim step and gets 4 of 4 starts before the fix, 3 and a 429 after.
 
 Earlier fixes these checks cover: `caa522cd` (a redelivery re-checks the answer before reserving) and `614d0db7` (break a stale lock only when its owner is gone).
 

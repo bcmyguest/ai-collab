@@ -1074,6 +1074,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     const timer = new AbortController();
     const timeout = builder ? BUILDER_START_TIMEOUT_MS : startTimeoutMs;
     let run = null;
+    let cancelled = false;
     try {
       run = durable.startWorkflow("session", workflowId, { project, harness, place, permissionMode: mode, prompt: checked.text, system: Boolean(builder || patternRun) || system !== false, ...(continuation ? { continuation } : {}), ...(builder ? { builder } : {}), ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...(Object.keys(pick).length ? { pick } : {}), codeMode: resolveCodeMode(codeMode, env), ...(managed ? { managed: true } : {}), ...(spawned ? { parent, spawn: { depth, ...(mergeInto ? { mergeInto } : {}) } } : {}) });
       if (builder) watchBuilderFailure(workflowId, run);
@@ -1088,6 +1089,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     } catch (error: Json) {
       // A start the caller was told failed must not leave a child running: a continuation or a spawn is cancelled.
       if ((continuation || spawned) && error.status === 504) {
+        cancelled = true;
         await durable.cancel(workflowId).catch((cancelError: Json) => log(`could not cancel ${workflowId}: ${cancelError.message}`));
         // A claim that passed its abort check just before the cancel leaves a live record; end it once the workflow stops.
         run?.catch(() => {}).finally(() => releaseCancelled(project, workflowId));
@@ -1098,9 +1100,14 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       timer.abort();
       claims.drop(workflowId);
       if (spawned) {
-        const ids = spawning.get(parent);
-        ids?.delete(workflowId);
-        if (ids?.size === 0) spawning.delete(parent);
+        const drop = () => {
+          const ids = spawning.get(parent);
+          ids?.delete(workflowId);
+          if (ids?.size === 0) spawning.delete(parent);
+        };
+        // A cancelled spawn whose claim passed its abort check registers later, so it counts until its workflow stops (spec/tla/SpawnCap.tla).
+        if (cancelled && run) run.catch(() => {}).finally(drop);
+        else drop();
       }
     }
   }
