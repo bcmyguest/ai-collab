@@ -431,8 +431,8 @@ Defaults (`start` in `runner/runner.ts`):
 | Start | Mode when the caller names none |
 |---|---|
 | Operator start (UI, control socket) | `supervised` |
-| Member start: pattern role, continuation, `spawn_agent`, or any start with `managed: true` | `auto` where the adapter lists it (Claude, Codex), else `DEFAULT_PERMISSION` (OpenCode and Cursor: `supervised`) |
-| `place: "openshell"` | `full-access` for every harness, whatever the caller names |
+| Member start: pattern role, continuation, or any start with `managed: true` | `auto` where the adapter lists it (Claude, Codex), else `DEFAULT_PERMISSION` (OpenCode and Cursor: `supervised`) |
+| `place: "openshell"`, and every `spawn_agent` child (the runner sets that place) | `full-access` for every harness, whatever the caller names |
 
 Order: the instance's `permissionMode`, then for Claude the `claudePermission` setting (instance, else team, else `auto` for a member, else `claudePermissionMode` in `defaults.json`), then for other harnesses a `claudePermission` that `runnerModeOfClaude` maps to a mode the adapter lists (a mode it lacks is skipped), then the default above. A team's `team.dot` `permission` attribute reaches every role start as `claudePermission`.
 
