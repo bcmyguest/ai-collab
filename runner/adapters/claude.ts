@@ -63,7 +63,7 @@ async function userMessage(input: UserInput, priority?: Json) {
 }
 
 /** Starts one session's query and message pump; attach() awaits the handshake before the handle is used. */
-function startSession({ query, ctx, nativeId, cwd, model, permission, env, resume, codeMode, managed, launch }: Json) {
+function startSession({ query, ctx, nativeId, cwd, model, permission, env, resume, codeMode, managed, launch, allowFullAccess }: Json) {
   const threadId = `claude#${sessionLabel(nativeId)}`;
   const inputs = inputQueue();
   const pending = new Map();
@@ -80,6 +80,8 @@ function startSession({ query, ctx, nativeId, cwd, model, permission, env, resum
       cwd,
       env: { ...env, [OWNED_ENV]: "claude", AI_COLLAB_PARENT: threadId },
       permissionMode: permission.permissionMode,
+      // The SDK refuses a later setPermissionMode("bypassPermissions") unless the query opened with this.
+      ...(allowFullAccess ? { allowDangerouslySkipPermissions: true } : {}),
       canUseTool: (toolName: string, input: UserInput, extra: Json) => canUseTool(toolName, input, extra),
       ...(model ? { model } : {}),
       // A managed session has no native subagents; ai-collab spawn_agent replaces them.
@@ -378,7 +380,7 @@ export function createClaudeAdapter({ query = sdkQuery, handshakeMs = HANDSHAKE_
       await options.beforeStart?.(nativeId);
       const boxed = options.place === "openshell" ? await openBox(options.project, options.cwd, options.env, ctx, null) : null;
       const session = startSession({
-        query, ctx, nativeId, cwd: boxed ? boxed.box.workdir : options.cwd, model: options.model, permission: options.permission, env: options.env, codeMode: options.codeMode, managed: options.managed === true, launch: boxed?.launch,
+        query, ctx, nativeId, cwd: boxed ? boxed.box.workdir : options.cwd, model: options.model, permission: options.permission, env: options.env, codeMode: options.codeMode, managed: options.managed === true, launch: boxed?.launch, allowFullAccess: options.allowFullAccess === true,
       });
       return started(session, "claude session", boxed, ctx);
     },
@@ -389,7 +391,7 @@ export function createClaudeAdapter({ query = sdkQuery, handshakeMs = HANDSHAKE_
       // A restored record holds its sandbox claim under its address; the transcript stays in the sandbox's home.
       const boxed = record.place === "openshell" ? await openBox(record.project, record.cwd, childVars, ctx, record.address) : null;
       const session = startSession({
-        query, ctx, nativeId: record.nativeId, cwd: boxed ? boxed.box.workdir : record.cwd, model: record.model, permission: settings, env: childVars, resume: true, codeMode: record.codeMode, managed: record.managed === true, launch: boxed?.launch,
+        query, ctx, nativeId: record.nativeId, cwd: boxed ? boxed.box.workdir : record.cwd, model: record.model, permission: settings, env: childVars, resume: true, codeMode: record.codeMode, managed: record.managed === true, launch: boxed?.launch, allowFullAccess: record.allowFullAccess === true,
       });
       return started(session, "claude resume", boxed, ctx);
     },

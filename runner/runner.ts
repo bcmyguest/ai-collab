@@ -366,7 +366,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       // The owned record's /permission value first, else the registry entry's (setNextPermission), for this resume only.
       const cfg = configs.get(s.record.project);
       const claudePermission = s.record.claudePermission ?? (cfg ? nextPermission(cfg, { id: `${s.record.harness}#${s.record.label}`, label: s.record.label }) : undefined);
-      s.live = await adapter.resume({ ...s.record, ...(claudePermission ? { claudePermission } : {}) }, contextFor({ s }, s.record.harness, s.signal), ownedEnv(s.record.managed, s.record.harness), staged);
+      s.live = await adapter.resume({ ...s.record, ...(claudePermission ? { claudePermission } : {}), allowFullAccess: !hostFullAccess("full-access", s.record.place, env) }, contextFor({ s }, s.record.harness, s.signal), ownedEnv(s.record.managed, s.record.harness), staged);
       save(s);
       return s.live;
     })().finally(() => { s.resuming = null; });
@@ -547,7 +547,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
           ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode), ...(taskId ? { taskId } : {}), ...family, status: "starting", run: null, approvals: [], createdAt: now(),
         });
       };
-      const options = { project, cwd, place, permissionMode, permission: permissionSettings(harness, permissionMode, place).settings, env: ownedEnv(managed, harness), beforeStart, ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode), ...(managed ? { managed: true } : {}) };
+      const options = { project, cwd, place, permissionMode, permission: permissionSettings(harness, permissionMode, place).settings, env: ownedEnv(managed, harness), allowFullAccess: !hostFullAccess("full-access", place, env), beforeStart, ...(model ? { model } : {}), ...(patternRun ? { patternRun } : {}), ...codeModeField(codeMode), ...(managed ? { managed: true } : {}) };
       try {
         holder.live = await adapter.open(staged ? { ...options, cwd: staged.workdir, sandboxArgv: staged.argv } : options, contextFor(holder, harness, wf.signal));
       } catch (error: Json) {
@@ -1435,9 +1435,11 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     if (hostFullAccess(named, r.place, env)) fail(400, hostFullAccess(named, r.place, env));
     const handle = await liveHandle(s);
     if (!handle.setPermissionMode) fail(409, `${r.harness} cannot change its permission mode while open`);
-    await handle.setPermissionMode(named);
+    await handle.setPermissionMode(named).catch((error: Error) => fail(409, `${r.harness} refused permission mode ${named}: ${error.message}`));
     const was = r.permissionMode;
     r.permissionMode = named;
+    // A stored /permission value would win over this mode at the next wake.
+    delete r.claudePermission;
     save(s);
     await enqueuePublish(s, () => publishEvent(s.cfg, r.harness, { type: EventType.CUSTOM, name: NOTICE, value: `permission mode ${was} → ${named}` }));
     return { status: "changed", permissionMode: named };
