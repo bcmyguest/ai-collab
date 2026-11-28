@@ -68,6 +68,9 @@ async function lab(t) {
   const root = path.join(home, "demo");
   mkdirSync(path.join(home, ".config", "ai-collab"), { recursive: true });
   execFileSync("git", ["init", "--quiet", "--template=", "-b", "main", root]);
+  // The runner's rebase writes commits, so the repo needs an identity where git cannot guess one (CI).
+  git(root, "config", "user.name", "Test");
+  git(root, "config", "user.email", "test@example.invalid");
   git(root, "commit", "--quiet", "--allow-empty", "-m", "init");
   git(root, "checkout", "--quiet", "-b", "thread/x");
   git(root, "commit", "--quiet", "--allow-empty", "-m", "thread work");
