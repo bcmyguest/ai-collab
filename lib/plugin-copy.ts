@@ -6,6 +6,8 @@ import path from "node:path";
 export const PLUGIN_COPY_MAX_BYTES = 50 * 1024 * 1024;
 const PLUGIN_ALWAYS = ["package.json", "README.md", "LICENSE"];
 const NEVER = /(^|\/)(node_modules|\.git|\.next[^/]*)(\/|$)/;
+// Harnesses that run the plugin from a copy under ~/.local/share/ai-collab (lib/setup.ts installPlugin).
+export const COPIED_PLUGINS = ["claude", "codex"];
 
 /**
  * Copies only package.json's "files" list (plus the manifest, README and LICENSE) from root into dest, replacing dest.
@@ -40,4 +42,16 @@ export function packPluginCopy(root: string, dest: string) {
     throw error;
   }
   return { dest, bytes };
+}
+
+/** Re-copies root into each installed <peer>-plugin folder under home, so running harnesses load the deployed code. Returns the peers refreshed. */
+export function refreshPluginCopies(root: string, home: string): string[] {
+  const refreshed: string[] = [];
+  for (const peer of COPIED_PLUGINS) {
+    const dest = path.join(home, ".local", "share", "ai-collab", `${peer}-plugin`);
+    if (!fs.existsSync(dest)) continue;
+    packPluginCopy(root, dest);
+    refreshed.push(peer);
+  }
+  return refreshed;
 }

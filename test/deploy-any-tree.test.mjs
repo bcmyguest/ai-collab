@@ -247,3 +247,17 @@ test("a deployed path is read back through the link as the running tree", async 
   const held = await runDeploy(["--main"], { env, host, run: fakeRun({ host }) });
   assert.match(held.output, /DBOS app version changes ai-collab-0 -> ai-collab-1/);
 });
+
+test("a deploy refreshes each installed plugin copy from the deployed tree and leaves uninstalled ones absent", async (t) => {
+  const { root, host, env } = fixture(t);
+  writeFileSync(join(host, "package.json"), JSON.stringify({ files: ["lib"] }));
+  const copy = join(root, ".local", "share", "ai-collab", "claude-plugin");
+  mkdirSync(join(copy, "lib"), { recursive: true });
+  writeFileSync(join(copy, "lib", "stale.ts"), "old\n");
+  const result = await runDeploy([], { env, host, run: fakeRun({ host }) });
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, /; refreshed claude plugin$/m);
+  assert.equal(readFileSync(join(copy, "lib", "workflows.ts"), "utf8"), workflows("ai-collab-1"));
+  assert.equal(existsSync(join(copy, "lib", "stale.ts")), false);
+  assert.equal(existsSync(join(root, ".local", "share", "ai-collab", "codex-plugin")), false);
+});

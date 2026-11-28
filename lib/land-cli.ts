@@ -6,6 +6,7 @@ import { broadcastTopic, stateDir } from "./config.ts";
 import { checkoutBranch, deployLink, dbosVersion, dirty, inFlight, installUnits, pointLink, readLink, resolveSource, unitsInstalled } from "./deploy-tree.ts";
 import { AUTO_DEPLOY_TIMEOUT_MS, HOST_CHECKOUT, SERVICES, deployHost, execRun, finishBranch, mergeNode, npmCommand, readLastDeploy, requestLand, restartServices, writeLastDeploy } from "./land.ts";
 import { operatorConfigs } from "./mode.ts";
+import { refreshPluginCopies } from "./plugin-copy.ts";
 import { publish } from "./messaging.ts";
 import { withLock } from "./state.ts";
 import { openTasks } from "./tasks.ts";
@@ -266,5 +267,13 @@ async function deployTree(flags: Flags, { env, run, hostCheckout, npm, nodePath,
   if (restart.status !== 0) return { ...built, ...failed(`UI restart exited ${restart.status}`) };
   const verify = await run(nodePath, [join(built.tree, "deploy", "verify-ui.mjs")], { cwd: built.tree, env, encoding: "utf8" });
   if (verify.status !== 0) return { ...built, ...failed(`UI verify exited ${verify.status}`) };
-  return built;
+  // Without this, installed plugin copies keep the code from the last ai-collab setup.
+  if (!env.HOME) return built;
+  try {
+    const peers = refreshPluginCopies(built.tree, env.HOME);
+    return peers.length ? { ...built, line: `${built.line}; refreshed ${peers.join(", ")} plugin` } : built;
+  } catch (error) {
+    // The services already run the new tree; a stale plugin copy is reported, not a failed deploy.
+    return { ...built, line: `${built.line}; plugin refresh failed: ${(error as Error).message}` };
+  }
 }
