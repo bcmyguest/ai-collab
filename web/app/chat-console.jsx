@@ -2,7 +2,7 @@
 // The console shell: hash routing, the header for each level, the streamed screen (via useStream),
 // pull-to-refresh, scroll memory, and the wiring from every action to its /api call.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, CornerLeftUp, ListTodo, PanelRight, Plus, RotateCw } from "lucide-react";
+import { ArrowLeft, CircleStop, CornerLeftUp, ListTodo, PanelRight, Plus, RotateCw } from "lucide-react";
 import { ThreadPrimitive, getExternalStoreMessages } from "@assistant-ui/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,6 +60,11 @@ const PANEL = ["diff", "pr", "subagents", "tasks", "raw"];
 const WIDE = "(min-width: 768px)";
 
 // The session's context: tokens used (with the window and a warning when the harness reported one) and its files.
+// The runner stops a turn of any harness it holds; outside it only a live Codex or OpenCode session takes one.
+function stoppable(agent) {
+  return agent.runnerStatus === "running" || (agent.online && ["codex", "opencode"].includes(agent.peer));
+}
+
 function ContextChip({ context, rows }) {
   const meter = contextMeter(context);
   const loaded = context.files || [];
@@ -380,6 +385,7 @@ export function Console({ account }) {
     newThread: newSession, projectAction,
     listen: (thread, session, on) => action("thread", { op: "listen", thread, session, on }, on ? "Listening" : "Muted"),
     threadAction: (op, thread, fields, done) => action("thread", { op, thread, ...fields }, done),
+    stop: session => action("interrupt", { target: session }, "Interrupt requested"),
     archiveThreads: ids => action("thread", { op: "archive", threads: ids }, "Archived " + ids.length),
     openSchedules: () => setSchedulesOpen(true), account: account.user?.login, signOut: account.user ? signOut : undefined,
     pause: () => action("project-pause", { paused: !paused }, paused ? "New work resumed" : "New work paused"),
@@ -474,11 +480,15 @@ export function Console({ account }) {
               .map(model => <option key={model} value={model}>{model}</option>)}
           </select>}
           <span className="max-sm:hidden"><ContextChip context={agent.context || {}} rows={rows.filter(row => row.agent === agent.id)}/></span>
+          {agent.runnerStatus === "running" && <Button variant="ghost" size="icon" aria-label={"Stop " + selected.session} title="Stop this agent's turn" disabled={!ready}
+            onClick={() => action("interrupt", { target: selected.session }, "Interrupt requested")}><CircleStop/></Button>}
           <SessionMenu node={{ ...agent, project }} disabled={working} map={() => navigate({ project, level: "compactions" })} dispose={node => action("dispose", { project: node.project, target: node.id }, "Disposed")}
             raw={openRaw} label={"Session actions for " + selected.session} detailsAction={<>
               <DropdownMenuItem disabled={!ready || working} onSelect={() => action("compact", { target: selected.session }, "Compaction requested")}>Compact</DropdownMenuItem>
-              {agent.online && ["codex", "opencode"].includes(agent.peer) && <DropdownMenuItem disabled={!ready || working}
+              {stoppable(agent) && <DropdownMenuItem disabled={!ready}
                 onSelect={() => action("interrupt", { target: selected.session }, "Interrupt requested")}>Interrupt</DropdownMenuItem>}
+              {agent.runnerStatus && <DropdownMenuItem variant="destructive" disabled={!ready}
+                onSelect={() => window.confirm("End " + selected.session + "? Its run stops and it takes no more messages.") && action("end", { target: selected.session }, "Agent ended")}>End agent</DropdownMenuItem>}
             </>}/>
         </div>}
         {level === "session" && selected.session && <Button variant={panel ? "secondary" : "ghost"} size="icon" aria-label={panel ? "Close panel" : "Open panel"} aria-pressed={Boolean(panel)}

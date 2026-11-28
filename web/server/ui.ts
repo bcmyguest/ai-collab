@@ -95,7 +95,7 @@ export { mentionedNames, mentionedTeams, startOnlyMentions };
 
 const INSTANCE = Symbol.for("ai-collab.ui");
 const shared = globalThis as typeof globalThis & { [INSTANCE]?: Json };
-const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "command", "pattern", "decide", "move-task", "continue-builder", "recover-builder", "project-pause", "land-reviews", "land", "review", "skip", "request-outcome", "approve-outcome", "accept-outcome", "thread"];
+const ACTIONS = ["history", "messages", "send", "reply", "nudge", "queue", "compact", "model", "wake", "afk", "alerts", "close", "reopen", "delete","approve", "a2ui", "start", "models", "dispose", "team", "interrupt", "end", "command", "pattern", "decide", "move-task", "continue-builder", "recover-builder", "project-pause", "land-reviews", "land", "review", "skip", "request-outcome", "approve-outcome", "accept-outcome", "thread"];
 const HOSTED_ACTIONS = new Set(["history", "messages", "send", "reply", "afk", "approve", "a2ui", "skip"]);
 const START_GAP_MS = 10_000;
 const REFRESH_MS = 10_000;
@@ -1261,7 +1261,10 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
         const modelControl = owned?.address === agent.id && ["idle", "running"].includes(owned.status)
           ? { current: owned.model || "", busy: owned.status === "running" } : null;
         const { lastActivityAt, openCallAt, turnStartAt, afkHold, pending, team, role } = card || {};
-        const base = { ...agent, lastActivityAt, openCallAt, turnStartAt, afkHold, pending, ...(team ? { team, role } : {}), ...(subagents.length ? { subagents } : {}),
+        // The runner's status for a session it holds; the UI offers Stop and End on it.
+        const held: Json = owned ?? readOwned(project.cfg, agent.session);
+        const runnerStatus = held?.address === agent.id && held.status !== "ended" ? String(held.status) : "";
+        const base = { ...agent, ...(runnerStatus ? { runnerStatus } : {}), lastActivityAt, openCallAt, turnStartAt, afkHold, pending, ...(team ? { team, role } : {}), ...(subagents.length ? { subagents } : {}),
           ...(finished.has(agent.id) ? { finishedSubagents: finished.get(agent.id) } : {}), ...(modelControl ? { modelControl } : {}) };
         // Context telemetry and instruction files from the session's state file (lib/usage.ts).
         const context = readContext({ stateDir: project.cfg.stateDir, project: project.cfg.project, peer: agent.peer, session: agent.session } as Cfg);
@@ -1979,7 +1982,23 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
       // Codex (app-server turn/interrupt) and OpenCode (its API); Claude and Cursor answer unsupported.
       if (action === "interrupt") {
         recipient(cfg, target, true);
+        // The runner stops a turn of any harness it holds; outside it, only Codex and OpenCode take an interrupt.
+        if (runnerHeld(cfg, target)) {
+          const r = await runner({ socket: runnerSocket(env) }).interrupt(target).catch(() => reject(503, "The session runner is unavailable"));
+          if (![200, 202].includes(r.status ?? 0)) reject(r.status ?? 502, r.body?.error || "The runner refused the interrupt");
+          broadcast();
+          return json(200, { status: "Interrupted", detail: target });
+        }
         return json(200, await interrupt(listSessions(cfg).find(item => item.id === target)));
+      }
+      // End closes a runner-held session for good: its run stops and it takes no more messages.
+      if (action === "end") {
+        recipient(cfg, target, true);
+        if (!runnerHeld(cfg, target)) reject(404, "Only a session the runner holds can be ended here");
+        const r = await runner({ socket: runnerSocket(env) }).close(target).catch(() => reject(503, "The session runner is unavailable"));
+        if (r.status !== 200) reject(r.status ?? 502, r.body?.error || "The runner refused to end the session");
+        broadcast();
+        return json(200, { status: "Ended", detail: target });
       }
       // A message starting with / is a command for the session, not chat; support is listed in web/lib/slash-commands.js.
       if (action === "command") {

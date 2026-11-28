@@ -32,7 +32,7 @@ export type SidebarProps = {
   counts: { tasks: number; waiting: number; patterns: number }; decisions: number;
   pause: () => void; openSchedules: () => void; signOut?: () => void; account?: string;
   controls?: ReactNode; openTasks?: () => void; listen?: ListenSession;
-  threadAction?: ThreadAction; archiveThreads?: (ids: string[]) => void;
+  threadAction?: ThreadAction; archiveThreads?: (ids: string[]) => void; stop?: (session: string) => void;
 };
 // One POST /api/thread op on one thread: rename {title}, pin {pinned}, status {status}.
 export type ThreadAction = (op: "rename" | "pin" | "status", thread: string, fields: Record<string, unknown>, done: string) => void;
@@ -160,8 +160,8 @@ function ArchiveInactiveDialog({ ids, close, archive }: { ids: string[]; close: 
 }
 
 /** One thread: waiting mark, title, its age or working time, where it runs, harness marks and PRs, then every session it holds. */
-function ThreadItem({ row, all, selected, now, navigate, project, listen, disabled, act, rename }: {
-  row: ThreadRow; all: Agent[]; selected: Selected; now: number; navigate: Navigate; project: string; listen?: ListenSession; disabled?: boolean;
+function ThreadItem({ row, all, selected, now, navigate, project, listen, disabled, act, rename, stop }: {
+  row: ThreadRow; all: Agent[]; selected: Selected; now: number; navigate: Navigate; project: string; listen?: ListenSession; disabled?: boolean; stop?: (session: string) => void;
   act?: ThreadAction; rename: (row: ThreadRow) => void;
 }) {
   const open = selected.level === "session" && Boolean(selected.session) && (row.sessions || []).includes(selected.session || "");
@@ -204,7 +204,7 @@ function ThreadItem({ row, all, selected, now, navigate, project, listen, disabl
       </button>}
     </div>
     {sessions.length > 0 && !shut && <SessionTree sessions={sessions} all={all} label={"Sessions in " + (row.title || row.id)} title={row.title} selected={selected} now={now} open={openRun}
-      listen={listen ? { thread: row, set: listen, disabled } : undefined}/>}
+      listen={listen ? { thread: row, set: listen, disabled } : undefined} stop={stop}/>}
   </li>;
 }
 
@@ -361,7 +361,7 @@ export function ThreadSidebar(props: SidebarProps) {
       </ul> : <>
         {GROUPS.map(([id, label]) => <Group key={id} id={id} label={label} rows={groups[id].length}>
           {groups[id].map(row => <ThreadItem key={row.id} row={row} all={all} selected={selected} now={now} navigate={navigate} project={current} listen={props.listen} disabled={disabled}
-            act={props.threadAction} rename={setRenaming}/>)}
+            act={props.threadAction} rename={setRenaming} stop={props.stop}/>)}
         </Group>)}
         <Group id="sessions" label={threads.length ? "Sessions outside threads" : "Sessions"} rows={live.length}>{live.map(sessionRow)}</Group>
         <Group id="inactive" label="Inactive sessions" rows={idle.length}>{idle.map(sessionRow)}</Group>

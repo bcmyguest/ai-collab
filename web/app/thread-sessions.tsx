@@ -1,7 +1,7 @@
 "use client";
 // A thread's sessions in the sidebar: lead, children and subagent runs, live or finished; gone sessions stay and open their history.
 import { useState } from "react";
-import { Bell, BellOff, ChevronRight } from "lucide-react";
+import { Bell, BellOff, ChevronRight, CircleStop } from "lucide-react";
 import { Toggle } from "@ui-sdk/react/toggle";
 import { cn } from "@/lib/utils";
 import { isLive, sessionState } from "@/lib/session-state";
@@ -50,21 +50,21 @@ export function workingCount(sessions: Agent[], all: Agent[], now: number): numb
 }
 
 /** The sessions under a thread, children nested under their parent; every row opens its session. */
-export function SessionTree({ sessions, all, label, title, selected, now, open, listen }: {
-  sessions: Agent[]; all: Agent[]; label: string; title?: string; selected: Selected; now: number; open: OpenSession; listen?: Listen;
+export function SessionTree({ sessions, all, label, title, selected, now, open, listen, stop }: {
+  sessions: Agent[]; all: Agent[]; label: string; title?: string; selected: Selected; now: number; open: OpenSession; listen?: Listen; stop?: (session: string) => void;
 }) {
   const listed = new Set(sessions.map(agent => agent.id));
   const roots = sessions.filter(agent => !agent.parent || !listed.has(String(agent.parent)));
   const childrenOf = (id: string) => all.filter(agent => agent.parent === id && agent.id !== id);
-  const node = (agent: Agent, depth: number): React.ReactNode => <SessionItem key={agent.id} agent={agent} name={agent.missing ? agent.peer + " session " + agent.id.split("#")[1]?.slice(0, 6) : shortName(agent, title)} selected={selected} now={now} open={open} listen={listen}>
+  const node = (agent: Agent, depth: number): React.ReactNode => <SessionItem key={agent.id} agent={agent} name={agent.missing ? agent.peer + " session " + agent.id.split("#")[1]?.slice(0, 6) : shortName(agent, title)} selected={selected} now={now} open={open} listen={listen} stop={stop}>
     {depth < 3 && childrenOf(agent.id).map(child => node(child, depth + 1))}
   </SessionItem>;
   return <ul aria-label={label} className="ml-3 flex flex-col gap-px pl-1">{roots.map(agent => node(agent, 0))}</ul>;
 }
 
 /** One session: live dot, harness mark, name, its state, "model · where", then its subagent runs and children. */
-function SessionItem({ agent, name, selected, now, open, listen, children }: {
-  agent: Agent; name: string; selected: Selected; now: number; open: OpenSession; listen?: Listen; children?: React.ReactNode;
+function SessionItem({ agent, name, selected, now, open, listen, stop, children }: {
+  agent: Agent; name: string; selected: Selected; now: number; open: OpenSession; listen?: Listen; stop?: (session: string) => void; children?: React.ReactNode;
 }) {
   const state = sessionState(agent, now);
   const live = sessionLive(agent, now);
@@ -91,6 +91,10 @@ function SessionItem({ agent, name, selected, now, open, listen, children }: {
         {detail && <span className="min-w-0 truncate text-xs text-muted-foreground" title={detail}>{detail}</span>}
       </span>
     </button>
+    {stop && agent.runnerStatus === "running" && <button type="button" aria-label={"Stop " + (name || short(agent.id))} title="Stop this agent's turn" onClick={() => stop(agent.id)}
+      className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground max-md:mt-0 max-md:size-11">
+      <CircleStop aria-hidden className="size-3.5"/>
+    </button>}
     {listen && !agent.gone && <ListenToggle agent={agent} name={name || short(agent.id)} listen={listen}/>}
     </div>
     {(runs.length > 0 || finished.length > 0 || kids.length > 0) && <ul aria-label={"Inside " + (name || short(agent.id))} className="ml-3 flex flex-col gap-px pl-1">
