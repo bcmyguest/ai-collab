@@ -347,7 +347,7 @@ async function git(cwd, args, env) {
  * Uploads a git work tree as a self-contained clone of its checked-out branch, so git works inside the sandbox:
  * a linked worktree's .git is a file pointing into the host repo, which the sandbox does not have (as lib/builder.ts).
  */
-async function uploadClone({ openshell, env, sandbox, cwd, remote }) {
+export async function uploadClone({ openshell, env, sandbox, cwd, remote }) {
   const dir = mkdtempSync(join(tmpdir(), "ai-collab-sandbox-clone-"));
   const clone = join(dir, basename(cwd));
   try {
@@ -370,23 +370,23 @@ async function uploadClone({ openshell, env, sandbox, cwd, remote }) {
  * Lands a sandbox clone's work on the host work tree the way builders do: uncommitted changes become one commit, then
  * the host branch fast-forwards to it. A branch that moved on the host keeps the download and says where it is.
  */
-async function landClone({ openshell, env, sandbox, cwd, log }) {
+async function landClone({ openshell, env, sandbox, cwd, log, label, trailer }) {
   const incoming = mkdtempSync(join(tmpdir(), "ai-collab-sandbox-back-"));
   const back = join(incoming, basename(cwd));
   let keep = false;
   try {
     await downloadTree({ openshell, env, sandbox, remote: `${SANDBOX_ROOT}/work/${basename(cwd)}`, local: back });
     if (!existsSync(join(back, ".git"))) throw new Error("the downloaded workspace has no git repository");
-    await commitUncommitted({ git: (repo, args) => git(repo, args, env), repo: back, message: "chore(openshell): uncommitted work from a sandboxed session", trailer: "Assisted-by: Cursor:cursor-agent" });
+    await commitUncommitted({ git: (repo, args) => git(repo, args, env), repo: back, message: "chore(openshell): uncommitted work from a sandboxed session", trailer });
     const ahead = Number((await git(back, ["rev-list", "--count", "HEAD", "--not", (await git(cwd, ["rev-parse", "HEAD"], env)).trim()], env).catch(() => "0")).trim()) || 0;
     if (!ahead) return true;
     await git(cwd, ["fetch", "--quiet", back, "HEAD"], env);
     try {
       await git(cwd, ["merge", "--quiet", "--ff-only", "FETCH_HEAD"], env);
-      log(`cursor: landed ${ahead} commit(s) from the sandbox on ${cwd}`);
+      log(`${label}: landed ${ahead} commit(s) from the sandbox on ${cwd}`);
     } catch (error) {
       keep = true;
-      log(`cursor: could not fast-forward ${cwd}; the sandbox work is kept in ${back}: ${error.message}`);
+      log(`${label}: could not fast-forward ${cwd}; the sandbox work is kept in ${back}: ${error.message}`);
       return false;
     }
     return true;
@@ -395,14 +395,17 @@ async function landClone({ openshell, env, sandbox, cwd, log }) {
   }
 }
 
-/** Copies the sandbox worktree back to the host after a run or on close: commits for a git work tree, files otherwise; never throws. */
-export async function syncSandboxBack({ openshell, env, sandbox, cwd, log = () => {} }) {
+/**
+ * Copies the sandbox worktree back to the host after a run or on close: commits for a git work tree, files otherwise; never throws.
+ * label prefixes the log lines and trailer ends the commit of loose work; both default to Cursor's.
+ */
+export async function syncSandboxBack({ openshell, env, sandbox, cwd, log = () => {}, label = "cursor", trailer = "Assisted-by: Cursor:cursor-agent" }) {
   try {
-    if (existsSync(join(cwd, ".git"))) return await landClone({ openshell, env, sandbox, cwd, log });
+    if (existsSync(join(cwd, ".git"))) return await landClone({ openshell, env, sandbox, cwd, log, label, trailer });
     await downloadTree({ openshell, env, sandbox, remote: `${SANDBOX_ROOT}/work/${basename(cwd)}`, local: cwd });
     return true;
   } catch (error) {
-    log(`cursor: could not copy edits back from the sandbox: ${error.message}`);
+    log(`${label}: could not copy edits back from the sandbox: ${error.message}`);
     return false;
   }
 }

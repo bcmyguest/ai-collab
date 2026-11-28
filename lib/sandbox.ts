@@ -57,11 +57,21 @@ const PACKAGE_VERSION: string = JSON.parse(readFileSync(new URL("../package.json
 
 /** Lowercase DNS-label-safe sandbox name for a project. */
 export function sandboxName(project: string): string {
+  return prefixedName("ai-collab-", project);
+}
+
+/** The sandbox the runner's OpenCode sessions of a project share: aic-oc-<project>, apart from Cursor's ai-collab-<project>. */
+export function opencodeSandboxName(project: string): string {
+  return prefixedName("aic-oc-", project);
+}
+
+// prefix plus the project's slug, or plus 8 hex of its hash when the slug is empty or too long.
+function prefixedName(prefix: string, project: string): string {
   const slug = String(project).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
-  const name = `ai-collab-${slug}`;
+  const name = `${prefix}${slug}`;
   if (slug && name.length <= SANDBOX_NAME_MAX) return name;
   const suffix = createHash("sha256").update(String(project)).digest("hex").slice(0, 8);
-  return `ai-collab-${suffix}`;
+  return `${prefix}${suffix}`;
 }
 
 /** The sandbox a team run's OpenShell members share: team-<14 hex of project/run>. */

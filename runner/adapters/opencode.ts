@@ -3,7 +3,9 @@ import { randomUUID } from "node:crypto";
 import { EventType } from "@ag-ui/core";
 import { sessionLabel } from "../../lib/config.ts";
 import { opencodeRequest, serviceEndpoint } from "../../lib/opencode-api.ts";
+import type { OpencodeEndpoint } from "../../lib/opencode-api.ts";
 import { OPENCODE_NO_SUBAGENTS } from "../../lib/subagent-guard.ts";
+import { createSandboxedOpenCode } from "./opencode-sandbox.ts";
 import { APPROVAL_REQUESTED, APPROVAL_RESOLVED, PERMISSION_TABLE } from "../contract.ts";
 
 import type { Decision, SessionContext, UserInput } from "../types.d.ts";
@@ -68,11 +70,29 @@ export async function* sseData(body: Json) {
 }
 
 export default function openCodeAdapter({ env = process.env } = {}) {
-  return createOpenCodeAdapter({ env });
+  return withOpenShell(createOpenCodeAdapter({ env }), createSandboxedOpenCode({ env, makeAdapter: (endpoint) => createOpenCodeAdapter({ env, endpoint }) }));
 }
 
-/** An adapter over the OpenCode service that env locates; retryMs paces event-stream reconnects. */
-export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } = {}) {
+/** The host adapter, with place openshell sessions sent to their project sandbox's server instead (opencode-sandbox.ts). */
+export function withOpenShell(host: ReturnType<typeof createOpenCodeAdapter>, sandboxed: ReturnType<typeof createSandboxedOpenCode>) {
+  return {
+    ...host,
+    capabilities: { ...host.capabilities, places: ["folder", "worktree", "openshell"] },
+    open: (options: Json, ctx: SessionContext) => (options.place === "openshell" ? sandboxed.open(options, ctx) : host.open(options, ctx)),
+    resume: (record: Json, ctx: SessionContext, env?: Json) => (record.place === "openshell" ? sandboxed.resume(record, ctx, env) : host.resume(record, ctx)),
+    restore: (record: Json) => sandboxed.restore(record),
+    release: (record: Json) => sandboxed.release(record),
+    async shutdown() {
+      await Promise.allSettled([host.shutdown(), sandboxed.shutdown()]);
+    },
+  };
+}
+
+/**
+ * An adapter over the OpenCode service that env locates, or over `endpoint` when given (a sandboxed server);
+ * retryMs paces event-stream reconnects.
+ */
+export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS, endpoint }: { env?: NodeJS.ProcessEnv; retryMs?: number; endpoint?: () => OpencodeEndpoint | null } = {}) {
   const sessions = new Map(); // OpenCode session id -> {sessionID, ctx, threadId, autoReply, run, tools}
   const pending = new Map(); // open approval request id -> {sessionID (asking session), owner (owned session id), action}
   const inflight = new Set(); // approval ids being auto-replied
@@ -80,10 +100,11 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
   const owners = new Map(); // child session id -> owned session id, or null when no owned session sits above it
   let stream: Json = null; // {ac}: the one /api/event subscription every session shares
 
-  const service = () => serviceEndpoint(env);
+  const service = () => (endpoint ? endpoint() : serviceEndpoint(env));
+  const request = (method: string, path: string, body?: unknown) => opencodeRequest(method, path, { body, env, endpoint: service() });
 
   async function call(method: Json, path: Json, body?: Json) {
-    const r = await opencodeRequest(method, path, { body, env });
+    const r = await request(method, path, body);
     if (!r.ok) throw new Error(`OpenCode ${method} ${path} failed: ${r.error}`);
     return r.body;
   }
@@ -173,7 +194,7 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
   async function parentOwner(start: Json) {
     let id = start;
     for (let depth = 0; depth < PARENT_DEPTH; depth++) {
-      const r = await opencodeRequest("GET", `/api/session/${enc(id)}`, { env });
+      const r = await request("GET", `/api/session/${enc(id)}`);
       if (!r.ok) return undefined;
       id = typeof r.body?.data?.parentID === "string" ? r.body.data.parentID : "";
       if (!id) return null;
@@ -244,12 +265,12 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
   async function resync() {
     for (const s of [...sessions.values()]) {
       if (s.run) {
-        const status = await opencodeRequest("GET", `/api/session/${enc(s.sessionID)}`, { env });
+        const status = await request("GET", `/api/session/${enc(s.sessionID)}`);
         if (status.ok && isIdle(status.body?.data)) {
           endRun(s, (runId: string) => ({ type: EventType.RUN_ERROR, message: "the OpenCode run ended while the event stream was down", metadata: { aiCollab: { runId } } }));
         }
       }
-      const r = await opencodeRequest("GET", `/api/session/${enc(s.sessionID)}/permission`, { env });
+      const r = await request("GET", `/api/session/${enc(s.sessionID)}/permission`);
       if (!r.ok || !Array.isArray(r.body?.data)) continue;
       const listed = new Set(r.body.data.map((req: Json) => req?.id));
       for (const [id, entry] of [...pending]) {
@@ -366,7 +387,7 @@ export function createOpenCodeAdapter({ env = process.env, retryMs = RETRY_MS } 
     capabilities: { steer: true, images: false, resume: "transcript", permissionModes: Object.keys(PERMISSION_TABLE.opencode) },
     async available() {
       if (!service()) return { ok: false, detail: NO_SERVICE };
-      const r = await opencodeRequest("GET", "/api/info", { env });
+      const r = await request("GET", "/api/info");
       return r.ok ? { ok: true } : { ok: false, detail: r.error };
     },
     async open(options: Json, ctx: SessionContext) {

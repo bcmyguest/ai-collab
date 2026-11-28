@@ -20,7 +20,7 @@ import { pickedWorktree, type WorktreePick } from "./git-refs.ts";
 export const START_HARNESSES = HARNESSES;
 const START_PLACES = ["folder", "worktree", "openshell"];
 // Harnesses the runner can start in its own per-project OpenShell sandbox (runner/adapters/*.mjs capabilities.places).
-const RUNNER_SANDBOX_HARNESSES = ["cursor"];
+const RUNNER_SANDBOX_HARNESSES = ["cursor", "opencode"];
 const GIT_TIMEOUT_MS = 30_000;
 export const PROMPT_MAX_CHARS = 4000;
 const ID_WAIT_MS = 15_000;
