@@ -82,7 +82,9 @@ type Push = ReturnType<typeof createPush>;
 /** createUi's options; each injected function defaults to the real one, so tests swap any of them. */
 export type UiOptions = {
   cfg?: Json; projects?: Json[]; allowedOrigin?: string; control?: typeof controlSession; interrupt?: typeof interruptSession;
-  setMode?: typeof publishMode; env?: NodeJS.ProcessEnv; start?: typeof startSession; models?: typeof listModels; push?: Push | null;
+  setMode?: typeof publishMode; env?: NodeJS.ProcessEnv; start?: typeof startSession;
+  // Codex, Cursor and OpenCode agent starts go to the runner; the served UI turns it on.
+  runnerStarts?: boolean; models?: typeof listModels; push?: Push | null;
   auth?: Auth | null; runner?: typeof runnerClient; hasDraft?: typeof terminalHasDraft; hosted?: boolean; landingCheckout?: string;
   runMergeReview?: typeof mergeReview; land?: typeof hostLand;
   /** The thread store client per project; tests and the UI fixture pass an in-memory one. */
@@ -435,7 +437,7 @@ function originalOf(quote: Json) {
   return { sender: typeof source.sender === "string" ? source.sender : "", body: typeof source.body === "string" ? source.body : "" };
 }
 
-export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start: launch = startSession, models = listModels, push: notifier = null, auth = null, runner = runnerClient, hasDraft = terminalHasDraft, hosted = false, landingCheckout = HOST_CHECKOUT, runMergeReview = mergeReview, land = hostLand, threadClient: threadClientOf }: UiOptions) {
+export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOrigin = "", control = controlSession, interrupt = interruptSession, setMode = publishMode, env = process.env, start: launch = startSession, runnerStarts = false, models = listModels, push: notifier = null, auth = null, runner = runnerClient, hasDraft = terminalHasDraft, hosted = false, landingCheckout = HOST_CHECKOUT, runMergeReview = mergeReview, land = hostLand, threadClient: threadClientOf }: UiOptions) {
   if (!configs.length) throw new Error("No ai-collab project is configured");
   for (const item of configs) if (!item.enabled) throw new Error(item.reason);
   if (allowedOrigin && (!allowedOrigin.startsWith("https://") || new URL(allowedOrigin).origin !== allowedOrigin)) {
@@ -1962,6 +1964,17 @@ export function createUi({ cfg, projects: configs = cfg ? [cfg] : [], allowedOri
           await project.threads?.claim(result.body.session, { prompt: checked.text });
           return json(201, result.body);
         }
+        // Codex, Cursor and OpenCode agent starts are runner sessions: the chat and thread show their replies and failures, and Stop works.
+        if (runnerStarts && launch === startSession && harness !== "claude" && chosenMode === "agent" && codeMode !== true) {
+          const threadTree = inThread?.worktree && inThread.worktree !== taskRoot(project) ? inThread.worktree : "";
+          const placed = threadTree ? { place: "worktree", worktreePath: threadTree } : { place: where, ...pick };
+          const result = await runner({ socket: runnerSocket(env), timeoutMs: 120_000 })
+            .start({ project: name, harness, prompt: checked.text, ...placed, system: false, ...(chosen !== undefined ? { model: chosen } : {}) })
+            .catch(() => reject(503, "The session runner is unavailable"));
+          if (result.status !== 201) reject(result.status, result.body.error || "The runner refused the start");
+          await project.threads?.claim(result.body.session, { thread: inThread, prompt: checked.text });
+          return json(201, result.body);
+        }
         if (launch === startSession && harness === "claude" && codeMode === true) {
           const result = await runner({ socket: runnerSocket(env), timeoutMs: 120_000 })
             .start({ project: name, harness, prompt: checked.text, place: where, permissionMode: "supervised", codeMode: true, system: false, ...pick, ...(chosen !== undefined ? { model: chosen } : {}) })
@@ -2290,7 +2303,7 @@ export function ui() {
       : [loadConfig(process.env, { cwd: process.env.AI_COLLAB_UI_WORKSPACE || process.cwd(), host: "operator" })];
     // VAPID subject: the UI's HTTPS origin, or a mailto: placeholder without one.
     const push = createPush({ dir: join(projects[0].stateDir, "push"), subject: process.env.AI_COLLAB_UI_ORIGIN || "mailto:ai-collab@localhost.invalid" });
-    const instance = createUi({ projects, allowedOrigin: process.env.AI_COLLAB_UI_ORIGIN, push, auth });
+    const instance = createUi({ projects, allowedOrigin: process.env.AI_COLLAB_UI_ORIGIN, push, auth, runnerStarts: true });
     // Repos that auto-join after start-up appear within one refresh interval.
     setInterval(() => instance.refresh(loadProjects(process.env, { host: "operator" })), REFRESH_MS).unref();
     shared[INSTANCE] = instance;

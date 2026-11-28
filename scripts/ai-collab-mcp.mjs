@@ -35,5 +35,6 @@ mcp = serveMcp({
   listTools: () => workers.listTools(),
   callTool: (name, args, signal) => workers.callTool(name, args, signal),
 });
-await mcp.closed;
-await workers.stop();
+// A top-level await would hold module evaluation for the whole session.
+// oxlint-disable-next-line unicorn/prefer-top-level-await
+void mcp.closed.then(() => workers.stop());

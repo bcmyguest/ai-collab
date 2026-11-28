@@ -76,6 +76,8 @@ Each Stop hook call waits at most 600 seconds. The Stop hooks are registered wit
 
 ## Agent messaging tools
 
+`scripts/ai-collab-mcp.mjs` is a stable stdio front: the tools run in a worker (`scripts/ai-collab-mcp-tools.mjs`, `lib/surfaces/mcp-reload.ts`). When a deploy replaces the plugin copy's `package.json`, the front starts a fresh worker, lets calls in flight finish on the old one, and sends `notifications/tools/list_changed` when the list differs, so a running session gets new tools without a reconnect.
+
 Six MCP tools (plus the options below) follow the agent-messaging interface of the Pulsar MCP server, mapped onto ai-collab's topics, inbox cursor and session registry. The older tools ([`ask_question` and friends](approvals.md#ask-from-an-agent-reply-from-the-phone)) stay; their descriptions name the new tool they duplicate.
 
 | Tool | Does | Built on | CLI |

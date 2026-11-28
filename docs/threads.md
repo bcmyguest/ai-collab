@@ -87,7 +87,7 @@ Callers:
 
 - The bus runs `sync` for every registered project on open (`scripts/ai-collab-bus.mjs`): the backfill.
 - The UI server posts unassigned sessions to `POST /threads/sync` when a project's registry changes, so hook-recorded sessions get a thread within one change.
-- A UI start creates a thread titled from the first prompt's first line (60 characters; `Untitled` without a prompt) and attaches the new session, or attaches it to the `thread` the request names. A start in a thread runs in the thread's worktree as a folder start.
+- A UI start creates a thread titled from the first prompt's first line (60 characters; `Untitled` without a prompt) and attaches the new session, or attaches it to the `thread` the request names. A start in a thread runs in the thread's worktree as a folder start. A Codex, Cursor or OpenCode start in Agent mode is a runner session (`web/server/ui.ts` start action): the chat and thread show its replies and failures, and Stop works. Claude starts and Plan or Ask starts stay one-shot CLI runs.
 - An operator message sent with `thread` carries `threadId` in its envelope and `thread_id` on its event row.
 
 ## One branch per thread
