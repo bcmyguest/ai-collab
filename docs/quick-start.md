@@ -54,4 +54,4 @@ Setup prints these steps:
 3. Set `AI_COLLAB_UI_ORIGIN` to the printed `https` URL in `~/.config/systemd/user/ai-collab-ui.service`, then run `systemctl --user restart ai-collab-ui`.
 4. Open that URL on your phone and add it to the home screen.
 
-Next: [Phone UI](phone-ui.md), [AFK mode](afk.md), [push notifications](phone-ui.md#push-notifications).
+Next: [Phone UI](phone-ui.md), [Threads](threads.md), [AFK mode](afk.md), [push notifications](phone-ui.md#push-notifications).
