@@ -44,7 +44,7 @@ import { sessionOfCommand } from "../lib/schedule-session.ts";
 import { ALLOW_HOST_AGENT_ENV } from "../lib/agent-guard.ts";
 import { noSubagentEnv } from "../lib/subagent-guard.ts";
 import { SPAWN_MAX_CHILDREN, SPAWN_MAX_DEPTH, spawnBriefNote, spawnReport, spawnSelfNote } from "../lib/spawn.ts";
-import { sandboxCapRefusal, sandboxName, teamSandboxName } from "../lib/sandbox.ts";
+import { opencodeSandboxName, sandboxCapRefusal, sandboxName, teamSandboxName } from "../lib/sandbox.ts";
 import { DELIVERY, deliveryWorkflow } from "./delivery.ts";
 import { publishApproval, publishApprovalEnd, publishEnded, publishEvent, publishReceipts } from "./publish.ts";
 
@@ -88,7 +88,7 @@ const MODEL = /^[a-zA-Z0-9][a-zA-Z0-9._:/[\]-]{0,119}$/;
 // OpenCode and Cursor share one process; their hooks read the owned record instead.
 const MANAGED_ENV_HARNESSES = new Set(["claude", "codex"]);
 // Spawned children of these harnesses run in OpenShell with full access, never on the host (docs/spawn-agent-spec.md, answer 6).
-const SPAWN_IN_OPENSHELL = new Set(["cursor"]);
+const SPAWN_IN_OPENSHELL = new Set(["cursor", "opencode"]);
 // A worktree add that fails, most often on a name a parallel start just took, retries this many times in all.
 const WORKTREE_ATTEMPTS = 4;
 // A spawned child cut by a restart gets this turn instead of an "interrupted" report, up to RESTART_RESUMES times in a row.
@@ -1048,7 +1048,7 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
     checkOpenShellLaunch(harness, place, builder);
     // A builder passed the cap at `builder start`; any other OpenShell start that would add a sandbox is checked here.
     if (place === "openshell" && !builder) {
-      const capped = await sandboxCapRefusal({ openshell: env.AI_COLLAB_OPENSHELL_BIN || "openshell", env, name: patternRun ? teamSandboxName(project, patternRun) : sandboxName(project) });
+      const capped = await sandboxCapRefusal({ openshell: env.AI_COLLAB_OPENSHELL_BIN || "openshell", env, name: patternRun ? teamSandboxName(project, patternRun) : harness === "opencode" ? opencodeSandboxName(project) : sandboxName(project) });
       if (capped) fail(409, capped);
     }
     // Spawns skip the gap; the per-parent child cap bounds their rate.
@@ -1301,7 +1301,8 @@ export function createRunner({ projects, adapters, durable: rawDurable, env = pr
       initial = { ...(await preparePatternRun(cfg, pattern, task, env, { now, openshell: true })), runner: true };
       for (const { harness } of initial.definition.roles) {
         checkOpenShellLaunch(harness, "openshell");
-        if (!adapterOf(harness).capabilities.places?.includes("openshell")) throw new Error(harness + " does not support OpenShell team roles");
+        // OpenCode runs in its own per-project sandbox (opencode-sandbox.ts), not in the team sandbox the members share.
+        if (harness === "opencode" || !adapterOf(harness).capabilities.places?.includes("openshell")) throw new Error(harness + " does not support OpenShell team roles");
       }
     } catch (error: Json) {
       fail(400, error.message);

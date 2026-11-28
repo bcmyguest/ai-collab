@@ -14,7 +14,8 @@ const TIMEOUT_MS = 20_000;
 type Json = any;
 export type OpencodeEndpoint = { url: string; auth: string };
 export type OpencodeResult = { ok: true; status: number; body: Json; error?: undefined } | { ok: false; status: number | null; error: string; body?: undefined };
-export type OpencodeOptions = { body?: unknown; env?: NodeJS.ProcessEnv; fetchFn?: typeof fetch; timeoutMs?: number };
+// endpoint: a service other than the registered one (an OpenCode server in a sandbox, through a port forward).
+export type OpencodeOptions = { body?: unknown; env?: NodeJS.ProcessEnv; endpoint?: OpencodeEndpoint | null; fetchFn?: typeof fetch; timeoutMs?: number };
 
 /** The service's {url, auth} from its state file, or null when no service runs. */
 export function serviceEndpoint(env: NodeJS.ProcessEnv = process.env): OpencodeEndpoint | null {
@@ -30,8 +31,8 @@ export function serviceEndpoint(env: NodeJS.ProcessEnv = process.env): OpencodeE
 }
 
 /** One request to the service: {ok, status, body} or {ok: false, status, error}. */
-export async function opencodeRequest(method: string, path: string, { body, env = process.env, fetchFn = fetch, timeoutMs = TIMEOUT_MS }: OpencodeOptions = {}): Promise<OpencodeResult> {
-  const ep = serviceEndpoint(env);
+export async function opencodeRequest(method: string, path: string, { body, env = process.env, endpoint, fetchFn = fetch, timeoutMs = TIMEOUT_MS }: OpencodeOptions = {}): Promise<OpencodeResult> {
+  const ep = endpoint === undefined ? serviceEndpoint(env) : endpoint;
   if (!ep) return { ok: false, status: null, error: "OpenCode service is not running" };
   try {
     const res = await fetchFn(ep.url + path, {
