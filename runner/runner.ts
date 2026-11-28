@@ -87,8 +87,8 @@ const MODEL = /^[a-zA-Z0-9][a-zA-Z0-9._:/[\]-]{0,119}$/;
 // Harnesses whose adapter runs a child per managed session, so the managed env marks only that session.
 // OpenCode and Cursor share one process; their hooks read the owned record instead.
 const MANAGED_ENV_HARNESSES = new Set(["claude", "codex"]);
-// Spawned children of these harnesses run in OpenShell with full access, never on the host (docs/spawn-agent-spec.md, answer 6).
-const SPAWN_IN_OPENSHELL = new Set(["cursor", "opencode"]);
+// Spawned children of every harness run in OpenShell with full access, never on the host (docs/spawn-agent-spec.md, answer 6).
+const SPAWN_IN_OPENSHELL = new Set(["claude", "codex", "cursor", "opencode"]);
 // A worktree add that fails, most often on a name a parallel start just took, retries this many times in all.
 const WORKTREE_ATTEMPTS = 4;
 // A spawned child cut by a restart gets this turn instead of an "interrupted" report, up to RESTART_RESUMES times in a row.
